@@ -1,0 +1,113 @@
+"use client";
+
+import { useState } from "react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
+import { useAsync } from "@/hooks/use-async";
+import { api, ApiError } from "@/lib/api";
+import type { GuestProfileOut } from "@/lib/types";
+
+export default function GuestsPage() {
+  const { data: guests, loading, refetch } = useAsync(() => api.guests.list(), []);
+  const [editing, setEditing] = useState<GuestProfileOut | null>(null);
+  const [name, setName] = useState("");
+  const [notes, setNotes] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  function openEdit(guest: GuestProfileOut) {
+    setEditing(guest);
+    setName(guest.name ?? "");
+    setNotes(guest.notes ?? "");
+  }
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editing) return;
+    setSubmitting(true);
+    try {
+      await api.guests.update(editing.id, { name, notes });
+      toast.success("Guest updated");
+      setEditing(null);
+      refetch();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Failed to update guest");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Guests</h1>
+        <p className="text-sm text-muted-foreground">Guest CRM built from past calls and stays</p>
+      </div>
+
+      {loading ? (
+        <Skeleton className="h-64 w-full" />
+      ) : !guests || guests.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No guest profiles yet.</p>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Phone</TableHead>
+              <TableHead>Total stays</TableHead>
+              <TableHead className="w-20" />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {guests.map((guest) => (
+              <TableRow key={guest.id}>
+                <TableCell>{guest.name ?? "—"}</TableCell>
+                <TableCell>{guest.phone}</TableCell>
+                <TableCell>{guest.total_stays}</TableCell>
+                <TableCell>
+                  <Button variant="outline" size="sm" onClick={() => openEdit(guest)}>
+                    Edit
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+
+      <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit guest — {editing?.phone}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSave} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="guest-name">Name</Label>
+              <Input id="guest-name" value={name} onChange={(e) => setName(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="guest-notes">Notes</Label>
+              <Textarea id="guest-notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
+            </div>
+            <DialogFooter>
+              <Button type="submit" disabled={submitting}>
+                Save
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
