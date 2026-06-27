@@ -12,8 +12,7 @@ from app.models.mixins import TimestampMixin, UUIDPkMixin
 class CallSession(UUIDPkMixin, TimestampMixin, Base):
     __tablename__ = "call_sessions"
 
-    exotel_call_id: Mapped[str | None] = mapped_column(String(64), index=True)
-    vapi_call_id: Mapped[str | None] = mapped_column(String(64), unique=True, index=True)
+    exotel_call_id: Mapped[str | None] = mapped_column(String(64), unique=True, index=True)
     property_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("properties.id", ondelete="SET NULL")
     )

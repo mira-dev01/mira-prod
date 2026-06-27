@@ -23,8 +23,6 @@ export type PropertyOut = {
   check_in_time: string;
   check_out_time: string;
   max_guests: number;
-  vapi_assistant_id: string | null;
-  vapi_phone_number_id: string | null;
   created_at: string;
 };
 
@@ -47,7 +45,6 @@ export type PropertyUpdate = Partial<PropertyCreate>;
 export type CallSessionOut = {
   id: string;
   exotel_call_id: string | null;
-  vapi_call_id: string | null;
   property_id: string | null;
   guest_profile_id: string | null;
   caller_number: string | null;

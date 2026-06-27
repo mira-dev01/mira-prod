@@ -1,11 +1,11 @@
 """Exotel call-status/passthru callback.
 
-Voice itself is bridged Exotel -> Vapi directly over a SIP trunk (the
-backend is not in the audio path -- see app/api/v1/webhooks/vapi.py and
-README). This webhook only receives Exotel's own call lifecycle callback
-(configured as a Passthru/StatusCallback applet alongside the SIP trunk
-applet in the Exotel call flow), used for call_sessions logging, recording
-URLs, and detecting calls that never reached the AI (busy/no-answer/failed).
+The actual voice conversation runs through app/api/v1/voice.py (a websocket
+the Exotel Voicebot Applet streams audio to). This webhook only receives
+Exotel's own call lifecycle callback (configured as a Passthru/StatusCallback
+applet alongside the Voicebot applet in the Exotel call flow), used for
+call_sessions logging, recording URLs, and detecting calls that never reached
+the AI (busy/no-answer/failed).
 """
 
 import logging

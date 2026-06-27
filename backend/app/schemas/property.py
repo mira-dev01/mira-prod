@@ -51,8 +51,6 @@ class PropertyOut(BaseModel):
     check_in_time: str
     check_out_time: str
     max_guests: int
-    vapi_assistant_id: str | None
-    vapi_phone_number_id: str | None
     created_at: datetime
 
     model_config = {"from_attributes": True}

@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -17,16 +18,16 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 1440
 
-    vapi_api_key: str | None = None
-    vapi_webhook_secret: str = "change-me"
-    vapi_sip_subdomain: str | None = None
-    vapi_assistant_name: str = "Mira"
-
+    llm_provider: Literal["groq", "anthropic"] = "groq"
     groq_api_key: str | None = None
     groq_model: str = "llama-3.3-70b-versatile"
-    deepgram_api_key: str | None = None
-    elevenlabs_api_key: str | None = None
-    elevenlabs_voice_id: str | None = None
+    anthropic_api_key: str | None = None
+    anthropic_model: str = "claude-sonnet-4-6"
+
+    sarvam_api_key: str | None = None
+    sarvam_stt_model: str = "saaras:v3"
+    sarvam_tts_model: str = "bulbul:v2"
+    sarvam_tts_speaker: str = "anushka"
 
     exotel_sid: str | None = None
     exotel_api_key: str | None = None

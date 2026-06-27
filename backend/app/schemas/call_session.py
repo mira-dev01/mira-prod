@@ -7,7 +7,6 @@ from pydantic import BaseModel
 class CallSessionOut(BaseModel):
     id: uuid.UUID
     exotel_call_id: str | None
-    vapi_call_id: str | None
     property_id: uuid.UUID | None
     guest_profile_id: uuid.UUID | None
     caller_number: str | None

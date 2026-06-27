@@ -18,7 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useAsync } from "@/hooks/use-async";
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, API_BASE_URL, getToken } from "@/lib/api";
 import type { PropertyCreate } from "@/lib/types";
 
 const emptyForm: PropertyCreate = {
@@ -62,6 +62,17 @@ export default function PropertiesPage() {
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Failed to remove property");
     }
+  }
+
+  function handleTestInBrowser(id: string) {
+    const token = getToken();
+    if (!token) {
+      toast.error("Not logged in");
+      return;
+    }
+    const backendOrigin = API_BASE_URL.replace(/\/api\/v1\/?$/, "");
+    const url = `${backendOrigin}/api/v1/voice/test?property_id=${id}&token=${encodeURIComponent(token)}`;
+    window.open(url, "_blank");
   }
 
   async function handleSync(id: string) {
@@ -176,10 +187,10 @@ export default function PropertiesPage() {
               <CardHeader>
                 <CardTitle className="flex items-center justify-between text-base">
                   {property.name}
-                  {property.vapi_assistant_id ? (
+                  {property.exophone ? (
                     <Badge variant="secondary">Voice agent live</Badge>
                   ) : (
-                    <Badge variant="outline">No voice agent</Badge>
+                    <Badge variant="outline">No ExoPhone assigned</Badge>
                   )}
                 </CardTitle>
               </CardHeader>
@@ -187,7 +198,10 @@ export default function PropertiesPage() {
                 <p className="text-muted-foreground">{property.city ?? "No city set"}</p>
                 <p>₹{property.base_price.toLocaleString("en-IN")} / night · {property.max_guests} guests</p>
                 <p className="text-muted-foreground">{property.exophone ?? "No ExoPhone assigned"}</p>
-                <div className="flex gap-2 pt-2">
+                <div className="flex flex-wrap gap-2 pt-2">
+                  <Button variant="secondary" size="sm" onClick={() => handleTestInBrowser(property.id)}>
+                    Test in browser
+                  </Button>
                   <Button
                     variant="outline"
                     size="sm"

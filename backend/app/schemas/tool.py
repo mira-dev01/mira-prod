@@ -1,6 +1,6 @@
 """Pydantic argument models for the 6 LLM tool functions, matching the exact
-parameter names/types from MIRA_Tech_Architecture_Spec.pdf so Vapi's function
-definitions and our handlers stay in lockstep.
+parameter names/types from MIRA_Tech_Architecture_Spec.pdf so the voice
+pipeline's tool wrappers (app/voice/tools.py) and our handlers stay in lockstep.
 """
 
 from datetime import date

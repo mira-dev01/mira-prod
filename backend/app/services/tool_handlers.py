@@ -1,7 +1,8 @@
-"""Business logic for the 6 LLM tool functions, called from the `tool-calls`
-Vapi webhook. Each handler returns a natural-language string -- this is what
-gets fed back to the model as the tool result and is what it will speak to
-the guest, so results are phrased for that, not as raw JSON.
+"""Business logic for the 6 LLM tool functions, called from the voice
+pipeline's tool wrappers (app/voice/tools.py). Each handler returns a
+natural-language string -- this is what gets fed back to the model as the
+tool result and is what it will speak to the guest, so results are phrased
+for that, not as raw JSON.
 """
 
 import uuid

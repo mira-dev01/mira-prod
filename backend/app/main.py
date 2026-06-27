@@ -6,8 +6,19 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1 import analytics, auth, bookings, calls, guests, notifications, pricing, properties, technicians
-from app.api.v1.webhooks import exotel, vapi
+from app.api.v1 import (
+    analytics,
+    auth,
+    bookings,
+    calls,
+    guests,
+    notifications,
+    pricing,
+    properties,
+    technicians,
+    voice,
+)
+from app.api.v1.webhooks import exotel
 from app.config import settings
 from app.database import AsyncSessionLocal
 from app.services.calendar_service import sync_all_properties
@@ -55,7 +66,7 @@ app.include_router(technicians.router, prefix=API_PREFIX)
 app.include_router(pricing.router, prefix=API_PREFIX)
 app.include_router(analytics.router, prefix=API_PREFIX)
 app.include_router(notifications.router, prefix=API_PREFIX)
-app.include_router(vapi.router, prefix=API_PREFIX)
+app.include_router(voice.router, prefix=API_PREFIX)
 app.include_router(exotel.router, prefix=API_PREFIX)
 
 

@@ -25,9 +25,6 @@ class Property(UUIDPkMixin, TimestampMixin, Base):
     check_out_time: Mapped[str] = mapped_column(String(8), default="11:00", server_default="11:00")
     max_guests: Mapped[int] = mapped_column(default=4, server_default="4")
 
-    vapi_assistant_id: Mapped[str | None] = mapped_column(String(64))
-    vapi_phone_number_id: Mapped[str | None] = mapped_column(String(64), index=True)
-
     owner: Mapped["User"] = relationship(back_populates="properties")
     bookings: Mapped[list["Booking"]] = relationship(back_populates="property", cascade="all, delete-orphan")
     call_sessions: Mapped[list["CallSession"]] = relationship(

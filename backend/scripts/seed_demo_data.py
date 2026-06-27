@@ -89,7 +89,7 @@ async def get_or_create_property(db, user: User, index: int, name: str, base_pri
         user_id=user.id,
         name=name,
         city="Goa",
-        exophone=f"+9180000{index:05d}",  # placeholder DID -- replace via scripts/setup_vapi_assistant.py
+        exophone=f"+9180000{index:05d}",  # placeholder DID -- replace with the real ExoPhone once provisioned
         base_price=base_price,
         house_rules=SAMPLE_HOUSE_RULES,
         faq=SAMPLE_FAQ,

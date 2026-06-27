@@ -2,7 +2,6 @@ import os
 
 os.environ["DATABASE_URL"] = "postgresql+asyncpg://mira:mira@localhost:5432/mira_test"
 os.environ["ENVIRONMENT"] = "test"
-os.environ["VAPI_WEBHOOK_SECRET"] = "test-secret"
 os.environ["EXOTEL_WEBHOOK_TOKEN"] = "test-token"
 
 import uuid
@@ -13,6 +12,7 @@ from httpx import ASGITransport, AsyncClient
 from app.auth.security import create_access_token, hash_password
 from app.database import AsyncSessionLocal, Base, engine, get_db
 from app.main import app
+from app.models.call_session import CallSession
 from app.models.property import Property
 from app.models.user import User
 
@@ -91,3 +91,17 @@ async def test_property(db_session, test_user):
     await db_session.commit()
     await db_session.refresh(property_)
     return property_
+
+
+@pytest_asyncio.fixture
+async def test_call_session(db_session, test_property):
+    session = CallSession(
+        exotel_call_id=f"call-{uuid.uuid4().hex[:8]}",
+        property_id=test_property.id,
+        caller_number="+919999999999",
+        status="in_progress",
+    )
+    db_session.add(session)
+    await db_session.commit()
+    await db_session.refresh(session)
+    return session

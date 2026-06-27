@@ -1,9 +1,10 @@
 """Thin wrapper around Exotel's REST API.
 
-Voice itself is bridged Exotel -> Vapi directly over a SIP trunk (see
-scripts/setup_vapi_assistant.py and README), so our backend is not in the
-audio path. This client only covers what we call from app code: optional SMS
-fallback and webhook-token verification for Exotel's call-status callbacks.
+The actual voice conversation runs through app/api/v1/voice.py and
+app/voice/pipeline.py (a websocket the Exotel Voicebot Applet streams audio
+to), not through this client. This client only covers what we call from app
+code: optional SMS fallback and webhook-token verification for Exotel's
+call-status callbacks (also reused to verify the voice websocket's token).
 """
 
 import hmac

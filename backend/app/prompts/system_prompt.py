@@ -1,8 +1,8 @@
-"""Builds the per-call system prompt injected into the transient Vapi
-assistant config. FAQ/house-rules/local-tips are inlined directly here
-rather than retrieved from a vector DB -- at Tier 1 call volume for a
-handful of properties, a RAG/Pinecone pipeline is unnecessary complexity
-(genuinely Tier 2/3 scope per the spec).
+"""Builds the per-call system prompt injected into the voice pipeline's LLM
+context (see app/voice/pipeline.py). FAQ/house-rules/local-tips are inlined
+directly here rather than retrieved from a vector DB -- at Tier 1 call volume
+for a handful of properties, a RAG/Pinecone pipeline is unnecessary
+complexity (genuinely Tier 2/3 scope per the spec).
 """
 
 from app.models.guest_profile import GuestProfile
@@ -12,6 +12,10 @@ BASE_INSTRUCTIONS = """You are Mira, a warm, efficient AI voice receptionist for
 You answer guest calls 24/7. Speak naturally, keep responses brief (this is a phone call, not a chat).
 Always confirm dates and the number of guests before calling a tool. Use the property_id given to you
 below for every tool call -- never ask the guest for it.
+
+Language: converse fluently in English, Hindi, and Hinglish (code-switched Hindi-English), exactly as
+Indian guests naturally speak. Mirror whichever the guest uses, and switch naturally mid-conversation
+if they switch. Never force a guest speaking Hinglish into pure English or pure Hindi.
 
 Capabilities:
 - Check availability and quote pricing using your tools, do not guess numbers.
