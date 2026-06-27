@@ -3,8 +3,13 @@ import type {
   BookingCreate,
   BookingOut,
   CallSessionOut,
+  FaqEntryCreate,
+  FaqEntryOut,
+  FaqEntryUpdate,
   GuestProfileOut,
   GuestProfileUpdate,
+  LeadOut,
+  LeadUpdate,
   NotificationOut,
   PriceBreakdown,
   PricingRuleCreate,
@@ -15,6 +20,7 @@ import type {
   TechnicianCreate,
   TechnicianOut,
   UserOut,
+  UserUpdate,
 } from "@/lib/types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
@@ -77,6 +83,7 @@ export const api = {
         body: JSON.stringify({ email, password, name, phone }),
       }),
     me: () => request<UserOut>("/auth/me"),
+    updateMe: (data: UserUpdate) => request<UserOut>("/auth/me", { method: "PATCH", body: JSON.stringify(data) }),
   },
   properties: {
     list: () => request<PropertyOut[]>("/properties"),
@@ -128,6 +135,19 @@ export const api = {
   },
   analytics: {
     summary: (days = 30) => request<AnalyticsSummary>(`/analytics/summary?days=${days}`),
+  },
+  leads: {
+    list: () => request<LeadOut[]>("/leads"),
+    get: (id: string) => request<LeadOut>(`/leads/${id}`),
+    update: (id: string, data: LeadUpdate) =>
+      request<LeadOut>(`/leads/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  },
+  faq: {
+    list: () => request<FaqEntryOut[]>("/faq"),
+    create: (data: FaqEntryCreate) => request<FaqEntryOut>("/faq", { method: "POST", body: JSON.stringify(data) }),
+    update: (id: string, data: FaqEntryUpdate) =>
+      request<FaqEntryOut>(`/faq/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    remove: (id: string) => request<void>(`/faq/${id}`, { method: "DELETE" }),
   },
 };
 

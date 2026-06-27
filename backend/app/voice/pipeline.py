@@ -33,11 +33,19 @@ from pipecat.transports.smallwebrtc.transport import SmallWebRTCTransport
 from pipecat.transports.websocket.fastapi import FastAPIWebsocketParams, FastAPIWebsocketTransport
 from pipecat.workers.runner import WorkerRunner
 
+from sqlalchemy import select
+
 from app.config import settings
 from app.database import AsyncSessionLocal
 from app.models.property import Property
-from app.prompts.system_prompt import build_system_prompt, first_message_for
-from app.services import call_service
+from app.models.user import User
+from app.prompts.system_prompt import (
+    build_lead_system_prompt,
+    build_system_prompt,
+    first_message_for,
+    lead_first_message_for,
+)
+from app.services import call_service, lead_service
 from app.voice.tools import build_voice_tools
 
 logger = logging.getLogger(__name__)
@@ -51,11 +59,28 @@ def _build_llm():
 
 async def _run_pipeline(
     transport: BaseTransport,
-    property_id: uuid.UUID,
+    property_id: uuid.UUID | None,
     call_session_id: uuid.UUID,
+    host_user_id: uuid.UUID,
     system_prompt: str,
     first_message: str,
+    caller_number: str | None = None,
+    property_name: str | None = None,
 ) -> None:
+    # Every call gets a CRM lead record up front -- don't rely on the LLM
+    # remembering to call update_lead. It enriches this same row later
+    # (matched by call_session_id); this just guarantees one exists at all,
+    # even for calls that get escalated/resolved without the LLM ever
+    # touching the tool.
+    async with AsyncSessionLocal() as lead_db:
+        await lead_service.upsert_lead(
+            lead_db,
+            host_user_id,
+            call_session_id,
+            phone=caller_number if caller_number and caller_number != "browser-test" else None,
+            properties_discussed=[property_name] if property_name else None,
+        )
+
     stt = SarvamSTTService(
         api_key=settings.sarvam_api_key,
         model=settings.sarvam_stt_model,
@@ -71,7 +96,7 @@ async def _run_pipeline(
         )
         llm = _build_llm()
 
-        tools = build_voice_tools(call_session_id, property_id)
+        tools = build_voice_tools(call_session_id, property_id, host_user_id)
         context = LLMContext(
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -117,9 +142,13 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
 
     async with AsyncSessionLocal() as db:
         property_ = await call_service.get_property_by_number(db, dialed_number)
-        if property_ is None:
+        lead_user = None if property_ is not None else await call_service.get_user_by_lead_number(db, dialed_number)
+
+        if property_ is None and lead_user is None:
             logger.warning(
-                "No property configured for dialed number %s, ending call %s", dialed_number, exotel_call_id
+                "No property or lead line configured for dialed number %s, ending call %s",
+                dialed_number,
+                exotel_call_id,
             )
             try:
                 await websocket.close()
@@ -128,16 +157,37 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
             return
 
         guest = await call_service.get_or_create_guest_profile(db, caller_number)
-        session = await call_service.get_or_create_call_session(
-            db,
-            exotel_call_id=exotel_call_id,
-            property_id=property_.id,
-            guest_profile_id=guest.id if guest else None,
-            caller_number=caller_number,
-        )
-        system_prompt = build_system_prompt(property_, guest)
-        first_message = first_message_for(property_, guest)
-        property_id = property_.id
+
+        if property_ is not None:
+            session = await call_service.get_or_create_call_session(
+                db,
+                exotel_call_id=exotel_call_id,
+                property_id=property_.id,
+                guest_profile_id=guest.id if guest else None,
+                caller_number=caller_number,
+            )
+            system_prompt = build_system_prompt(property_, guest)
+            first_message = first_message_for(property_, guest)
+            property_id = property_.id
+            property_name = property_.name
+            host_user_id = property_.user_id
+        else:
+            properties = list(
+                (await db.scalars(select(Property).where(Property.user_id == lead_user.id))).all()
+            )
+            session = await call_service.get_or_create_call_session(
+                db,
+                exotel_call_id=exotel_call_id,
+                property_id=None,
+                guest_profile_id=guest.id if guest else None,
+                caller_number=caller_number,
+            )
+            system_prompt = build_lead_system_prompt(lead_user, properties)
+            first_message = lead_first_message_for(lead_user)
+            property_id = None
+            property_name = None
+            host_user_id = lead_user.id
+
         call_session_id = session.id
 
     serializer = ExotelFrameSerializer(stream_sid=call_data.stream_id, call_sid=exotel_call_id)
@@ -152,7 +202,16 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
         ),
     )
 
-    await _run_pipeline(transport, property_id, call_session_id, system_prompt, first_message)
+    await _run_pipeline(
+        transport,
+        property_id,
+        call_session_id,
+        host_user_id,
+        system_prompt,
+        first_message,
+        caller_number=caller_number,
+        property_name=property_name,
+    )
 
 
 async def run_browser_voice_pipeline(connection: SmallWebRTCConnection, property_: Property) -> None:
@@ -170,6 +229,7 @@ async def run_browser_voice_pipeline(connection: SmallWebRTCConnection, property
         system_prompt = build_system_prompt(property_, None)
         first_message = first_message_for(property_, None)
         property_id = property_.id
+        host_user_id = property_.user_id
         call_session_id = session.id
 
     transport = SmallWebRTCTransport(
@@ -181,4 +241,34 @@ async def run_browser_voice_pipeline(connection: SmallWebRTCConnection, property
         ),
     )
 
-    await _run_pipeline(transport, property_id, call_session_id, system_prompt, first_message)
+    await _run_pipeline(
+        transport, property_id, call_session_id, host_user_id, system_prompt, first_message, property_name=property_.name
+    )
+
+
+async def run_browser_lead_pipeline(connection: SmallWebRTCConnection, user: User) -> None:
+    """Same as run_browser_voice_pipeline, but for testing the Lead Agent
+    flow across a host's full portfolio instead of one property."""
+    async with AsyncSessionLocal() as db:
+        properties = list((await db.scalars(select(Property).where(Property.user_id == user.id))).all())
+        session = await call_service.get_or_create_call_session(
+            db,
+            exotel_call_id=None,
+            property_id=None,
+            guest_profile_id=None,
+            caller_number="browser-test",
+        )
+        system_prompt = build_lead_system_prompt(user, properties)
+        first_message = lead_first_message_for(user)
+        call_session_id = session.id
+
+    transport = SmallWebRTCTransport(
+        webrtc_connection=connection,
+        params=TransportParams(
+            audio_in_enabled=True,
+            audio_out_enabled=True,
+            vad_analyzer=SileroVADAnalyzer(),
+        ),
+    )
+
+    await _run_pipeline(transport, None, call_session_id, user.id, system_prompt, first_message)

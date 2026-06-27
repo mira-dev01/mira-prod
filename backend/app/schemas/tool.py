@@ -1,6 +1,7 @@
-"""Pydantic argument models for the 6 LLM tool functions, matching the exact
-parameter names/types from MIRA_Tech_Architecture_Spec.pdf so the voice
-pipeline's tool wrappers (app/voice/tools.py) and our handlers stay in lockstep.
+"""Pydantic argument models for the LLM tool functions, matching the
+parameter names/types app/voice/tools.py's DirectFunction wrappers expose to
+the LLM, so the wrappers and our handlers in app/services/tool_handlers.py
+stay in lockstep.
 """
 
 from datetime import date
@@ -11,6 +12,7 @@ from pydantic import BaseModel
 Urgency = Literal["low", "medium", "high", "emergency"]
 IssueType = Literal["plumbing", "electrical", "ac", "wifi", "lock", "general"]
 GuestLoyalty = Literal["new", "returning", "frequent"]
+LeadTemperature = Literal["hot", "warm", "cold"]
 
 
 class CheckCalendarArgs(BaseModel):
@@ -58,11 +60,33 @@ class NegotiateRateArgs(BaseModel):
     guest_loyalty: GuestLoyalty = "new"
 
 
-TOOL_ARG_MODELS = {
-    "check_calendar": CheckCalendarArgs,
-    "get_pricing": GetPricingArgs,
-    "dispatch_technician": DispatchTechnicianArgs,
-    "send_whatsapp": SendWhatsappArgs,
-    "escalate_to_host": EscalateToHostArgs,
-    "negotiate_rate": NegotiateRateArgs,
-}
+class RecommendPropertiesArgs(BaseModel):
+    budget: float | None = None
+    num_guests: int | None = None
+    preferred_location: str | None = None
+    purpose_of_stay: str | None = None
+
+
+class UpdateLeadArgs(BaseModel):
+    guest_name: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    check_in: date | None = None
+    check_out: date | None = None
+    num_guests: int | None = None
+    purpose_of_stay: str | None = None
+    budget: float | None = None
+    preferred_location: str | None = None
+    lead_temperature: LeadTemperature | None = None
+    properties_discussed: list[str] | None = None
+    questions_asked: list[str] | None = None
+    support_requests: list[str] | None = None
+    conversation_summary: str | None = None
+    next_follow_up: str | None = None
+    escalated: bool | None = None
+    transferred_to_host: bool | None = None
+
+
+class SearchFaqArgs(BaseModel):
+    query: str
+    property_id: str | None = None

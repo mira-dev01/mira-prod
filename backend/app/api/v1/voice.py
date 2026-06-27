@@ -23,7 +23,7 @@ from app.auth.dependencies import get_current_user
 from app.database import get_db
 from app.integrations.exotel_client import verify_webhook_token
 from app.models.user import User
-from app.voice.pipeline import run_browser_voice_pipeline, run_voice_pipeline
+from app.voice.pipeline import run_browser_lead_pipeline, run_browser_voice_pipeline, run_voice_pipeline
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/voice", tags=["voice"])
@@ -44,7 +44,7 @@ async def exotel_voice_ws(websocket: WebSocket, token: str | None = Query(defaul
 class BrowserOfferRequest(BaseModel):
     sdp: str
     type: str
-    property_id: uuid.UUID
+    property_id: uuid.UUID | None = None
 
 
 class BrowserOfferResponse(BaseModel):
@@ -62,23 +62,28 @@ async def browser_test_offer(
 
     Accepts an SDP offer, returns the SDP answer, and kicks off the same
     voice pipeline a real call would use, running in the background for the
-    lifetime of the WebRTC connection.
+    lifetime of the WebRTC connection. A property_id tests Guest Support for
+    that property; omitting it tests the Lead Agent across the host's full
+    portfolio.
     """
-    property_ = await get_owned_property(db, payload.property_id, current_user)
-
     connection = SmallWebRTCConnection()
     await connection.initialize(sdp=payload.sdp, type=payload.type)
     answer = connection.get_answer()
 
-    asyncio.create_task(run_browser_voice_pipeline(connection, property_))
+    if payload.property_id is not None:
+        property_ = await get_owned_property(db, payload.property_id, current_user)
+        asyncio.create_task(run_browser_voice_pipeline(connection, property_))
+    else:
+        asyncio.create_task(run_browser_lead_pipeline(connection, current_user))
 
     return BrowserOfferResponse(sdp=answer["sdp"], type=answer["type"])
 
 
 @router.get("/test", response_class=HTMLResponse)
-async def browser_test_page(property_id: str, token: str) -> str:
+async def browser_test_page(token: str, property_id: str = "") -> str:
     """Minimal mic-in/speaker-out WebRTC test page. Opened from the
-    dashboard's Properties page with the host's JWT and a property id."""
+    dashboard with the host's JWT and, optionally, a property id (omit to
+    test the Lead Agent across the host's full portfolio instead)."""
     return _TEST_PAGE_TEMPLATE.replace("__PROPERTY_ID__", property_id).replace("__TOKEN__", token)
 
 
@@ -95,13 +100,17 @@ _TEST_PAGE_TEMPLATE = """<!DOCTYPE html>
 </head>
 <body>
   <h1>Talk to MIRA</h1>
-  <p>Allow microphone access, then click connect and start speaking.</p>
+  <p id="modeNote">Allow microphone access, then click connect and start speaking.</p>
   <button id="connectBtn">Connect</button>
   <div id="status">Idle</div>
   <audio id="remoteAudio" autoplay></audio>
   <script>
     const propertyId = "__PROPERTY_ID__";
     const token = "__TOKEN__";
+    if (!propertyId) {
+      document.getElementById("modeNote").textContent =
+        "Testing the Lead Agent across your full portfolio (no property selected). Allow microphone access, then click connect.";
+    }
     const statusEl = document.getElementById("status");
     const connectBtn = document.getElementById("connectBtn");
 
@@ -132,7 +141,7 @@ _TEST_PAGE_TEMPLATE = """<!DOCTYPE html>
           "Content-Type": "application/json",
           Authorization: "Bearer " + token,
         },
-        body: JSON.stringify({ sdp: offer.sdp, type: offer.type, property_id: propertyId }),
+        body: JSON.stringify({ sdp: offer.sdp, type: offer.type, property_id: propertyId || null }),
       });
 
       if (!res.ok) {

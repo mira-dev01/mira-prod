@@ -11,7 +11,9 @@ from app.api.v1 import (
     auth,
     bookings,
     calls,
+    faq,
     guests,
+    leads,
     notifications,
     pricing,
     properties,
@@ -66,6 +68,8 @@ app.include_router(technicians.router, prefix=API_PREFIX)
 app.include_router(pricing.router, prefix=API_PREFIX)
 app.include_router(analytics.router, prefix=API_PREFIX)
 app.include_router(notifications.router, prefix=API_PREFIX)
+app.include_router(leads.router, prefix=API_PREFIX)
+app.include_router(faq.router, prefix=API_PREFIX)
 app.include_router(voice.router, prefix=API_PREFIX)
 app.include_router(exotel.router, prefix=API_PREFIX)
 

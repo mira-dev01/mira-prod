@@ -5,6 +5,13 @@ export type UserOut = {
   phone: string | null;
   tier: string;
   status: string;
+  lead_exophone: string | null;
+};
+
+export type UserUpdate = {
+  name?: string | null;
+  phone?: string | null;
+  lead_exophone?: string | null;
 };
 
 export type FAQItem = { question: string; answer: string };
@@ -164,3 +171,61 @@ export type AnalyticsSummary = {
   revenue_attributed: number;
   answer_rate: number | null;
 };
+
+export type LeadOut = {
+  id: string;
+  user_id: string;
+  call_session_id: string | null;
+  guest_name: string | null;
+  phone: string | null;
+  email: string | null;
+  check_in: string | null;
+  check_out: string | null;
+  num_guests: number | null;
+  purpose_of_stay: string | null;
+  budget: number | null;
+  preferred_location: string | null;
+  properties_discussed: string[];
+  questions_asked: string[];
+  support_requests: string[];
+  lead_temperature: string | null;
+  lead_source: string;
+  conversation_summary: string | null;
+  next_follow_up: string | null;
+  escalated: boolean;
+  transferred_to_host: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type LeadUpdate = {
+  guest_name?: string | null;
+  lead_temperature?: "hot" | "warm" | "cold" | null;
+  next_follow_up?: string | null;
+  conversation_summary?: string | null;
+  transferred_to_host?: boolean | null;
+};
+
+export type FaqEntryOut = {
+  id: string;
+  user_id: string;
+  property_id: string | null;
+  question: string;
+  answer: string;
+  category: string | null;
+  status: "pending" | "verified";
+  verified_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type FaqEntryCreate = {
+  property_id?: string | null;
+  question: string;
+  answer: string;
+  category?: string | null;
+  status?: "pending" | "verified";
+  verified_by?: string | null;
+};
+
+export type FaqEntryUpdate = Partial<FaqEntryCreate>;

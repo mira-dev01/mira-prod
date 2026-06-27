@@ -34,3 +34,26 @@ async def test_duplicate_registration_rejected(client):
 async def test_me_requires_auth(client):
     resp = await client.get("/api/v1/auth/me")
     assert resp.status_code == 401
+
+
+async def test_update_me_sets_lead_exophone(client, auth_headers):
+    resp = await client.patch("/api/v1/auth/me", json={"lead_exophone": "+9180012340099"}, headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["lead_exophone"] == "+9180012340099"
+
+
+async def test_update_me_rejects_duplicate_lead_exophone(client, auth_headers):
+    other = await client.post(
+        "/api/v1/auth/register", json={"email": "other-host@example.com", "password": "supersecret1"}
+    )
+    other_token = other.json()["access_token"]
+    await client.patch(
+        "/api/v1/auth/me",
+        json={"lead_exophone": "+9180099990000"},
+        headers={"Authorization": f"Bearer {other_token}"},
+    )
+
+    resp = await client.patch(
+        "/api/v1/auth/me", json={"lead_exophone": "+9180099990000"}, headers=auth_headers
+    )
+    assert resp.status_code == 409

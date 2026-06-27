@@ -7,12 +7,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.call_session import CallSession
 from app.models.guest_profile import GuestProfile
 from app.models.property import Property
+from app.models.user import User
 
 
 async def get_property_by_number(db: AsyncSession, dialed_number: str | None) -> Property | None:
     if not dialed_number:
         return None
     return await db.scalar(select(Property).where(Property.exophone == dialed_number))
+
+
+async def get_user_by_lead_number(db: AsyncSession, dialed_number: str | None) -> User | None:
+    if not dialed_number:
+        return None
+    return await db.scalar(select(User).where(User.lead_exophone == dialed_number))
 
 
 def extract_caller_number(call: dict) -> str | None:

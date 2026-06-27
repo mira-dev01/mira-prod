@@ -15,6 +15,12 @@ class UserLogin(BaseModel):
     password: str
 
 
+class UserUpdate(BaseModel):
+    name: str | None = None
+    phone: str | None = None
+    lead_exophone: str | None = None
+
+
 class UserOut(BaseModel):
     id: uuid.UUID
     email: EmailStr
@@ -22,6 +28,7 @@ class UserOut(BaseModel):
     phone: str | None
     tier: str
     status: str
+    lead_exophone: str | None
 
     model_config = {"from_attributes": True}
 

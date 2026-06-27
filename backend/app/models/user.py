@@ -15,4 +15,8 @@ class User(UUIDPkMixin, TimestampMixin, Base):
     tier: Mapped[str] = mapped_column(String(32), default="tier_1", server_default="tier_1")
     status: Mapped[str] = mapped_column(String(32), default="active", server_default="active")
 
+    lead_exophone: Mapped[str | None] = mapped_column(String(32), unique=True, index=True)
+
     properties: Mapped[list["Property"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
+    leads: Mapped[list["Lead"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
+    faq_entries: Mapped[list["FaqEntry"]] = relationship(back_populates="owner", cascade="all, delete-orphan")

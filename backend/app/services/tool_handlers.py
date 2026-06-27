@@ -7,6 +7,7 @@ for that, not as raw JSON.
 
 import uuid
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.property import Property
@@ -16,9 +17,19 @@ from app.schemas.tool import (
     EscalateToHostArgs,
     GetPricingArgs,
     NegotiateRateArgs,
+    RecommendPropertiesArgs,
+    SearchFaqArgs,
     SendWhatsappArgs,
+    UpdateLeadArgs,
 )
-from app.services import calendar_service, notification_service, pricing_engine, technician_service
+from app.services import (
+    calendar_service,
+    faq_service,
+    lead_service,
+    notification_service,
+    pricing_engine,
+    technician_service,
+)
 
 
 async def _get_property(db: AsyncSession, property_id: str) -> Property | None:
@@ -174,3 +185,57 @@ async def handle_negotiate_rate(db: AsyncSession, args: NegotiateRateArgs) -> st
         db, property_, args.check_in, args.check_out, args.guest_offer, args.guest_loyalty
     )
     return result.message
+
+
+async def handle_recommend_properties(db: AsyncSession, args: RecommendPropertiesArgs, host_user_id: uuid.UUID) -> str:
+    stmt = select(Property).where(Property.user_id == host_user_id)
+    if args.num_guests is not None:
+        stmt = stmt.where(Property.max_guests >= args.num_guests)
+    if args.budget is not None:
+        stmt = stmt.where(Property.base_price <= args.budget * 1.15)
+    if args.preferred_location:
+        stmt = stmt.where(Property.city.ilike(f"%{args.preferred_location}%"))
+    stmt = stmt.order_by(Property.base_price.asc()).limit(3)
+
+    properties = list((await db.scalars(stmt)).all())
+    if not properties:
+        return "I couldn't find a property in our portfolio matching that -- let me connect you with the host directly."
+
+    lines = []
+    for property_ in properties:
+        amenities = ", ".join(property_.amenities[:4]) if property_.amenities else "no listed amenities"
+        lines.append(
+            f"{property_.name} in {property_.city or 'unlisted city'}: ₹{float(property_.base_price):,.0f}/night, "
+            f"sleeps {property_.max_guests}, {amenities} (property_id: {property_.id})"
+        )
+    return "Here are some options: " + " | ".join(lines)
+
+
+async def handle_update_lead(
+    db: AsyncSession, args: UpdateLeadArgs, host_user_id: uuid.UUID, call_session_id: uuid.UUID | None
+) -> str:
+    await lead_service.upsert_lead(db, host_user_id, call_session_id, **args.model_dump(exclude_unset=True))
+    return "Saved."
+
+
+async def handle_search_faq(
+    db: AsyncSession, args: SearchFaqArgs, host_user_id: uuid.UUID, default_property_id: uuid.UUID | None
+) -> str:
+    property_id = None
+    if args.property_id:
+        try:
+            property_id = uuid.UUID(args.property_id)
+        except ValueError:
+            property_id = None
+    property_id = property_id or default_property_id
+
+    entries = await faq_service.search_faq_entries(db, host_user_id, args.query, property_id)
+    if entries:
+        return " | ".join(f"{entry.question}: {entry.answer}" for entry in entries)
+
+    if property_id is not None:
+        legacy = await faq_service.search_legacy_property_faq(db, property_id, args.query)
+        if legacy:
+            return " | ".join(f"{item['question']}: {item['answer']}" for item in legacy)
+
+    return "I don't have verified information about that. I'll connect you with the host so you receive the correct details."
