@@ -6,12 +6,18 @@ export type UserOut = {
   tier: string;
   status: string;
   lead_exophone: string | null;
+  agent_first_message: string | null;
+  agent_persona: string | null;
+  agent_escalation_phrase: string | null;
 };
 
 export type UserUpdate = {
   name?: string | null;
   phone?: string | null;
   lead_exophone?: string | null;
+  agent_first_message?: string | null;
+  agent_persona?: string | null;
+  agent_escalation_phrase?: string | null;
 };
 
 export type FAQItem = { question: string; answer: string };
@@ -24,7 +30,9 @@ export type PropertyOut = {
   exophone: string | null;
   base_price: number;
   ical_url: string | null;
+  usp: string | null;
   house_rules: string | null;
+  neighborhood_info: string | null;
   faq: FAQItem[];
   amenities: string[];
   check_in_time: string;
@@ -48,7 +56,9 @@ export type PropertyCreate = {
   exophone?: string | null;
   base_price: number;
   ical_url?: string | null;
+  usp?: string | null;
   house_rules?: string | null;
+  neighborhood_info?: string | null;
   faq?: FAQItem[];
   amenities?: string[];
   check_in_time?: string;

@@ -19,6 +19,9 @@ class UserUpdate(BaseModel):
     name: str | None = None
     phone: str | None = None
     lead_exophone: str | None = None
+    agent_first_message: str | None = None
+    agent_persona: str | None = None
+    agent_escalation_phrase: str | None = None
 
 
 class UserOut(BaseModel):
@@ -29,6 +32,9 @@ class UserOut(BaseModel):
     tier: str
     status: str
     lead_exophone: str | None
+    agent_first_message: str | None
+    agent_persona: str | None
+    agent_escalation_phrase: str | None
 
     model_config = {"from_attributes": True}
 

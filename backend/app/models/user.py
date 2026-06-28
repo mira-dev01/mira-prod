@@ -1,4 +1,4 @@
-from sqlalchemy import String
+from sqlalchemy import String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -16,6 +16,16 @@ class User(UUIDPkMixin, TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(32), default="active", server_default="active")
 
     lead_exophone: Mapped[str | None] = mapped_column(String(32), unique=True, index=True)
+
+    # Per-host voice agent customization (see app/prompts/system_prompt.py).
+    # All optional -- None means "use Mira's default". agent_first_message
+    # supports {host_name}, {property_name}, {city}, {guest_name} placeholders;
+    # any placeholder that doesn't apply to the current call (e.g.
+    # {property_name} on a Lead Agent call with no property selected yet)
+    # resolves to "" rather than raising.
+    agent_first_message: Mapped[str | None] = mapped_column(Text)
+    agent_persona: Mapped[str | None] = mapped_column(Text)
+    agent_escalation_phrase: Mapped[str | None] = mapped_column(Text)
 
     properties: Mapped[list["Property"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
     leads: Mapped[list["Lead"]] = relationship(back_populates="owner", cascade="all, delete-orphan")

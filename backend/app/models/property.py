@@ -19,7 +19,22 @@ class Property(UUIDPkMixin, TimestampMixin, Base):
     base_price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
     ical_url: Mapped[str | None] = mapped_column(String(1024))
 
+    # One-line distinguishing description, e.g. "Glass house, 1BHK with a
+    # private jacuzzi" -- the system prompt leads with this whenever a guest
+    # asks generally about the property, and recommend_properties surfaces it
+    # when comparing across a host's portfolio.
+    usp: Mapped[str | None] = mapped_column(String(280))
+
     house_rules: Mapped[str | None] = mapped_column(Text)
+
+    # Free text covering local-area questions guests commonly ask: nearby
+    # cafes/restaurants, scooter/bike rental spots, distance to the
+    # beach/landmarks, distance to the airport and railway station, cab
+    # availability and typical fares, etc. The agent treats this as
+    # authoritative for those questions (see app/prompts/system_prompt.py),
+    # same as house_rules.
+    neighborhood_info: Mapped[str | None] = mapped_column(Text)
+
     faq: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
     amenities: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
     check_in_time: Mapped[str] = mapped_column(String(8), default="14:00", server_default="14:00")

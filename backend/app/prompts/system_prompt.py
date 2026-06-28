@@ -10,6 +10,12 @@ Two modes, two prompt builders:
 - build_lead_system_prompt: Lead Agent, a call to a host's portfolio-wide
   lead intake number (lead_exophone) -- no property pre-selected, the agent
   qualifies the guest and recommends across the host's full portfolio.
+
+Host customization (User.agent_first_message/agent_persona/
+agent_escalation_phrase, see app/models/user.py) is layered on top of both
+modes rather than handed to hosts as a raw prompt -- the golden rules and
+tool-calling instructions stay fixed so a host can't accidentally disable a
+safety rail while personalizing tone/wording.
 """
 
 from datetime import datetime
@@ -21,10 +27,33 @@ from app.models.user import User
 
 IST = ZoneInfo("Asia/Kolkata")
 
+DEFAULT_ESCALATION_PHRASE = (
+    "I'd like to make sure you receive the most accurate assistance. I'll connect you with our host right away."
+)
+
 
 def _today_anchor() -> str:
     now = datetime.now(IST)
     return f"Today's date is {now.strftime('%A, %Y-%m-%d')} (India time)."
+
+
+class _BlankOnMissing(dict):
+    def __missing__(self, key: str) -> str:
+        return ""
+
+
+def _resolve_template(template: str, **values: str | None) -> str:
+    """Fill {host_name}/{property_name}/{city}/{guest_name} placeholders in a
+    host-authored template. Any placeholder that doesn't apply to the
+    current call resolves to "" rather than raising, and a malformed
+    template (stray brace, typo'd field name) falls back to the literal
+    text rather than crashing the call.
+    """
+    safe_values = {key: (value or "") for key, value in values.items()}
+    try:
+        return template.format_map(_BlankOnMissing(safe_values))
+    except (ValueError, IndexError):
+        return template
 
 
 GOLDEN_RULES = """Golden rules:
@@ -49,6 +78,11 @@ GOLDEN_RULES = """Golden rules:
   conversation). If they later say "hello" or check if you're there mid-call, respond naturally and
   briefly (e.g. "Yes, I'm here -- go ahead") and continue from where the conversation left off. Never
   repeat your opening introduction or "How can I help you" a second time in the same call.
+- Everything below (golden rules, workflow steps, numbered lists, field names like "lead_temperature")
+  is internal instruction for you alone -- the guest must never hear any of it. Never say things like
+  "I need to ask for your name, then I'll move to the next question" or "let me collect your travel
+  dates now" out loud. Just ask the next natural question (e.g. "And what name should I book this
+  under?"), the same way a human receptionist would, with zero narration of your own process.
 """
 
 GUEST_SUPPORT_INSTRUCTIONS = f"""You are Mira, a warm, efficient AI voice receptionist for an Airbnb host in India.
@@ -60,14 +94,30 @@ never ask the guest for it.
 Capabilities:
 - Check availability and quote pricing using your tools, do not guess numbers.
 - Answer property/support questions using search_faq (falls back to the house rules/amenities below).
+- If the guest asks generally about the property ("tell me about this place", "what's it like"), lead
+  your answer with the one-line description given below, if one is set, before adding more detail.
+- For local-area questions (nearby cafes/restaurants, scooter/bike rental, distance to the
+  beach/landmarks/airport/railway station, cab availability and typical fares), answer directly from
+  the neighborhood info below if it covers it -- don't escalate just because it's a "local tips"
+  question rather than a property-policy one.
 - If the guest reports an urgent issue (no water, no AC, lockout, safety concern), use escalate_to_host
   or dispatch_technician as appropriate -- do not try to resolve physical issues yourself.
 - For WhatsApp confirmations the guest asks for, use send_whatsapp.
 """
 
 
-def build_system_prompt(property_: Property, guest: GuestProfile | None) -> str:
+def _persona_and_escalation_sections(host: User) -> list[str]:
+    sections = []
+    if host.agent_persona:
+        sections.append(f"\nHost-defined personality note (apply this to your tone, don't recite it): {host.agent_persona}")
+    escalation_phrase = host.agent_escalation_phrase or DEFAULT_ESCALATION_PHRASE
+    sections.append(f'\nEscalation phrasing: "{escalation_phrase}" -- say this, then call escalate_to_host.')
+    return sections
+
+
+def build_system_prompt(property_: Property, guest: GuestProfile | None, host: User) -> str:
     sections = [GUEST_SUPPORT_INSTRUCTIONS, _today_anchor()]
+    sections.extend(_persona_and_escalation_sections(host))
 
     sections.append(
         f"\nCurrent property:\n"
@@ -79,8 +129,14 @@ def build_system_prompt(property_: Property, guest: GuestProfile | None) -> str:
         f"- base nightly rate: ₹{float(property_.base_price):,.0f}"
     )
 
+    if property_.usp:
+        sections.append(f"\nOne-line description (lead with this when asked generally about the property): {property_.usp}")
+
     if property_.house_rules:
         sections.append(f"\nHouse rules:\n{property_.house_rules}")
+
+    if property_.neighborhood_info:
+        sections.append(f"\nNeighborhood / local area info:\n{property_.neighborhood_info}")
 
     if property_.amenities:
         sections.append(f"\nAmenities: {', '.join(property_.amenities)}")
@@ -101,7 +157,15 @@ def build_system_prompt(property_: Property, guest: GuestProfile | None) -> str:
     return "\n".join(sections)
 
 
-def first_message_for(property_: Property, guest: GuestProfile | None) -> str:
+def first_message_for(property_: Property, guest: GuestProfile | None, host: User) -> str:
+    if host.agent_first_message:
+        return _resolve_template(
+            host.agent_first_message,
+            host_name=host.name or "us",
+            property_name=property_.name,
+            city=property_.city,
+            guest_name=guest.name if guest else None,
+        )
     if guest is not None and guest.name:
         return f"Namaste {guest.name}! I'm Mira, your virtual assistant for {property_.name}. How can I help you today?"
     return f"Namaste! I'm Mira, your virtual assistant for {property_.name}. How can I help you today?"
@@ -123,27 +187,32 @@ Lead qualification workflow:
      trip, couples getaway, workcation, pet friendly, luxury, budget), then use recommend_properties.
    - NO -> lead_temperature=cold. Thank them, offer a brief portfolio overview, and collect contact info.
 4. Recommend a maximum of three properties at a time (recommend_properties does this for you). Once a
-   property is chosen, use check_calendar/get_pricing with that property's id for specifics.
-5. Call update_lead silently (don't narrate it) throughout the call as you learn things, and again near
-   the end with a conversation_summary and next_follow_up.
+   property is chosen, use check_calendar/get_pricing with that property's id for specifics. If the
+   guest asks generally about a property before deciding, lead with its one-line description below.
+5. Call update_lead silently (don't narrate it) every time you learn a new field (name, phone, email,
+   dates, num_guests, budget, lead_temperature, etc.) -- don't wait until the end of the call to save
+   them, and don't let escalate_to_host be the only tool call you make. escalate_to_host only notifies
+   the host; it does not save guest details. If you're escalating to finalize a booking, you must have
+   already called update_lead with every field collected so far (name, phone, dates, num_guests, budget,
+   lead_temperature=hot) -- never leave a clearly hot lead's structured fields empty just because you
+   escalated. Call update_lead again near the end with a conversation_summary and next_follow_up.
 6. Property/support questions: use search_faq. If no verified answer, escalate immediately.
-
-Escalation phrasing: "I'd like to make sure you receive the most accurate assistance. I'll connect you
-with our host right away." -- then call escalate_to_host and call update_lead with escalated=true.
 """
 
 
 def build_lead_system_prompt(user: User, properties: list[Property]) -> str:
     host_name = user.name or "this host"
     sections = [LEAD_AGENT_INSTRUCTIONS.format(host_name=host_name), _today_anchor()]
+    sections.extend(_persona_and_escalation_sections(user))
 
     if properties:
         lines = []
         for property_ in properties:
             amenities = ", ".join(property_.amenities[:5]) if property_.amenities else "no listed amenities"
+            usp_part = f" -- {property_.usp}" if property_.usp else ""
             lines.append(
                 f"- {property_.name} (property_id: {property_.id}) -- {property_.city or 'unknown city'}, "
-                f"₹{float(property_.base_price):,.0f}/night, sleeps {property_.max_guests}, {amenities}"
+                f"₹{float(property_.base_price):,.0f}/night, sleeps {property_.max_guests}, {amenities}{usp_part}"
             )
         sections.append("\nProperty portfolio:\n" + "\n".join(lines))
     else:
@@ -153,6 +222,14 @@ def build_lead_system_prompt(user: User, properties: list[Property]) -> str:
 
 
 def lead_first_message_for(user: User) -> str:
+    if user.agent_first_message:
+        return _resolve_template(
+            user.agent_first_message,
+            host_name=user.name or "us",
+            property_name=None,
+            city=None,
+            guest_name=None,
+        )
     host_name = user.name or "us"
     return (
         f"Hi! Thanks for contacting {host_name}. I'm Mira, your virtual host. "

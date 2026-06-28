@@ -16,7 +16,9 @@ class PropertyCreate(BaseModel):
     exophone: str | None = None
     base_price: float = Field(ge=0)
     ical_url: str | None = None
+    usp: str | None = Field(default=None, max_length=280)
     house_rules: str | None = None
+    neighborhood_info: str | None = None
     faq: list[FAQItem] = Field(default_factory=list)
     amenities: list[str] = Field(default_factory=list)
     check_in_time: str = "14:00"
@@ -38,7 +40,9 @@ class PropertyUpdate(BaseModel):
     exophone: str | None = None
     base_price: float | None = None
     ical_url: str | None = None
+    usp: str | None = Field(default=None, max_length=280)
     house_rules: str | None = None
+    neighborhood_info: str | None = None
     faq: list[FAQItem] | None = None
     amenities: list[str] | None = None
     check_in_time: str | None = None
@@ -59,7 +63,9 @@ class PropertyOut(BaseModel):
     exophone: str | None
     base_price: float
     ical_url: str | None
+    usp: str | None
     house_rules: str | None
+    neighborhood_info: str | None
     faq: list[dict]
     amenities: list[str]
     check_in_time: str

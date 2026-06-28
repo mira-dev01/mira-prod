@@ -9,7 +9,7 @@ from app.schemas.tool import (
     NegotiateRateArgs,
     SendWhatsappArgs,
 )
-from app.services import tool_handlers
+from app.services import lead_service, tool_handlers
 from app.services.notification_service import list_notifications
 
 
@@ -82,13 +82,41 @@ async def test_send_whatsapp_creates_notification(test_property, db_session):
 
 async def test_escalate_to_host_creates_urgent_notification(test_property, db_session):
     args = EscalateToHostArgs(
-        property_id=str(test_property.id), reason="No water", urgency="emergency", call_summary="Guest very upset"
+        property_id=str(test_property.id),
+        reason="No water",
+        urgency="emergency",
+        call_summary="Guest very upset",
+        guest_phone="+919999999999",
     )
-    result = await tool_handlers.handle_escalate_to_host(db_session, args, call_session_id=None)
+    result = await tool_handlers.handle_escalate_to_host(
+        db_session, args, call_session_id=None, host_user_id=test_property.user_id
+    )
     assert "emergency" in result.lower()
 
     notifications = await list_notifications(db_session)
     assert any(n.urgency == "emergency" for n in notifications)
+
+
+async def test_escalate_to_host_also_saves_lead_so_it_isnt_left_empty(test_property, db_session):
+    # Regression: escalate_to_host used to only create a notification --
+    # the rich call_summary/phone the model had already gathered never made
+    # it into the Lead row, so a clearly hot lead stayed empty in the CRM.
+    args = EscalateToHostArgs(
+        property_id=str(test_property.id),
+        reason="Finalize booking",
+        urgency="medium",
+        call_summary="Guest wants to book for 2 guests, July 3-5, total ₹12,987",
+        guest_phone="+919999999999",
+    )
+    await tool_handlers.handle_escalate_to_host(
+        db_session, args, call_session_id=None, host_user_id=test_property.user_id
+    )
+
+    leads = await lead_service.list_leads(db_session, test_property.user_id)
+    assert len(leads) == 1
+    assert leads[0].phone == "+919999999999"
+    assert "12,987" in leads[0].conversation_summary
+    assert leads[0].escalated is True
 
 
 async def test_negotiate_rate_returns_message(test_property, db_session):

@@ -142,7 +142,10 @@ async def _run_pipeline(
             ]
         )
 
-        worker = PipelineWorker(pipeline, params=PipelineParams())
+        # enable_metrics turns on pipecat's built-in per-stage time-to-first-byte
+        # tracking (logged as "<stage> TTFB: N.NNNs") -- this is how we get a
+        # real number for STT/LLM/TTS latency instead of just diagnosing it.
+        worker = PipelineWorker(pipeline, params=PipelineParams(enable_metrics=True))
 
         @worker.event_handler("on_pipeline_finished")
         async def _on_finished(worker, frame):
@@ -183,6 +186,7 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
         guest = await call_service.get_or_create_guest_profile(db, caller_number)
 
         if property_ is not None:
+            host = await db.get(User, property_.user_id)
             session = await call_service.get_or_create_call_session(
                 db,
                 exotel_call_id=exotel_call_id,
@@ -191,8 +195,8 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
                 caller_number=caller_number,
                 user_id=property_.user_id,
             )
-            system_prompt = build_system_prompt(property_, guest)
-            first_message = first_message_for(property_, guest)
+            system_prompt = build_system_prompt(property_, guest, host)
+            first_message = first_message_for(property_, guest, host)
             property_id = property_.id
             property_name = property_.name
             host_user_id = property_.user_id
@@ -248,6 +252,7 @@ async def run_browser_voice_pipeline(connection: SmallWebRTCConnection, property
     session, instead of leaving them unset -- the frontend renders that
     value as a "Browser test" label rather than hiding the row entirely."""
     async with AsyncSessionLocal() as db:
+        host = await db.get(User, property_.user_id)
         guest = await call_service.get_or_create_guest_profile(
             db, call_service.BROWSER_TEST_CALLER_NUMBER, name="Browser test guest"
         )
@@ -259,8 +264,8 @@ async def run_browser_voice_pipeline(connection: SmallWebRTCConnection, property
             caller_number=call_service.BROWSER_TEST_CALLER_NUMBER,
             user_id=property_.user_id,
         )
-        system_prompt = build_system_prompt(property_, None)
-        first_message = first_message_for(property_, None)
+        system_prompt = build_system_prompt(property_, None, host)
+        first_message = first_message_for(property_, None, host)
         property_id = property_.id
         host_user_id = property_.user_id
         call_session_id = session.id

@@ -1,0 +1,130 @@
+import uuid
+
+from app.models.property import Property
+from app.models.user import User
+from app.prompts.system_prompt import (
+    DEFAULT_ESCALATION_PHRASE,
+    build_lead_system_prompt,
+    build_system_prompt,
+    first_message_for,
+    lead_first_message_for,
+)
+
+
+def _user(**overrides) -> User:
+    defaults = dict(id=uuid.uuid4(), email="host@example.com", hashed_password="x", name="Asha")
+    defaults.update(overrides)
+    return User(**defaults)
+
+
+def _property(**overrides) -> Property:
+    defaults = dict(
+        id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+        name="Glasshouse Studio",
+        city="Goa",
+        base_price=4500,
+        max_guests=4,
+    )
+    defaults.update(overrides)
+    return Property(**defaults)
+
+
+def test_first_message_default_has_no_placeholders_left_unresolved():
+    host = _user(agent_first_message=None)
+    msg = first_message_for(_property(), None, host)
+    assert "Glasshouse Studio" in msg
+    assert "{" not in msg
+
+
+def test_first_message_uses_host_template_with_placeholders():
+    host = _user(name="Asha", agent_first_message="Hi from {host_name} at {property_name} in {city}!")
+    msg = first_message_for(_property(name="Sea View Villa", city="Goa"), None, host)
+    assert msg == "Hi from Asha at Sea View Villa in Goa!"
+
+
+def test_first_message_template_blank_on_missing_property_context():
+    # Lead Agent first message has no property in scope -- {property_name}
+    # must resolve to "" rather than crashing the call.
+    host = _user(name="Asha", agent_first_message="Hi from {host_name}, regarding {property_name}!")
+    msg = lead_first_message_for(host)
+    assert msg == "Hi from Asha, regarding !"
+
+
+def test_first_message_template_malformed_brace_fails_open_to_literal_text():
+    host = _user(agent_first_message="Hello { unterminated")
+    msg = first_message_for(_property(), None, host)
+    assert msg == "Hello { unterminated"
+
+
+def test_default_escalation_phrase_used_when_host_has_not_set_one():
+    host = _user(agent_escalation_phrase=None)
+    prompt = build_system_prompt(_property(), None, host)
+    assert DEFAULT_ESCALATION_PHRASE in prompt
+
+
+def test_host_escalation_phrase_overrides_default():
+    host = _user(agent_escalation_phrase="One moment, let me get my colleague Raj.")
+    prompt = build_system_prompt(_property(), None, host)
+    assert "One moment, let me get my colleague Raj." in prompt
+    assert DEFAULT_ESCALATION_PHRASE not in prompt
+
+
+def test_persona_note_included_when_set():
+    host = _user(agent_persona="Sound like a chatty Goan local, very informal.")
+    prompt = build_system_prompt(_property(), None, host)
+    assert "Sound like a chatty Goan local, very informal." in prompt
+
+
+def test_persona_note_omitted_when_not_set():
+    host = _user(agent_persona=None)
+    prompt = build_system_prompt(_property(), None, host)
+    assert "Host-defined personality note" not in prompt
+
+
+def test_property_usp_included_in_guest_support_prompt():
+    host = _user()
+    prop = _property(usp="Glass house, 1BHK with a private jacuzzi")
+    prompt = build_system_prompt(prop, None, host)
+    assert "Glass house, 1BHK with a private jacuzzi" in prompt
+
+
+def test_property_neighborhood_info_included_in_guest_support_prompt():
+    host = _user()
+    prop = _property(neighborhood_info="10 min walk to Baga beach. Cabs to the airport run ~₹800.")
+    prompt = build_system_prompt(prop, None, host)
+    assert "10 min walk to Baga beach. Cabs to the airport run ~₹800." in prompt
+
+
+def test_property_neighborhood_info_omitted_when_not_set():
+    host = _user()
+    prompt = build_system_prompt(_property(neighborhood_info=None), None, host)
+    assert "Neighborhood / local area info" not in prompt
+
+
+def test_property_usp_included_in_lead_agent_portfolio_listing():
+    host = _user()
+    prop = _property(usp="Glass house, 1BHK with a private jacuzzi")
+    prompt = build_lead_system_prompt(host, [prop])
+    assert "Glass house, 1BHK with a private jacuzzi" in prompt
+
+
+def test_lead_agent_prompt_also_gets_persona_and_escalation_overrides():
+    host = _user(
+        agent_persona="Be extra warm with families.",
+        agent_escalation_phrase="Let me loop in the owner directly.",
+    )
+    prompt = build_lead_system_prompt(host, [])
+    assert "Be extra warm with families." in prompt
+    assert "Let me loop in the owner directly." in prompt
+
+
+def test_prompts_warn_against_narrating_internal_workflow_steps():
+    # Regression: gpt-oss-120b was observed reciting workflow instructions
+    # ("I need to ask for your name, then move to the next question") out
+    # loud instead of silently following them.
+    host = _user()
+    guest_prompt = build_system_prompt(_property(), None, host)
+    lead_prompt = build_lead_system_prompt(host, [])
+    assert "the guest must never hear any of it" in guest_prompt
+    assert "the guest must never hear any of it" in lead_prompt

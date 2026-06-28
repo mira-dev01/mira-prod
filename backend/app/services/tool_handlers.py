@@ -150,7 +150,7 @@ async def handle_send_whatsapp(
 
 
 async def handle_escalate_to_host(
-    db: AsyncSession, args: EscalateToHostArgs, call_session_id: uuid.UUID | None
+    db: AsyncSession, args: EscalateToHostArgs, call_session_id: uuid.UUID | None, host_user_id: uuid.UUID
 ) -> str:
     property_ = await _get_property(db, args.property_id)
     if property_ is None:
@@ -170,6 +170,21 @@ async def handle_escalate_to_host(
         urgency=args.urgency,
         message=message,
     )
+
+    # Don't rely on the LLM separately remembering to call update_lead too --
+    # capture whatever this escalation already has (phone, summary) on the
+    # lead record directly, so an escalated call is never left with an empty
+    # CRM lead just because the model only made the one tool call.
+    await lead_service.upsert_lead(
+        db,
+        host_user_id,
+        call_session_id,
+        phone=args.guest_phone,
+        conversation_summary=args.call_summary,
+        properties_discussed=[property_.name],
+        escalated=True,
+    )
+
     return f"I've escalated this to the host as {args.urgency} priority. They'll follow up shortly."
 
 
@@ -204,9 +219,10 @@ async def handle_recommend_properties(db: AsyncSession, args: RecommendPropertie
     lines = []
     for property_ in properties:
         amenities = ", ".join(property_.amenities[:4]) if property_.amenities else "no listed amenities"
+        usp_part = f" -- {property_.usp}" if property_.usp else ""
         lines.append(
             f"{property_.name} in {property_.city or 'unlisted city'}: ₹{float(property_.base_price):,.0f}/night, "
-            f"sleeps {property_.max_guests}, {amenities} (property_id: {property_.id})"
+            f"sleeps {property_.max_guests}, {amenities}{usp_part} (property_id: {property_.id})"
         )
     return "Here are some options: " + " | ".join(lines)
 

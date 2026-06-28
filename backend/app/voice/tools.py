@@ -174,7 +174,7 @@ def build_voice_tools(
                     guest_phone=guest_phone,
                     call_summary=call_summary,
                 )
-                result = await tool_handlers.handle_escalate_to_host(db, args, call_session_id)
+                result = await tool_handlers.handle_escalate_to_host(db, args, call_session_id, host_user_id)
             except ValidationError:
                 result = INVALID_ARGS_MESSAGE
         await params.result_callback(result)

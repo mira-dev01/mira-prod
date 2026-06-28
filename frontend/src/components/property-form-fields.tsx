@@ -8,6 +8,10 @@ import type { FAQItem, PropertyCreate } from "@/lib/types";
 
 type PropertyFormValue = PropertyCreate;
 
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return <p className="text-micro pt-2 text-muted-foreground">{children}</p>;
+}
+
 export function PropertyFormFields({
   form,
   onChange,
@@ -32,7 +36,8 @@ export function PropertyFormFields({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
+      <SectionLabel>Basic info</SectionLabel>
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="name">Name</Label>
@@ -100,15 +105,23 @@ export function PropertyFormFields({
         </div>
       </div>
 
+      <SectionLabel>Description (USP)</SectionLabel>
       <div className="space-y-2">
-        <Label htmlFor="house_rules">House rules</Label>
-        <Textarea
-          id="house_rules"
-          value={form.house_rules ?? ""}
-          onChange={(e) => onChange({ ...form, house_rules: e.target.value })}
+        <Label htmlFor="usp">One-line description</Label>
+        <Input
+          id="usp"
+          placeholder="e.g. Glass house, 1BHK with a private jacuzzi"
+          maxLength={280}
+          value={form.usp ?? ""}
+          onChange={(e) => onChange({ ...form, usp: e.target.value })}
         />
+        <p className="text-xs text-muted-foreground">
+          MIRA leads with this whenever a guest asks generally about the property, and uses it when
+          comparing properties for the Lead Agent.
+        </p>
       </div>
 
+      <SectionLabel>Amenities</SectionLabel>
       <div className="space-y-2">
         <Label htmlFor="amenities">Amenities (comma-separated)</Label>
         <Textarea
@@ -127,6 +140,37 @@ export function PropertyFormFields({
         />
       </div>
 
+      <SectionLabel>House rules</SectionLabel>
+      <div className="space-y-2">
+        <Label htmlFor="house_rules">House rules</Label>
+        <Textarea
+          id="house_rules"
+          placeholder="Check-in process, smoking/pets policy, quiet hours, ID requirements..."
+          value={form.house_rules ?? ""}
+          onChange={(e) => onChange({ ...form, house_rules: e.target.value })}
+        />
+      </div>
+
+      <SectionLabel>Neighborhood &amp; local area</SectionLabel>
+      <div className="space-y-2">
+        <Label htmlFor="neighborhood_info">Neighborhood info</Label>
+        <Textarea
+          id="neighborhood_info"
+          placeholder={
+            "e.g. 10 min walk to Baga beach. Scooter rentals right outside the gate, ~₹400/day. " +
+            "Cafes: Artjuna (5 min walk), Thalassa (10 min). Cabs widely available -- ~₹800 to the " +
+            "airport (40 min), ~₹300 to Thivim railway station (15 min)."
+          }
+          value={form.neighborhood_info ?? ""}
+          onChange={(e) => onChange({ ...form, neighborhood_info: e.target.value })}
+        />
+        <p className="text-xs text-muted-foreground">
+          MIRA answers local-area questions directly from this -- nearby cafes, rentals, distance to
+          the beach/airport/railway station, cab availability and typical fares, etc.
+        </p>
+      </div>
+
+      <SectionLabel>FAQ</SectionLabel>
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <Label>FAQ</Label>

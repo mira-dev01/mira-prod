@@ -25,7 +25,9 @@ const emptyForm: PropertyCreate = {
   exophone: "",
   base_price: 0,
   ical_url: "",
+  usp: "",
   house_rules: "",
+  neighborhood_info: "",
   amenities: [],
   faq: [],
   check_in_time: "14:00",
@@ -42,7 +44,9 @@ function normalizeForSubmit(form: PropertyCreate): PropertyCreate {
     city: form.city || null,
     exophone: form.exophone || null,
     ical_url: form.ical_url || null,
+    usp: form.usp || null,
     house_rules: form.house_rules || null,
+    neighborhood_info: form.neighborhood_info || null,
   };
 }
 
@@ -53,7 +57,9 @@ function propertyToForm(property: PropertyOut): PropertyCreate {
     exophone: property.exophone ?? "",
     base_price: property.base_price,
     ical_url: property.ical_url ?? "",
+    usp: property.usp ?? "",
     house_rules: property.house_rules ?? "",
+    neighborhood_info: property.neighborhood_info ?? "",
     amenities: property.amenities,
     faq: property.faq as PropertyCreate["faq"],
     check_in_time: property.check_in_time,
@@ -133,6 +139,20 @@ export default function PropertiesPage() {
     window.open(url, "_blank");
   }
 
+  function handleTestPortfolio() {
+    const token = getToken();
+    if (!token) {
+      toast.error("Not logged in");
+      return;
+    }
+    // No property_id -- this runs the Lead Agent across the whole
+    // portfolio instead of one property, so it asks the caller which
+    // listing they mean instead of assuming one.
+    const backendOrigin = API_BASE_URL.replace(/\/api\/v1\/?$/, "");
+    const url = `${backendOrigin}/api/v1/voice/test?token=${encodeURIComponent(token)}`;
+    window.open(url, "_blank");
+  }
+
   async function handleImportFiles(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
     e.target.value = "";
@@ -193,6 +213,9 @@ export default function PropertiesPage() {
           />
           <Button variant="outline" disabled={importing} onClick={() => importInputRef.current?.click()}>
             {importing ? "Importing…" : "Import from Airbnb"}
+          </Button>
+          <Button variant="secondary" onClick={handleTestPortfolio}>
+            Test full portfolio in browser
           </Button>
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger render={<Button>Add property</Button>} />

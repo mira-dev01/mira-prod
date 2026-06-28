@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { API_BASE_URL, ApiError, api, getToken } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 
@@ -13,6 +14,11 @@ export default function SettingsPage() {
   const { user, refreshUser } = useAuth();
   const [leadExophone, setLeadExophone] = useState(user?.lead_exophone ?? "");
   const [submitting, setSubmitting] = useState(false);
+
+  const [firstMessage, setFirstMessage] = useState(user?.agent_first_message ?? "");
+  const [persona, setPersona] = useState(user?.agent_persona ?? "");
+  const [escalationPhrase, setEscalationPhrase] = useState(user?.agent_escalation_phrase ?? "");
+  const [savingPersonalization, setSavingPersonalization] = useState(false);
 
   async function handleSaveLeadExophone(e: React.FormEvent) {
     e.preventDefault();
@@ -25,6 +31,24 @@ export default function SettingsPage() {
       toast.error(err instanceof ApiError ? err.message : "Failed to save lead intake number");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleSavePersonalization(e: React.FormEvent) {
+    e.preventDefault();
+    setSavingPersonalization(true);
+    try {
+      await api.auth.updateMe({
+        agent_first_message: firstMessage || null,
+        agent_persona: persona || null,
+        agent_escalation_phrase: escalationPhrase || null,
+      });
+      await refreshUser();
+      toast.success("Voice agent personalization saved");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Failed to save personalization");
+    } finally {
+      setSavingPersonalization(false);
     }
   }
 
@@ -76,7 +100,8 @@ export default function SettingsPage() {
         <CardContent>
           <p className="mb-3 text-sm text-muted-foreground">
             Calls to this number run the Lead Agent across your full property portfolio instead of one
-            property — for booking enquiries, not existing-guest support.
+            property — for booking enquiries, not existing-guest support. This is also your general
+            testing link: it asks the caller which property they mean instead of testing just one.
           </p>
           <form onSubmit={handleSaveLeadExophone} className="flex gap-2">
             <Input
@@ -91,6 +116,63 @@ export default function SettingsPage() {
           <Button variant="secondary" size="sm" className="mt-3" onClick={handleTestLeadAgent}>
             Test Lead Agent in browser
           </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="max-w-md">
+        <CardHeader>
+          <CardTitle>Voice agent personalization</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="mb-3 text-sm text-muted-foreground">
+            Leave any field blank to use MIRA&apos;s default. The golden rules (never hallucinate
+            pricing, always escalate when unsure, etc.) stay fixed regardless — these only change tone
+            and wording.
+          </p>
+          <form onSubmit={handleSavePersonalization} className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium" htmlFor="agent_first_message">
+                First message
+              </label>
+              <Textarea
+                id="agent_first_message"
+                placeholder="Namaste {guest_name}! I'm Mira, calling on behalf of {host_name} about {property_name}."
+                value={firstMessage}
+                onChange={(e) => setFirstMessage(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Placeholders: {"{host_name}"}, {"{property_name}"}, {"{city}"}, {"{guest_name}"} — any
+                that don&apos;t apply to a given call (e.g. {"{property_name}"} on the Lead Agent line)
+                are left blank automatically.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium" htmlFor="agent_persona">
+                Personality note
+              </label>
+              <Textarea
+                id="agent_persona"
+                placeholder="e.g. Sound like a warm, chatty local host -- informal, never corporate."
+                value={persona}
+                onChange={(e) => setPersona(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium" htmlFor="agent_escalation_phrase">
+                Escalation phrase
+              </label>
+              <Textarea
+                id="agent_escalation_phrase"
+                placeholder="e.g. One moment, let me get my colleague on the line for you."
+                value={escalationPhrase}
+                onChange={(e) => setEscalationPhrase(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">Said right before MIRA hands off to you.</p>
+            </div>
+            <Button type="submit" disabled={savingPersonalization}>
+              Save personalization
+            </Button>
+          </form>
         </CardContent>
       </Card>
     </div>
