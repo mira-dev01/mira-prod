@@ -1,6 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -14,20 +15,34 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://mira:mira@localhost:5432/mira_dev"
     redis_url: str = "redis://localhost:6379/0"
 
+    @field_validator("database_url")
+    @classmethod
+    def _use_asyncpg_driver(cls, value: str) -> str:
+        # Render (and most hosts) hand out a bare postgres:// or postgresql://
+        # connection string -- SQLAlchemy's async engine needs the asyncpg
+        # driver named explicitly in the scheme.
+        if value.startswith("postgres://"):
+            return "postgresql+asyncpg://" + value[len("postgres://") :]
+        if value.startswith("postgresql://"):
+            return "postgresql+asyncpg://" + value[len("postgresql://") :]
+        return value
+
     jwt_secret_key: str = "dev-secret-change-me"
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 1440
 
     llm_provider: Literal["groq", "anthropic"] = "groq"
     groq_api_key: str | None = None
-    groq_model: str = "llama-3.3-70b-versatile"
+    # llama-3.3-70b-versatile was deprecated by Groq on 2026-06-17;
+    # openai/gpt-oss-120b is Groq's recommended replacement.
+    groq_model: str = "openai/gpt-oss-120b"
     anthropic_api_key: str | None = None
     anthropic_model: str = "claude-sonnet-4-6"
 
     sarvam_api_key: str | None = None
     sarvam_stt_model: str = "saaras:v3"
-    sarvam_tts_model: str = "bulbul:v2"
-    sarvam_tts_speaker: str = "anushka"
+    sarvam_tts_model: str = "bulbul:v3"
+    sarvam_tts_speaker: str = "roopa"
 
     exotel_sid: str | None = None
     exotel_api_key: str | None = None

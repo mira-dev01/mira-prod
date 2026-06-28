@@ -56,7 +56,14 @@ logger = logging.getLogger(__name__)
 def _build_llm():
     if settings.llm_provider == "anthropic":
         return AnthropicLLMService(api_key=settings.anthropic_api_key, model=settings.anthropic_model)
-    return GroqLLMService(api_key=settings.groq_api_key, model=settings.groq_model)
+    # openai/gpt-oss-120b defaults to "medium" reasoning effort on Groq, which
+    # adds a hidden chain-of-thought pass before every reply -- a real source
+    # of multi-second latency on a phone call. "low" trades reasoning depth
+    # for speed, which is the right tradeoff for live conversational replies.
+    return GroqLLMService(
+        api_key=settings.groq_api_key,
+        settings=GroqLLMService.Settings(model=settings.groq_model, extra={"reasoning_effort": "low"}),
+    )
 
 
 async def _run_pipeline(

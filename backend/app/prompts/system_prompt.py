@@ -12,9 +12,20 @@ Two modes, two prompt builders:
   qualifies the guest and recommends across the host's full portfolio.
 """
 
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 from app.models.guest_profile import GuestProfile
 from app.models.property import Property
 from app.models.user import User
+
+IST = ZoneInfo("Asia/Kolkata")
+
+
+def _today_anchor() -> str:
+    now = datetime.now(IST)
+    return f"Today's date is {now.strftime('%A, %Y-%m-%d')} (India time)."
+
 
 GOLDEN_RULES = """Golden rules:
 - Never hallucinate information, never guess, never invent pricing/availability/amenities/policies.
@@ -29,6 +40,15 @@ GOLDEN_RULES = """Golden rules:
 - Converse fluently in English, Hindi, and Hinglish (code-switched Hindi-English), exactly as Indian
   guests naturally speak. Mirror whichever the guest uses, and switch naturally mid-conversation if
   they switch. Never force a guest speaking Hinglish into pure English or pure Hindi.
+- Dates: when the guest gives a number of nights instead of an explicit check-out date (e.g. "one
+  night", "a couple of nights"), compute check_out yourself as check_in + that many nights -- do not
+  default to any other length. If the guest gives a relative date ("tonight", "tomorrow", "this
+  weekend") with no explicit date, resolve it against today's actual date given to you below, and
+  confirm the resolved date back to the guest before calling a tool with it.
+- You already greeted the guest once at the start of this call (see the first message in this
+  conversation). If they later say "hello" or check if you're there mid-call, respond naturally and
+  briefly (e.g. "Yes, I'm here -- go ahead") and continue from where the conversation left off. Never
+  repeat your opening introduction or "How can I help you" a second time in the same call.
 """
 
 GUEST_SUPPORT_INSTRUCTIONS = f"""You are Mira, a warm, efficient AI voice receptionist for an Airbnb host in India.
@@ -47,7 +67,7 @@ Capabilities:
 
 
 def build_system_prompt(property_: Property, guest: GuestProfile | None) -> str:
-    sections = [GUEST_SUPPORT_INSTRUCTIONS]
+    sections = [GUEST_SUPPORT_INSTRUCTIONS, _today_anchor()]
 
     sections.append(
         f"\nCurrent property:\n"
@@ -115,7 +135,7 @@ with our host right away." -- then call escalate_to_host and call update_lead wi
 
 def build_lead_system_prompt(user: User, properties: list[Property]) -> str:
     host_name = user.name or "this host"
-    sections = [LEAD_AGENT_INSTRUCTIONS.format(host_name=host_name)]
+    sections = [LEAD_AGENT_INSTRUCTIONS.format(host_name=host_name), _today_anchor()]
 
     if properties:
         lines = []
