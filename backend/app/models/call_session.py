@@ -13,6 +13,15 @@ class CallSession(UUIDPkMixin, TimestampMixin, Base):
     __tablename__ = "call_sessions"
 
     exotel_call_id: Mapped[str | None] = mapped_column(String(64), unique=True, index=True)
+    # Always set when the host is known at call time (every voice-pipeline
+    # path resolves one), independent of property_id -- Lead Agent calls
+    # legitimately have no single property, but still belong to a host.
+    # Dashboard queries (calls/guests/analytics) must scope by this, not by
+    # property ownership, or Lead Agent calls become invisible (property_id
+    # is never IN any property-id list when it's NULL).
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
     property_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("properties.id", ondelete="SET NULL")
     )

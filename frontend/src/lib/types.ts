@@ -30,7 +30,16 @@ export type PropertyOut = {
   check_in_time: string;
   check_out_time: string;
   max_guests: number;
+  airbnb_listing_id: string | null;
   created_at: string;
+};
+
+export type PropertyImportResult = {
+  filename: string;
+  status: "created" | "updated" | "error";
+  property: PropertyOut | null;
+  faq_entries_created: number;
+  error: string | null;
 };
 
 export type PropertyCreate = {

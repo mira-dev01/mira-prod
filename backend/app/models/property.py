@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import ForeignKey, Numeric, String, Text
+from sqlalchemy import ForeignKey, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -10,6 +10,7 @@ from app.models.mixins import TimestampMixin, UUIDPkMixin
 
 class Property(UUIDPkMixin, TimestampMixin, Base):
     __tablename__ = "properties"
+    __table_args__ = (UniqueConstraint("user_id", "airbnb_listing_id", name="uq_properties_user_airbnb_listing"),)
 
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -24,6 +25,11 @@ class Property(UUIDPkMixin, TimestampMixin, Base):
     check_in_time: Mapped[str] = mapped_column(String(8), default="14:00", server_default="14:00")
     check_out_time: Mapped[str] = mapped_column(String(8), default="11:00", server_default="11:00")
     max_guests: Mapped[int] = mapped_column(default=4, server_default="4")
+
+    # Unique per-host (see __table_args__), not globally -- different hosts'
+    # own copies of their listing data shouldn't collide with each other,
+    # and dev/test data under multiple accounts shouldn't either.
+    airbnb_listing_id: Mapped[str | None] = mapped_column(String(64), index=True)
 
     owner: Mapped["User"] = relationship(back_populates="properties")
     bookings: Mapped[list["Booking"]] = relationship(back_populates="property", cascade="all, delete-orphan")

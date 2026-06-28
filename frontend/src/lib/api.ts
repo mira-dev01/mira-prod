@@ -15,6 +15,7 @@ import type {
   PricingRuleCreate,
   PricingRuleOut,
   PropertyCreate,
+  PropertyImportResult,
   PropertyOut,
   PropertyUpdate,
   TechnicianCreate,
@@ -70,6 +71,33 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return (await res.json()) as T;
 }
 
+async function uploadFiles<T>(path: string, files: File[]): Promise<T> {
+  const token = getToken();
+  const headers = new Headers();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+
+  const formData = new FormData();
+  files.forEach((file) => formData.append("files", file));
+
+  // No Content-Type set here -- the browser fills in multipart/form-data
+  // with the correct boundary itself, which it can only do if we don't
+  // set the header manually.
+  const res = await fetch(`${API_BASE_URL}${path}`, { method: "POST", headers, body: formData });
+
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const body = await res.json();
+      detail = body.detail ?? detail;
+    } catch {
+      // ignore non-JSON error bodies
+    }
+    throw new ApiError(res.status, typeof detail === "string" ? detail : JSON.stringify(detail));
+  }
+
+  return (await res.json()) as T;
+}
+
 export const api = {
   auth: {
     login: (email: string, password: string) =>
@@ -94,6 +122,7 @@ export const api = {
       request<PropertyOut>(`/properties/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
     remove: (id: string) => request<void>(`/properties/${id}`, { method: "DELETE" }),
     syncIcal: (id: string) => request<{ created: number; updated: number }>(`/properties/${id}/sync-ical`, { method: "POST" }),
+    importListings: (files: File[]) => uploadFiles<PropertyImportResult[]>("/properties/import", files),
   },
   calls: {
     list: () => request<CallSessionOut[]>("/calls"),

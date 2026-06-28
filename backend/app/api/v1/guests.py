@@ -4,7 +4,6 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.common import owned_property_ids
 from app.auth.dependencies import get_current_user
 from app.database import get_db
 from app.models.call_session import CallSession
@@ -19,11 +18,12 @@ router = APIRouter(prefix="/guests", tags=["guests"])
 async def list_guests(
     current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ) -> list[GuestProfile]:
-    property_ids = await owned_property_ids(db, current_user)
+    # Scoped by user_id, not property ownership -- Lead Agent calls have no
+    # single property (property_id is NULL) but still belong to a host.
     guest_ids = (
         await db.scalars(
             select(CallSession.guest_profile_id)
-            .where(CallSession.property_id.in_(property_ids), CallSession.guest_profile_id.isnot(None))
+            .where(CallSession.user_id == current_user.id, CallSession.guest_profile_id.isnot(None))
             .distinct()
         )
     ).all()
@@ -36,10 +36,9 @@ async def list_guests(
 async def get_guest(
     guest_id: uuid.UUID, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ) -> GuestProfile:
-    property_ids = await owned_property_ids(db, current_user)
     has_called = await db.scalar(
         select(CallSession.id).where(
-            CallSession.guest_profile_id == guest_id, CallSession.property_id.in_(property_ids)
+            CallSession.guest_profile_id == guest_id, CallSession.user_id == current_user.id
         )
     )
     if has_called is None:

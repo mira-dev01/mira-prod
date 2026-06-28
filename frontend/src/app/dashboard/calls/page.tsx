@@ -6,12 +6,18 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAsync } from "@/hooks/use-async";
 import { api } from "@/lib/api";
+import { cn, isBrowserTestIdentity } from "@/lib/utils";
 
-const statusVariant: Record<string, "default" | "destructive" | "secondary" | "outline"> = {
-  completed: "secondary",
-  active: "default",
+const statusVariant: Record<string, "destructive" | "outline"> = {
+  completed: "outline",
+  active: "outline",
   escalated: "destructive",
   failed: "outline",
+};
+
+const statusClassName: Record<string, string> = {
+  completed: "badge-status-live",
+  active: "badge-status-progress",
 };
 
 export default function CallsPage() {
@@ -20,7 +26,7 @@ export default function CallsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Calls</h1>
+        <h1 className="page-title">Calls</h1>
         <p className="text-sm text-muted-foreground">Every call MIRA has answered across your properties</p>
       </div>
 
@@ -44,11 +50,18 @@ export default function CallsPage() {
               <TableRow key={call.id} className="cursor-pointer">
                 <TableCell>
                   <Link href={`/dashboard/calls/${call.id}`} className="hover:underline">
-                    {call.caller_number ?? "Unknown"}
+                    {isBrowserTestIdentity(call.caller_number) ? (
+                      <Badge variant="outline">Browser test</Badge>
+                    ) : (
+                      call.caller_number ?? "Unknown"
+                    )}
                   </Link>
                 </TableCell>
                 <TableCell>
-                  <Badge variant={statusVariant[call.status] ?? "outline"} className="capitalize">
+                  <Badge
+                    variant={statusVariant[call.status] ?? "outline"}
+                    className={cn("capitalize", statusClassName[call.status])}
+                  >
                     {call.status}
                   </Badge>
                 </TableCell>

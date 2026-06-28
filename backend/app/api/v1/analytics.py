@@ -20,10 +20,13 @@ async def analytics_summary(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
+    # CallSession metrics scoped by user_id, not property ownership -- Lead
+    # Agent calls have no single property (property_id is NULL) but still
+    # belong to a host.
     property_ids = await owned_property_ids(db, current_user)
     since = datetime.now(timezone.utc) - timedelta(days=days)
 
-    base = select(CallSession).where(CallSession.property_id.in_(property_ids), CallSession.created_at >= since)
+    base = select(CallSession).where(CallSession.user_id == current_user.id, CallSession.created_at >= since)
 
     total_calls = await db.scalar(select(func.count()).select_from(base.subquery()))
     completed_calls = await db.scalar(
@@ -34,7 +37,7 @@ async def analytics_summary(
     )
     revenue_attributed = await db.scalar(
         select(func.coalesce(func.sum(CallSession.revenue_attributed), 0)).where(
-            CallSession.property_id.in_(property_ids), CallSession.created_at >= since
+            CallSession.user_id == current_user.id, CallSession.created_at >= since
         )
     )
     open_notifications = await db.scalar(

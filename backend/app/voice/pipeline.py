@@ -20,7 +20,7 @@ from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.worker import PipelineParams, PipelineWorker
 from pipecat.processors.aggregators.llm_context import LLMContext
-from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
+from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair, LLMUserAggregatorParams
 from pipecat.runner.types import CallData
 from pipecat.serializers.exotel import ExotelFrameSerializer
 from pipecat.services.anthropic.llm import AnthropicLLMService
@@ -31,6 +31,8 @@ from pipecat.transports.base_transport import BaseTransport, TransportParams
 from pipecat.transports.smallwebrtc.connection import SmallWebRTCConnection
 from pipecat.transports.smallwebrtc.transport import SmallWebRTCTransport
 from pipecat.transports.websocket.fastapi import FastAPIWebsocketParams, FastAPIWebsocketTransport
+from pipecat.turns.user_stop import SpeechTimeoutUserTurnStopStrategy
+from pipecat.turns.user_turn_strategies import UserTurnStrategies
 from pipecat.workers.runner import WorkerRunner
 
 from sqlalchemy import select
@@ -77,7 +79,7 @@ async def _run_pipeline(
             lead_db,
             host_user_id,
             call_session_id,
-            phone=caller_number if caller_number and caller_number != "browser-test" else None,
+            phone=caller_number or None,
             properties_discussed=[property_name] if property_name else None,
         )
 
@@ -104,7 +106,22 @@ async def _run_pipeline(
             ],
             tools=tools,
         )
-        user_aggregator, assistant_aggregator = LLMContextAggregatorPair(context)
+        # Pipecat defaults end-of-turn detection to a local ONNX transformer
+        # model (LocalSmartTurnAnalyzerV3) running CPU inference on every
+        # utterance. On a dev box also running the frontend, backend, and a
+        # browser tab encoding/decoding WebRTC, that competes for CPU with
+        # the real-time audio loop and is a real source of crackle/latency.
+        # SpeechTimeoutUserTurnStopStrategy is VAD + timer based instead --
+        # no local ML inference -- and its stt_timeout safety net is
+        # designed for exactly an STT-based pipeline like ours.
+        user_aggregator, assistant_aggregator = LLMContextAggregatorPair(
+            context,
+            user_params=LLMUserAggregatorParams(
+                user_turn_strategies=UserTurnStrategies(
+                    stop=[SpeechTimeoutUserTurnStopStrategy(user_speech_timeout=0.6)]
+                )
+            ),
+        )
 
         pipeline = Pipeline(
             [
@@ -165,6 +182,7 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
                 property_id=property_.id,
                 guest_profile_id=guest.id if guest else None,
                 caller_number=caller_number,
+                user_id=property_.user_id,
             )
             system_prompt = build_system_prompt(property_, guest)
             first_message = first_message_for(property_, guest)
@@ -181,6 +199,7 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
                 property_id=None,
                 guest_profile_id=guest.id if guest else None,
                 caller_number=caller_number,
+                user_id=lead_user.id,
             )
             system_prompt = build_lead_system_prompt(lead_user, properties)
             first_message = lead_first_message_for(lead_user)
@@ -216,15 +235,22 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
 
 async def run_browser_voice_pipeline(connection: SmallWebRTCConnection, property_: Property) -> None:
     """Same pipeline as a real call, but over WebRTC from the dashboard's
-    "test in browser" page instead of an Exotel phone call. No guest profile
-    (no caller phone number) and no Exotel call id."""
+    "test in browser" page instead of an Exotel phone call. There's no real
+    caller phone number, so we use a fixed placeholder identity
+    (BROWSER_TEST_CALLER_NUMBER) for both the guest profile and the call
+    session, instead of leaving them unset -- the frontend renders that
+    value as a "Browser test" label rather than hiding the row entirely."""
     async with AsyncSessionLocal() as db:
+        guest = await call_service.get_or_create_guest_profile(
+            db, call_service.BROWSER_TEST_CALLER_NUMBER, name="Browser test guest"
+        )
         session = await call_service.get_or_create_call_session(
             db,
             exotel_call_id=None,
             property_id=property_.id,
-            guest_profile_id=None,
-            caller_number="browser-test",
+            guest_profile_id=guest.id if guest else None,
+            caller_number=call_service.BROWSER_TEST_CALLER_NUMBER,
+            user_id=property_.user_id,
         )
         system_prompt = build_system_prompt(property_, None)
         first_message = first_message_for(property_, None)
@@ -251,12 +277,16 @@ async def run_browser_lead_pipeline(connection: SmallWebRTCConnection, user: Use
     flow across a host's full portfolio instead of one property."""
     async with AsyncSessionLocal() as db:
         properties = list((await db.scalars(select(Property).where(Property.user_id == user.id))).all())
+        guest = await call_service.get_or_create_guest_profile(
+            db, call_service.BROWSER_TEST_CALLER_NUMBER, name="Browser test guest"
+        )
         session = await call_service.get_or_create_call_session(
             db,
             exotel_call_id=None,
             property_id=None,
-            guest_profile_id=None,
-            caller_number="browser-test",
+            guest_profile_id=guest.id if guest else None,
+            caller_number=call_service.BROWSER_TEST_CALLER_NUMBER,
+            user_id=user.id,
         )
         system_prompt = build_lead_system_prompt(user, properties)
         first_message = lead_first_message_for(user)

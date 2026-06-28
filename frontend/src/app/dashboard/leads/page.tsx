@@ -19,14 +19,19 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError } from "@/lib/api";
+import { cn, isBrowserTestIdentity } from "@/lib/utils";
 import type { LeadOut } from "@/lib/types";
 
 const TEMPERATURES = ["hot", "warm", "cold"] as const;
 
-const temperatureVariant: Record<string, "default" | "destructive" | "secondary" | "outline"> = {
+const temperatureVariant: Record<string, "destructive" | "outline"> = {
   hot: "destructive",
-  warm: "secondary",
+  warm: "outline",
   cold: "outline",
+};
+
+const temperatureClassName: Record<string, string> = {
+  warm: "badge-status-pending",
 };
 
 export default function LeadsPage() {
@@ -67,7 +72,7 @@ export default function LeadsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Leads</h1>
+        <h1 className="page-title">Leads</h1>
         <p className="text-sm text-muted-foreground">Booking enquiries qualified by the Lead Agent</p>
       </div>
 
@@ -95,8 +100,12 @@ export default function LeadsPage() {
           <TableBody>
             {leads.map((lead) => (
               <TableRow key={lead.id}>
-                <TableCell>{lead.guest_name ?? "Unknown"}</TableCell>
-                <TableCell>{lead.phone ?? "—"}</TableCell>
+                <TableCell>
+                  {isBrowserTestIdentity(lead.phone) ? <Badge variant="outline">Browser test</Badge> : lead.guest_name ?? "Unknown"}
+                </TableCell>
+                <TableCell>
+                  {isBrowserTestIdentity(lead.phone) ? "—" : lead.phone ?? "—"}
+                </TableCell>
                 <TableCell>
                   {lead.check_in && lead.check_out ? `${lead.check_in} → ${lead.check_out}` : "—"}
                 </TableCell>
@@ -104,7 +113,10 @@ export default function LeadsPage() {
                 <TableCell>{lead.budget ? `₹${lead.budget.toLocaleString("en-IN")}` : "—"}</TableCell>
                 <TableCell>
                   {lead.lead_temperature ? (
-                    <Badge variant={temperatureVariant[lead.lead_temperature] ?? "outline"} className="capitalize">
+                    <Badge
+                      variant={temperatureVariant[lead.lead_temperature] ?? "outline"}
+                      className={cn("capitalize", temperatureClassName[lead.lead_temperature])}
+                    >
                       {lead.lead_temperature}
                     </Badge>
                   ) : (
@@ -127,7 +139,12 @@ export default function LeadsPage() {
       <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit lead — {editing?.guest_name ?? editing?.phone}</DialogTitle>
+            <DialogTitle>
+              Edit lead —{" "}
+              {editing && isBrowserTestIdentity(editing.phone)
+                ? "Browser test"
+                : editing?.guest_name ?? editing?.phone}
+            </DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSave} className="space-y-4">
             <div className="space-y-2">

@@ -9,6 +9,12 @@ from app.models.guest_profile import GuestProfile
 from app.models.property import Property
 from app.models.user import User
 
+# Placeholder caller identity for the dashboard's "test in browser" feature
+# (no real phone number exists for a WebRTC test call). The frontend renders
+# this specific value as a "Browser test" label wherever it shows up --
+# Calls, Leads, Guests -- rather than treating it as a real phone number.
+BROWSER_TEST_CALLER_NUMBER = "browser-test"
+
 
 async def get_property_by_number(db: AsyncSession, dialed_number: str | None) -> Property | None:
     if not dialed_number:
@@ -26,7 +32,9 @@ def extract_caller_number(call: dict) -> str | None:
     return call.get("from") or None
 
 
-async def get_or_create_guest_profile(db: AsyncSession, caller_number: str | None) -> GuestProfile | None:
+async def get_or_create_guest_profile(
+    db: AsyncSession, caller_number: str | None, name: str | None = None
+) -> GuestProfile | None:
     if not caller_number:
         return None
 
@@ -34,7 +42,7 @@ async def get_or_create_guest_profile(db: AsyncSession, caller_number: str | Non
     if guest is not None:
         return guest
 
-    guest = GuestProfile(phone=caller_number, total_stays=0)
+    guest = GuestProfile(phone=caller_number, name=name, total_stays=0)
     db.add(guest)
     await db.commit()
     await db.refresh(guest)
@@ -47,6 +55,7 @@ async def get_or_create_call_session(
     property_id: uuid.UUID | None,
     guest_profile_id: uuid.UUID | None,
     caller_number: str | None,
+    user_id: uuid.UUID | None = None,
 ) -> CallSession:
     session = None
     if exotel_call_id:
@@ -57,6 +66,7 @@ async def get_or_create_call_session(
 
     session = CallSession(
         exotel_call_id=exotel_call_id,
+        user_id=user_id,
         property_id=property_id,
         guest_profile_id=guest_profile_id,
         caller_number=caller_number,
@@ -89,6 +99,7 @@ async def attach_exotel_call(
         property_ = await get_property_by_number(db, dialed_number)
         session = CallSession(
             exotel_call_id=exotel_call_id,
+            user_id=property_.user_id if property_ else None,
             property_id=property_.id if property_ else None,
             caller_number=caller_number,
             status="in_progress",

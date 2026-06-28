@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,13 +13,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Textarea } from "@/components/ui/textarea";
+import { PropertyFormFields } from "@/components/property-form-fields";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError, API_BASE_URL, getToken } from "@/lib/api";
-import type { PropertyCreate } from "@/lib/types";
+import type { PropertyCreate, PropertyOut } from "@/lib/types";
 
 const emptyForm: PropertyCreate = {
   name: "",
@@ -28,8 +26,41 @@ const emptyForm: PropertyCreate = {
   base_price: 0,
   ical_url: "",
   house_rules: "",
+  amenities: [],
+  faq: [],
+  check_in_time: "14:00",
+  check_out_time: "11:00",
   max_guests: 4,
 };
+
+function normalizeForSubmit(form: PropertyCreate): PropertyCreate {
+  // Blank optional text fields must go as null, not "" -- exophone has a
+  // unique constraint, so a second property saved with exophone: "" collides
+  // with the first one's "" instead of being treated as "not set".
+  return {
+    ...form,
+    city: form.city || null,
+    exophone: form.exophone || null,
+    ical_url: form.ical_url || null,
+    house_rules: form.house_rules || null,
+  };
+}
+
+function propertyToForm(property: PropertyOut): PropertyCreate {
+  return {
+    name: property.name,
+    city: property.city ?? "",
+    exophone: property.exophone ?? "",
+    base_price: property.base_price,
+    ical_url: property.ical_url ?? "",
+    house_rules: property.house_rules ?? "",
+    amenities: property.amenities,
+    faq: property.faq as PropertyCreate["faq"],
+    check_in_time: property.check_in_time,
+    check_out_time: property.check_out_time,
+    max_guests: property.max_guests,
+  };
+}
 
 export default function PropertiesPage() {
   const { data: properties, loading, refetch } = useAsync(() => api.properties.list(), []);
@@ -37,12 +68,18 @@ export default function PropertiesPage() {
   const [form, setForm] = useState<PropertyCreate>(emptyForm);
   const [submitting, setSubmitting] = useState(false);
   const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const importInputRef = useRef<HTMLInputElement>(null);
+
+  const [editing, setEditing] = useState<PropertyOut | null>(null);
+  const [editForm, setEditForm] = useState<PropertyCreate>(emptyForm);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
     try {
-      await api.properties.create(form);
+      await api.properties.create(normalizeForSubmit(form));
       toast.success("Property added");
       setOpen(false);
       setForm(emptyForm);
@@ -51,6 +88,27 @@ export default function PropertiesPage() {
       toast.error(err instanceof ApiError ? err.message : "Failed to create property");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  function openEdit(property: PropertyOut) {
+    setEditing(property);
+    setEditForm(propertyToForm(property));
+  }
+
+  async function handleSaveEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editing) return;
+    setSavingEdit(true);
+    try {
+      await api.properties.update(editing.id, normalizeForSubmit(editForm));
+      toast.success("Property updated");
+      setEditing(null);
+      refetch();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Failed to update property");
+    } finally {
+      setSavingEdit(false);
     }
   }
 
@@ -75,6 +133,36 @@ export default function PropertiesPage() {
     window.open(url, "_blank");
   }
 
+  async function handleImportFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    if (files.length === 0) return;
+
+    setImporting(true);
+    try {
+      const results = await api.properties.importListings(files);
+      const created = results.filter((r) => r.status === "created").length;
+      const updated = results.filter((r) => r.status === "updated").length;
+      const failed = results.filter((r) => r.status === "error");
+      const totalFaqEntries = results.reduce((sum, r) => sum + r.faq_entries_created, 0);
+
+      if (created || updated) {
+        toast.success(
+          `Imported ${files.length - failed.length} listing(s) — ${created} created, ${updated} updated, ` +
+            `${totalFaqEntries} FAQ knowledge-base entries saved`
+        );
+      }
+      for (const failure of failed) {
+        toast.error(`${failure.filename}: ${failure.error}`);
+      }
+      refetch();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Import failed");
+    } finally {
+      setImporting(false);
+    }
+  }
+
   async function handleSync(id: string) {
     setSyncingId(id);
     try {
@@ -91,85 +179,38 @@ export default function PropertiesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Properties</h1>
+          <h1 className="page-title">Properties</h1>
           <p className="text-sm text-muted-foreground">Listings MIRA answers calls for</p>
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger render={<Button>Add property</Button>} />
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>New property</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleCreate} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Name</Label>
-                  <Input
-                    id="name"
-                    required
-                    value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="city">City</Label>
-                  <Input id="city" value={form.city ?? ""} onChange={(e) => setForm({ ...form, city: e.target.value })} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="exophone">ExoPhone</Label>
-                  <Input
-                    id="exophone"
-                    placeholder="+9180XXXXXXXX"
-                    value={form.exophone ?? ""}
-                    onChange={(e) => setForm({ ...form, exophone: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="base_price">Base price (₹/night)</Label>
-                  <Input
-                    id="base_price"
-                    type="number"
-                    min={0}
-                    required
-                    value={form.base_price}
-                    onChange={(e) => setForm({ ...form, base_price: Number(e.target.value) })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="max_guests">Max guests</Label>
-                  <Input
-                    id="max_guests"
-                    type="number"
-                    min={1}
-                    value={form.max_guests}
-                    onChange={(e) => setForm({ ...form, max_guests: Number(e.target.value) })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="ical_url">iCal URL</Label>
-                  <Input
-                    id="ical_url"
-                    value={form.ical_url ?? ""}
-                    onChange={(e) => setForm({ ...form, ical_url: e.target.value })}
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="house_rules">House rules</Label>
-                <Textarea
-                  id="house_rules"
-                  value={form.house_rules ?? ""}
-                  onChange={(e) => setForm({ ...form, house_rules: e.target.value })}
-                />
-              </div>
-              <DialogFooter>
-                <Button type="submit" disabled={submitting}>
-                  Create
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+        <div className="flex gap-2">
+          <input
+            ref={importInputRef}
+            type="file"
+            accept="application/json"
+            multiple
+            className="hidden"
+            onChange={handleImportFiles}
+          />
+          <Button variant="outline" disabled={importing} onClick={() => importInputRef.current?.click()}>
+            {importing ? "Importing…" : "Import from Airbnb"}
+          </Button>
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger render={<Button>Add property</Button>} />
+            <DialogContent className="max-h-[85vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>New property</DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleCreate} className="space-y-4">
+                <PropertyFormFields form={form} onChange={setForm} />
+                <DialogFooter>
+                  <Button type="submit" disabled={submitting}>
+                    Create
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       {loading ? (
@@ -188,7 +229,9 @@ export default function PropertiesPage() {
                 <CardTitle className="flex items-center justify-between text-base">
                   {property.name}
                   {property.exophone ? (
-                    <Badge variant="secondary">Voice agent live</Badge>
+                    <Badge variant="outline" className="badge-status-live">
+                      Voice agent live
+                    </Badge>
                   ) : (
                     <Badge variant="outline">No ExoPhone assigned</Badge>
                   )}
@@ -199,6 +242,9 @@ export default function PropertiesPage() {
                 <p>₹{property.base_price.toLocaleString("en-IN")} / night · {property.max_guests} guests</p>
                 <p className="text-muted-foreground">{property.exophone ?? "No ExoPhone assigned"}</p>
                 <div className="flex flex-wrap gap-2 pt-2">
+                  <Button variant="outline" size="sm" onClick={() => openEdit(property)}>
+                    Edit
+                  </Button>
                   <Button variant="secondary" size="sm" onClick={() => handleTestInBrowser(property.id)}>
                     Test in browser
                   </Button>
@@ -219,6 +265,22 @@ export default function PropertiesPage() {
           ))}
         </div>
       )}
+
+      <Dialog open={!!editing} onOpenChange={(isOpen) => !isOpen && setEditing(null)}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit {editing?.name}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSaveEdit} className="space-y-4">
+            <PropertyFormFields form={editForm} onChange={setEditForm} />
+            <DialogFooter>
+              <Button type="submit" disabled={savingEdit}>
+                Save changes
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

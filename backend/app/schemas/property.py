@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class FAQItem(BaseModel):
@@ -22,6 +23,14 @@ class PropertyCreate(BaseModel):
     check_out_time: str = "11:00"
     max_guests: int = 4
 
+    @field_validator("exophone")
+    @classmethod
+    def _blank_exophone_is_none(cls, value: str | None) -> str | None:
+        # exophone is unique in the DB -- an empty string is a real value
+        # there (and would collide across properties), so treat "not set"
+        # as None rather than "".
+        return value or None
+
 
 class PropertyUpdate(BaseModel):
     name: str | None = None
@@ -35,6 +44,11 @@ class PropertyUpdate(BaseModel):
     check_in_time: str | None = None
     check_out_time: str | None = None
     max_guests: int | None = None
+
+    @field_validator("exophone")
+    @classmethod
+    def _blank_exophone_is_none(cls, value: str | None) -> str | None:
+        return value or None
 
 
 class PropertyOut(BaseModel):
@@ -51,6 +65,15 @@ class PropertyOut(BaseModel):
     check_in_time: str
     check_out_time: str
     max_guests: int
+    airbnb_listing_id: str | None
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class PropertyImportResult(BaseModel):
+    filename: str
+    status: Literal["created", "updated", "error"]
+    property: PropertyOut | None = None
+    faq_entries_created: int = 0
+    error: str | None = None

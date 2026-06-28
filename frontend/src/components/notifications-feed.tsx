@@ -5,13 +5,18 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { API_BASE_URL, getToken } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import type { NotificationOut } from "@/lib/types";
 
-const urgencyVariant: Record<string, "default" | "destructive" | "secondary" | "outline"> = {
+const urgencyVariant: Record<string, "destructive" | "outline"> = {
   emergency: "destructive",
   high: "destructive",
-  medium: "secondary",
+  medium: "outline",
   low: "outline",
+};
+
+const urgencyClassName: Record<string, string> = {
+  medium: "badge-status-pending",
 };
 
 export function NotificationsFeed({ initial }: { initial: NotificationOut[] }) {
@@ -78,7 +83,9 @@ export function NotificationsFeed({ initial }: { initial: NotificationOut[] }) {
                 {n.channel} · {new Date(n.created_at).toLocaleString()}
               </p>
             </div>
-            <Badge variant={urgencyVariant[n.urgency] ?? "outline"}>{n.urgency}</Badge>
+            <Badge variant={urgencyVariant[n.urgency] ?? "outline"} className={cn(urgencyClassName[n.urgency])}>
+              {n.urgency}
+            </Badge>
           </div>
         ))}
       </CardContent>

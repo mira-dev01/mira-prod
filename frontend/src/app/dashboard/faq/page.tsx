@@ -73,7 +73,7 @@ export default function FaqPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">FAQ knowledge base</h1>
+        <h1 className="page-title">FAQ knowledge base</h1>
         <p className="text-sm text-muted-foreground">
           Verified answers the voice agent&apos;s search_faq tool can use — anything not verified here gets
           escalated to you instead of guessed.
@@ -139,17 +139,21 @@ export default function FaqPage() {
           </TableHeader>
           <TableBody>
             {entries.map((entry) => (
-              <TableRow key={entry.id}>
-                <TableCell className="max-w-[220px]">{entry.question}</TableCell>
-                <TableCell className="max-w-[280px] truncate">{entry.answer}</TableCell>
-                <TableCell>{propertyName(entry.property_id)}</TableCell>
-                <TableCell>{entry.category ?? "—"}</TableCell>
-                <TableCell>
+              <TableRow key={entry.id} className="align-top">
+                <TableCell className="w-[220px] max-w-[220px] whitespace-normal break-words py-3">
+                  {entry.question}
+                </TableCell>
+                <TableCell className="w-[320px] max-w-[320px] whitespace-normal break-words py-3 text-muted-foreground">
+                  {entry.answer}
+                </TableCell>
+                <TableCell className="whitespace-normal break-words py-3">{propertyName(entry.property_id)}</TableCell>
+                <TableCell className="py-3 capitalize">{entry.category ?? "—"}</TableCell>
+                <TableCell className="py-3">
                   <Badge variant={entry.status === "verified" ? "secondary" : "outline"} className="capitalize">
                     {entry.status}
                   </Badge>
                 </TableCell>
-                <TableCell className="flex gap-2">
+                <TableCell className="flex gap-2 py-3">
                   <Button variant="outline" size="sm" onClick={() => handleToggleVerified(entry.id, entry.status)}>
                     {entry.status === "verified" ? "Unverify" : "Verify"}
                   </Button>

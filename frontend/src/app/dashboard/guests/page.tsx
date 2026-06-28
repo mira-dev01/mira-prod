@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -17,6 +18,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError } from "@/lib/api";
+import { isBrowserTestIdentity } from "@/lib/utils";
 import type { GuestProfileOut } from "@/lib/types";
 
 export default function GuestsPage() {
@@ -51,7 +53,7 @@ export default function GuestsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Guests</h1>
+        <h1 className="page-title">Guests</h1>
         <p className="text-sm text-muted-foreground">Guest CRM built from past calls and stays</p>
       </div>
 
@@ -73,7 +75,9 @@ export default function GuestsPage() {
             {guests.map((guest) => (
               <TableRow key={guest.id}>
                 <TableCell>{guest.name ?? "—"}</TableCell>
-                <TableCell>{guest.phone}</TableCell>
+                <TableCell>
+                  {isBrowserTestIdentity(guest.phone) ? <Badge variant="outline">Browser test</Badge> : guest.phone}
+                </TableCell>
                 <TableCell>{guest.total_stays}</TableCell>
                 <TableCell>
                   <Button variant="outline" size="sm" onClick={() => openEdit(guest)}>
@@ -89,7 +93,9 @@ export default function GuestsPage() {
       <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit guest — {editing?.phone}</DialogTitle>
+            <DialogTitle>
+              Edit guest — {editing && isBrowserTestIdentity(editing.phone) ? "Browser test" : editing?.phone}
+            </DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSave} className="space-y-4">
             <div className="space-y-2">

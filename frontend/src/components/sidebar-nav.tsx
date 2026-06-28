@@ -23,12 +23,16 @@ export function SidebarNav() {
   const { user, logout } = useAuth();
 
   return (
-    <aside className="flex w-56 shrink-0 flex-col border-r bg-background p-4">
+    <aside className="flex w-56 shrink-0 flex-col border-r bg-card p-4">
       <div className="mb-6 px-2">
-        <span className="text-lg font-semibold tracking-tight">MIRA</span>
-        <p className="text-xs text-muted-foreground">Host dashboard</p>
+        <span className="font-display text-2xl italic text-foreground">
+          <span className="mr-1 text-[var(--accent-warm)]">✳</span>
+          Mira
+        </span>
+        <p className="mt-0.5 text-xs text-muted-foreground">Host dashboard</p>
       </div>
       <nav className="flex flex-1 flex-col gap-1">
+        <span className="text-micro px-2 pb-1 pt-2">Main</span>
         {links.map((link) => {
           const active = link.href === "/dashboard" ? pathname === link.href : pathname.startsWith(link.href);
           return (
@@ -36,8 +40,8 @@ export function SidebarNav() {
               key={link.href}
               href={link.href}
               className={cn(
-                "rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-muted",
-                active ? "bg-muted text-foreground" : "text-muted-foreground"
+                "rounded-[var(--radius)] px-3 py-2 text-sm transition-colors duration-150 hover:bg-accent hover:text-accent-foreground",
+                active ? "bg-accent font-medium text-accent-foreground" : "font-normal text-muted-foreground"
               )}
             >
               {link.label}

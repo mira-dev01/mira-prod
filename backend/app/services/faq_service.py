@@ -1,14 +1,16 @@
 """Host-managed FAQ knowledge base. Entries are added/verified from the
-dashboard (app/api/v1/faq.py); search_faq (the voice tool) only reads.
+dashboard (app/api/v1/faq.py) or auto-generated on Airbnb import
+(app/services/airbnb_import.py); search_faq (the voice tool) only reads.
 """
 
 import uuid
 
-from sqlalchemy import or_, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.faq_entry import FaqEntry
 from app.models.property import Property
+from app.services.airbnb_import import AUTO_FAQ_CATEGORIES
 
 
 async def search_faq_entries(
@@ -58,3 +60,36 @@ async def get_owned_faq_entry(db: AsyncSession, faq_id: uuid.UUID, user_id: uuid
     if entry is None or entry.user_id != user_id:
         return None
     return entry
+
+
+async def sync_imported_faq_entries(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    property_id: uuid.UUID,
+    faq_entries: list[dict],
+) -> int:
+    """Replaces this property's auto-imported FAQ entries (categories in
+    AUTO_FAQ_CATEGORIES) with a fresh batch, so re-importing a refreshed
+    scrape updates the knowledge base instead of piling up duplicates. FAQ
+    entries the host added by hand (any other category) are left alone."""
+    await db.execute(
+        delete(FaqEntry).where(
+            FaqEntry.user_id == user_id,
+            FaqEntry.property_id == property_id,
+            FaqEntry.category.in_(AUTO_FAQ_CATEGORIES),
+        )
+    )
+    for entry in faq_entries:
+        db.add(
+            FaqEntry(
+                user_id=user_id,
+                property_id=property_id,
+                question=entry["question"],
+                answer=entry["answer"],
+                category=entry.get("category"),
+                status="verified",
+                verified_by="airbnb_import",
+            )
+        )
+    await db.commit()
+    return len(faq_entries)

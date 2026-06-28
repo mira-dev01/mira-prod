@@ -87,7 +87,7 @@ export default function PricingPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Pricing</h1>
+        <h1 className="page-title">Pricing</h1>
         <p className="text-sm text-muted-foreground">Negotiation rules and rate preview, mirroring the get_pricing tool</p>
       </div>
 

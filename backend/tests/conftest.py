@@ -94,9 +94,10 @@ async def test_property(db_session, test_user):
 
 
 @pytest_asyncio.fixture
-async def test_call_session(db_session, test_property):
+async def test_call_session(db_session, test_property, test_user):
     session = CallSession(
         exotel_call_id=f"call-{uuid.uuid4().hex[:8]}",
+        user_id=test_user.id,
         property_id=test_property.id,
         caller_number="+919999999999",
         status="in_progress",

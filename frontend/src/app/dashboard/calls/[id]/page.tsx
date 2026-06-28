@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAsync } from "@/hooks/use-async";
 import { api } from "@/lib/api";
+import { isBrowserTestIdentity } from "@/lib/utils";
 
 export default function CallDetailPage() {
   const params = useParams<{ id: string }>();
@@ -20,7 +21,9 @@ export default function CallDetailPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{call.caller_number ?? "Unknown caller"}</h1>
+          <h1 className="page-title">
+            {isBrowserTestIdentity(call.caller_number) ? "Browser test" : call.caller_number ?? "Unknown caller"}
+          </h1>
           <p className="text-sm text-muted-foreground">
             {call.started_at ? new Date(call.started_at).toLocaleString() : "—"}
           </p>
