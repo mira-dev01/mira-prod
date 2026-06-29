@@ -31,13 +31,18 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 1440
 
-    llm_provider: Literal["groq", "anthropic"] = "groq"
+    llm_provider: Literal["groq", "anthropic", "openrouter"] = "groq"
     groq_api_key: str | None = None
     # llama-3.3-70b-versatile was deprecated by Groq on 2026-06-17;
     # openai/gpt-oss-120b is Groq's recommended replacement.
     groq_model: str = "openai/gpt-oss-120b"
     anthropic_api_key: str | None = None
     anthropic_model: str = "claude-sonnet-4-6"
+    # OpenRouter (https://openrouter.ai) -- one account/balance, swap models
+    # by changing openrouter_model alone (e.g. "openai/gpt-4.1",
+    # "anthropic/claude-sonnet-4.6"), no new integration code per model.
+    openrouter_api_key: str | None = None
+    openrouter_model: str = "openai/gpt-4.1"
 
     sarvam_api_key: str | None = None
     sarvam_stt_model: str = "saaras:v3"

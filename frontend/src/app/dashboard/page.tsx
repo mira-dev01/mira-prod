@@ -1,14 +1,21 @@
 "use client";
 
+import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAsync } from "@/hooks/use-async";
 import { api } from "@/lib/api";
 import { NotificationsFeed } from "@/components/notifications-feed";
 
 export default function OverviewPage() {
-  const { data: summary, loading: summaryLoading } = useAsync(() => api.analytics.summary(30), []);
+  const [includeTestCalls, setIncludeTestCalls] = useState(false);
+  const { data: summary, loading: summaryLoading } = useAsync(
+    () => api.analytics.summary(30, includeTestCalls),
+    [includeTestCalls]
+  );
   const { data: calls, loading: callsLoading } = useAsync(() => api.calls.list(), []);
   const { data: notifications, loading: notificationsLoading } = useAsync(() => api.notifications.list(), []);
 
@@ -16,9 +23,17 @@ export default function OverviewPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="page-title">Overview</h1>
-        <p className="text-sm text-muted-foreground">Last 30 days across all properties</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="page-title">Overview</h1>
+          <p className="text-sm text-muted-foreground">Last 30 days across all properties</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Switch id="include-test-calls" checked={includeTestCalls} onCheckedChange={setIncludeTestCalls} />
+          <Label htmlFor="include-test-calls" className="text-sm text-muted-foreground">
+            Include browser test calls
+          </Label>
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">

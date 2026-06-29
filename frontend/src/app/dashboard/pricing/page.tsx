@@ -102,7 +102,9 @@ export default function PricingPage() {
                 <Label>Property</Label>
                 <Select value={ruleProperty} onValueChange={(v) => v && setRuleProperty(v)} disabled={propertiesLoading}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select property" />
+                    <SelectValue placeholder="Select property">
+                      {(value: string) => properties?.find((p) => p.id === value)?.name ?? "Select property"}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {properties?.map((p) => (
@@ -186,7 +188,9 @@ export default function PricingPage() {
                 <Label>Property</Label>
                 <Select value={quoteProperty} onValueChange={(v) => v && setQuoteProperty(v)} disabled={propertiesLoading}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select property" />
+                    <SelectValue placeholder="Select property">
+                      {(value: string) => properties?.find((p) => p.id === value)?.name ?? "Select property"}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {properties?.map((p) => (

@@ -73,7 +73,9 @@ export default function TechniciansPage() {
               <Label>Property</Label>
               <Select value={propertyId} onValueChange={(v) => v && setPropertyId(v)} disabled={propertiesLoading}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select property" />
+                  <SelectValue placeholder="Select property">
+                    {(value: string) => properties?.find((p) => p.id === value)?.name ?? "Select property"}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {properties?.map((p) => (

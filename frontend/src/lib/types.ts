@@ -74,6 +74,9 @@ export type CallSessionOut = {
   property_id: string | null;
   guest_profile_id: string | null;
   caller_number: string | null;
+  guest_name: string | null;
+  guest_phone: string | null;
+  duration_minutes: number | null;
   recording_url: string | null;
   transcript: string | null;
   ai_summary: string | null;

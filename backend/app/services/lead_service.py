@@ -34,6 +34,28 @@ async def upsert_lead(
     return lead
 
 
+async def delete_if_empty(db: AsyncSession, call_session_id: uuid.UUID | None) -> None:
+    """Remove the auto-created Lead row for a call that never actually had
+    any content (e.g. a connection that dropped instantly -- a reconnect
+    blip right after a real call ends, or a mic-permission failure). Every
+    call gets a Lead row the moment it starts, before any conversation
+    happens, so a genuinely empty call leaves an empty Lead behind unless
+    cleaned up -- which looks like a duplicate/phantom entry on the Leads
+    page even though it's actually a separate, just-empty call.
+    """
+    if call_session_id is None:
+        return
+    lead = await db.scalar(select(Lead).where(Lead.call_session_id == call_session_id))
+    if lead is None:
+        return
+    has_data = any(
+        getattr(lead, field) for field in ("guest_name", "phone", "email", "check_in", "lead_temperature")
+    )
+    if not has_data:
+        await db.delete(lead)
+        await db.commit()
+
+
 async def list_leads(db: AsyncSession, user_id: uuid.UUID) -> list[Lead]:
     return list(
         (await db.scalars(select(Lead).where(Lead.user_id == user_id).order_by(Lead.created_at.desc()))).all()

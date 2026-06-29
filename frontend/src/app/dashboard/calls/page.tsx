@@ -20,6 +20,13 @@ const statusClassName: Record<string, string> = {
   active: "badge-status-progress",
 };
 
+function formatDuration(minutes: number | null): string {
+  if (minutes === null) return "—";
+  const whole = Math.floor(minutes);
+  const seconds = Math.round((minutes - whole) * 60);
+  return `${whole}m ${seconds}s`;
+}
+
 export default function CallsPage() {
   const { data: calls, loading } = useAsync(() => api.calls.list(), []);
 
@@ -39,6 +46,9 @@ export default function CallsPage() {
           <TableHeader>
             <TableRow>
               <TableHead>Caller</TableHead>
+              <TableHead>Name</TableHead>
+              <TableHead>Phone</TableHead>
+              <TableHead>Duration</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Urgency</TableHead>
               <TableHead>Revenue</TableHead>
@@ -57,6 +67,11 @@ export default function CallsPage() {
                     )}
                   </Link>
                 </TableCell>
+                <TableCell>{call.guest_name ?? "—"}</TableCell>
+                <TableCell>
+                  {isBrowserTestIdentity(call.guest_phone) ? "—" : call.guest_phone ?? "—"}
+                </TableCell>
+                <TableCell>{formatDuration(call.duration_minutes)}</TableCell>
                 <TableCell>
                   <Badge
                     variant={statusVariant[call.status] ?? "outline"}

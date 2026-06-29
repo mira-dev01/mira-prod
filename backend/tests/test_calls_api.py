@@ -1,5 +1,8 @@
+from datetime import datetime, timedelta, timezone
+
 from app.models.call_session import CallSession
 from app.models.guest_profile import GuestProfile
+from app.models.lead import Lead
 
 
 async def test_property_call_appears_in_calls_list(client, auth_headers, test_call_session):
@@ -73,6 +76,38 @@ async def test_lead_agent_call_guest_appears_in_guests_list(client, auth_headers
     assert resp.status_code == 200
     ids = [g["id"] for g in resp.json()]
     assert str(guest.id) in ids
+
+
+async def test_call_includes_duration_and_lead_name_phone(test_user, client, auth_headers, db_session):
+    started = datetime.now(timezone.utc) - timedelta(minutes=4, seconds=30)
+    session = CallSession(
+        exotel_call_id="call-with-lead-1",
+        user_id=test_user.id,
+        caller_number="browser-test",
+        status="completed",
+        started_at=started,
+        ended_at=started + timedelta(minutes=4, seconds=30),
+    )
+    db_session.add(session)
+    await db_session.commit()
+    await db_session.refresh(session)
+
+    lead = Lead(user_id=test_user.id, call_session_id=session.id, guest_name="Rohan", phone="9123456780")
+    db_session.add(lead)
+    await db_session.commit()
+
+    resp = await client.get(f"/api/v1/calls/{session.id}", headers=auth_headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["guest_name"] == "Rohan"
+    assert body["guest_phone"] == "9123456780"
+    assert body["duration_minutes"] == 4.5
+
+    list_resp = await client.get("/api/v1/calls", headers=auth_headers)
+    assert list_resp.status_code == 200
+    matching = next(c for c in list_resp.json() if c["id"] == str(session.id))
+    assert matching["guest_name"] == "Rohan"
+    assert matching["duration_minutes"] == 4.5
 
 
 async def test_call_from_other_host_not_visible(client, auth_headers, db_session):

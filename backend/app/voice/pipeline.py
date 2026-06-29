@@ -25,6 +25,7 @@ from pipecat.runner.types import CallData
 from pipecat.serializers.exotel import ExotelFrameSerializer
 from pipecat.services.anthropic.llm import AnthropicLLMService
 from pipecat.services.groq.llm import GroqLLMService
+from pipecat.services.openai.llm import OpenAILLMService
 from pipecat.services.sarvam.stt import SarvamSTTService
 from pipecat.services.sarvam.tts import SarvamTTSService
 from pipecat.transports.base_transport import BaseTransport, TransportParams
@@ -55,7 +56,37 @@ logger = logging.getLogger(__name__)
 
 def _build_llm():
     if settings.llm_provider == "anthropic":
-        return AnthropicLLMService(api_key=settings.anthropic_api_key, model=settings.anthropic_model)
+        return AnthropicLLMService(
+            api_key=settings.anthropic_api_key,
+            settings=AnthropicLLMService.Settings(model=settings.anthropic_model),
+        )
+    if settings.llm_provider == "openrouter":
+        # OpenRouter is OpenAI-compatible -- same trick GroqLLMService itself
+        # uses (OpenAILLMService pointed at a different base_url). Swapping
+        # models (GPT-4.1, Claude, Llama, ...) is just changing
+        # openrouter_model, no new integration code per model.
+        #
+        # max_completion_tokens is capped explicitly because OpenRouter's
+        # free-tier credit check rejects a request based on the *requested*
+        # ceiling (defaults to 65536, unbounded), not actual usage. 500 was
+        # the first value tried (when the account had ~$0 balance) and
+        # turned out too tight -- real replies were getting cut off
+        # mid-sentence. 900 still safely excludes runaway-length output on a
+        # phone call, with real margin over what a property-recommendation
+        # or pricing-breakdown reply actually needs.
+        #
+        # reasoning_effort is a property of gpt-oss itself (defaults to
+        # "medium", a hidden chain-of-thought pass that adds latency), not
+        # something specific to Groq's hosting of it -- carry the same fix
+        # over when this model is reached via OpenRouter instead.
+        extra = {"reasoning_effort": "low"} if "gpt-oss" in settings.openrouter_model else {}
+        return OpenAILLMService(
+            api_key=settings.openrouter_api_key,
+            base_url="https://openrouter.ai/api/v1",
+            settings=OpenAILLMService.Settings(
+                model=settings.openrouter_model, max_completion_tokens=900, extra=extra
+            ),
+        )
     # openai/gpt-oss-120b defaults to "medium" reasoning effort on Groq, which
     # adds a hidden chain-of-thought pass before every reply -- a real source
     # of multi-second latency on a phone call. "low" trades reasoning depth
@@ -121,11 +152,17 @@ async def _run_pipeline(
         # SpeechTimeoutUserTurnStopStrategy is VAD + timer based instead --
         # no local ML inference -- and its stt_timeout safety net is
         # designed for exactly an STT-based pipeline like ours.
+        #
+        # user_speech_timeout was 0.6s -- real testing showed the agent
+        # jumping in mid-sentence during normal mid-thought pauses (more
+        # noticeable on faster-responding models, since there's less cover
+        # for a premature trigger). 0.9s trades a little latency for fewer
+        # false interruptions.
         user_aggregator, assistant_aggregator = LLMContextAggregatorPair(
             context,
             user_params=LLMUserAggregatorParams(
                 user_turn_strategies=UserTurnStrategies(
-                    stop=[SpeechTimeoutUserTurnStopStrategy(user_speech_timeout=0.6)]
+                    stop=[SpeechTimeoutUserTurnStopStrategy(user_speech_timeout=0.9)]
                 )
             ),
         )
@@ -142,10 +179,12 @@ async def _run_pipeline(
             ]
         )
 
-        # enable_metrics turns on pipecat's built-in per-stage time-to-first-byte
-        # tracking (logged as "<stage> TTFB: N.NNNs") -- this is how we get a
-        # real number for STT/LLM/TTS latency instead of just diagnosing it.
-        worker = PipelineWorker(pipeline, params=PipelineParams(enable_metrics=True))
+        # enable_metrics: per-stage time-to-first-byte (logged as
+        # "<stage> TTFB: N.NNNs"). enable_usage_metrics: exact prompt/
+        # completion token counts per LLM call (logged as "<stage> prompt
+        # tokens: X, completion tokens: Y") -- this is how we compute real
+        # $ cost per call per provider, not an estimate.
+        worker = PipelineWorker(pipeline, params=PipelineParams(enable_metrics=True, enable_usage_metrics=True))
 
         @worker.event_handler("on_pipeline_finished")
         async def _on_finished(worker, frame):
@@ -156,6 +195,25 @@ async def _run_pipeline(
             )
             async with AsyncSessionLocal() as finalize_db:
                 await call_service.finalize_call_session(finalize_db, call_session_id, transcript, None)
+                # A call that ended with no user turn at all (e.g. a
+                # reconnect blip right after a real call, or a mic
+                # permission failure) leaves behind the empty Lead row every
+                # call gets up front -- clean it up so it doesn't look like
+                # a duplicate/phantom entry on the Leads page.
+                if not any(m.get("role") == "user" for m in context.messages):
+                    await lead_service.delete_if_empty(finalize_db, call_session_id)
+
+        # The transport firing on_client_disconnected does NOT by itself
+        # drive the pipeline to a terminal state -- it's just a callback.
+        # Without this, a call that ends by the browser tab closing (the
+        # normal way a test call ends, as opposed to clicking the in-page
+        # disconnect button) never reaches on_pipeline_finished, so the
+        # transcript never saves and the call sits at status="in_progress"
+        # forever. This is pipecat's own documented pattern for exactly
+        # this case (see its CLI template's event_handlers.jinja2).
+        @transport.event_handler("on_client_disconnected")
+        async def _on_client_disconnected(transport, client):
+            await worker.cancel()
 
         runner = WorkerRunner()
         await runner.add_workers(worker)

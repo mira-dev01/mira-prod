@@ -1,4 +1,5 @@
 import uuid
+from builtins import property as python_property
 from datetime import datetime
 
 from sqlalchemy import DateTime, ForeignKey, Numeric, String, Text
@@ -41,3 +42,36 @@ class CallSession(UUIDPkMixin, TimestampMixin, Base):
     property: Mapped["Property"] = relationship(back_populates="call_sessions")
     guest_profile: Mapped["GuestProfile"] = relationship(back_populates="call_sessions")
     notifications: Mapped[list["Notification"]] = relationship(back_populates="call_session")
+    lead: Mapped["Lead"] = relationship(back_populates="call_session")
+
+    # Plain @property breaks here -- the `property` relationship column
+    # above shadows the builtin `property` decorator for the rest of this
+    # class body, since a Python class body is just sequential execution
+    # in a shared namespace. Use the aliased import instead.
+    @python_property
+    def duration_minutes(self) -> float | None:
+        if self.started_at is None or self.ended_at is None:
+            return None
+        return round((self.ended_at - self.started_at).total_seconds() / 60, 1)
+
+    @python_property
+    def guest_name(self) -> str | None:
+        # The Lead row (filled in via the update_lead tool during the call)
+        # is the more reliable source -- a guest profile only has a name if
+        # they're a repeat caller whose profile was edited separately.
+        if self.lead is not None and self.lead.guest_name:
+            return self.lead.guest_name
+        if self.guest_profile is not None:
+            return self.guest_profile.name
+        return None
+
+    @python_property
+    def guest_phone(self) -> str | None:
+        # caller_number is the raw signaling-level identity (e.g.
+        # "browser-test" for in-dashboard tests, or absent if the agent
+        # never confirmed it out loud) -- the Lead's phone field is what the
+        # guest actually said during the call, which is what a host wants
+        # to see and call back.
+        if self.lead is not None and self.lead.phone:
+            return self.lead.phone
+        return self.caller_number

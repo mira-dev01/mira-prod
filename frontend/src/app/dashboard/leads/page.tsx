@@ -87,6 +87,7 @@ export default function LeadsPage() {
           <TableHeader>
             <TableRow>
               <TableHead>Guest</TableHead>
+              <TableHead>Property</TableHead>
               <TableHead>Phone</TableHead>
               <TableHead>Dates</TableHead>
               <TableHead>Guests</TableHead>
@@ -102,6 +103,9 @@ export default function LeadsPage() {
               <TableRow key={lead.id}>
                 <TableCell>
                   {isBrowserTestIdentity(lead.phone) ? <Badge variant="outline">Browser test</Badge> : lead.guest_name ?? "Unknown"}
+                </TableCell>
+                <TableCell>
+                  {lead.properties_discussed.length > 0 ? lead.properties_discussed.join(", ") : "—"}
                 </TableCell>
                 <TableCell>
                   {isBrowserTestIdentity(lead.phone) ? "—" : lead.phone ?? "—"}

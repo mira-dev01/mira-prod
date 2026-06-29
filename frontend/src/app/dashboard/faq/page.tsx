@@ -90,7 +90,7 @@ export default function FaqPage() {
               <Label>Applies to</Label>
               <Select value={propertyId} onValueChange={(v) => v && setPropertyId(v)}>
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue>{(value: string) => propertyName(value === "all" ? null : value)}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All properties</SelectItem>

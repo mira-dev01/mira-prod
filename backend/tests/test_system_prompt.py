@@ -109,6 +109,29 @@ def test_property_usp_included_in_lead_agent_portfolio_listing():
     assert "Glass house, 1BHK with a private jacuzzi" in prompt
 
 
+def test_property_amenities_omitted_from_lead_agent_portfolio_listing():
+    # Regression: this listing is resent on every turn of every call, for
+    # every property in the portfolio -- amenities were a real contributor
+    # to hitting Groq's free-tier tokens-per-minute limit mid-call.
+    # recommend_properties already surfaces amenities for shortlisted
+    # properties, so dropping them here loses no capability.
+    host = _user()
+    prop = _property(amenities=["WiFi", "Private pool", "EV charger"])
+    prompt = build_lead_system_prompt(host, [prop])
+    assert "Glasshouse Studio" in prompt
+    assert "WiFi" not in prompt
+    assert "Private pool" not in prompt
+
+
+def test_lead_agent_prompt_requires_phone_and_defers_email():
+    # Regression: the agent was relying on the guest to volunteer a phone
+    # number instead of asking for it, and was asking for email upfront
+    # instead of only once a booking is actually being finalized.
+    prompt = build_lead_system_prompt(_user(), [])
+    assert "Phone number is required for every" in prompt
+    assert "Do not ask for email at all during this stage" in prompt
+
+
 def test_lead_agent_prompt_also_gets_persona_and_escalation_overrides():
     host = _user(
         agent_persona="Be extra warm with families.",

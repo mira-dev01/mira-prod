@@ -163,7 +163,8 @@ export const api = {
     markRead: (id: string) => request<NotificationOut>(`/notifications/${id}/read`, { method: "POST" }),
   },
   analytics: {
-    summary: (days = 30) => request<AnalyticsSummary>(`/analytics/summary?days=${days}`),
+    summary: (days = 30, includeTestCalls = false) =>
+      request<AnalyticsSummary>(`/analytics/summary?days=${days}&include_test_calls=${includeTestCalls}`),
   },
   leads: {
     list: () => request<LeadOut[]>("/leads"),

@@ -39,4 +39,4 @@ class Lead(UUIDPkMixin, TimestampMixin, Base):
     transferred_to_host: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
     owner: Mapped["User"] = relationship(back_populates="leads")
-    call_session: Mapped["CallSession"] = relationship()
+    call_session: Mapped["CallSession"] = relationship(back_populates="lead")

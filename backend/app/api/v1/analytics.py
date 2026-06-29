@@ -10,6 +10,7 @@ from app.database import get_db
 from app.models.call_session import CallSession
 from app.models.notification import Notification
 from app.models.user import User
+from app.services.call_service import BROWSER_TEST_CALLER_NUMBER
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
@@ -17,16 +18,29 @@ router = APIRouter(prefix="/analytics", tags=["analytics"])
 @router.get("/summary")
 async def analytics_summary(
     days: int = Query(default=30, ge=1, le=365),
+    include_test_calls: bool = Query(default=False),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     # CallSession metrics scoped by user_id, not property ownership -- Lead
     # Agent calls have no single property (property_id is NULL) but still
     # belong to a host.
+    #
+    # Browser-test calls are excluded by default -- they're internal QA, not
+    # real guest calls, and counting them would distort answer_rate/revenue
+    # with whatever the host happens to be testing that day. They still show
+    # up normally on the Calls list (labeled "Browser test") regardless.
+    # include_test_calls=true (the Overview page's toggle) lifts that filter
+    # for hosts who are still in a testing phase and want to see their own
+    # QA activity reflected here.
     property_ids = await owned_property_ids(db, current_user)
     since = datetime.now(timezone.utc) - timedelta(days=days)
 
-    base = select(CallSession).where(CallSession.user_id == current_user.id, CallSession.created_at >= since)
+    call_filters = [CallSession.user_id == current_user.id, CallSession.created_at >= since]
+    if not include_test_calls:
+        call_filters.append(CallSession.caller_number != BROWSER_TEST_CALLER_NUMBER)
+
+    base = select(CallSession).where(*call_filters)
 
     total_calls = await db.scalar(select(func.count()).select_from(base.subquery()))
     completed_calls = await db.scalar(
@@ -36,9 +50,7 @@ async def analytics_summary(
         select(func.count()).select_from(base.where(CallSession.urgency.isnot(None)).subquery())
     )
     revenue_attributed = await db.scalar(
-        select(func.coalesce(func.sum(CallSession.revenue_attributed), 0)).where(
-            CallSession.user_id == current_user.id, CallSession.created_at >= since
-        )
+        select(func.coalesce(func.sum(CallSession.revenue_attributed), 0)).where(*call_filters)
     )
     open_notifications = await db.scalar(
         select(func.count()).where(

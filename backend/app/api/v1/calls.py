@@ -3,6 +3,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.auth.dependencies import get_current_user
 from app.database import get_db
@@ -23,8 +24,12 @@ async def list_calls(
 ) -> list[CallSession]:
     # Scoped by user_id, not property ownership -- Lead Agent calls have no
     # single property (property_id is NULL) but still belong to a host.
+    # lead/guest_profile are eager-loaded -- CallSessionOut's guest_name/
+    # guest_phone read them, and the async session is closed by the time
+    # Pydantic serializes the response, so a lazy load there would crash.
     stmt = (
         select(CallSession)
+        .options(selectinload(CallSession.lead), selectinload(CallSession.guest_profile))
         .where(CallSession.user_id == current_user.id)
         .order_by(CallSession.created_at.desc())
         .limit(limit)
@@ -40,7 +45,11 @@ async def list_calls(
 async def get_call(
     call_id: uuid.UUID, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ) -> CallSession:
-    call = await db.get(CallSession, call_id)
+    call = await db.scalar(
+        select(CallSession)
+        .options(selectinload(CallSession.lead), selectinload(CallSession.guest_profile))
+        .where(CallSession.id == call_id)
+    )
     if call is None or call.user_id != current_user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Call session not found")
     return call

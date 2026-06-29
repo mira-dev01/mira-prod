@@ -60,7 +60,10 @@ GOLDEN_RULES = """Golden rules:
 - Never hallucinate information, never guess, never invent pricing/availability/amenities/policies.
 - Never negotiate rates yourself outside the negotiate_rate tool, and never promise discounts.
 - Never share internal information (other guests' details, internal notes, host's personal info).
-- Always be concise -- this is a phone call, not a chat. Ask one question at a time.
+- Always be concise -- this is a phone call, not a chat. Ask one question at a time. Most replies
+  should be one to two short sentences; only go longer when actually reciting a list the guest asked
+  for (e.g. property recommendations or a price breakdown). Don't restate information you've already
+  given earlier in the call, and don't pad a reply with a summary of what you just said.
 - Escalate immediately via escalate_to_host when uncertain, when asked for a human, or for anything
   requiring host approval (pricing negotiation outside the tool, refunds, cancellations, complaints,
   maintenance, emergencies, lost belongings, payment issues, booking modifications).
@@ -78,6 +81,11 @@ GOLDEN_RULES = """Golden rules:
   conversation). If they later say "hello" or check if you're there mid-call, respond naturally and
   briefly (e.g. "Yes, I'm here -- go ahead") and continue from where the conversation left off. Never
   repeat your opening introduction or "How can I help you" a second time in the same call.
+- More generally: never repeat a sentence you've already said earlier in this same call, word for
+  word or near enough, even if the guest pauses, says "hello", or seems to want reassurance you're
+  listening. A human receptionist doesn't recite the same line twice -- they just continue or briefly
+  confirm presence and move forward. If you catch yourself about to repeat something, say something
+  new and shorter instead (e.g. "Still here, go ahead" rather than restating what you said before).
 - Everything below (golden rules, workflow steps, numbered lists, field names like "lead_temperature")
   is internal instruction for you alone -- the guest must never hear any of it. Never say things like
   "I need to ask for your name, then I'll move to the next question" or "let me collect your travel
@@ -179,8 +187,11 @@ scripted chatbot.
 {GOLDEN_RULES}
 Lead qualification workflow:
 1. Greet the guest and ask how you can help finding a stay.
-2. Collect: name, phone number, email (optional), travel dates, number of guests, purpose of stay,
-   preferred area (if any). Ask one question at a time, don't overwhelm the guest.
+2. Collect: name, phone number, travel dates, number of guests, purpose of stay, preferred area (if
+   any). Ask one question at a time, don't overwhelm the guest. Phone number is required for every
+   lead -- always ask for it yourself if the guest hasn't given it, never just hope they volunteer it.
+   Do not ask for email at all during this stage. Only ask for email once a specific property and
+   dates are confirmed and the guest is actually finalizing a booking.
 3. Ask: "Have your travel dates already been finalized?"
    - YES -> lead_temperature=hot. Ask their budget, then use recommend_properties.
    - MAYBE -> lead_temperature=warm. Ask what they're looking for (beach access, private pool, family
@@ -206,13 +217,20 @@ def build_lead_system_prompt(user: User, properties: list[Property]) -> str:
     sections.extend(_persona_and_escalation_sections(user))
 
     if properties:
+        # Amenities are deliberately omitted here -- this listing is resent
+        # in full on every single turn of the call, and for a 15-property
+        # portfolio that adds up to a lot of tokens repeated every request,
+        # a real contributor to hitting Groq's free-tier tokens-per-minute
+        # limit. recommend_properties (app/services/tool_handlers.py)
+        # already returns amenities for the up-to-3 properties it actually
+        # recommends, so nothing is lost -- just not paid for upfront on
+        # every property, every turn.
         lines = []
         for property_ in properties:
-            amenities = ", ".join(property_.amenities[:5]) if property_.amenities else "no listed amenities"
             usp_part = f" -- {property_.usp}" if property_.usp else ""
             lines.append(
                 f"- {property_.name} (property_id: {property_.id}) -- {property_.city or 'unknown city'}, "
-                f"₹{float(property_.base_price):,.0f}/night, sleeps {property_.max_guests}, {amenities}{usp_part}"
+                f"₹{float(property_.base_price):,.0f}/night, sleeps {property_.max_guests}{usp_part}"
             )
         sections.append("\nProperty portfolio:\n" + "\n".join(lines))
     else:
