@@ -66,7 +66,17 @@ async def browser_test_offer(
     that property; omitting it tests the Lead Agent across the host's full
     portfolio.
     """
-    connection = SmallWebRTCConnection()
+    # ice_servers was empty before, which only works when client and server
+    # are on the same machine/network (e.g. localhost) -- there's no STUN
+    # server to help the browser and a cloud-hosted backend discover each
+    # other's public-facing address, so the connection negotiates fine at
+    # the signaling level but then fails during actual ICE/media setup once
+    # deployed. A public STUN server fixes the common case; if the hosting
+    # platform's network doesn't allow direct UDP connectivity at all even
+    # with STUN, a TURN relay would be the next step.
+    connection = SmallWebRTCConnection(
+        ice_servers=["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"]
+    )
     await connection.initialize(sdp=payload.sdp, type=payload.type)
     answer = connection.get_answer()
 
