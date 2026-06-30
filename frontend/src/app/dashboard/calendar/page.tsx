@@ -43,6 +43,9 @@ export default function CalendarPage() {
   const [blockGuestName, setBlockGuestName] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  const [unblockTarget, setUnblockTarget] = useState<{ booking: BookingOut; propertyName: string } | null>(null);
+  const [unblocking, setUnblocking] = useState(false);
+
   const year = cursor.getFullYear();
   const month = cursor.getMonth();
   const numDays = daysInMonth(year, month);
@@ -95,6 +98,21 @@ export default function CalendarPage() {
       toast.error(err instanceof ApiError ? err.message : "Failed to block dates");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleUnblock() {
+    if (!unblockTarget) return;
+    setUnblocking(true);
+    try {
+      await api.bookings.cancel(unblockTarget.booking.id);
+      toast.success("Dates unblocked");
+      setUnblockTarget(null);
+      refetch();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Failed to unblock dates");
+    } finally {
+      setUnblocking(false);
     }
   }
 
@@ -165,10 +183,14 @@ export default function CalendarPage() {
                         key={day}
                         title={
                           booking
-                            ? `${booking.platform} -- ${booking.guest_name ?? "no name"} (${booking.check_in} → ${booking.check_out})`
+                            ? `${booking.platform} -- ${booking.guest_name ?? "no name"} (${booking.check_in} → ${booking.check_out}) -- click to unblock`
                             : "Available -- click to block"
                         }
-                        onClick={() => openBlockDialog(property.id, day)}
+                        onClick={() =>
+                          booking
+                            ? setUnblockTarget({ booking, propertyName: property.name })
+                            : openBlockDialog(property.id, day)
+                        }
                         className={cn(
                           "h-7 min-w-[28px] cursor-pointer border-b border-l",
                           booking &&
@@ -246,6 +268,37 @@ export default function CalendarPage() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!unblockTarget} onOpenChange={(open) => !open && setUnblockTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Unblock dates</DialogTitle>
+          </DialogHeader>
+          {unblockTarget && (
+            <div className="space-y-4">
+              <div className="space-y-1 rounded-md border p-3 text-sm">
+                <p className="font-medium">{unblockTarget.propertyName}</p>
+                <p className="text-muted-foreground">
+                  {unblockTarget.booking.check_in} → {unblockTarget.booking.check_out}
+                </p>
+                <p className="text-muted-foreground capitalize">
+                  {unblockTarget.booking.platform}
+                  {unblockTarget.booking.guest_name ? ` · ${unblockTarget.booking.guest_name}` : ""}
+                </p>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Use this for a cancellation or if these dates were blocked by mistake. If this came from
+                Airbnb and is still active there, it will reappear on the next iCal sync.
+              </p>
+              <DialogFooter>
+                <Button variant="destructive" onClick={handleUnblock} disabled={unblocking}>
+                  {unblocking ? "Unblocking…" : "Unblock these dates"}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

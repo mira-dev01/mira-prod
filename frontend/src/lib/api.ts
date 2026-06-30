@@ -143,6 +143,7 @@ export const api = {
         method: "POST",
         body: JSON.stringify(data),
       }),
+    cancel: (id: string) => request<void>(`/bookings/${id}`, { method: "DELETE" }),
   },
   pricing: {
     rules: () => request<PricingRuleOut[]>("/pricing/rules"),
