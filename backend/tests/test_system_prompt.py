@@ -1,7 +1,9 @@
 import uuid
+from datetime import datetime
 
 from app.models.property import Property
 from app.models.user import User
+from app.prompts import system_prompt
 from app.prompts.system_prompt import (
     DEFAULT_ESCALATION_PHRASE,
     build_lead_system_prompt,
@@ -9,6 +11,17 @@ from app.prompts.system_prompt import (
     first_message_for,
     lead_first_message_for,
 )
+
+
+class _FixedDatetime(datetime):
+    """Patches system_prompt's `datetime.now(IST)` call to a fixed instant,
+    so weekend-date tests don't depend on what day it happens to be run."""
+
+    _fixed = datetime(2026, 6, 30, 19, 0, tzinfo=system_prompt.IST)  # a Tuesday
+
+    @classmethod
+    def now(cls, tz=None):
+        return cls._fixed
 
 
 def _user(**overrides) -> User:
@@ -35,6 +48,20 @@ def test_first_message_default_has_no_placeholders_left_unresolved():
     msg = first_message_for(_property(), None, host)
     assert "Glasshouse Studio" in msg
     assert "{" not in msg
+
+
+def test_today_anchor_precomputes_correct_weekend_dates(monkeypatch):
+    # Regression: a fast/low-reasoning-effort model was getting weekday/date
+    # arithmetic wrong on its own (e.g. calling July 6, 2026 a "Friday" when
+    # it's actually a Monday), leading to genuinely wrong booking dates.
+    # Pre-computing "this weekend" in code removes that failure mode --
+    # the model only has to copy a date, never calculate one. Fixed clock:
+    # Tuesday, 2026-06-30, so the upcoming weekend is July 4-5.
+    monkeypatch.setattr(system_prompt, "datetime", _FixedDatetime)
+    prompt = build_system_prompt(_property(), None, _user())
+    assert "2026-07-04 (Saturday) to 2026-07-05 (Sunday)" in prompt
+    assert "2026-07-11 to 2026-07-12" in prompt
+    assert "Tomorrow is 2026-07-01" in prompt
 
 
 def test_first_message_uses_host_template_with_placeholders():

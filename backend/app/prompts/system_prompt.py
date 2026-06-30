@@ -18,7 +18,7 @@ tool-calling instructions stay fixed so a host can't accidentally disable a
 safety rail while personalizing tone/wording.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from app.models.guest_profile import GuestProfile
@@ -33,8 +33,32 @@ DEFAULT_ESCALATION_PHRASE = (
 
 
 def _today_anchor() -> str:
+    # Weekday/date arithmetic ("what date is next Friday?") is something
+    # LLMs reliably get wrong, especially faster/lower-reasoning-effort
+    # models -- same reason we don't trust the model with pricing math
+    # either. Pre-compute the dates a guest is actually likely to say and
+    # hand them over directly, so the model only has to recognize the
+    # phrase and copy a date, never calculate one.
     now = datetime.now(IST)
-    return f"Today's date is {now.strftime('%A, %Y-%m-%d')} (India time)."
+    today = now.date()
+    tomorrow = today + timedelta(days=1)
+    days_until_saturday = (5 - today.weekday()) % 7  # Monday=0 ... Sunday=6
+    this_saturday = today + timedelta(days=days_until_saturday)
+    this_sunday = this_saturday + timedelta(days=1)
+    next_saturday = this_saturday + timedelta(days=7)
+    next_sunday = this_sunday + timedelta(days=7)
+
+    return (
+        f"Today's date is {now.strftime('%A, %Y-%m-%d')} (India time).\n"
+        f"Tomorrow is {tomorrow.isoformat()}.\n"
+        f"\"This weekend\" / \"next weekend\" (guests use these interchangeably for the same upcoming "
+        f"weekend) means {this_saturday.isoformat()} (Saturday) to {this_sunday.isoformat()} (Sunday).\n"
+        f"The weekend after that is {next_saturday.isoformat()} to {next_sunday.isoformat()}.\n"
+        "Use these exact dates whenever the guest says \"tomorrow\", \"this weekend\", or \"next weekend\" -- "
+        "never calculate a weekday or date yourself, you will get it wrong. For any other relative date "
+        "the guest gives, work it out carefully from today's date above, and always confirm the exact "
+        "resolved date back to the guest before calling a tool with it."
+    )
 
 
 class _BlankOnMissing(dict):
