@@ -14,12 +14,13 @@ import uuid
 from fastapi import APIRouter, Depends, Query, WebSocket
 from fastapi.responses import HTMLResponse
 from pipecat.runner.utils import parse_telephony_websocket
-from pipecat.transports.smallwebrtc.connection import SmallWebRTCConnection
+from pipecat.transports.smallwebrtc.connection import IceServer, SmallWebRTCConnection
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.common import get_owned_property
 from app.auth.dependencies import get_current_user
+from app.config import settings
 from app.database import get_db
 from app.integrations.exotel_client import verify_webhook_token
 from app.models.user import User
@@ -27,6 +28,25 @@ from app.voice.pipeline import run_browser_lead_pipeline, run_browser_voice_pipe
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/voice", tags=["voice"])
+
+
+def _ice_servers() -> list[IceServer]:
+    # STUN alone only helps the two sides discover each other's public
+    # address -- it doesn't relay media, so on hosts that don't allow a
+    # direct UDP connection through (most cloud platforms, confirmed by ICE
+    # timing out entirely on Render) it's not sufficient by itself. TURN
+    # relays the actual audio through a third server over a connection that
+    # looks like normal outbound traffic, which works around that. Optional:
+    # falls back to STUN-only (fine on localhost) if not configured.
+    servers = [
+        IceServer(urls="stun:stun.l.google.com:19302"),
+        IceServer(urls="stun:stun1.l.google.com:19302"),
+    ]
+    if settings.turn_url:
+        servers.append(
+            IceServer(urls=settings.turn_url, username=settings.turn_username, credential=settings.turn_credential)
+        )
+    return servers
 
 
 @router.websocket("/exotel/ws")
@@ -66,17 +86,7 @@ async def browser_test_offer(
     that property; omitting it tests the Lead Agent across the host's full
     portfolio.
     """
-    # ice_servers was empty before, which only works when client and server
-    # are on the same machine/network (e.g. localhost) -- there's no STUN
-    # server to help the browser and a cloud-hosted backend discover each
-    # other's public-facing address, so the connection negotiates fine at
-    # the signaling level but then fails during actual ICE/media setup once
-    # deployed. A public STUN server fixes the common case; if the hosting
-    # platform's network doesn't allow direct UDP connectivity at all even
-    # with STUN, a TURN relay would be the next step.
-    connection = SmallWebRTCConnection(
-        ice_servers=["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"]
-    )
+    connection = SmallWebRTCConnection(ice_servers=_ice_servers())
     await connection.initialize(sdp=payload.sdp, type=payload.type)
     answer = connection.get_answer()
 

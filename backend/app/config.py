@@ -49,6 +49,18 @@ class Settings(BaseSettings):
     sarvam_tts_model: str = "bulbul:v3"
     sarvam_tts_speaker: str = "roopa"
 
+    # TURN relay for the in-dashboard "test in browser" WebRTC feature.
+    # STUN alone (just discovering each side's public address) is enough on
+    # localhost, but most cloud hosts don't allow the resulting direct UDP
+    # media connection through at all -- ICE then times out instead of
+    # connecting. TURN relays the actual audio through a third server over
+    # a connection that looks like normal outbound traffic, which works
+    # around that. Optional: only used if turn_url is set; falls back to
+    # STUN-only (works on localhost, not on most cloud hosts) otherwise.
+    turn_url: str | None = None
+    turn_username: str | None = None
+    turn_credential: str | None = None
+
     exotel_sid: str | None = None
     exotel_api_key: str | None = None
     exotel_api_token: str | None = None
