@@ -38,11 +38,48 @@ async def _scheduled_ical_sync() -> None:
             logger.info("iCal sync complete: %s", results)
 
 
+async def _warmup_llm() -> None:
+    # OpenRouter (and Groq) cold-starts its routing to the model backend on
+    # the first request after idle -- on Render this adds 5-8s to the first
+    # real call. Fire a 1-token ping at startup so the route is warm before
+    # any caller arrives. Failures are non-fatal; the app still starts.
+    try:
+        if settings.llm_provider == "openrouter" and settings.openrouter_api_key:
+            from openai import AsyncOpenAI
+            client = AsyncOpenAI(
+                api_key=settings.openrouter_api_key,
+                base_url="https://openrouter.ai/api/v1",
+            )
+            extra = {"reasoning_effort": "low"} if "gpt-oss" in settings.openrouter_model else {}
+            await client.chat.completions.create(
+                model=settings.openrouter_model,
+                messages=[{"role": "user", "content": "hi"}],
+                max_tokens=1,
+                extra_body=extra,
+            )
+            await client.close()
+            logger.info("LLM warmup complete (openrouter/%s)", settings.openrouter_model)
+        elif settings.llm_provider == "groq" and settings.groq_api_key:
+            from groq import AsyncGroq
+            client = AsyncGroq(api_key=settings.groq_api_key)
+            await client.chat.completions.create(
+                model=settings.groq_model,
+                messages=[{"role": "user", "content": "hi"}],
+                max_tokens=1,
+                extra_body={"reasoning_effort": "low"},
+            )
+            await client.close()
+            logger.info("LLM warmup complete (groq/%s)", settings.groq_model)
+    except Exception as e:
+        logger.warning("LLM warmup failed (non-fatal): %s", e)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     scheduler.add_job(_scheduled_ical_sync, "interval", minutes=settings.ical_sync_interval_minutes, id="ical_sync")
     scheduler.start()
     asyncio.create_task(_scheduled_ical_sync())  # kick off one sync immediately, don't block startup on it
+    asyncio.create_task(_warmup_llm())           # pre-warm LLM route so first caller doesn't wait 8s
     logger.info("MIRA backend started (env=%s)", settings.environment)
     yield
     scheduler.shutdown(wait=False)
