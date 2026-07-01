@@ -193,6 +193,7 @@ async def _run_pipeline(
                 f"{message.get('role')}: {message.get('content')}"
                 for message in context.messages
                 if message.get("role") in ("user", "assistant")
+                and message.get("content") is not None  # skip tool-call turns (content=null)
             )
             async with AsyncSessionLocal() as finalize_db:
                 await call_service.finalize_call_session(finalize_db, call_session_id, transcript, None)
