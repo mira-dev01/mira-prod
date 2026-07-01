@@ -210,9 +210,10 @@ async def _run_pipeline(
         # the LLM knows what was said without us needing to track it here.
         @transport.event_handler("on_client_connected")
         async def _on_connected_greeting(transport, client):
-            # push_frame on llm sends the frame downstream into tts's input
-            # queue, so TTS actually synthesizes it (not bypassed).
-            await llm.push_frame(TTSSpeakFrame(first_message))
+            try:
+                await llm.push_frame(TTSSpeakFrame(first_message))
+            except Exception:
+                logger.warning("Initial greeting could not be sent; pipeline continues normally.")
 
         # The transport firing on_client_disconnected does NOT by itself
         # drive the pipeline to a terminal state -- it's just a callback.
