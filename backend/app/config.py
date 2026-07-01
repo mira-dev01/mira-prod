@@ -61,6 +61,15 @@ class Settings(BaseSettings):
     turn_username: str | None = None
     turn_credential: str | None = None
 
+    @field_validator("turn_url")
+    @classmethod
+    def _validate_turn_url(cls, value: str | None) -> str | None:
+        if value is not None and not (value.startswith("turn:") or value.startswith("turns:")):
+            raise ValueError(
+                f"TURN_URL must start with 'turn:' or 'turns:', got: {value!r}"
+            )
+        return value
+
     exotel_sid: str | None = None
     exotel_api_key: str | None = None
     exotel_api_token: str | None = None

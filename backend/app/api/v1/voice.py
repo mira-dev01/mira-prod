@@ -8,6 +8,7 @@ URL: wss://<backend_base_url>/api/v1/voice/exotel/ws?token=<EXOTEL_WEBHOOK_TOKEN
 """
 
 import asyncio
+import json
 import logging
 import uuid
 
@@ -43,9 +44,15 @@ def _ice_servers() -> list[IceServer]:
         IceServer(urls="stun:stun1.l.google.com:19302"),
     ]
     if settings.turn_url:
-        servers.append(
-            IceServer(urls=settings.turn_url, username=settings.turn_username, credential=settings.turn_credential)
-        )
+        if not (settings.turn_url.startswith("turn:") or settings.turn_url.startswith("turns:")):
+            logger.error(
+                "TURN_URL %r has an invalid scheme (must start with 'turn:' or 'turns:') — skipping",
+                settings.turn_url,
+            )
+        else:
+            servers.append(
+                IceServer(urls=settings.turn_url, username=settings.turn_username, credential=settings.turn_credential)
+            )
     return servers
 
 
@@ -104,7 +111,23 @@ async def browser_test_page(token: str, property_id: str = "") -> str:
     """Minimal mic-in/speaker-out WebRTC test page. Opened from the
     dashboard with the host's JWT and, optionally, a property id (omit to
     test the Lead Agent across the host's full portfolio instead)."""
-    return _TEST_PAGE_TEMPLATE.replace("__PROPERTY_ID__", property_id).replace("__TOKEN__", token)
+    ice_servers: list[dict] = [
+        {"urls": "stun:stun.l.google.com:19302"},
+        {"urls": "stun:stun1.l.google.com:19302"},
+    ]
+    if settings.turn_url and (settings.turn_url.startswith("turn:") or settings.turn_url.startswith("turns:")):
+        ice_servers.append({
+            "urls": settings.turn_url,
+            "username": settings.turn_username or "",
+            "credential": settings.turn_credential or "",
+        })
+
+    return (
+        _TEST_PAGE_TEMPLATE
+        .replace("__PROPERTY_ID__", property_id)
+        .replace("__TOKEN__", token)
+        .replace("__ICE_SERVERS__", json.dumps(ice_servers))
+    )
 
 
 _TEST_PAGE_TEMPLATE = """<!DOCTYPE html>
@@ -311,7 +334,7 @@ _TEST_PAGE_TEMPLATE = """<!DOCTYPE html>
       localAnalyser.fftSize = 256;
       audioCtx.createMediaStreamSource(stream).connect(localAnalyser);
 
-      pc = new RTCPeerConnection();
+      pc = new RTCPeerConnection({ iceServers: __ICE_SERVERS__ });
       stream.getTracks().forEach((track) => pc.addTrack(track, stream));
 
       pc.ontrack = (event) => {
