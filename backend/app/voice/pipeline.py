@@ -17,6 +17,7 @@ import uuid
 import aiohttp
 from fastapi import WebSocket
 from pipecat.audio.vad.silero import SileroVADAnalyzer
+from pipecat.frames.frames import TTSSpeakFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.worker import PipelineParams, PipelineWorker
 from pipecat.processors.aggregators.llm_context import LLMContext
@@ -202,6 +203,16 @@ async def _run_pipeline(
                 # a duplicate/phantom entry on the Leads page.
                 if not any(m.get("role") == "user" for m in context.messages):
                     await lead_service.delete_if_empty(finalize_db, call_session_id)
+
+        # TTSSpeakFrame bypasses STT and LLM entirely — goes directly to the
+        # TTS service, which synthesizes and plays it immediately. The context
+        # already has the first_message as a pre-seeded assistant turn, so
+        # the LLM knows what was said without us needing to track it here.
+        @transport.event_handler("on_client_connected")
+        async def _on_connected_greeting(transport, client):
+            # push_frame on llm sends the frame downstream into tts's input
+            # queue, so TTS actually synthesizes it (not bypassed).
+            await llm.push_frame(TTSSpeakFrame(first_message))
 
         # The transport firing on_client_disconnected does NOT by itself
         # drive the pipeline to a terminal state -- it's just a callback.
