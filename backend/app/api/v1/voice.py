@@ -366,6 +366,17 @@ _TEST_PAGE_TEMPLATE = """<!DOCTYPE html>
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
 
+      // Wait for the browser to finish gathering ICE candidates (including the
+      // TURN relay candidate) before sending the offer. If we send immediately,
+      // the SDP only contains local/STUN candidates that Render can't reach
+      // directly, so ICE never completes. pc.localDescription.sdp is updated
+      // in-place as candidates arrive, so we read it after gathering is done.
+      captionEl.textContent = "Gathering candidates...";
+      await new Promise((resolve) => {
+        if (pc.iceGatheringState === "complete") { resolve(); return; }
+        pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === "complete") resolve(); };
+      });
+
       captionEl.textContent = "Connecting to MIRA...";
       const res = await fetch(window.location.origin + "/api/v1/voice/test/offer", {
         method: "POST",
@@ -373,7 +384,7 @@ _TEST_PAGE_TEMPLATE = """<!DOCTYPE html>
           "Content-Type": "application/json",
           Authorization: "Bearer " + token,
         },
-        body: JSON.stringify({ sdp: offer.sdp, type: offer.type, property_id: propertyId || null }),
+        body: JSON.stringify({ sdp: pc.localDescription.sdp, type: pc.localDescription.type, property_id: propertyId || null }),
       });
 
       if (!res.ok) {
