@@ -23,7 +23,7 @@ export default function OverviewPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="page-title">Overview</h1>
           <p className="text-sm text-muted-foreground">Last 30 days across all properties</p>
@@ -64,6 +64,7 @@ export default function OverviewPage() {
             ) : recentCalls.length === 0 ? (
               <p className="text-sm text-muted-foreground">No calls yet.</p>
             ) : (
+              <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -82,6 +83,7 @@ export default function OverviewPage() {
                   ))}
                 </TableBody>
               </Table>
+              </div>
             )}
           </CardContent>
         </Card>

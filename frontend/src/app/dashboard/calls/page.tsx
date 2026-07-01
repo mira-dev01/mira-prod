@@ -42,6 +42,7 @@ export default function CallsPage() {
       ) : !calls || calls.length === 0 ? (
         <p className="text-sm text-muted-foreground">No calls yet.</p>
       ) : (
+        <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
@@ -87,6 +88,7 @@ export default function CallsPage() {
             ))}
           </TableBody>
         </Table>
+        </div>
       )}
     </div>
   );

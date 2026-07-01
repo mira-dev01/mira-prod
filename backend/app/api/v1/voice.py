@@ -366,15 +366,18 @@ _TEST_PAGE_TEMPLATE = """<!DOCTYPE html>
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
 
-      // Wait for the browser to finish gathering ICE candidates (including the
-      // TURN relay candidate) before sending the offer. If we send immediately,
-      // the SDP only contains local/STUN candidates that Render can't reach
-      // directly, so ICE never completes. pc.localDescription.sdp is updated
-      // in-place as candidates arrive, so we read it after gathering is done.
+      // Wait for ICE gathering (including TURN relay candidate allocation)
+      // before sending the offer. Cap at 5 s: if gathering hasn't completed
+      // by then we send whatever candidates exist -- the relay candidate
+      // appears in < 200 ms normally, so hitting the cap means something is
+      // genuinely wrong and waiting longer won't help.
       captionEl.textContent = "Gathering candidates...";
       await new Promise((resolve) => {
         if (pc.iceGatheringState === "complete") { resolve(); return; }
-        pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === "complete") resolve(); };
+        const t = setTimeout(resolve, 5000);
+        pc.onicegatheringstatechange = () => {
+          if (pc.iceGatheringState === "complete") { clearTimeout(t); resolve(); }
+        };
       });
 
       captionEl.textContent = "Connecting to MIRA...";

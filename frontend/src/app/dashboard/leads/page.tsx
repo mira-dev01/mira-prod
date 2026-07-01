@@ -83,6 +83,7 @@ export default function LeadsPage() {
           No leads yet — they appear here once your portfolio&apos;s lead intake number starts receiving calls.
         </p>
       ) : (
+        <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
@@ -138,6 +139,7 @@ export default function LeadsPage() {
             ))}
           </TableBody>
         </Table>
+        </div>
       )}
 
       <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>

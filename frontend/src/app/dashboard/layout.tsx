@@ -20,7 +20,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <div className="flex min-h-screen flex-1">
       <SidebarNav />
-      <main className="flex-1 overflow-y-auto p-6">{children}</main>
+      {/* pt-14 on mobile offsets the fixed top bar; md:pt-0 removes it on desktop */}
+      <main className="flex-1 overflow-y-auto p-4 pt-[calc(3.5rem+1rem)] md:p-6 md:pt-6">
+        {children}
+      </main>
     </div>
   );
 }
