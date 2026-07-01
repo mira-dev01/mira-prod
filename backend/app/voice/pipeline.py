@@ -17,7 +17,6 @@ import uuid
 import aiohttp
 from fastapi import WebSocket
 from pipecat.audio.vad.silero import SileroVADAnalyzer
-from pipecat.frames.frames import LLMFullResponseEndFrame, LLMFullResponseStartFrame, TextFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.worker import PipelineParams, PipelineWorker
 from pipecat.processors.aggregators.llm_context import LLMContext
@@ -141,6 +140,7 @@ async def _run_pipeline(
         context = LLMContext(
             messages=[
                 {"role": "system", "content": system_prompt},
+                {"role": "assistant", "content": first_message},
             ],
             tools=tools,
         )
@@ -202,18 +202,6 @@ async def _run_pipeline(
                 # a duplicate/phantom entry on the Leads page.
                 if not any(m.get("role") == "user" for m in context.messages):
                     await lead_service.delete_if_empty(finalize_db, call_session_id)
-
-        # Push the greeting immediately when the transport signals the call is
-        # live. Frames go directly from the LLM's output position → TTS →
-        # transport.output() → assistant_aggregator, so Mira speaks first
-        # without any LLM roundtrip. The assistant_aggregator captures the
-        # greeting and adds it to context, so the LLM's first real turn sees
-        # the full conversation history.
-        @transport.event_handler("on_client_connected")
-        async def _on_connected_greeting(transport, client):
-            await llm.push_frame(LLMFullResponseStartFrame())
-            await llm.push_frame(TextFrame(first_message))
-            await llm.push_frame(LLMFullResponseEndFrame())
 
         # The transport firing on_client_disconnected does NOT by itself
         # drive the pipeline to a terminal state -- it's just a callback.
