@@ -61,7 +61,18 @@ class Settings(BaseSettings):
     turn_username: str | None = None
     turn_credential: str | None = None
 
-    @field_validator("turn_url")
+    # Mobile carrier networks frequently block or throttle plain UDP (what
+    # turn_url above uses) far more aggressively than WiFi/broadband --
+    # confirmed by browser test calls failing on mobile data while working
+    # fine on WiFi. A TURNS-over-TCP relay on port 443 looks identical to
+    # normal HTTPS traffic to any carrier NAT/firewall, so it's offered as a
+    # second ICE server alongside turn_url rather than replacing it -- the
+    # browser tries all candidates and uses whichever the network allows.
+    # Same username/credential as turn_url (Metered and most providers issue
+    # one credential pair valid across all of their relay endpoints).
+    turn_url_tls: str | None = None
+
+    @field_validator("turn_url", "turn_url_tls")
     @classmethod
     def _validate_turn_url(cls, value: str | None) -> str | None:
         if value is not None and not (value.startswith("turn:") or value.startswith("turns:")):
