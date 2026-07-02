@@ -77,6 +77,8 @@ async def _warmup_llm() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     scheduler.add_job(_scheduled_ical_sync, "interval", minutes=settings.ical_sync_interval_minutes, id="ical_sync")
+    # Keep LLM route warm every 4 minutes so demo calls with gaps don't hit cold-start latency.
+    scheduler.add_job(_warmup_llm, "interval", minutes=4, id="llm_warmup_periodic")
     scheduler.start()
     asyncio.create_task(_scheduled_ical_sync())  # kick off one sync immediately, don't block startup on it
     asyncio.create_task(_warmup_llm())           # pre-warm LLM route so first caller doesn't wait 8s

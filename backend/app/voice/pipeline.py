@@ -11,6 +11,7 @@ app/voice/tools.py, which wraps the unchanged business logic in
 app/services/tool_handlers.py) -> Sarvam TTS.
 """
 
+import asyncio
 import logging
 import uuid
 
@@ -205,10 +206,21 @@ async def _run_pipeline(
                 if not any(m.get("role") == "user" for m in context.messages):
                     await lead_service.delete_if_empty(finalize_db, call_session_id)
 
-        # TTSSpeakFrame bypasses STT and LLM entirely — goes directly to the
-        # TTS service, which synthesizes and plays it immediately. The context
-        # already has the first_message as a pre-seeded assistant turn, so
-        # the LLM knows what was said without us needing to track it here.
+        # Pre-warm TTS by pushing the greeting immediately when the pipeline
+        # starts. Sarvam TTS WebSocket connects lazily (~2s); ICE negotiation
+        # also takes ~2s, so both happen in parallel. The audio from this
+        # first push is dropped by the transport (ICE not established yet),
+        # but it leaves TTS connected. When on_client_connected fires, the
+        # second push synthesizes in ~300ms instead of ~2s.
+        async def _pre_warm_tts_connection():
+            await asyncio.sleep(0.15)  # let pipeline start before pushing
+            try:
+                await tts.push_frame(TTSSpeakFrame(first_message))
+            except Exception:
+                pass
+
+        asyncio.create_task(_pre_warm_tts_connection())
+
         @transport.event_handler("on_client_connected")
         async def _on_connected_greeting(transport, client):
             try:
