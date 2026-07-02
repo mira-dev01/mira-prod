@@ -209,25 +209,30 @@ async def _run_pipeline(
                 if not any(m.get("role") == "user" for m in context.messages):
                     await lead_service.delete_if_empty(finalize_db, call_session_id)
 
-        # Pre-warm TTS by pushing the greeting immediately when the pipeline
-        # starts. Sarvam TTS WebSocket connects lazily (~2s); ICE negotiation
-        # also takes ~2s, so both happen in parallel. The audio from this
-        # first push is dropped by the transport (ICE not established yet),
-        # but it leaves TTS connected. When on_client_connected fires, the
-        # second push synthesizes in ~300ms instead of ~2s.
-        async def _pre_warm_tts_connection():
-            await asyncio.sleep(0.15)  # let pipeline start before pushing
+        # Sarvam TTS WebSocket connects lazily on first use (~2s). Kick off
+        # that connection immediately by pushing a silent placeholder, so the
+        # socket is open and warm by the time ICE connects. A space produces
+        # near-silence (or nothing); even if it produces a tiny audio blip,
+        # the transport drops it because ICE isn't established yet.
+        # Crucially we do NOT push the real greeting here -- pushing the full
+        # greeting causes TTS to synthesize, close the WebSocket after finishing,
+        # and then on_client_connected would need to reconnect from scratch.
+        async def _pre_connect_tts():
+            await asyncio.sleep(0.5)  # let pipeline start before pushing
             try:
-                await tts.push_frame(TTSSpeakFrame(first_message))
+                await tts.push_frame(TTSSpeakFrame(" "))
             except Exception:
                 pass
 
-        asyncio.create_task(_pre_warm_tts_connection())
+        asyncio.create_task(_pre_connect_tts())
 
         @transport.event_handler("on_client_connected")
         async def _on_connected_greeting(transport, client):
+            # Push directly to tts (not via llm) to eliminate one routing hop
+            # and ensure the frame lands even if the LLM queue is in an
+            # intermediate state at connection time.
             try:
-                await llm.push_frame(TTSSpeakFrame(first_message))
+                await tts.push_frame(TTSSpeakFrame(first_message))
             except Exception:
                 logger.warning("Initial greeting could not be sent; pipeline continues normally.")
 
