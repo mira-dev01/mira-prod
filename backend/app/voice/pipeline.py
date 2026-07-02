@@ -217,10 +217,16 @@ async def _run_pipeline(
         # Crucially we do NOT push the real greeting here -- pushing the full
         # greeting causes TTS to synthesize, close the WebSocket after finishing,
         # and then on_client_connected would need to reconnect from scratch.
+        # Push a silent frame through llm so it flows downstream into TTS,
+        # triggering Sarvam's WebSocket to connect early (it connects lazily
+        # on first use, ~2s). push_frame sends frames DOWNSTREAM from the
+        # named processor, so llm.push_frame → TTS receives and synthesizes;
+        # tts.push_frame would bypass TTS synthesis entirely (goes straight
+        # to transport.output).
         async def _pre_connect_tts():
             await asyncio.sleep(0.5)  # let pipeline start before pushing
             try:
-                await tts.push_frame(TTSSpeakFrame(" "))
+                await llm.push_frame(TTSSpeakFrame(" "))
             except Exception:
                 pass
 
@@ -228,11 +234,8 @@ async def _run_pipeline(
 
         @transport.event_handler("on_client_connected")
         async def _on_connected_greeting(transport, client):
-            # Push directly to tts (not via llm) to eliminate one routing hop
-            # and ensure the frame lands even if the LLM queue is in an
-            # intermediate state at connection time.
             try:
-                await tts.push_frame(TTSSpeakFrame(first_message))
+                await llm.push_frame(TTSSpeakFrame(first_message))
             except Exception:
                 logger.warning("Initial greeting could not be sent; pipeline continues normally.")
 
