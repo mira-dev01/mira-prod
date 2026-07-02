@@ -133,8 +133,11 @@ async def _run_pipeline(
         tts = SarvamTTSService(
             api_key=settings.sarvam_api_key,
             aiohttp_session=http_session,
-            model=settings.sarvam_tts_model,
-            voice_id=settings.sarvam_tts_speaker,
+            settings=SarvamTTSService.Settings(
+                model=settings.sarvam_tts_model,
+                voice=settings.sarvam_tts_speaker,
+                pace=1.15,  # slightly faster than 1.0 default for phone call cadence
+            ),
         )
         llm = _build_llm()
 

@@ -109,6 +109,12 @@ GOLDEN_RULES = """Golden rules:
   never continue the conversation for them, never simulate a dialogue. The guest is a real person
   who will speak their own words. If you find yourself writing something that looks like "Guest: ..."
   or continuing past a natural pause, delete everything after that point.
+- NO MARKDOWN. This is a voice call — never use asterisks, bullet points (*, **, -), numbers
+  followed by periods as a list, bold, italics, headers, or any other markdown. Write in plain
+  spoken sentences only. Instead of "1. **Manali Chalet** – ₹7,200/night", say
+  "The first option is the Alpine Ridge Chalet in Manali at 7,200 rupees per night."
+- When listing multiple properties, describe each in one short spoken sentence and end with
+  "Which one sounds interesting?" Keep each item to 15 words or fewer.
 - ONE QUESTION PER RESPONSE. If you need several things clarified, ask only the single most
   important one. Never bundle two or more questions into one response — pick one and wait for the
   answer before asking the next.
