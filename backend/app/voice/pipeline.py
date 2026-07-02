@@ -163,7 +163,7 @@ async def _run_pipeline(
             context,
             user_params=LLMUserAggregatorParams(
                 user_turn_strategies=UserTurnStrategies(
-                    stop=[SpeechTimeoutUserTurnStopStrategy(user_speech_timeout=0.6)]
+                    stop=[SpeechTimeoutUserTurnStopStrategy(user_speech_timeout=1.1)]
                 )
             ),
         )
