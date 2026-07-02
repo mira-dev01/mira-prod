@@ -155,6 +155,7 @@ PROPERTIES = [
             "No loud music — this is a nature retreat."
         ),
         "neighborhood_info": (
+            "Located in Rishikesh, Uttarakhand — the yoga and adventure capital of India. "
             "Laxman Jhula is 1.5 km walk. Ram Jhula is 2.5 km. "
             "White-water rafting starting points at Shivpuri are 15 km upstream. "
             "Bungee jumping at Jumping Heights is 15 km. "
@@ -222,6 +223,7 @@ PROPERTIES = [
             "No pets — wildlife area."
         ),
         "neighborhood_info": (
+            "Located in Manali, Himachal Pradesh — gateway to Rohtang Pass and Solang Valley. "
             "Solang Valley (skiing, zorbing, paragliding) is 2 km. "
             "Rohtang Pass (in season, June–Sept) is 51 km. "
             "Manali town market is 5 km, Hadimba Temple 4 km. "
@@ -256,6 +258,7 @@ PROPERTIES = [
             "No loud music after 10 PM."
         ),
         "neighborhood_info": (
+            "Located in Shimla, Himachal Pradesh — the summer capital of British India. "
             "Mall Road is 800m walk — about 10 minutes. "
             "Kali Bari Temple is 600m. Jakhoo Hill (Hanuman Temple) trek starts 1.2 km away. "
             "Lakkar Bazaar (wood crafts) is 200m. "
@@ -290,6 +293,7 @@ PROPERTIES = [
             "Waste segregation is mandatory."
         ),
         "neighborhood_info": (
+            "Located in Alleppey (Alappuzha), Kerala — the backwaters capital of India. "
             "Alleppey boat jetty (start of backwater cruises) is 10 min by auto. "
             "Alleppey beach is 4 km. "
             "Marari beach (quieter, cleaner) is 14 km. "
@@ -391,6 +395,7 @@ PROPERTIES = [
             "Keep food sealed — monkeys in the area."
         ),
         "neighborhood_info": (
+            "Located in Nainital, Uttarakhand — the lake district of the Himalayas. "
             "Naini Lake is a 2-minute walk — boating Rs 120/30 min. "
             "Mall Road is 400m. Tibetan market is 600m. "
             "Naina Devi temple is 800m. Snow View Point ropeway is 1 km. "
@@ -424,6 +429,7 @@ PROPERTIES = [
             "Visitors must register at the cantonment gate with ID."
         ),
         "neighborhood_info": (
+            "Located in Kasauli, Himachal Pradesh — a quiet British-era cantonment hill town. "
             "Christ Church (colonial) is 10 min walk. Monkey Point (highest peak) is 3 km walk. "
             "Kasauli Brewery (British-era) is 1 km — tours available. "
             "Dharampur market (nearest full market) is 4 km by cab. "

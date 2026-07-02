@@ -18,7 +18,7 @@ import uuid
 import aiohttp
 from fastapi import WebSocket
 from pipecat.audio.vad.silero import SileroVADAnalyzer
-from pipecat.frames.frames import TTSSpeakFrame
+from pipecat.frames.frames import LLMMessagesAppendFrame, TTSSpeakFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.worker import PipelineParams, PipelineWorker
 from pipecat.processors.aggregators.llm_context import LLMContext
@@ -142,10 +142,13 @@ async def _run_pipeline(
         llm = _build_llm()
 
         tools = build_voice_tools(call_session_id, property_id, host_user_id)
+        # No pre-seeded assistant message -- the LLM generates the greeting
+        # naturally when triggered on connect. The generated text is saved by
+        # assistant_aggregator, so future turns correctly see it in context
+        # and the "don't repeat greeting" rule applies as normal.
         context = LLMContext(
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "assistant", "content": first_message},
             ],
             tools=tools,
         )
@@ -209,35 +212,18 @@ async def _run_pipeline(
                 if not any(m.get("role") == "user" for m in context.messages):
                     await lead_service.delete_if_empty(finalize_db, call_session_id)
 
-        # Sarvam TTS WebSocket connects lazily on first use (~2s). Kick off
-        # that connection immediately by pushing a silent placeholder, so the
-        # socket is open and warm by the time ICE connects. A space produces
-        # near-silence (or nothing); even if it produces a tiny audio blip,
-        # the transport drops it because ICE isn't established yet.
-        # Crucially we do NOT push the real greeting here -- pushing the full
-        # greeting causes TTS to synthesize, close the WebSocket after finishing,
-        # and then on_client_connected would need to reconnect from scratch.
-        # Push a silent frame through llm so it flows downstream into TTS,
-        # triggering Sarvam's WebSocket to connect early (it connects lazily
-        # on first use, ~2s). push_frame sends frames DOWNSTREAM from the
-        # named processor, so llm.push_frame → TTS receives and synthesizes;
-        # tts.push_frame would bypass TTS synthesis entirely (goes straight
-        # to transport.output).
-        async def _pre_connect_tts():
-            await asyncio.sleep(0.5)  # let pipeline start before pushing
-            try:
-                await llm.push_frame(TTSSpeakFrame(" "))
-            except Exception:
-                pass
-
-        asyncio.create_task(_pre_connect_tts())
-
         @transport.event_handler("on_client_connected")
         async def _on_connected_greeting(transport, client):
+            # Trigger the LLM to generate and speak the opening greeting through
+            # the normal pipeline (LLM → TTS → transport). push_context_frame()
+            # is pipecat's standard mechanism for kicking the LLM; it's what
+            # the user_aggregator calls at the end of every real user turn.
+            # TTSSpeakFrame was unreliable: it bypassed TTS's processing queue
+            # or caused WebSocket lifecycle issues with Sarvam.
             try:
-                await llm.push_frame(TTSSpeakFrame(first_message))
+                await user_aggregator.push_context_frame()
             except Exception:
-                logger.warning("Initial greeting could not be sent; pipeline continues normally.")
+                logger.warning("Opening greeting trigger failed; pipeline continues normally.")
 
         # The transport firing on_client_disconnected does NOT by itself
         # drive the pipeline to a terminal state -- it's just a callback.

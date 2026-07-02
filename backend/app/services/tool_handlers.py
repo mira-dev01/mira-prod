@@ -203,13 +203,24 @@ async def handle_negotiate_rate(db: AsyncSession, args: NegotiateRateArgs) -> st
 
 
 async def handle_recommend_properties(db: AsyncSession, args: RecommendPropertiesArgs, host_user_id: uuid.UUID) -> str:
+    from sqlalchemy import or_
+
     stmt = select(Property).where(Property.user_id == host_user_id)
     if args.num_guests is not None:
         stmt = stmt.where(Property.max_guests >= args.num_guests)
     if args.budget is not None:
         stmt = stmt.where(Property.base_price <= args.budget * 1.15)
     if args.preferred_location:
-        stmt = stmt.where(Property.city.ilike(f"%{args.preferred_location}%"))
+        # Match against city name OR neighborhood_info so state-level queries
+        # ("Kerala", "Himachal") find properties whose city is e.g. "Alleppey"
+        # but whose neighborhood text mentions the broader region.
+        loc = f"%{args.preferred_location}%"
+        stmt = stmt.where(
+            or_(
+                Property.city.ilike(loc),
+                Property.neighborhood_info.ilike(loc),
+            )
+        )
     stmt = stmt.order_by(Property.base_price.asc()).limit(3)
 
     properties = list((await db.scalars(stmt)).all())
