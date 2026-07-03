@@ -38,6 +38,10 @@ def test_build_llm_skips_groq_model_marked_down_in_health_check(monkeypatch):
 
     assert isinstance(llm, GroqLLMService)
     assert llm._settings.model == "llama-3.1-8b-instant"
+    # Regression: reasoning_effort is gpt-oss-specific -- llama-3.1-8b-instant
+    # rejects it outright with a 400 (confirmed against Groq's live API),
+    # which would break the exact fallback call this chain exists to save.
+    assert llm._settings.extra == {}
 
 
 def test_build_llm_falls_back_to_openrouter_when_all_groq_models_down(monkeypatch):

@@ -17,6 +17,7 @@ import uuid
 import aiohttp
 from fastapi import WebSocket
 from pipecat.audio.vad.silero import SileroVADAnalyzer
+from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.frames.frames import TTSSpeakFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.worker import PipelineParams, PipelineWorker
@@ -53,6 +54,17 @@ from app.services import call_service, lead_service
 from app.voice.tools import build_voice_tools
 
 logger = logging.getLogger(__name__)
+
+# Defaults (confidence=0.7, min_volume=0.6) let quiet background noise or a
+# second voice near the caller's mic register as "user speaking" -- which
+# broadcasts an interruption that cuts off the bot's in-progress TTS and
+# forces a Sarvam TTS reconnect (~1.3s dead air, confirmed via call logs)
+# over what was often just a stray sound, not the caller actually talking.
+# Raising confidence/min_volume makes VAD require louder, more confident
+# speech before it fires -- filters out background noise without adding
+# latency to genuine interruptions (start_secs/stop_secs, the actual timing
+# knobs, are left at their defaults).
+_VAD_PARAMS = VADParams(confidence=0.85, min_volume=0.7)
 
 
 def _pick_groq_model() -> str:
@@ -101,9 +113,13 @@ def _build_llm():
         return _build_openrouter_llm()
 
     model = _pick_groq_model()
+    # reasoning_effort is gpt-oss-specific -- other models in the fallback
+    # chain (e.g. llama-3.1-8b-instant) reject it outright with a 400, which
+    # would break the exact call this fallback exists to save.
+    extra = {"reasoning_effort": "low"} if "gpt-oss" in model else {}
     return GroqLLMService(
         api_key=settings.groq_api_key,
-        settings=GroqLLMService.Settings(model=model, extra={"reasoning_effort": "low"}),
+        settings=GroqLLMService.Settings(model=model, extra=extra),
     )
 
 
@@ -203,13 +219,17 @@ async def _run_pipeline(
         # user_speech_timeout was 0.6s -- real testing showed the agent
         # jumping in mid-sentence during normal mid-thought pauses (more
         # noticeable on faster-responding models, since there's less cover
-        # for a premature trigger). 0.9s trades a little latency for fewer
-        # false interruptions.
+        # for a premature trigger). It was later bumped to 1.4s, which fixed
+        # that but added ~1.4s of dead air to every single turn (confirmed via
+        # enable_metrics call logs -- the gap between STT delivering a
+        # transcript and inference triggering matched this value exactly).
+        # 0.9s is the middle ground that was actually validated against the
+        # mid-sentence-interruption problem before the jump to 1.4s.
         user_aggregator, assistant_aggregator = LLMContextAggregatorPair(
             context,
             user_params=LLMUserAggregatorParams(
                 user_turn_strategies=UserTurnStrategies(
-                    stop=[SpeechTimeoutUserTurnStopStrategy(user_speech_timeout=1.4)]
+                    stop=[SpeechTimeoutUserTurnStopStrategy(user_speech_timeout=0.9)]
                 )
             ),
         )
@@ -350,7 +370,7 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
             audio_out_enabled=True,
             add_wav_header=False,
             serializer=serializer,
-            vad_analyzer=SileroVADAnalyzer(),
+            vad_analyzer=SileroVADAnalyzer(params=_VAD_PARAMS),
         ),
     )
 
@@ -397,7 +417,7 @@ async def run_browser_voice_pipeline(connection: SmallWebRTCConnection, property
         params=TransportParams(
             audio_in_enabled=True,
             audio_out_enabled=True,
-            vad_analyzer=SileroVADAnalyzer(),
+            vad_analyzer=SileroVADAnalyzer(params=_VAD_PARAMS),
         ),
     )
 
@@ -431,7 +451,7 @@ async def run_browser_lead_pipeline(connection: SmallWebRTCConnection, user: Use
         params=TransportParams(
             audio_in_enabled=True,
             audio_out_enabled=True,
-            vad_analyzer=SileroVADAnalyzer(),
+            vad_analyzer=SileroVADAnalyzer(params=_VAD_PARAMS),
         ),
     )
 

@@ -65,13 +65,17 @@ async def _check_llm_health() -> None:
 
         client = AsyncGroq(api_key=settings.groq_api_key)
         for model in settings.groq_models:
+            # reasoning_effort is gpt-oss-specific -- other models (e.g.
+            # llama-3.1-8b-instant) reject it with a 400, which would
+            # otherwise permanently mark a perfectly healthy model down.
+            extra_body = {"reasoning_effort": "low"} if "gpt-oss" in model else {}
             started = time.monotonic()
             try:
                 await client.chat.completions.create(
                     model=model,
                     messages=[{"role": "user", "content": "hi"}],
                     max_tokens=1,
-                    extra_body={"reasoning_effort": "low"},
+                    extra_body=extra_body,
                 )
                 llm_health[model] = {
                     "ok": True,
@@ -125,10 +129,14 @@ async def _check_llm_health() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     scheduler.add_job(_scheduled_ical_sync, "interval", minutes=settings.ical_sync_interval_minutes, id="ical_sync")
-    # Keep LLM routes warm + health-checked every 4 minutes so demo calls with
-    # gaps don't hit cold-start latency, and a rate-limited model gets marked
-    # down before a real caller hits it instead of during their call.
-    scheduler.add_job(_check_llm_health, "interval", minutes=4, id="llm_health_periodic")
+    # Keep LLM routes warm + health-checked every 60s so demo calls with gaps
+    # don't hit cold-start latency, and a rate-limited model (Groq support's
+    # own guidance for a 429: switch models, or wait 24h for the per-model
+    # reset -- see settings.groq_models) gets marked down and routed around
+    # quickly. 60s (down from an initial 4 min) trades a modest amount of
+    # extra background ping traffic for a much shorter window where a call
+    # can still land on a model that's actually rate-limited.
+    scheduler.add_job(_check_llm_health, "interval", seconds=60, id="llm_health_periodic")
     scheduler.start()
     asyncio.create_task(_scheduled_ical_sync())   # kick off one sync immediately, don't block startup on it
     asyncio.create_task(_check_llm_health())      # pre-warm + health-check LLM routes so first caller doesn't wait
