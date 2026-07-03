@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
@@ -38,50 +39,99 @@ async def _scheduled_ical_sync() -> None:
             logger.info("iCal sync complete: %s", results)
 
 
-async def _warmup_llm() -> None:
+# Populated by _check_llm_health, read by app/voice/pipeline.py's _build_llm()
+# to pick the first healthy Groq model in settings.groq_models priority
+# order. Keyed by model name -> {"ok": bool, "latency_s": float | None,
+# "checked_at": iso str, "error": str | None}. Also exposed read-only via
+# GET /api/v1/health/llm for a dashboard widget.
+llm_health: dict[str, dict] = {}
+
+
+async def _check_llm_health() -> None:
     # OpenRouter (and Groq) cold-starts its routing to the model backend on
     # the first request after idle -- on Render this adds 5-8s to the first
-    # real call. Fire a 1-token ping at startup so the route is warm before
-    # any caller arrives. Failures are non-fatal; the app still starts.
-    try:
-        if settings.llm_provider == "openrouter" and settings.openrouter_api_key:
-            from openai import AsyncOpenAI
-            client = AsyncOpenAI(
-                api_key=settings.openrouter_api_key,
-                base_url="https://openrouter.ai/api/v1",
-            )
-            extra = {"reasoning_effort": "low"} if "gpt-oss" in settings.openrouter_model else {}
+    # real call. Firing a 1-token ping keeps the route warm and, for Groq,
+    # doubles as a per-model health/rate-limit check: a 429 (e.g. gpt-oss-120b
+    # hitting its free-tier TPM cap under call load) marks that model down in
+    # llm_health so _build_llm() skips it and falls through to the next model
+    # in settings.groq_models, instead of every call re-discovering the same
+    # 429 via multi-second retry/backoff. Failures are non-fatal; the app
+    # still starts and callers still get a response via the next model down
+    # the chain (or OpenRouter, as the last resort).
+    import time
+
+    if settings.llm_provider == "groq" and settings.groq_api_key:
+        from groq import AsyncGroq
+
+        client = AsyncGroq(api_key=settings.groq_api_key)
+        for model in settings.groq_models:
+            started = time.monotonic()
+            try:
+                await client.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "user", "content": "hi"}],
+                    max_tokens=1,
+                    extra_body={"reasoning_effort": "low"},
+                )
+                llm_health[model] = {
+                    "ok": True,
+                    "latency_s": round(time.monotonic() - started, 3),
+                    "checked_at": datetime.now(timezone.utc).isoformat(),
+                    "error": None,
+                }
+                logger.info("LLM health OK (groq/%s, %.2fs)", model, llm_health[model]["latency_s"])
+            except Exception as e:
+                llm_health[model] = {
+                    "ok": False,
+                    "latency_s": None,
+                    "checked_at": datetime.now(timezone.utc).isoformat(),
+                    "error": str(e),
+                }
+                logger.warning("LLM health check failed for groq/%s (non-fatal): %s", model, e)
+        await client.close()
+
+    if settings.llm_provider == "openrouter" and settings.openrouter_api_key:
+        from openai import AsyncOpenAI
+
+        started = time.monotonic()
+        client = AsyncOpenAI(api_key=settings.openrouter_api_key, base_url="https://openrouter.ai/api/v1")
+        extra = {"reasoning_effort": "low"} if "gpt-oss" in settings.openrouter_model else {}
+        key = f"openrouter/{settings.openrouter_model}"
+        try:
             await client.chat.completions.create(
                 model=settings.openrouter_model,
                 messages=[{"role": "user", "content": "hi"}],
                 max_tokens=1,
                 extra_body=extra,
             )
-            await client.close()
-            logger.info("LLM warmup complete (openrouter/%s)", settings.openrouter_model)
-        elif settings.llm_provider == "groq" and settings.groq_api_key:
-            from groq import AsyncGroq
-            client = AsyncGroq(api_key=settings.groq_api_key)
-            await client.chat.completions.create(
-                model=settings.groq_model,
-                messages=[{"role": "user", "content": "hi"}],
-                max_tokens=1,
-                extra_body={"reasoning_effort": "low"},
-            )
-            await client.close()
-            logger.info("LLM warmup complete (groq/%s)", settings.groq_model)
-    except Exception as e:
-        logger.warning("LLM warmup failed (non-fatal): %s", e)
+            llm_health[key] = {
+                "ok": True,
+                "latency_s": round(time.monotonic() - started, 3),
+                "checked_at": datetime.now(timezone.utc).isoformat(),
+                "error": None,
+            }
+            logger.info("LLM health OK (%s, %.2fs)", key, llm_health[key]["latency_s"])
+        except Exception as e:
+            llm_health[key] = {
+                "ok": False,
+                "latency_s": None,
+                "checked_at": datetime.now(timezone.utc).isoformat(),
+                "error": str(e),
+            }
+            logger.warning("LLM health check failed for %s (non-fatal): %s", key, e)
+        await client.close()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     scheduler.add_job(_scheduled_ical_sync, "interval", minutes=settings.ical_sync_interval_minutes, id="ical_sync")
-    # Keep LLM route warm every 4 minutes so demo calls with gaps don't hit cold-start latency.
-    scheduler.add_job(_warmup_llm, "interval", minutes=4, id="llm_warmup_periodic")
+    # Keep LLM routes warm + health-checked every 4 minutes so demo calls with
+    # gaps don't hit cold-start latency, and a rate-limited model gets marked
+    # down before a real caller hits it instead of during their call.
+    scheduler.add_job(_check_llm_health, "interval", minutes=4, id="llm_health_periodic")
     scheduler.start()
-    asyncio.create_task(_scheduled_ical_sync())  # kick off one sync immediately, don't block startup on it
-    asyncio.create_task(_warmup_llm())           # pre-warm LLM route so first caller doesn't wait 8s
+    asyncio.create_task(_scheduled_ical_sync())   # kick off one sync immediately, don't block startup on it
+    asyncio.create_task(_check_llm_health())      # pre-warm + health-check LLM routes so first caller doesn't wait
     logger.info("MIRA backend started (env=%s)", settings.environment)
     yield
     scheduler.shutdown(wait=False)
@@ -116,3 +166,12 @@ app.include_router(exotel.router, prefix=API_PREFIX)
 @app.get("/health")
 async def health() -> dict:
     return {"status": "ok", "environment": settings.environment}
+
+
+@app.get(f"{API_PREFIX}/health/llm")
+async def llm_health_status() -> dict:
+    """Per-model health/latency from the last periodic check (see
+    _check_llm_health above) -- what app/voice/pipeline.py's _build_llm() is
+    actually choosing between right now. Empty until the first check runs
+    (immediately at startup, then every 4 minutes)."""
+    return {"models": llm_health}
