@@ -34,11 +34,19 @@ services:
       - key: JWT_EXPIRE_MINUTES
         value: "1440"
       - key: LLM_PROVIDER
-        value: openrouter
+        value: groq
       - key: GROQ_API_KEY
         sync: false
       - key: GROQ_MODEL
         value: openai/gpt-oss-120b
+      # Fallback chain _build_llm() (app/voice/pipeline.py) walks in order,
+      # skipping any model app/main.py's periodic health check has marked
+      # down (e.g. a 429 from that model's own rate limit). JSON array
+      # string -- pydantic-settings parses list[str] fields from env vars
+      # this way. Falls back further to OpenRouter only if every model here
+      # is down.
+      - key: GROQ_MODELS
+        value: '["openai/gpt-oss-120b", "llama-3.1-8b-instant", "openai/gpt-oss-20b"]'
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: ANTHROPIC_MODEL

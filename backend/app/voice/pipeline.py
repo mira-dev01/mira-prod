@@ -55,6 +55,24 @@ from app.voice.tools import build_voice_tools
 logger = logging.getLogger(__name__)
 
 
+def _pick_groq_model() -> str:
+    """First model in settings.groq_models that app.main's periodic
+    _check_llm_health hasn't marked down (e.g. via a 429 from hitting a
+    model's free-tier rate limit). Falls back to the first model in the list
+    if health data isn't populated yet (cold start, before the first check
+    has run) -- same as the pre-fallback-chain default behavior."""
+    from app.main import llm_health
+
+    for model in settings.groq_models:
+        health = llm_health.get(model)
+        if health is None or health.get("ok"):
+            return model
+    # Every model in the chain is marked down -- still return the top-priority
+    # one rather than raising. A live 429 with retry/backoff is a better
+    # outcome for a caller mid-call than the pipeline failing to build at all.
+    return settings.groq_models[0]
+
+
 def _build_llm():
     if settings.llm_provider == "anthropic":
         return AnthropicLLMService(
@@ -62,39 +80,57 @@ def _build_llm():
             settings=AnthropicLLMService.Settings(model=settings.anthropic_model),
         )
     if settings.llm_provider == "openrouter":
-        # OpenRouter is OpenAI-compatible -- same trick GroqLLMService itself
-        # uses (OpenAILLMService pointed at a different base_url). Swapping
-        # models (GPT-4.1, Claude, Llama, ...) is just changing
-        # openrouter_model, no new integration code per model.
-        #
-        # max_completion_tokens is capped explicitly because OpenRouter's
-        # free-tier credit check rejects a request based on the *requested*
-        # ceiling (defaults to 65536, unbounded), not actual usage. 500 was
-        # the first value tried (when the account had ~$0 balance) and
-        # turned out too tight -- real replies were getting cut off
-        # mid-sentence. 900 still safely excludes runaway-length output on a
-        # phone call, with real margin over what a property-recommendation
-        # or pricing-breakdown reply actually needs.
-        #
-        # reasoning_effort is a property of gpt-oss itself (defaults to
-        # "medium", a hidden chain-of-thought pass that adds latency), not
-        # something specific to Groq's hosting of it -- carry the same fix
-        # over when this model is reached via OpenRouter instead.
-        extra = {"reasoning_effort": "low"} if "gpt-oss" in settings.openrouter_model else {}
-        return OpenAILLMService(
-            api_key=settings.openrouter_api_key,
-            base_url="https://openrouter.ai/api/v1",
-            settings=OpenAILLMService.Settings(
-                model=settings.openrouter_model, max_completion_tokens=900, extra=extra
-            ),
-        )
-    # openai/gpt-oss-120b defaults to "medium" reasoning effort on Groq, which
-    # adds a hidden chain-of-thought pass before every reply -- a real source
-    # of multi-second latency on a phone call. "low" trades reasoning depth
-    # for speed, which is the right tradeoff for live conversational replies.
+        return _build_openrouter_llm()
+    # openai/gpt-oss-120b (and the other models in groq_models) default to
+    # "medium" reasoning effort on Groq, which adds a hidden chain-of-thought
+    # pass before every reply -- a real source of multi-second latency on a
+    # phone call. "low" trades reasoning depth for speed, which is the right
+    # tradeoff for live conversational replies.
+    #
+    # If every model in settings.groq_models is marked down in llm_health
+    # (e.g. Groq is down account-wide, not just one model's rate limit),
+    # OpenRouter -- when configured -- is the last resort rather than
+    # retrying the same rate-limited Groq model the caller would otherwise
+    # be stuck waiting on.
+    from app.main import llm_health
+
+    if settings.openrouter_api_key and all(
+        not llm_health.get(model, {}).get("ok", True) for model in settings.groq_models
+    ):
+        logger.warning("All Groq models marked down in llm_health -- falling back to OpenRouter for this call")
+        return _build_openrouter_llm()
+
+    model = _pick_groq_model()
     return GroqLLMService(
         api_key=settings.groq_api_key,
-        settings=GroqLLMService.Settings(model=settings.groq_model, extra={"reasoning_effort": "low"}),
+        settings=GroqLLMService.Settings(model=model, extra={"reasoning_effort": "low"}),
+    )
+
+
+def _build_openrouter_llm():
+    # OpenRouter is OpenAI-compatible -- same trick GroqLLMService itself
+    # uses (OpenAILLMService pointed at a different base_url). Swapping
+    # models (GPT-4.1, Claude, Llama, ...) is just changing
+    # openrouter_model, no new integration code per model.
+    #
+    # max_completion_tokens is capped explicitly because OpenRouter's
+    # free-tier credit check rejects a request based on the *requested*
+    # ceiling (defaults to 65536, unbounded), not actual usage. 500 was
+    # the first value tried (when the account had ~$0 balance) and
+    # turned out too tight -- real replies were getting cut off
+    # mid-sentence. 900 still safely excludes runaway-length output on a
+    # phone call, with real margin over what a property-recommendation
+    # or pricing-breakdown reply actually needs.
+    #
+    # reasoning_effort is a property of gpt-oss itself (defaults to
+    # "medium", a hidden chain-of-thought pass that adds latency), not
+    # something specific to Groq's hosting of it -- carry the same fix
+    # over when this model is reached via OpenRouter instead.
+    extra = {"reasoning_effort": "low"} if "gpt-oss" in settings.openrouter_model else {}
+    return OpenAILLMService(
+        api_key=settings.openrouter_api_key,
+        base_url="https://openrouter.ai/api/v1",
+        settings=OpenAILLMService.Settings(model=settings.openrouter_model, max_completion_tokens=900, extra=extra),
     )
 
 

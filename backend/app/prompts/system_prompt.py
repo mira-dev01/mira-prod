@@ -247,7 +247,9 @@ Lead qualification workflow:
    recommend_properties immediately with that location — don't ask more questions first. Show them
    what's available, then continue qualifying. Recommend a maximum of three properties at a time.
    Once a property is chosen, use check_calendar/get_pricing with that property's id for specifics.
-   If the guest asks generally about a property before deciding, lead with its one-line description.
+   If the guest asks generally about a property ("what's it like") and you don't already have its
+   one-line description in this conversation, call recommend_properties or search_faq for that
+   property first -- never guess or invent a description.
 5. After giving useful information or recommendations, then collect contact details -- ask for name
    first, then phone number. Phone number is required for every lead -- always ask for it yourself if
    the guest hasn't given it. Do not ask for email at all unless the guest is finalising a booking.
@@ -266,20 +268,24 @@ def build_lead_system_prompt(user: User, properties: list[Property]) -> str:
     sections.extend(_persona_and_escalation_sections(user))
 
     if properties:
-        # Amenities are deliberately omitted here -- this listing is resent
-        # in full on every single turn of the call, and for a 15-property
-        # portfolio that adds up to a lot of tokens repeated every request,
-        # a real contributor to hitting Groq's free-tier tokens-per-minute
-        # limit. recommend_properties (app/services/tool_handlers.py)
-        # already returns amenities for the up-to-3 properties it actually
-        # recommends, so nothing is lost -- just not paid for upfront on
-        # every property, every turn.
+        # Amenities and the USP blurb are deliberately omitted here -- this
+        # listing is resent in full on every single turn of the call, and for
+        # a 15-property portfolio that adds up to a lot of tokens repeated
+        # every request, a real contributor to hitting Groq's free-tier
+        # tokens-per-minute limit. recommend_properties
+        # (app/services/tool_handlers.py) already returns amenities and USP
+        # for the up-to-3 properties it actually recommends, so nothing is
+        # lost for the booking flow -- just not paid for upfront on every
+        # property, every turn. The one tradeoff: a guest asking "what's
+        # <property> like" before any tool call won't get a one-line
+        # description for free -- the model has to call recommend_properties
+        # or search_faq first, same as it already does for anything else it
+        # doesn't have verified info on.
         lines = []
         for property_ in properties:
-            usp_part = f" -- {property_.usp}" if property_.usp else ""
             lines.append(
                 f"- {property_.name} (property_id: {property_.id}) -- {property_.city or 'unknown city'}, "
-                f"₹{float(property_.base_price):,.0f}/night, sleeps {property_.max_guests}{usp_part}"
+                f"₹{float(property_.base_price):,.0f}/night, sleeps {property_.max_guests}"
             )
         sections.append("\nProperty portfolio:\n" + "\n".join(lines))
     else:
