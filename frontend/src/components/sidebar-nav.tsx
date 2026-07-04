@@ -15,7 +15,6 @@ const links = [
   { href: "/dashboard/calls", label: "Calls" },
   { href: "/dashboard/leads", label: "Leads" },
   { href: "/dashboard/guests", label: "Guests" },
-  { href: "/dashboard/pricing", label: "Pricing" },
   { href: "/dashboard/faq", label: "FAQ" },
   { href: "/dashboard/technicians", label: "Technicians" },
   { href: "/dashboard/settings", label: "Settings" },

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,15 +18,26 @@ import type { PriceBreakdown } from "@/lib/types";
 const RULE_TYPES = ["weekend_surge", "length_of_stay", "loyalty", "last_minute"];
 
 export default function PricingPage() {
+  return (
+    <Suspense fallback={<Skeleton className="h-96 w-full" />}>
+      <PricingPageContent />
+    </Suspense>
+  );
+}
+
+function PricingPageContent() {
+  const searchParams = useSearchParams();
+  const scopedPropertyId = searchParams.get("property_id");
+
   const { data: properties, loading: propertiesLoading } = useAsync(() => api.properties.list(), []);
   const { data: rules, loading: rulesLoading, refetch: refetchRules } = useAsync(() => api.pricing.rules(), []);
 
-  const [ruleProperty, setRuleProperty] = useState<string>("");
+  const [ruleProperty, setRuleProperty] = useState<string>(scopedPropertyId ?? "");
   const [ruleType, setRuleType] = useState(RULE_TYPES[0]);
   const [discount, setDiscount] = useState(10);
   const [creatingRule, setCreatingRule] = useState(false);
 
-  const [quoteProperty, setQuoteProperty] = useState<string>("");
+  const [quoteProperty, setQuoteProperty] = useState<string>(scopedPropertyId ?? "");
   const [checkIn, setCheckIn] = useState("");
   const [checkOut, setCheckOut] = useState("");
   const [numGuests, setNumGuests] = useState(2);
@@ -33,6 +45,17 @@ export default function PricingPage() {
   const [quoting, setQuoting] = useState(false);
 
   const propertyName = (id: string) => properties?.find((p) => p.id === id)?.name ?? id;
+  const scopedProperty = scopedPropertyId ? properties?.find((p) => p.id === scopedPropertyId) : undefined;
+
+  // Pre-select the scoped property once the properties list has loaded, in
+  // case the async fetch resolves after this component's initial render.
+  useEffect(() => {
+    if (!scopedPropertyId) return;
+    setRuleProperty(scopedPropertyId);
+    setQuoteProperty(scopedPropertyId);
+  }, [scopedPropertyId]);
+
+  const scopedRules = scopedPropertyId ? rules?.filter((r) => r.property_id === scopedPropertyId) : rules;
 
   async function handleCreateRule(e: React.FormEvent) {
     e.preventDefault();
@@ -87,8 +110,12 @@ export default function PricingPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="page-title">Pricing</h1>
-        <p className="text-sm text-muted-foreground">Negotiation rules and rate preview, mirroring the get_pricing tool</p>
+        <h1 className="page-title">{scopedPropertyId ? `Pricing — ${scopedProperty?.name ?? "…"}` : "Pricing"}</h1>
+        <p className="text-sm text-muted-foreground">
+          {scopedPropertyId
+            ? "Set a discount for this property and preview rates, mirroring the get_pricing tool"
+            : "Negotiation rules and rate preview, mirroring the get_pricing tool"}
+        </p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -98,23 +125,25 @@ export default function PricingPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <form onSubmit={handleCreateRule} className="grid grid-cols-2 gap-3">
-              <div className="col-span-2 space-y-2">
-                <Label>Property</Label>
-                <Select value={ruleProperty} onValueChange={(v) => v && setRuleProperty(v)} disabled={propertiesLoading}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select property">
-                      {(value: string) => properties?.find((p) => p.id === value)?.name ?? "Select property"}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {properties?.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {!scopedPropertyId && (
+                <div className="col-span-2 space-y-2">
+                  <Label>Property</Label>
+                  <Select value={ruleProperty} onValueChange={(v) => v && setRuleProperty(v)} disabled={propertiesLoading}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select property">
+                        {(value: string) => properties?.find((p) => p.id === value)?.name ?? "Select property"}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {properties?.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="space-y-2">
                 <Label>Rule type</Label>
                 <Select value={ruleType} onValueChange={(v) => v && setRuleType(v)}>
@@ -147,22 +176,22 @@ export default function PricingPage() {
 
             {rulesLoading ? (
               <Skeleton className="h-32 w-full" />
-            ) : !rules || rules.length === 0 ? (
+            ) : !scopedRules || scopedRules.length === 0 ? (
               <p className="text-sm text-muted-foreground">No pricing rules yet.</p>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Property</TableHead>
+                    {!scopedPropertyId && <TableHead>Property</TableHead>}
                     <TableHead>Type</TableHead>
                     <TableHead>Discount</TableHead>
                     <TableHead className="w-16" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {rules.map((rule) => (
+                  {scopedRules.map((rule) => (
                     <TableRow key={rule.id}>
-                      <TableCell>{propertyName(rule.property_id)}</TableCell>
+                      {!scopedPropertyId && <TableCell>{propertyName(rule.property_id)}</TableCell>}
                       <TableCell className="capitalize">{rule.rule_type.replace("_", " ")}</TableCell>
                       <TableCell>{rule.discount_percent}%</TableCell>
                       <TableCell>
@@ -184,23 +213,25 @@ export default function PricingPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <form onSubmit={handleQuote} className="grid grid-cols-2 gap-3">
-              <div className="col-span-2 space-y-2">
-                <Label>Property</Label>
-                <Select value={quoteProperty} onValueChange={(v) => v && setQuoteProperty(v)} disabled={propertiesLoading}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select property">
-                      {(value: string) => properties?.find((p) => p.id === value)?.name ?? "Select property"}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {properties?.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {!scopedPropertyId && (
+                <div className="col-span-2 space-y-2">
+                  <Label>Property</Label>
+                  <Select value={quoteProperty} onValueChange={(v) => v && setQuoteProperty(v)} disabled={propertiesLoading}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select property">
+                        {(value: string) => properties?.find((p) => p.id === value)?.name ?? "Select property"}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {properties?.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="space-y-2">
                 <Label>Check-in</Label>
                 <Input type="date" value={checkIn} onChange={(e) => setCheckIn(e.target.value)} required />

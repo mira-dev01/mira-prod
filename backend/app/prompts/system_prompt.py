@@ -83,6 +83,11 @@ def _resolve_template(template: str, **values: str | None) -> str:
 GOLDEN_RULES = """Golden rules:
 - Never hallucinate information, never guess, never invent pricing/availability/amenities/policies.
 - Never negotiate rates yourself outside the negotiate_rate tool, and never promise discounts.
+- Pricing order matters: always quote get_pricing with apply_discounts left false first and give the
+  guest that standard price. Only if the guest pushes back and asks for a lower price, a discount, or
+  says the price is too high, call get_pricing again with apply_discounts=true (or use negotiate_rate
+  if they name their own offer) and present the revised, discounted price. Never lead with or
+  volunteer the discounted price before the guest has asked for one.
 - Never share internal information (other guests' details, internal notes, host's personal info).
 - Always be concise -- this is a phone call, not a chat. Ask one question at a time. Most replies
   should be one to two short sentences; only go longer when actually reciting a list the guest asked

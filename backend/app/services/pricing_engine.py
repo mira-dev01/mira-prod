@@ -108,7 +108,7 @@ async def negotiate_rate(
     property_: Property,
     check_in: date,
     check_out: date,
-    guest_offer: float,
+    guest_offer: float | None,
     guest_loyalty: str = "new",
 ) -> NegotiationResult:
     breakdown = await calculate_price(db, property_, check_in, check_out, apply_discounts=False)
@@ -117,6 +117,19 @@ async def negotiate_rate(
     loyalty_bonus_percent = {"new": 0.0, "returning": 5.0, "frequent": 10.0}.get(guest_loyalty, 0.0)
     max_discount_percent = min(MAX_NEGOTIATION_DISCOUNT_PERCENT, loyalty_bonus_percent + 10.0)
     floor_price = round(asking_price * (1 - max_discount_percent / 100), 2)
+
+    if guest_offer is None:
+        # Guest asked us to name a price rather than stating their own offer --
+        # propose our best price directly instead of comparing against a number.
+        return NegotiationResult(
+            accepted=True,
+            counter_offer=floor_price,
+            asking_price=asking_price,
+            message=(
+                f"Best offer for {property_.name} ({breakdown.nights} nights): ₹{floor_price:,.0f} "
+                f"(asking price ₹{asking_price:,.0f})."
+            ),
+        )
 
     if guest_offer >= floor_price:
         return NegotiationResult(

@@ -148,6 +148,10 @@ export default function PropertiesPage() {
     window.open(url, "_blank");
   }
 
+  function handleSetDiscount(id: string) {
+    window.open(`/dashboard/pricing?property_id=${id}`, "_blank");
+  }
+
   async function handleImportFiles(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
     e.target.value = "";
@@ -288,9 +292,9 @@ export default function PropertiesPage() {
                   <Button
                     size="sm"
                     className="flex-1"
-                    onClick={() => handleTestInBrowser(property.id)}
+                    onClick={() => handleSetDiscount(property.id)}
                   >
-                    Test
+                    Set Discount
                   </Button>
                   <DropdownMenu>
                     <DropdownMenuTrigger
@@ -301,6 +305,7 @@ export default function PropertiesPage() {
                       }
                     />
                     <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => handleTestInBrowser(property.id)}>Test</DropdownMenuItem>
                       <DropdownMenuItem onClick={() => openEdit(property)}>Edit</DropdownMenuItem>
                       <DropdownMenuItem
                         disabled={!property.ical_url || syncingId === property.id}
