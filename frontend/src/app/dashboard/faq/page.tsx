@@ -2,13 +2,14 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ExpandableText } from "@/components/expandable-text";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StatusChip } from "@/components/status-chip";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { useAsync } from "@/hooks/use-async";
@@ -140,18 +141,16 @@ export default function FaqPage() {
           <TableBody>
             {entries.map((entry) => (
               <TableRow key={entry.id} className="align-top">
-                <TableCell className="w-[220px] max-w-[220px] whitespace-normal break-words py-3">
-                  {entry.question}
+                <TableCell className="w-[220px] max-w-[220px] py-3">
+                  <ExpandableText text={entry.question} maxLength={80} />
                 </TableCell>
-                <TableCell className="w-[320px] max-w-[320px] whitespace-normal break-words py-3 text-muted-foreground">
-                  {entry.answer}
+                <TableCell className="w-[320px] max-w-[320px] py-3 text-muted-foreground">
+                  <ExpandableText text={entry.answer} maxLength={120} />
                 </TableCell>
                 <TableCell className="whitespace-normal break-words py-3">{propertyName(entry.property_id)}</TableCell>
                 <TableCell className="py-3 capitalize">{entry.category ?? "—"}</TableCell>
                 <TableCell className="py-3">
-                  <Badge variant={entry.status === "verified" ? "secondary" : "outline"} className="capitalize">
-                    {entry.status}
-                  </Badge>
+                  <StatusChip status={entry.status} tone={entry.status === "verified" ? "live" : "pending"} />
                 </TableCell>
                 <TableCell className="flex gap-2 py-3">
                   <Button variant="outline" size="sm" onClick={() => handleToggleVerified(entry.id, entry.status)}>

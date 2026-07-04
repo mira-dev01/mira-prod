@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.common import DateRange, date_range_query
 from app.auth.dependencies import get_current_user
 from app.database import get_db
 from app.models.call_session import CallSession
@@ -16,17 +17,25 @@ router = APIRouter(prefix="/guests", tags=["guests"])
 
 @router.get("", response_model=list[GuestProfileOut])
 async def list_guests(
-    current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+    date_range: DateRange = Depends(date_range_query),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ) -> list[GuestProfile]:
     # Scoped by user_id, not property ownership -- Lead Agent calls have no
     # single property (property_id is NULL) but still belong to a host.
-    guest_ids = (
-        await db.scalars(
-            select(CallSession.guest_profile_id)
-            .where(CallSession.user_id == current_user.id, CallSession.guest_profile_id.isnot(None))
-            .distinct()
-        )
-    ).all()
+    #
+    # date_range filters the CallSession scan (not GuestProfile directly --
+    # GuestProfile.created_at means "profile first created," a different
+    # concept from "had a call in this range"), so this reads as "guests who
+    # had a call in this range."
+    stmt = select(CallSession.guest_profile_id).where(
+        CallSession.user_id == current_user.id, CallSession.guest_profile_id.isnot(None)
+    )
+    if date_range.since is not None:
+        stmt = stmt.where(CallSession.created_at >= date_range.since)
+    if date_range.until is not None:
+        stmt = stmt.where(CallSession.created_at < date_range.until)
+    guest_ids = (await db.scalars(stmt.distinct())).all()
     if not guest_ids:
         return []
     return list((await db.scalars(select(GuestProfile).where(GuestProfile.id.in_(guest_ids)))).all())

@@ -3,6 +3,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.common import DateRange, date_range_query
 from app.auth.dependencies import get_current_user
 from app.database import get_db
 from app.models.lead import Lead
@@ -14,8 +15,12 @@ router = APIRouter(prefix="/leads", tags=["leads"])
 
 
 @router.get("", response_model=list[LeadOut])
-async def list_leads(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> list[Lead]:
-    return await lead_service.list_leads(db, current_user.id)
+async def list_leads(
+    date_range: DateRange = Depends(date_range_query),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[Lead]:
+    return await lead_service.list_leads(db, current_user.id, date_range)
 
 
 @router.get("/{lead_id}", response_model=LeadOut)

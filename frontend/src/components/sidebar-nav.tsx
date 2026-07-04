@@ -3,21 +3,35 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import {
+  Home,
+  Building2,
+  Calendar,
+  Phone,
+  Users,
+  UserRound,
+  HelpCircle,
+  Wrench,
+  Settings,
+  Menu,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { TalkToMiraDialog } from "@/components/talk-to-mira-dialog";
 import { useAuth } from "@/lib/auth-context";
 
-const links = [
-  { href: "/dashboard", label: "Overview" },
-  { href: "/dashboard/properties", label: "Properties" },
-  { href: "/dashboard/calendar", label: "Calendar" },
-  { href: "/dashboard/calls", label: "Calls" },
-  { href: "/dashboard/leads", label: "Leads" },
-  { href: "/dashboard/guests", label: "Guests" },
-  { href: "/dashboard/faq", label: "FAQ" },
-  { href: "/dashboard/technicians", label: "Technicians" },
-  { href: "/dashboard/settings", label: "Settings" },
+const links: { href: string; label: string; icon: LucideIcon }[] = [
+  { href: "/dashboard", label: "Overview", icon: Home },
+  { href: "/dashboard/properties", label: "Properties", icon: Building2 },
+  { href: "/dashboard/calendar", label: "Calendar", icon: Calendar },
+  { href: "/dashboard/calls", label: "Calls", icon: Phone },
+  { href: "/dashboard/leads", label: "Leads", icon: Users },
+  { href: "/dashboard/guests", label: "Guests", icon: UserRound },
+  { href: "/dashboard/faq", label: "FAQ", icon: HelpCircle },
+  { href: "/dashboard/technicians", label: "Technicians", icon: Wrench },
+  { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 
 function MiraLogo() {
@@ -54,18 +68,20 @@ function NavLinks({ onNavigate, onTalkToMira }: { onNavigate?: () => void; onTal
             link.href === "/dashboard"
               ? pathname === link.href
               : pathname.startsWith(link.href);
+          const Icon = link.icon;
           return (
             <Link
               key={link.href}
               href={link.href}
               onClick={onNavigate}
               className={cn(
-                "rounded-[var(--radius)] px-3 py-2 text-sm transition-colors duration-150 hover:bg-accent hover:text-accent-foreground",
+                "flex items-center gap-2 rounded-[var(--radius)] px-3 py-2 text-sm transition-colors duration-150 hover:bg-accent hover:text-accent-foreground",
                 active
                   ? "bg-accent font-medium text-accent-foreground"
                   : "font-normal text-muted-foreground"
               )}
             >
+              <Icon className="size-4 shrink-0" />
               {link.label}
             </Link>
           );
@@ -104,7 +120,7 @@ export function SidebarNav() {
   return (
     <>
       {/* ── Desktop sidebar (md+) ── */}
-      <aside className="hidden md:flex w-56 shrink-0 flex-col border-r bg-card p-4">
+      <aside className="hidden md:flex h-screen w-56 shrink-0 flex-col overflow-y-auto border-r bg-card p-4">
         <div className="mb-6 px-2">
           <MiraLogo />
           <p className="mt-0.5 text-xs text-muted-foreground">Host dashboard</p>
@@ -120,11 +136,7 @@ export function SidebarNav() {
           onClick={() => setOpen(true)}
           className="flex h-9 w-9 items-center justify-center rounded-md text-foreground hover:bg-accent"
         >
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-            <rect y="3" width="20" height="2" rx="1" fill="currentColor" />
-            <rect y="9" width="20" height="2" rx="1" fill="currentColor" />
-            <rect y="15" width="20" height="2" rx="1" fill="currentColor" />
-          </svg>
+          <Menu className="size-5" />
         </button>
       </header>
 
@@ -153,9 +165,7 @@ export function SidebarNav() {
             onClick={() => setOpen(false)}
             className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-accent"
           >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path d="M2 2l12 12M14 2L2 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
+            <X className="size-4" />
           </button>
         </div>
         <NavLinks onNavigate={() => setOpen(false)} onTalkToMira={() => setTalkOpen(true)} />

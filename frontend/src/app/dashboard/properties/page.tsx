@@ -2,7 +2,6 @@
 
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -21,6 +20,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PropertyFormFields } from "@/components/property-form-fields";
+import { StatusChip } from "@/components/status-chip";
 import { TalkToMiraDialog } from "@/components/talk-to-mira-dialog";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError, API_BASE_URL, getToken } from "@/lib/api";
@@ -277,11 +277,7 @@ export default function PropertiesPage() {
               <CardHeader>
                 <CardTitle className="flex items-center justify-between text-base">
                   {property.name}
-                  {property.exophone && (
-                    <Badge variant="outline" className="badge-status-live">
-                      Voice agent live
-                    </Badge>
-                  )}
+                  {property.exophone && <StatusChip status="Voice agent live" tone="live" />}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 text-sm">

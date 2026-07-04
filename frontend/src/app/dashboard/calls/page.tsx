@@ -5,19 +5,19 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAsync } from "@/hooks/use-async";
+import { useDateRange } from "@/hooks/use-date-range";
 import { api } from "@/lib/api";
-import { cn, isBrowserTestIdentity } from "@/lib/utils";
+import { isBrowserTestIdentity } from "@/lib/utils";
+import { DateRangePicker } from "@/components/date-range-picker";
+import { StatusChip, type StatusTone } from "@/components/status-chip";
 
-const statusVariant: Record<string, "destructive" | "outline"> = {
-  completed: "outline",
-  active: "outline",
+const statusTone: Record<string, StatusTone> = {
+  completed: "live",
+  active: "progress",
+  in_progress: "progress",
   escalated: "destructive",
-  failed: "outline",
-};
-
-const statusClassName: Record<string, string> = {
-  completed: "badge-status-live",
-  active: "badge-status-progress",
+  failed: "destructive",
+  missed: "destructive",
 };
 
 function formatDuration(minutes: number | null): string {
@@ -28,13 +28,20 @@ function formatDuration(minutes: number | null): string {
 }
 
 export default function CallsPage() {
-  const { data: calls, loading } = useAsync(() => api.calls.list(), []);
+  const { startDateISO, endDateISO } = useDateRange();
+  const { data: calls, loading } = useAsync(
+    () => api.calls.list({ startDate: startDateISO, endDate: endDateISO }),
+    [startDateISO, endDateISO]
+  );
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="page-title">Calls</h1>
-        <p className="text-sm text-muted-foreground">Every call MIRA has answered across your properties</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="page-title">Calls</h1>
+          <p className="text-sm text-muted-foreground">Every call MIRA has answered across your properties</p>
+        </div>
+        <DateRangePicker />
       </div>
 
       {loading ? (
@@ -74,12 +81,7 @@ export default function CallsPage() {
                 </TableCell>
                 <TableCell>{formatDuration(call.duration_minutes)}</TableCell>
                 <TableCell>
-                  <Badge
-                    variant={statusVariant[call.status] ?? "outline"}
-                    className={cn("capitalize", statusClassName[call.status])}
-                  >
-                    {call.status}
-                  </Badge>
+                  <StatusChip status={call.status} tone={statusTone[call.status] ?? "neutral"} />
                 </TableCell>
                 <TableCell className="capitalize">{call.urgency ?? "—"}</TableCell>
                 <TableCell>₹{call.revenue_attributed.toLocaleString("en-IN")}</TableCell>

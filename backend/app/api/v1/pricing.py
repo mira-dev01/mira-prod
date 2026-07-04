@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.common import get_owned_property, owned_property_ids
+from app.api.v1.common import DateRange, date_range_query, get_owned_property, owned_property_ids
 from app.auth.dependencies import get_current_user
 from app.database import get_db
 from app.models.pricing_rule import PricingRule
@@ -19,12 +19,17 @@ router = APIRouter(prefix="/pricing", tags=["pricing"])
 
 @router.get("/rules", response_model=list[PricingRuleOut])
 async def list_pricing_rules(
-    current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+    date_range: DateRange = Depends(date_range_query),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ) -> list[PricingRule]:
     property_ids = await owned_property_ids(db, current_user)
-    return list(
-        (await db.scalars(select(PricingRule).where(PricingRule.property_id.in_(property_ids)))).all()
-    )
+    stmt = select(PricingRule).where(PricingRule.property_id.in_(property_ids))
+    if date_range.since is not None:
+        stmt = stmt.where(PricingRule.created_at >= date_range.since)
+    if date_range.until is not None:
+        stmt = stmt.where(PricingRule.created_at < date_range.until)
+    return list((await db.scalars(stmt)).all())
 
 
 @router.post("/rules", response_model=PricingRuleOut, status_code=status.HTTP_201_CREATED)

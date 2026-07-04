@@ -16,13 +16,19 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { DateRangePicker } from "@/components/date-range-picker";
 import { useAsync } from "@/hooks/use-async";
+import { useDateRange } from "@/hooks/use-date-range";
 import { api, ApiError } from "@/lib/api";
 import { isBrowserTestIdentity } from "@/lib/utils";
 import type { GuestProfileOut } from "@/lib/types";
 
 export default function GuestsPage() {
-  const { data: guests, loading, refetch } = useAsync(() => api.guests.list(), []);
+  const { startDateISO, endDateISO } = useDateRange();
+  const { data: guests, loading, refetch } = useAsync(
+    () => api.guests.list({ startDate: startDateISO, endDate: endDateISO }),
+    [startDateISO, endDateISO]
+  );
   const [editing, setEditing] = useState<GuestProfileOut | null>(null);
   const [name, setName] = useState("");
   const [notes, setNotes] = useState("");
@@ -52,9 +58,12 @@ export default function GuestsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="page-title">Guests</h1>
-        <p className="text-sm text-muted-foreground">Guest CRM built from past calls and stays</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="page-title">Guests</h1>
+          <p className="text-sm text-muted-foreground">Guest CRM built from past calls and stays</p>
+        </div>
+        <DateRangePicker />
       </div>
 
       {loading ? (

@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -15,27 +14,51 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { ActionableCard, type ActionableCardPriority } from "@/components/actionable-card";
+import { DateRangePicker } from "@/components/date-range-picker";
 import { useAsync } from "@/hooks/use-async";
+import { useDateRange } from "@/hooks/use-date-range";
 import { api, ApiError } from "@/lib/api";
-import { cn, isBrowserTestIdentity } from "@/lib/utils";
+import { isBrowserTestIdentity } from "@/lib/utils";
 import type { LeadOut } from "@/lib/types";
 
 const TEMPERATURES = ["hot", "warm", "cold"] as const;
 
-const temperatureVariant: Record<string, "destructive" | "outline"> = {
-  hot: "destructive",
-  warm: "outline",
-  cold: "outline",
+const temperaturePriority: Record<string, ActionableCardPriority> = {
+  hot: { label: "Hot", tone: "high" },
+  warm: { label: "Warm", tone: "medium" },
+  cold: { label: "Cold", tone: "low" },
 };
 
-const temperatureClassName: Record<string, string> = {
-  warm: "badge-status-pending",
-};
+function leadTitle(lead: LeadOut): string {
+  const name = isBrowserTestIdentity(lead.phone) ? "Browser test" : lead.guest_name ?? "Unknown guest";
+  const destination = lead.properties_discussed.length > 0 ? lead.properties_discussed.join(", ") : null;
+  return destination ? `${name} — ${destination}` : name;
+}
+
+function leadSummary(lead: LeadOut): string | undefined {
+  const parts: string[] = [];
+  if (lead.purpose_of_stay) parts.push(lead.purpose_of_stay);
+  if (lead.conversation_summary) parts.push(lead.conversation_summary);
+  return parts.length > 0 ? parts.join(" — ") : undefined;
+}
+
+function leadMetadata(lead: LeadOut): string {
+  const parts: string[] = [];
+  parts.push(isBrowserTestIdentity(lead.phone) ? "Browser test" : lead.phone ?? "No phone");
+  if (lead.check_in && lead.check_out) parts.push(`${lead.check_in} → ${lead.check_out}`);
+  if (lead.num_guests) parts.push(`${lead.num_guests} guest${lead.num_guests === 1 ? "" : "s"}`);
+  if (lead.escalated) parts.push("Escalated");
+  return parts.join(" · ");
+}
 
 export default function LeadsPage() {
-  const { data: leads, loading, refetch } = useAsync(() => api.leads.list(), []);
+  const { startDateISO, endDateISO } = useDateRange();
+  const { data: leads, loading, refetch } = useAsync(
+    () => api.leads.list({ startDate: startDateISO, endDate: endDateISO }),
+    [startDateISO, endDateISO]
+  );
   const [editing, setEditing] = useState<LeadOut | null>(null);
   const [temperature, setTemperature] = useState<string>("warm");
   const [nextFollowUp, setNextFollowUp] = useState("");
@@ -71,9 +94,12 @@ export default function LeadsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="page-title">Leads</h1>
-        <p className="text-sm text-muted-foreground">Booking enquiries qualified by the Lead Agent</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="page-title">Leads</h1>
+          <p className="text-sm text-muted-foreground">Booking enquiries qualified by the Lead Agent</p>
+        </div>
+        <DateRangePicker />
       </div>
 
       {loading ? (
@@ -83,62 +109,17 @@ export default function LeadsPage() {
           No leads yet — they appear here once your portfolio&apos;s lead intake number starts receiving calls.
         </p>
       ) : (
-        <div className="overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Guest</TableHead>
-              <TableHead>Property</TableHead>
-              <TableHead>Phone</TableHead>
-              <TableHead>Dates</TableHead>
-              <TableHead>Guests</TableHead>
-              <TableHead>Budget</TableHead>
-              <TableHead>Temperature</TableHead>
-              <TableHead>Follow-up</TableHead>
-              <TableHead>Escalated</TableHead>
-              <TableHead className="w-20" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {leads.map((lead) => (
-              <TableRow key={lead.id}>
-                <TableCell>
-                  {isBrowserTestIdentity(lead.phone) ? <Badge variant="outline">Browser test</Badge> : lead.guest_name ?? "Unknown"}
-                </TableCell>
-                <TableCell>
-                  {lead.properties_discussed.length > 0 ? lead.properties_discussed.join(", ") : "—"}
-                </TableCell>
-                <TableCell>
-                  {isBrowserTestIdentity(lead.phone) ? "—" : lead.phone ?? "—"}
-                </TableCell>
-                <TableCell>
-                  {lead.check_in && lead.check_out ? `${lead.check_in} → ${lead.check_out}` : "—"}
-                </TableCell>
-                <TableCell>{lead.num_guests ?? "—"}</TableCell>
-                <TableCell>{lead.budget ? `₹${lead.budget.toLocaleString("en-IN")}` : "—"}</TableCell>
-                <TableCell>
-                  {lead.lead_temperature ? (
-                    <Badge
-                      variant={temperatureVariant[lead.lead_temperature] ?? "outline"}
-                      className={cn("capitalize", temperatureClassName[lead.lead_temperature])}
-                    >
-                      {lead.lead_temperature}
-                    </Badge>
-                  ) : (
-                    "—"
-                  )}
-                </TableCell>
-                <TableCell className="max-w-[160px] truncate">{lead.next_follow_up ?? "—"}</TableCell>
-                <TableCell>{lead.escalated ? <Badge variant="destructive">Yes</Badge> : "No"}</TableCell>
-                <TableCell>
-                  <Button variant="outline" size="sm" onClick={() => openEdit(lead)}>
-                    Edit
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        <div className="space-y-3">
+          {leads.map((lead) => (
+            <ActionableCard
+              key={lead.id}
+              title={leadTitle(lead)}
+              summary={leadSummary(lead)}
+              metadata={leadMetadata(lead)}
+              priority={lead.lead_temperature ? temperaturePriority[lead.lead_temperature] : undefined}
+              onClick={() => openEdit(lead)}
+            />
+          ))}
         </div>
       )}
 
