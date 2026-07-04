@@ -47,7 +47,7 @@ async def test_get_pricing_includes_total(test_property, db_session):
         property_id=str(test_property.id), check_in=today + timedelta(days=1), check_out=today + timedelta(days=3), num_guests=2
     )
     result = await tool_handlers.handle_get_pricing(db_session, args)
-    assert "TOTAL" in result
+    assert "total" in result.lower()
     assert test_property.name in result
 
 

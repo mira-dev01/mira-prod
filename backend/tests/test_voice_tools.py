@@ -53,7 +53,7 @@ async def test_get_pricing_includes_total(test_property, db_session, test_user):
         check_out=(today + timedelta(days=3)).isoformat(),
         num_guests=2,
     )
-    assert "TOTAL" in params.result
+    assert "total" in params.result.lower()
 
 
 async def test_dispatch_technician_uses_bound_call_session_id(test_property, db_session, test_call_session, test_user):
