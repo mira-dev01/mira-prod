@@ -1,54 +1,135 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { ArrowRight, ChevronRight, Phone, PhoneCall, AlertTriangle, Percent, Wallet } from "lucide-react";
+import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAsync } from "@/hooks/use-async";
+import { useDateRange } from "@/hooks/use-date-range";
 import { api } from "@/lib/api";
 import { NotificationsFeed } from "@/components/notifications-feed";
+import { StatCard } from "@/components/stat-card";
+import { StatusChip, type StatusTone } from "@/components/status-chip";
+import { DateRangePicker } from "@/components/date-range-picker";
+
+const statusTone: Record<string, StatusTone> = {
+  completed: "live",
+  in_progress: "progress",
+  active: "progress",
+  escalated: "destructive",
+  failed: "destructive",
+  missed: "destructive",
+  pending: "pending",
+};
 
 export default function OverviewPage() {
   const [includeTestCalls, setIncludeTestCalls] = useState(false);
+  const { startDateISO, endDateISO } = useDateRange();
+
   const { data: summary, loading: summaryLoading } = useAsync(
-    () => api.analytics.summary(30, includeTestCalls),
-    [includeTestCalls]
+    () => api.analytics.summary({ startDate: startDateISO, endDate: endDateISO, includeTestCalls }),
+    [startDateISO, endDateISO, includeTestCalls]
   );
-  const { data: calls, loading: callsLoading } = useAsync(() => api.calls.list(), []);
+  const { data: calls, loading: callsLoading } = useAsync(
+    () => api.calls.list({ startDate: startDateISO, endDate: endDateISO, limit: 8 }),
+    [startDateISO, endDateISO]
+  );
   const { data: notifications, loading: notificationsLoading } = useAsync(() => api.notifications.list(), []);
 
-  const recentCalls = calls?.slice(0, 8) ?? [];
+  const { data: totalCallsSeries } = useAsync(
+    () => api.analytics.timeseries({ metric: "total_calls", startDate: startDateISO, endDate: endDateISO, includeTestCalls }),
+    [startDateISO, endDateISO, includeTestCalls]
+  );
+  const { data: completedCallsSeries } = useAsync(
+    () =>
+      api.analytics.timeseries({ metric: "completed_calls", startDate: startDateISO, endDate: endDateISO, includeTestCalls }),
+    [startDateISO, endDateISO, includeTestCalls]
+  );
+  const { data: escalatedCallsSeries } = useAsync(
+    () =>
+      api.analytics.timeseries({ metric: "escalated_calls", startDate: startDateISO, endDate: endDateISO, includeTestCalls }),
+    [startDateISO, endDateISO, includeTestCalls]
+  );
+  const { data: pipelineValueSeries } = useAsync(
+    () =>
+      api.analytics.timeseries({ metric: "pipeline_value", startDate: startDateISO, endDate: endDateISO, includeTestCalls }),
+    [startDateISO, endDateISO, includeTestCalls]
+  );
+
+  const answerRateSparkline = useMemo(() => {
+    if (!totalCallsSeries || !completedCallsSeries) return undefined;
+    return totalCallsSeries.points.map((point, i) => {
+      const total = point.value;
+      const completed = completedCallsSeries.points[i]?.value ?? 0;
+      return total > 0 ? completed / total : 0;
+    });
+  }, [totalCallsSeries, completedCallsSeries]);
+
+  const recentCalls = calls ?? [];
+  const activeNotifications = (notifications ?? []).filter((n) => n.status === "new");
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="page-title">Overview</h1>
-          <p className="text-sm text-muted-foreground">Last 30 days across all properties</p>
+          <p className="text-sm text-muted-foreground">Across all properties</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Switch id="include-test-calls" checked={includeTestCalls} onCheckedChange={setIncludeTestCalls} />
-          <Label htmlFor="include-test-calls" className="text-sm text-muted-foreground">
-            Include browser test calls
-          </Label>
+        <div className="flex flex-wrap items-center gap-3">
+          <DateRangePicker />
+          <div className="flex items-center gap-2">
+            <Switch id="include-test-calls" checked={includeTestCalls} onCheckedChange={setIncludeTestCalls} />
+            <Label htmlFor="include-test-calls" className="text-sm text-muted-foreground">
+              Include browser test calls
+            </Label>
+          </div>
         </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <SummaryCard label="Total calls" value={summary?.total_calls} loading={summaryLoading} />
-        <SummaryCard label="Completed" value={summary?.completed_calls} loading={summaryLoading} />
-        <SummaryCard label="Escalated" value={summary?.escalated_calls} loading={summaryLoading} />
-        <SummaryCard
+        <StatCard
+          icon={Phone}
+          iconColorVar="--primary"
+          label="Total calls"
+          value={summary?.total_calls}
+          loading={summaryLoading}
+          sparklineData={totalCallsSeries?.points.map((p) => p.value)}
+        />
+        <StatCard
+          icon={PhoneCall}
+          iconColorVar="--status-live"
+          label="Completed"
+          value={summary?.completed_calls}
+          loading={summaryLoading}
+          sparklineData={completedCallsSeries?.points.map((p) => p.value)}
+        />
+        <StatCard
+          icon={AlertTriangle}
+          iconColorVar="--destructive"
+          label="Escalated"
+          value={summary?.escalated_calls}
+          loading={summaryLoading}
+          sparklineData={escalatedCallsSeries?.points.map((p) => p.value)}
+        />
+        <StatCard
+          icon={Percent}
+          iconColorVar="--status-progress"
           label="Answer rate"
           value={summary?.answer_rate != null ? `${Math.round(summary.answer_rate * 100)}%` : undefined}
           loading={summaryLoading}
+          sparklineData={answerRateSparkline}
         />
-        <SummaryCard
+        <StatCard
+          icon={Wallet}
+          iconColorVar="--accent-warm"
           label="Pipeline value"
           value={summary?.pipeline_value != null ? `₹${summary.pipeline_value.toLocaleString("en-IN")}` : undefined}
           loading={summaryLoading}
+          sparklineData={pipelineValueSeries?.points.map((p) => p.value)}
         />
       </div>
 
@@ -65,44 +146,50 @@ export default function OverviewPage() {
               <p className="text-sm text-muted-foreground">No calls yet.</p>
             ) : (
               <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Caller</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Started</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {recentCalls.map((call) => (
-                    <TableRow key={call.id}>
-                      <TableCell>{call.caller_number ?? "Unknown"}</TableCell>
-                      <TableCell className="capitalize">{call.status}</TableCell>
-                      <TableCell>{call.started_at ? new Date(call.started_at).toLocaleString() : "—"}</TableCell>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Caller</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Started</TableHead>
+                      <TableHead />
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {recentCalls.map((call) => (
+                      <TableRow key={call.id}>
+                        <TableCell>{call.caller_number ?? "Unknown"}</TableCell>
+                        <TableCell>
+                          <StatusChip status={call.status} tone={statusTone[call.status] ?? "neutral"} />
+                        </TableCell>
+                        <TableCell>{call.started_at ? new Date(call.started_at).toLocaleString() : "—"}</TableCell>
+                        <TableCell>
+                          <ChevronRight className="size-4 text-muted-foreground" />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </div>
             )}
           </CardContent>
+          <div className="border-t px-4 py-3">
+            <Link
+              href="/dashboard/calls"
+              className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+            >
+              View all calls
+              <ArrowRight className="size-3.5" />
+            </Link>
+          </div>
         </Card>
 
-        {notificationsLoading ? <Skeleton className="h-40 w-full" /> : <NotificationsFeed initial={notifications ?? []} />}
+        {notificationsLoading ? (
+          <Skeleton className="h-40 w-full" />
+        ) : (
+          <NotificationsFeed initial={notifications ?? []} activeCount={activeNotifications.length} />
+        )}
       </div>
     </div>
-  );
-}
-
-function SummaryCard({ label, value, loading }: { label: string; value?: number | string; loading: boolean }) {
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardDescription>{label}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        {loading ? <Skeleton className="h-7 w-16" /> : <p className="text-2xl font-semibold">{value ?? "—"}</p>}
-      </CardContent>
-    </Card>
   );
 }

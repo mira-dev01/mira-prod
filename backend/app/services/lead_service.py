@@ -8,6 +8,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.common import DateRange
 from app.models.lead import Lead
 
 
@@ -56,10 +57,14 @@ async def delete_if_empty(db: AsyncSession, call_session_id: uuid.UUID | None) -
         await db.commit()
 
 
-async def list_leads(db: AsyncSession, user_id: uuid.UUID) -> list[Lead]:
-    return list(
-        (await db.scalars(select(Lead).where(Lead.user_id == user_id).order_by(Lead.created_at.desc()))).all()
-    )
+async def list_leads(db: AsyncSession, user_id: uuid.UUID, date_range: DateRange | None = None) -> list[Lead]:
+    stmt = select(Lead).where(Lead.user_id == user_id).order_by(Lead.created_at.desc())
+    if date_range is not None:
+        if date_range.since is not None:
+            stmt = stmt.where(Lead.created_at >= date_range.since)
+        if date_range.until is not None:
+            stmt = stmt.where(Lead.created_at < date_range.until)
+    return list((await db.scalars(stmt)).all())
 
 
 async def get_owned_lead(db: AsyncSession, lead_id: uuid.UUID, user_id: uuid.UUID) -> Lead | None:

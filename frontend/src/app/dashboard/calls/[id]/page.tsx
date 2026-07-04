@@ -6,9 +6,19 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StatusChip, type StatusTone } from "@/components/status-chip";
 import { useAsync } from "@/hooks/use-async";
 import { api } from "@/lib/api";
 import { isBrowserTestIdentity } from "@/lib/utils";
+
+const statusTone: Record<string, StatusTone> = {
+  completed: "live",
+  active: "progress",
+  in_progress: "progress",
+  escalated: "destructive",
+  failed: "destructive",
+  missed: "destructive",
+};
 
 function formatDuration(minutes: number | null): string | null {
   if (minutes === null) return null;
@@ -45,7 +55,7 @@ export default function CallDetailPage() {
       </div>
 
       <div className="flex gap-2">
-        <Badge className="capitalize">{call.status}</Badge>
+        <StatusChip status={call.status} tone={statusTone[call.status] ?? "neutral"} />
         {call.urgency && <Badge variant="destructive" className="capitalize">{call.urgency}</Badge>}
         {duration && <Badge variant="secondary">{duration}</Badge>}
         <Badge variant="secondary">₹{call.revenue_attributed.toLocaleString("en-IN")} attributed</Badge>

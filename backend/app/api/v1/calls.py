@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.api.v1.common import DateRange, date_range_query
 from app.auth.dependencies import get_current_user
 from app.database import get_db
 from app.models.call_session import CallSession
@@ -19,6 +20,7 @@ async def list_calls(
     status_filter: str | None = Query(default=None, alias="status"),
     urgency: str | None = Query(default=None),
     limit: int = Query(default=100, le=500),
+    date_range: DateRange = Depends(date_range_query),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> list[CallSession]:
@@ -38,6 +40,10 @@ async def list_calls(
         stmt = stmt.where(CallSession.status == status_filter)
     if urgency:
         stmt = stmt.where(CallSession.urgency == urgency)
+    if date_range.since is not None:
+        stmt = stmt.where(CallSession.created_at >= date_range.since)
+    if date_range.until is not None:
+        stmt = stmt.where(CallSession.created_at < date_range.until)
     return list((await db.scalars(stmt)).all())
 
 

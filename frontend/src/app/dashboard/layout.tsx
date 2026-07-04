@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { SidebarNav } from "@/components/sidebar-nav";
+import { DateRangeProvider } from "@/components/date-range-context";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -18,12 +19,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <div className="flex min-h-screen flex-1">
-      <SidebarNav />
-      {/* pt-14 on mobile offsets the fixed top bar; md:pt-0 removes it on desktop */}
-      <main className="flex-1 overflow-y-auto p-4 pt-[calc(3.5rem+1rem)] md:p-6 md:pt-6">
-        {children}
-      </main>
-    </div>
+    <DateRangeProvider>
+      <div className="flex h-screen flex-1 overflow-hidden">
+        <SidebarNav />
+        {/* pt-14 on mobile offsets the fixed top bar; md:pt-0 removes it on desktop */}
+        <main className="flex-1 overflow-y-auto p-4 pt-[calc(3.5rem+1rem)] md:p-6 md:pt-6">
+          {children}
+        </main>
+      </div>
+    </DateRangeProvider>
   );
 }

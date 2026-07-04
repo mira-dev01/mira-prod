@@ -2,7 +2,6 @@
 
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -21,6 +20,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PropertyFormFields } from "@/components/property-form-fields";
+import { StatusChip } from "@/components/status-chip";
 import { TalkToMiraDialog } from "@/components/talk-to-mira-dialog";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError, API_BASE_URL, getToken } from "@/lib/api";
@@ -148,6 +148,10 @@ export default function PropertiesPage() {
     window.open(url, "_blank");
   }
 
+  function handleSetDiscount(id: string) {
+    window.open(`/dashboard/pricing?property_id=${id}`, "_blank");
+  }
+
   async function handleImportFiles(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
     e.target.value = "";
@@ -273,11 +277,7 @@ export default function PropertiesPage() {
               <CardHeader>
                 <CardTitle className="flex items-center justify-between text-base">
                   {property.name}
-                  {property.exophone && (
-                    <Badge variant="outline" className="badge-status-live">
-                      Voice agent live
-                    </Badge>
-                  )}
+                  {property.exophone && <StatusChip status="Voice agent live" tone="live" />}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
@@ -288,9 +288,9 @@ export default function PropertiesPage() {
                   <Button
                     size="sm"
                     className="flex-1"
-                    onClick={() => handleTestInBrowser(property.id)}
+                    onClick={() => handleSetDiscount(property.id)}
                   >
-                    Test
+                    Set Discount
                   </Button>
                   <DropdownMenu>
                     <DropdownMenuTrigger
@@ -301,6 +301,7 @@ export default function PropertiesPage() {
                       }
                     />
                     <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => handleTestInBrowser(property.id)}>Test</DropdownMenuItem>
                       <DropdownMenuItem onClick={() => openEdit(property)}>Edit</DropdownMenuItem>
                       <DropdownMenuItem
                         disabled={!property.ical_url || syncingId === property.id}
