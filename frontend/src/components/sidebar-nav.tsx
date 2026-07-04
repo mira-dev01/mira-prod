@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { TalkToMiraDialog } from "@/components/talk-to-mira-dialog";
 import { useAuth } from "@/lib/auth-context";
 
 const links = [
@@ -30,13 +31,24 @@ function MiraLogo() {
   );
 }
 
-function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
+function NavLinks({ onNavigate, onTalkToMira }: { onNavigate?: () => void; onTalkToMira: () => void }) {
   const pathname = usePathname();
   const { user, logout } = useAuth();
 
   return (
     <>
       <nav className="flex flex-1 flex-col gap-1">
+        <button
+          type="button"
+          onClick={() => {
+            onTalkToMira();
+            onNavigate?.();
+          }}
+          className="rounded-[var(--radius)] px-3 py-2 text-left text-sm font-medium text-accent-foreground transition-colors duration-150 hover:bg-accent"
+        >
+          <span className="mr-1.5 text-[var(--accent-warm)]">{"✳︎"}</span>
+          Talk to Mira
+        </button>
         <span className="text-micro px-2 pb-1 pt-2">Main</span>
         {links.map((link) => {
           const active =
@@ -72,6 +84,7 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
 
 export function SidebarNav() {
   const [open, setOpen] = useState(false);
+  const [talkOpen, setTalkOpen] = useState(false);
   const pathname = usePathname();
 
   // Close drawer on route change
@@ -97,7 +110,7 @@ export function SidebarNav() {
           <MiraLogo />
           <p className="mt-0.5 text-xs text-muted-foreground">Host dashboard</p>
         </div>
-        <NavLinks />
+        <NavLinks onTalkToMira={() => setTalkOpen(true)} />
       </aside>
 
       {/* ── Mobile top bar ── */}
@@ -146,8 +159,10 @@ export function SidebarNav() {
             </svg>
           </button>
         </div>
-        <NavLinks onNavigate={() => setOpen(false)} />
+        <NavLinks onNavigate={() => setOpen(false)} onTalkToMira={() => setTalkOpen(true)} />
       </aside>
+
+      <TalkToMiraDialog open={talkOpen} onOpenChange={setTalkOpen} />
     </>
   );
 }

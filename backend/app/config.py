@@ -11,6 +11,16 @@ class Settings(BaseSettings):
     environment: str = "development"
     backend_base_url: str = "http://localhost:8000"
     frontend_base_url: str = "http://localhost:3000"
+    # Extra origins allowed to hit the API via CORS, comma-separated (e.g.
+    # "http://localhost:3000,https://staging.example.com"). Useful for hitting
+    # a deployed backend from a local frontend during development. The
+    # frontend_base_url above is always allowed and doesn't need to be repeated.
+    cors_extra_origins: str = ""
+
+    @property
+    def cors_allowed_origins(self) -> list[str]:
+        extra = [origin.strip() for origin in self.cors_extra_origins.split(",") if origin.strip()]
+        return list(dict.fromkeys([self.frontend_base_url, *extra]))
 
     database_url: str = "postgresql+asyncpg://mira:mira@localhost:5432/mira_dev"
     redis_url: str = "redis://localhost:6379/0"

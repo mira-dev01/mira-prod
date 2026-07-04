@@ -190,7 +190,7 @@ export type AnalyticsSummary = {
   completed_calls: number;
   escalated_calls: number;
   open_notifications: number;
-  revenue_attributed: number;
+  pipeline_value: number;
   answer_rate: number | null;
 };
 

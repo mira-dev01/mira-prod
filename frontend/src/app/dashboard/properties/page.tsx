@@ -13,8 +13,15 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PropertyFormFields } from "@/components/property-form-fields";
+import { TalkToMiraDialog } from "@/components/talk-to-mira-dialog";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError, API_BASE_URL, getToken } from "@/lib/api";
 import type { PropertyCreate, PropertyOut } from "@/lib/types";
@@ -76,6 +83,8 @@ export default function PropertiesPage() {
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const [talkOpen, setTalkOpen] = useState(false);
+  const [phoneBannerDismissed, setPhoneBannerDismissed] = useState(false);
 
   const [editing, setEditing] = useState<PropertyOut | null>(null);
   const [editForm, setEditForm] = useState<PropertyCreate>(emptyForm);
@@ -136,20 +145,6 @@ export default function PropertiesPage() {
     }
     const backendOrigin = API_BASE_URL.replace(/\/api\/v1\/?$/, "");
     const url = `${backendOrigin}/api/v1/voice/test?property_id=${id}&token=${encodeURIComponent(token)}`;
-    window.open(url, "_blank");
-  }
-
-  function handleTestPortfolio() {
-    const token = getToken();
-    if (!token) {
-      toast.error("Not logged in");
-      return;
-    }
-    // No property_id -- this runs the Lead Agent across the whole
-    // portfolio instead of one property, so it asks the caller which
-    // listing they mean instead of assuming one.
-    const backendOrigin = API_BASE_URL.replace(/\/api\/v1\/?$/, "");
-    const url = `${backendOrigin}/api/v1/voice/test?token=${encodeURIComponent(token)}`;
     window.open(url, "_blank");
   }
 
@@ -214,9 +209,10 @@ export default function PropertiesPage() {
           <Button variant="outline" disabled={importing} onClick={() => importInputRef.current?.click()}>
             {importing ? "Importing…" : "Import from Airbnb"}
           </Button>
-          <Button variant="secondary" onClick={handleTestPortfolio}>
+          <Button variant="secondary" onClick={() => setTalkOpen(true)}>
             Test full portfolio in browser
           </Button>
+          <TalkToMiraDialog open={talkOpen} onOpenChange={setTalkOpen} />
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger render={<Button>Add property</Button>} />
             <DialogContent className="max-h-[85vh] overflow-y-auto">
@@ -236,6 +232,32 @@ export default function PropertiesPage() {
         </div>
       </div>
 
+      {!loading && properties && properties.some((p) => !p.exophone) && !phoneBannerDismissed && (
+        <div className="flex items-center justify-between gap-3 rounded-[var(--radius)] border bg-muted px-4 py-3 text-sm">
+          <p>
+            No phone numbers connected yet for these properties —{" "}
+            <button
+              type="button"
+              className="font-medium underline underline-offset-2"
+              onClick={() => {
+                const firstMissing = properties.find((p) => !p.exophone);
+                if (firstMissing) openEdit(firstMissing);
+              }}
+            >
+              Connect ExoPhone
+            </button>
+          </p>
+          <button
+            type="button"
+            aria-label="Dismiss"
+            onClick={() => setPhoneBannerDismissed(true)}
+            className="shrink-0 text-muted-foreground hover:text-foreground"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {loading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {[0, 1, 2].map((i) => (
@@ -251,37 +273,46 @@ export default function PropertiesPage() {
               <CardHeader>
                 <CardTitle className="flex items-center justify-between text-base">
                   {property.name}
-                  {property.exophone ? (
+                  {property.exophone && (
                     <Badge variant="outline" className="badge-status-live">
                       Voice agent live
                     </Badge>
-                  ) : (
-                    <Badge variant="outline">No ExoPhone assigned</Badge>
                   )}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
                 <p className="text-muted-foreground">{property.city ?? "No city set"}</p>
                 <p>₹{property.base_price.toLocaleString("en-IN")} / night · {property.max_guests} guests</p>
-                <p className="text-muted-foreground">{property.exophone ?? "No ExoPhone assigned"}</p>
-                <div className="flex flex-wrap gap-2 pt-2">
-                  <Button variant="outline" size="sm" onClick={() => openEdit(property)}>
-                    Edit
-                  </Button>
-                  <Button variant="secondary" size="sm" onClick={() => handleTestInBrowser(property.id)}>
-                    Test in browser
-                  </Button>
+                {property.exophone && <p className="text-muted-foreground">{property.exophone}</p>}
+                <div className="flex items-center gap-2 pt-2">
                   <Button
-                    variant="outline"
                     size="sm"
-                    disabled={!property.ical_url || syncingId === property.id}
-                    onClick={() => handleSync(property.id)}
+                    className="flex-1"
+                    onClick={() => handleTestInBrowser(property.id)}
                   >
-                    {syncingId === property.id ? "Syncing…" : "Sync iCal"}
+                    Test
                   </Button>
-                  <Button variant="destructive" size="sm" onClick={() => handleDelete(property.id)}>
-                    Remove
-                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      render={
+                        <Button variant="outline" size="icon-sm" aria-label="More actions">
+                          ⋯
+                        </Button>
+                      }
+                    />
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => openEdit(property)}>Edit</DropdownMenuItem>
+                      <DropdownMenuItem
+                        disabled={!property.ical_url || syncingId === property.id}
+                        onClick={() => handleSync(property.id)}
+                      >
+                        {syncingId === property.id ? "Syncing…" : "Sync iCal"}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem variant="destructive" onClick={() => handleDelete(property.id)}>
+                        Remove
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </CardContent>
             </Card>

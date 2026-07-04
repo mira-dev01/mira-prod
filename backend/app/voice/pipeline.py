@@ -12,12 +12,12 @@ app/services/tool_handlers.py) -> Sarvam TTS.
 """
 
 import logging
-import os
 import uuid
+from datetime import datetime, timezone
 
 import aiohttp
 from fastapi import WebSocket
-from pipecat.audio.mixers.soundfile_mixer import SoundfileMixer
+from openai import RateLimitError
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.frames.frames import TTSSpeakFrame
@@ -53,7 +53,6 @@ from app.prompts.system_prompt import (
     lead_first_message_for,
 )
 from app.services import call_service, lead_service
-from app.voice.speaking_gate import BotSpeakingGate
 from app.voice.tools import build_voice_tools
 
 logger = logging.getLogger(__name__)
@@ -68,39 +67,6 @@ logger = logging.getLogger(__name__)
 # latency to genuine interruptions (start_secs/stop_secs, the actual timing
 # knobs, are left at their defaults).
 _VAD_PARAMS = VADParams(confidence=0.85, min_volume=0.7)
-
-# Hold-music sample rates, one per transport family. Exotel's telephony
-# protocol is fixed at 8kHz (see ExotelFrameSerializer's exotel_sample_rate
-# default); the browser test transports aren't constrained by a phone
-# network, and 24kHz matches Sarvam TTS's bulbul:v3 output rate seen in call
-# logs, avoiding an extra resample step. SoundfileMixer requires the sound
-# file's sample rate to exactly equal the transport's output rate -- pinning
-# audio_out_sample_rate explicitly below (rather than leaving it to whatever
-# the transport infers at runtime) keeps this matched and deterministic;
-# a mismatch fails silently (SoundfileMixer logs a warning and never plays
-# the sound rather than raising), so getting this wrong would be invisible.
-_EXOTEL_SAMPLE_RATE = 8000
-_BROWSER_SAMPLE_RATE = 24000
-_ASSETS_DIR = os.path.join(os.path.dirname(__file__), "assets")
-
-
-def _build_hold_music_mixer(sample_rate: int) -> SoundfileMixer:
-    """One mixer instance per call -- SoundfileMixer holds per-instance
-    playback position state (_sound_pos), so sharing one across concurrent
-    calls would let one caller's hold music desync/interfere with another's.
-    mixing=False: inert by default, so the greeting and every normal reply
-    pass through completely untouched. A DB-touching tool (see
-    app/voice/tools.py) turns it on/off itself via MixerEnableFrame, only for
-    the span between its filler phrase finishing and its result being ready.
-    """
-    tone_path = os.path.join(_ASSETS_DIR, f"hold_tone_{sample_rate}.wav")
-    return SoundfileMixer(
-        sound_files={"hold": tone_path},
-        default_sound="hold",
-        volume=0.25,  # quiet background bed, not a foreground ringtone
-        mixing=False,
-        loop=True,
-    )
 
 
 def _pick_groq_model() -> str:
@@ -119,6 +85,81 @@ def _pick_groq_model() -> str:
     # one rather than raising. A live 429 with retry/backoff is a better
     # outcome for a caller mid-call than the pipeline failing to build at all.
     return settings.groq_models[0]
+
+
+class _FallbackGroqLLMService(GroqLLMService):
+    """GroqLLMService that retries a live 429 against the next model in
+    settings.groq_models immediately, in the same call, instead of failing
+    the turn and waiting for the next 60s app.main._check_llm_health pass to
+    notice and reroute (see _pick_groq_model). The 60s health check still
+    runs and still front-loads calls onto a known-good model -- this only
+    covers the gap where a model goes bad *between* checks, which is
+    exactly what produced the 429 in production logs on 2026-07-04.
+    """
+
+    def create_client(self, api_key=None, base_url=None, **kwargs):
+        # BaseOpenAILLMService.create_client (the implementation
+        # GroqLLMService.create_client delegates to) builds AsyncOpenAI(...)
+        # from only its named params -- it accepts **kwargs but never
+        # forwards them, so passing max_retries here would silently be
+        # dropped. Building the client directly is the only way to actually
+        # set it.
+        #
+        # Why it matters: AsyncOpenAI retries a 429 internally by default
+        # (max_retries=2, with backoff that can honor Groq's Retry-After
+        # header -- sometimes several seconds) before ever raising
+        # RateLimitError up to get_chat_completions below. Left at the
+        # default, the SDK would blindly re-hit the SAME already-rate-limited
+        # model twice before this class gets a chance to move to the next
+        # model in the chain -- exactly the multi-second live-call delay this
+        # fallback exists to avoid. max_retries=0 makes a 429 raise
+        # immediately so the only retry that happens is the fast, cross-model
+        # one below.
+        import httpx
+        from openai import AsyncOpenAI, DefaultAsyncHttpxClient
+
+        return AsyncOpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            max_retries=0,
+            http_client=DefaultAsyncHttpxClient(
+                limits=httpx.Limits(max_keepalive_connections=100, max_connections=1000, keepalive_expiry=None)
+            ),
+        )
+
+    async def get_chat_completions(self, context):
+        from app.main import llm_health
+
+        # Start from whichever model _build_llm already picked (the first
+        # one _pick_groq_model found healthy) rather than restarting from
+        # settings.groq_models[0] -- otherwise a call that correctly started
+        # on a fallback model (because the top-priority one was already
+        # marked down by the periodic health check) would get silently
+        # bounced back to that known-bad model here on every single turn.
+        starting_model = self._settings.model
+        ordered_models = [starting_model, *[m for m in settings.groq_models if m != starting_model]]
+
+        last_error: RateLimitError | None = None
+
+        for model in ordered_models:
+            self._settings.model = model
+            self._settings.extra = {"reasoning_effort": "low"} if "gpt-oss" in model else {}
+            try:
+                return await super().get_chat_completions(context)
+            except RateLimitError as e:
+                logger.warning("Groq model %s hit a live 429 mid-call, trying next in chain: %s", model, e)
+                llm_health[model] = {
+                    "ok": False,
+                    "latency_s": None,
+                    "checked_at": datetime.now(timezone.utc).isoformat(),
+                    "error": str(e),
+                }
+                last_error = e
+
+        # Every model in the chain 429'd within this single call -- raise the
+        # last error rather than looping forever or silently returning
+        # nothing, same failure mode as before this fallback existed.
+        raise last_error
 
 
 def _build_llm():
@@ -153,7 +194,7 @@ def _build_llm():
     # chain (e.g. llama-3.1-8b-instant) reject it outright with a 400, which
     # would break the exact call this fallback exists to save.
     extra = {"reasoning_effort": "low"} if "gpt-oss" in model else {}
-    return GroqLLMService(
+    return _FallbackGroqLLMService(
         api_key=settings.groq_api_key,
         settings=GroqLLMService.Settings(model=model, extra=extra),
     )
@@ -228,13 +269,7 @@ async def _run_pipeline(
         )
         llm = _build_llm()
 
-        # Watches real bot-speaking state so DB-touching tools (see
-        # app/voice/tools.py) can say a short filler phrase ("Sure, I'll
-        # quickly check that") and wait for it to actually finish playing
-        # before starting hold music -- see BotSpeakingGate's docstring.
-        speaking_gate = BotSpeakingGate()
-
-        tools = build_voice_tools(call_session_id, property_id, host_user_id, speaking_gate)
+        tools = build_voice_tools(call_session_id, property_id, host_user_id)
         # first_message is pre-seeded as an assistant turn so the LLM knows
         # it was already said (the "don't repeat greeting" rule relies on
         # this being in context) -- it is spoken directly via TTSSpeakFrame
@@ -284,7 +319,6 @@ async def _run_pipeline(
                 llm,
                 tts,
                 transport.output(),
-                speaking_gate,
                 assistant_aggregator,
             ]
         )
@@ -411,11 +445,9 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
         params=FastAPIWebsocketParams(
             audio_in_enabled=True,
             audio_out_enabled=True,
-            audio_out_sample_rate=_EXOTEL_SAMPLE_RATE,
             add_wav_header=False,
             serializer=serializer,
             vad_analyzer=SileroVADAnalyzer(params=_VAD_PARAMS),
-            audio_out_mixer=_build_hold_music_mixer(_EXOTEL_SAMPLE_RATE),
         ),
     )
 
@@ -462,9 +494,7 @@ async def run_browser_voice_pipeline(connection: SmallWebRTCConnection, property
         params=TransportParams(
             audio_in_enabled=True,
             audio_out_enabled=True,
-            audio_out_sample_rate=_BROWSER_SAMPLE_RATE,
             vad_analyzer=SileroVADAnalyzer(params=_VAD_PARAMS),
-            audio_out_mixer=_build_hold_music_mixer(_BROWSER_SAMPLE_RATE),
         ),
     )
 
@@ -498,9 +528,7 @@ async def run_browser_lead_pipeline(connection: SmallWebRTCConnection, user: Use
         params=TransportParams(
             audio_in_enabled=True,
             audio_out_enabled=True,
-            audio_out_sample_rate=_BROWSER_SAMPLE_RATE,
             vad_analyzer=SileroVADAnalyzer(params=_VAD_PARAMS),
-            audio_out_mixer=_build_hold_music_mixer(_BROWSER_SAMPLE_RATE),
         ),
     )
 
