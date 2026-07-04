@@ -10,11 +10,15 @@ knows, so they're captured via the `build_voice_tools` factory closure rather
 than being tool parameters.
 """
 
+import asyncio
+import logging
 import uuid
-from typing import Literal
+from contextlib import asynccontextmanager, nullcontext
+from typing import AsyncIterator, Literal
 
 from pydantic import ValidationError
 
+from pipecat.frames.frames import MixerEnableFrame, TTSSpeakFrame
 from pipecat.services.llm_service import FunctionCallParams
 
 from app.database import AsyncSessionLocal
@@ -31,6 +35,9 @@ from app.schemas.tool import (
     UpdateLeadArgs,
 )
 from app.services import tool_handlers
+from app.voice.speaking_gate import BotSpeakingGate
+
+logger = logging.getLogger(__name__)
 
 Urgency = Literal["low", "medium", "high", "emergency"]
 IssueType = Literal["plumbing", "electrical", "ac", "wifi", "lock", "general"]
@@ -39,12 +46,69 @@ GuestLoyalty = Literal["new", "returning", "frequent"]
 INVALID_ARGS_MESSAGE = "I'm missing some details to do that -- could you repeat the dates/details?"
 
 
+_FILLER_PLAYBACK_TIMEOUT = 5.0
+
+
+@asynccontextmanager
+async def _hold_music_span(params: FunctionCallParams, speaking_gate: BotSpeakingGate, phrase: str) -> AsyncIterator[None]:
+    """Say a short filler phrase, wait for it to actually finish playing,
+    play hold music for the duration of the `with` block, then stop the
+    music before returning -- covers DB round-trip latency
+    (check_calendar/get_pricing/update_lead) so the guest isn't sitting in
+    silence while a tool runs.
+
+    Ordering matters for the "no overlap" requirement: queue_frame() returns
+    as soon as a frame is *queued*, not once its audio has played, so
+    starting hold music right after queuing the TTSSpeakFrame would overlap
+    it with the filler phrase itself. Waiting on speaking_gate first
+    (BotSpeakingGate, in app/voice/speaking_gate.py) blocks until the
+    phrase's audio has actually started and then finished.
+
+    Holds speaking_gate.hold_music_lock for the whole span: pipecat runs
+    same-turn function calls concurrently by default, and the system prompt
+    tells the model to call update_lead silently on every new field, which
+    can co-occur with check_calendar/get_pricing in the same turn. The lock
+    serializes DB-touching tool calls' filler-phrase-through-music-off spans
+    so two concurrent tools can never talk over each other's filler phrase
+    or race on the shared mixer's on/off state.
+
+    If TTS synthesis of the filler phrase fails/never starts (e.g. a Sarvam
+    hiccup -- the same failure mode the greeting's own try/except in
+    app/voice/pipeline.py already guards against), waiting on speaking_gate
+    would otherwise hang forever and freeze the whole call. A bounded
+    timeout means a filler-phrase failure just skips hold music for that one
+    tool call instead of breaking the call.
+    """
+    worker = params.pipeline_worker
+    async with speaking_gate.hold_music_lock:
+        music_started = False
+        try:
+            await worker.queue_frame(TTSSpeakFrame(phrase))
+            await asyncio.wait_for(speaking_gate.wait_for_utterance_to_finish(), timeout=_FILLER_PLAYBACK_TIMEOUT)
+            await worker.queue_frame(MixerEnableFrame(True))
+            music_started = True
+        except Exception:
+            logger.warning("Filler phrase / hold music setup failed; tool call continues without it.")
+        try:
+            yield
+        finally:
+            if music_started:
+                await worker.queue_frame(MixerEnableFrame(False))
+
+
 def build_voice_tools(
     call_session_id: uuid.UUID | None,
     property_id: uuid.UUID | None,
     host_user_id: uuid.UUID,
+    speaking_gate: BotSpeakingGate,
 ) -> list:
-    """Build the tool functions for one call, bound to its call_session_id/property_id/host_user_id."""
+    """Build the tool functions for one call, bound to its call_session_id/property_id/host_user_id.
+
+    speaking_gate: shared with app/voice/pipeline.py's Pipeline for this same
+    call -- lets a DB-touching tool below know when its own filler phrase has
+    actually finished playing before it starts hold music (see
+    _hold_music_span).
+    """
 
     async def check_calendar(
         params: FunctionCallParams,
@@ -61,14 +125,15 @@ def build_voice_tools(
             check_out: Check-out date, ISO format (YYYY-MM-DD).
             num_guests: Number of guests, if known.
         """
-        async with AsyncSessionLocal() as db:
-            try:
-                args = CheckCalendarArgs(
-                    property_id=property_id, check_in=check_in, check_out=check_out, num_guests=num_guests
-                )
-                result = await tool_handlers.handle_check_calendar(db, args)
-            except ValidationError:
-                result = INVALID_ARGS_MESSAGE
+        async with _hold_music_span(params, speaking_gate, "Sure, I'll quickly check that for you."):
+            async with AsyncSessionLocal() as db:
+                try:
+                    args = CheckCalendarArgs(
+                        property_id=property_id, check_in=check_in, check_out=check_out, num_guests=num_guests
+                    )
+                    result = await tool_handlers.handle_check_calendar(db, args)
+                except ValidationError:
+                    result = INVALID_ARGS_MESSAGE
         await params.result_callback(result)
 
     async def get_pricing(
@@ -88,18 +153,19 @@ def build_voice_tools(
             num_guests: Number of guests.
             apply_discounts: Whether to apply any matching pricing rules.
         """
-        async with AsyncSessionLocal() as db:
-            try:
-                args = GetPricingArgs(
-                    property_id=property_id,
-                    check_in=check_in,
-                    check_out=check_out,
-                    num_guests=num_guests,
-                    apply_discounts=apply_discounts,
-                )
-                result = await tool_handlers.handle_get_pricing(db, args)
-            except ValidationError:
-                result = INVALID_ARGS_MESSAGE
+        async with _hold_music_span(params, speaking_gate, "Sure, I'll quickly check that for you."):
+            async with AsyncSessionLocal() as db:
+                try:
+                    args = GetPricingArgs(
+                        property_id=property_id,
+                        check_in=check_in,
+                        check_out=check_out,
+                        num_guests=num_guests,
+                        apply_discounts=apply_discounts,
+                    )
+                    result = await tool_handlers.handle_get_pricing(db, args)
+                except ValidationError:
+                    result = INVALID_ARGS_MESSAGE
         await params.result_callback(result)
 
     async def dispatch_technician(
@@ -281,30 +347,43 @@ def build_voice_tools(
             escalated: Whether this call was escalated to the host.
             transferred_to_host: Whether the call was transferred to the host.
         """
-        async with AsyncSessionLocal() as db:
-            try:
-                args = UpdateLeadArgs(
-                    guest_name=guest_name,
-                    phone=phone,
-                    email=email,
-                    check_in=check_in,
-                    check_out=check_out,
-                    num_guests=num_guests,
-                    purpose_of_stay=purpose_of_stay,
-                    budget=budget,
-                    preferred_location=preferred_location,
-                    lead_temperature=lead_temperature,
-                    properties_discussed=properties_discussed,
-                    questions_asked=questions_asked,
-                    support_requests=support_requests,
-                    conversation_summary=conversation_summary,
-                    next_follow_up=next_follow_up,
-                    escalated=escalated,
-                    transferred_to_host=transferred_to_host,
-                )
-                result = await tool_handlers.handle_update_lead(db, args, host_user_id, call_session_id)
-            except ValidationError:
-                result = INVALID_ARGS_MESSAGE
+        # update_lead fires silently on every field learned during the call
+        # (per this tool's own instructions above) -- a filler phrase on
+        # every single call would talk over the guest constantly. Only speak
+        # up for the two fields the guest actually asked to have recorded
+        # under them: name and phone number ("update our portal" reads as
+        # "save my booking details", not "note my budget").
+        announce_update = guest_name is not None or phone is not None
+        hold_music = (
+            _hold_music_span(params, speaking_gate, "One second, I will quickly update our portal for the same.")
+            if announce_update
+            else nullcontext()
+        )
+        async with hold_music:
+            async with AsyncSessionLocal() as db:
+                try:
+                    args = UpdateLeadArgs(
+                        guest_name=guest_name,
+                        phone=phone,
+                        email=email,
+                        check_in=check_in,
+                        check_out=check_out,
+                        num_guests=num_guests,
+                        purpose_of_stay=purpose_of_stay,
+                        budget=budget,
+                        preferred_location=preferred_location,
+                        lead_temperature=lead_temperature,
+                        properties_discussed=properties_discussed,
+                        questions_asked=questions_asked,
+                        support_requests=support_requests,
+                        conversation_summary=conversation_summary,
+                        next_follow_up=next_follow_up,
+                        escalated=escalated,
+                        transferred_to_host=transferred_to_host,
+                    )
+                    result = await tool_handlers.handle_update_lead(db, args, host_user_id, call_session_id)
+                except ValidationError:
+                    result = INVALID_ARGS_MESSAGE
         await params.result_callback(result)
 
     async def search_faq(

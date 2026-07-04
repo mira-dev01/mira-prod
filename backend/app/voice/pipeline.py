@@ -12,10 +12,12 @@ app/services/tool_handlers.py) -> Sarvam TTS.
 """
 
 import logging
+import os
 import uuid
 
 import aiohttp
 from fastapi import WebSocket
+from pipecat.audio.mixers.soundfile_mixer import SoundfileMixer
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.frames.frames import TTSSpeakFrame
@@ -51,6 +53,7 @@ from app.prompts.system_prompt import (
     lead_first_message_for,
 )
 from app.services import call_service, lead_service
+from app.voice.speaking_gate import BotSpeakingGate
 from app.voice.tools import build_voice_tools
 
 logger = logging.getLogger(__name__)
@@ -65,6 +68,39 @@ logger = logging.getLogger(__name__)
 # latency to genuine interruptions (start_secs/stop_secs, the actual timing
 # knobs, are left at their defaults).
 _VAD_PARAMS = VADParams(confidence=0.85, min_volume=0.7)
+
+# Hold-music sample rates, one per transport family. Exotel's telephony
+# protocol is fixed at 8kHz (see ExotelFrameSerializer's exotel_sample_rate
+# default); the browser test transports aren't constrained by a phone
+# network, and 24kHz matches Sarvam TTS's bulbul:v3 output rate seen in call
+# logs, avoiding an extra resample step. SoundfileMixer requires the sound
+# file's sample rate to exactly equal the transport's output rate -- pinning
+# audio_out_sample_rate explicitly below (rather than leaving it to whatever
+# the transport infers at runtime) keeps this matched and deterministic;
+# a mismatch fails silently (SoundfileMixer logs a warning and never plays
+# the sound rather than raising), so getting this wrong would be invisible.
+_EXOTEL_SAMPLE_RATE = 8000
+_BROWSER_SAMPLE_RATE = 24000
+_ASSETS_DIR = os.path.join(os.path.dirname(__file__), "assets")
+
+
+def _build_hold_music_mixer(sample_rate: int) -> SoundfileMixer:
+    """One mixer instance per call -- SoundfileMixer holds per-instance
+    playback position state (_sound_pos), so sharing one across concurrent
+    calls would let one caller's hold music desync/interfere with another's.
+    mixing=False: inert by default, so the greeting and every normal reply
+    pass through completely untouched. A DB-touching tool (see
+    app/voice/tools.py) turns it on/off itself via MixerEnableFrame, only for
+    the span between its filler phrase finishing and its result being ready.
+    """
+    tone_path = os.path.join(_ASSETS_DIR, f"hold_tone_{sample_rate}.wav")
+    return SoundfileMixer(
+        sound_files={"hold": tone_path},
+        default_sound="hold",
+        volume=0.25,  # quiet background bed, not a foreground ringtone
+        mixing=False,
+        loop=True,
+    )
 
 
 def _pick_groq_model() -> str:
@@ -192,7 +228,13 @@ async def _run_pipeline(
         )
         llm = _build_llm()
 
-        tools = build_voice_tools(call_session_id, property_id, host_user_id)
+        # Watches real bot-speaking state so DB-touching tools (see
+        # app/voice/tools.py) can say a short filler phrase ("Sure, I'll
+        # quickly check that") and wait for it to actually finish playing
+        # before starting hold music -- see BotSpeakingGate's docstring.
+        speaking_gate = BotSpeakingGate()
+
+        tools = build_voice_tools(call_session_id, property_id, host_user_id, speaking_gate)
         # first_message is pre-seeded as an assistant turn so the LLM knows
         # it was already said (the "don't repeat greeting" rule relies on
         # this being in context) -- it is spoken directly via TTSSpeakFrame
@@ -242,6 +284,7 @@ async def _run_pipeline(
                 llm,
                 tts,
                 transport.output(),
+                speaking_gate,
                 assistant_aggregator,
             ]
         )
@@ -368,9 +411,11 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
         params=FastAPIWebsocketParams(
             audio_in_enabled=True,
             audio_out_enabled=True,
+            audio_out_sample_rate=_EXOTEL_SAMPLE_RATE,
             add_wav_header=False,
             serializer=serializer,
             vad_analyzer=SileroVADAnalyzer(params=_VAD_PARAMS),
+            audio_out_mixer=_build_hold_music_mixer(_EXOTEL_SAMPLE_RATE),
         ),
     )
 
@@ -417,7 +462,9 @@ async def run_browser_voice_pipeline(connection: SmallWebRTCConnection, property
         params=TransportParams(
             audio_in_enabled=True,
             audio_out_enabled=True,
+            audio_out_sample_rate=_BROWSER_SAMPLE_RATE,
             vad_analyzer=SileroVADAnalyzer(params=_VAD_PARAMS),
+            audio_out_mixer=_build_hold_music_mixer(_BROWSER_SAMPLE_RATE),
         ),
     )
 
@@ -451,7 +498,9 @@ async def run_browser_lead_pipeline(connection: SmallWebRTCConnection, user: Use
         params=TransportParams(
             audio_in_enabled=True,
             audio_out_enabled=True,
+            audio_out_sample_rate=_BROWSER_SAMPLE_RATE,
             vad_analyzer=SileroVADAnalyzer(params=_VAD_PARAMS),
+            audio_out_mixer=_build_hold_music_mixer(_BROWSER_SAMPLE_RATE),
         ),
     )
 
