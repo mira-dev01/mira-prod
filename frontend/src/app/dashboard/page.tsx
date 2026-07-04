@@ -46,8 +46,8 @@ export default function OverviewPage() {
           loading={summaryLoading}
         />
         <SummaryCard
-          label="Revenue attributed"
-          value={summary?.revenue_attributed != null ? `₹${summary.revenue_attributed.toLocaleString("en-IN")}` : undefined}
+          label="Pipeline value"
+          value={summary?.pipeline_value != null ? `₹${summary.pipeline_value.toLocaleString("en-IN")}` : undefined}
           loading={summaryLoading}
         />
       </div>

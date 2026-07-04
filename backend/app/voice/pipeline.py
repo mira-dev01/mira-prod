@@ -13,9 +13,11 @@ app/services/tool_handlers.py) -> Sarvam TTS.
 
 import logging
 import uuid
+from datetime import datetime, timezone
 
 import aiohttp
 from fastapi import WebSocket
+from openai import RateLimitError
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.frames.frames import TTSSpeakFrame
@@ -85,6 +87,81 @@ def _pick_groq_model() -> str:
     return settings.groq_models[0]
 
 
+class _FallbackGroqLLMService(GroqLLMService):
+    """GroqLLMService that retries a live 429 against the next model in
+    settings.groq_models immediately, in the same call, instead of failing
+    the turn and waiting for the next 60s app.main._check_llm_health pass to
+    notice and reroute (see _pick_groq_model). The 60s health check still
+    runs and still front-loads calls onto a known-good model -- this only
+    covers the gap where a model goes bad *between* checks, which is
+    exactly what produced the 429 in production logs on 2026-07-04.
+    """
+
+    def create_client(self, api_key=None, base_url=None, **kwargs):
+        # BaseOpenAILLMService.create_client (the implementation
+        # GroqLLMService.create_client delegates to) builds AsyncOpenAI(...)
+        # from only its named params -- it accepts **kwargs but never
+        # forwards them, so passing max_retries here would silently be
+        # dropped. Building the client directly is the only way to actually
+        # set it.
+        #
+        # Why it matters: AsyncOpenAI retries a 429 internally by default
+        # (max_retries=2, with backoff that can honor Groq's Retry-After
+        # header -- sometimes several seconds) before ever raising
+        # RateLimitError up to get_chat_completions below. Left at the
+        # default, the SDK would blindly re-hit the SAME already-rate-limited
+        # model twice before this class gets a chance to move to the next
+        # model in the chain -- exactly the multi-second live-call delay this
+        # fallback exists to avoid. max_retries=0 makes a 429 raise
+        # immediately so the only retry that happens is the fast, cross-model
+        # one below.
+        import httpx
+        from openai import AsyncOpenAI, DefaultAsyncHttpxClient
+
+        return AsyncOpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            max_retries=0,
+            http_client=DefaultAsyncHttpxClient(
+                limits=httpx.Limits(max_keepalive_connections=100, max_connections=1000, keepalive_expiry=None)
+            ),
+        )
+
+    async def get_chat_completions(self, context):
+        from app.main import llm_health
+
+        # Start from whichever model _build_llm already picked (the first
+        # one _pick_groq_model found healthy) rather than restarting from
+        # settings.groq_models[0] -- otherwise a call that correctly started
+        # on a fallback model (because the top-priority one was already
+        # marked down by the periodic health check) would get silently
+        # bounced back to that known-bad model here on every single turn.
+        starting_model = self._settings.model
+        ordered_models = [starting_model, *[m for m in settings.groq_models if m != starting_model]]
+
+        last_error: RateLimitError | None = None
+
+        for model in ordered_models:
+            self._settings.model = model
+            self._settings.extra = {"reasoning_effort": "low"} if "gpt-oss" in model else {}
+            try:
+                return await super().get_chat_completions(context)
+            except RateLimitError as e:
+                logger.warning("Groq model %s hit a live 429 mid-call, trying next in chain: %s", model, e)
+                llm_health[model] = {
+                    "ok": False,
+                    "latency_s": None,
+                    "checked_at": datetime.now(timezone.utc).isoformat(),
+                    "error": str(e),
+                }
+                last_error = e
+
+        # Every model in the chain 429'd within this single call -- raise the
+        # last error rather than looping forever or silently returning
+        # nothing, same failure mode as before this fallback existed.
+        raise last_error
+
+
 def _build_llm():
     if settings.llm_provider == "anthropic":
         return AnthropicLLMService(
@@ -117,7 +194,7 @@ def _build_llm():
     # chain (e.g. llama-3.1-8b-instant) reject it outright with a 400, which
     # would break the exact call this fallback exists to save.
     extra = {"reasoning_effort": "low"} if "gpt-oss" in model else {}
-    return GroqLLMService(
+    return _FallbackGroqLLMService(
         api_key=settings.groq_api_key,
         settings=GroqLLMService.Settings(model=model, extra=extra),
     )
