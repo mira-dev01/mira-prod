@@ -11,6 +11,16 @@ class Settings(BaseSettings):
     environment: str = "development"
     backend_base_url: str = "http://localhost:8000"
     frontend_base_url: str = "http://localhost:3000"
+    # Extra origins allowed to hit the API via CORS, comma-separated (e.g.
+    # "http://localhost:3000,https://staging.example.com"). Useful for hitting
+    # a deployed backend from a local frontend during development. The
+    # frontend_base_url above is always allowed and doesn't need to be repeated.
+    cors_extra_origins: str = ""
+
+    @property
+    def cors_allowed_origins(self) -> list[str]:
+        extra = [origin.strip() for origin in self.cors_extra_origins.split(",") if origin.strip()]
+        return list(dict.fromkeys([self.frontend_base_url, *extra]))
 
     database_url: str = "postgresql+asyncpg://mira:mira@localhost:5432/mira_dev"
     redis_url: str = "redis://localhost:6379/0"
@@ -36,6 +46,19 @@ class Settings(BaseSettings):
     # llama-3.3-70b-versatile was deprecated by Groq on 2026-06-17;
     # openai/gpt-oss-120b is Groq's recommended replacement.
     groq_model: str = "openai/gpt-oss-120b"
+    # Fallback chain tried in order when llm_provider="groq". groq_model
+    # (above) stays as the configured default/first choice -- this list is
+    # what _build_llm() in app/voice/pipeline.py actually walks, skipping any
+    # model app/main.py's periodic health check has marked down (e.g. from a
+    # 429 rate limit on gpt-oss-120b's free-tier TPM cap). All three IDs
+    # confirmed live via client.models.list() against this account -- Groq
+    # renames/deprecates model ids periodically (see the groq_model comment
+    # above re: llama-3.3-70b-versatile), so re-check before editing this
+    # list. llama-3.1-8b-instant and gpt-oss-20b are on separate rate-limit
+    # pools from gpt-oss-120b, so a burst that exhausts one doesn't take down
+    # the others; both also support function calling, required for our tools
+    # (app/voice/tools.py) -- don't add a model here without confirming that.
+    groq_models: list[str] = ["openai/gpt-oss-120b", "llama-3.1-8b-instant", "openai/gpt-oss-20b"]
     anthropic_api_key: str | None = None
     anthropic_model: str = "claude-sonnet-4-6"
     # OpenRouter (https://openrouter.ai) -- one account/balance, swap models
@@ -61,7 +84,18 @@ class Settings(BaseSettings):
     turn_username: str | None = None
     turn_credential: str | None = None
 
-    @field_validator("turn_url")
+    # Mobile carrier networks frequently block or throttle plain UDP (what
+    # turn_url above uses) far more aggressively than WiFi/broadband --
+    # confirmed by browser test calls failing on mobile data while working
+    # fine on WiFi. A TURNS-over-TCP relay on port 443 looks identical to
+    # normal HTTPS traffic to any carrier NAT/firewall, so it's offered as a
+    # second ICE server alongside turn_url rather than replacing it -- the
+    # browser tries all candidates and uses whichever the network allows.
+    # Same username/credential as turn_url (Metered and most providers issue
+    # one credential pair valid across all of their relay endpoints).
+    turn_url_tls: str | None = None
+
+    @field_validator("turn_url", "turn_url_tls")
     @classmethod
     def _validate_turn_url(cls, value: str | None) -> str | None:
         if value is not None and not (value.startswith("turn:") or value.startswith("turns:")):

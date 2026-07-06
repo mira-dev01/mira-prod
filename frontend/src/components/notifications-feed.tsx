@@ -4,22 +4,26 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ActionableCard, type ActionableCardPriority } from "@/components/actionable-card";
 import { API_BASE_URL, getToken } from "@/lib/api";
-import { cn } from "@/lib/utils";
 import type { NotificationOut } from "@/lib/types";
 
-const urgencyVariant: Record<string, "destructive" | "outline"> = {
-  emergency: "destructive",
-  high: "destructive",
-  medium: "outline",
-  low: "outline",
+const priorityMap: Record<string, ActionableCardPriority> = {
+  emergency: { label: "High", tone: "high" },
+  high: { label: "High", tone: "high" },
+  medium: { label: "Medium", tone: "medium" },
+  low: { label: "Low", tone: "low" },
 };
 
-const urgencyClassName: Record<string, string> = {
-  medium: "badge-status-pending",
-};
+function capitalize(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
 
-export function NotificationsFeed({ initial }: { initial: NotificationOut[] }) {
+function truncate(value: string, max: number): string {
+  return value.length > max ? `${value.slice(0, max - 1)}…` : value;
+}
+
+export function NotificationsFeed({ initial, activeCount }: { initial: NotificationOut[]; activeCount?: number }) {
   const [notifications, setNotifications] = useState<NotificationOut[]>(initial);
   const seenIds = useRef(new Set(initial.map((n) => n.id)));
 
@@ -66,27 +70,26 @@ export function NotificationsFeed({ initial }: { initial: NotificationOut[] }) {
     return () => controller.abort();
   }, []);
 
+  const count = activeCount ?? notifications.filter((n) => n.status === "new").length;
+
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between gap-2">
         <CardTitle>Live requests</CardTitle>
+        <Badge variant="outline">{count} active</Badge>
       </CardHeader>
       <CardContent className="space-y-3">
         {notifications.length === 0 && (
           <p className="text-sm text-muted-foreground">No notifications yet — they will appear here in real time.</p>
         )}
         {notifications.map((n) => (
-          <div key={n.id} className="flex items-start justify-between gap-3 border-b pb-3 last:border-0 last:pb-0">
-            <div>
-              <p className="text-sm">{n.message}</p>
-              <p className="text-xs text-muted-foreground">
-                {n.channel} · {new Date(n.created_at).toLocaleString()}
-              </p>
-            </div>
-            <Badge variant={urgencyVariant[n.urgency] ?? "outline"} className={cn(urgencyClassName[n.urgency])}>
-              {n.urgency}
-            </Badge>
-          </div>
+          <ActionableCard
+            key={n.id}
+            title={`${capitalize(n.channel)} — ${truncate(n.message, 40)}`}
+            summary={n.message}
+            metadata={`${n.channel} · ${new Date(n.created_at).toLocaleString()}`}
+            priority={priorityMap[n.urgency] ?? { label: capitalize(n.urgency), tone: "low" }}
+          />
         ))}
       </CardContent>
     </Card>

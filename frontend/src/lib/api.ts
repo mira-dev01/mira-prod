@@ -1,5 +1,7 @@
 import type {
   AnalyticsSummary,
+  AnalyticsTimeseries,
+  AnalyticsTimeseriesMetric,
   BookingCreate,
   BookingOut,
   CallSessionOut,
@@ -71,6 +73,15 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return (await res.json()) as T;
 }
 
+function buildQuery(params: Record<string, string | number | boolean | undefined>): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined) search.set(key, String(value));
+  }
+  const query = search.toString();
+  return query ? `?${query}` : "";
+}
+
 async function uploadFiles<T>(path: string, files: File[]): Promise<T> {
   const token = getToken();
   const headers = new Headers();
@@ -125,11 +136,23 @@ export const api = {
     importListings: (files: File[]) => uploadFiles<PropertyImportResult[]>("/properties/import", files),
   },
   calls: {
-    list: () => request<CallSessionOut[]>("/calls"),
+    list: (params?: { status?: string; urgency?: string; limit?: number; startDate?: string; endDate?: string }) =>
+      request<CallSessionOut[]>(
+        `/calls${buildQuery({
+          status: params?.status,
+          urgency: params?.urgency,
+          limit: params?.limit,
+          start_date: params?.startDate,
+          end_date: params?.endDate,
+        })}`
+      ),
     get: (id: string) => request<CallSessionOut>(`/calls/${id}`),
   },
   guests: {
-    list: () => request<GuestProfileOut[]>("/guests"),
+    list: (params?: { startDate?: string; endDate?: string }) =>
+      request<GuestProfileOut[]>(
+        `/guests${buildQuery({ start_date: params?.startDate, end_date: params?.endDate })}`
+      ),
     get: (id: string) => request<GuestProfileOut>(`/guests/${id}`),
     update: (id: string, data: GuestProfileUpdate) =>
       request<GuestProfileOut>(`/guests/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
@@ -146,7 +169,10 @@ export const api = {
     cancel: (id: string) => request<void>(`/bookings/${id}`, { method: "DELETE" }),
   },
   pricing: {
-    rules: () => request<PricingRuleOut[]>("/pricing/rules"),
+    rules: (params?: { startDate?: string; endDate?: string }) =>
+      request<PricingRuleOut[]>(
+        `/pricing/rules${buildQuery({ start_date: params?.startDate, end_date: params?.endDate })}`
+      ),
     createRule: (data: PricingRuleCreate) =>
       request<PricingRuleOut>("/pricing/rules", { method: "POST", body: JSON.stringify(data) }),
     removeRule: (id: string) => request<void>(`/pricing/rules/${id}`, { method: "DELETE" }),
@@ -164,11 +190,33 @@ export const api = {
     markRead: (id: string) => request<NotificationOut>(`/notifications/${id}/read`, { method: "POST" }),
   },
   analytics: {
-    summary: (days = 30, includeTestCalls = false) =>
-      request<AnalyticsSummary>(`/analytics/summary?days=${days}&include_test_calls=${includeTestCalls}`),
+    summary: (params?: { days?: number; startDate?: string; endDate?: string; includeTestCalls?: boolean }) =>
+      request<AnalyticsSummary>(
+        `/analytics/summary${buildQuery({
+          days: params?.startDate || params?.endDate ? undefined : (params?.days ?? 30),
+          start_date: params?.startDate,
+          end_date: params?.endDate,
+          include_test_calls: params?.includeTestCalls ?? false,
+        })}`
+      ),
+    timeseries: (params: {
+      metric: AnalyticsTimeseriesMetric;
+      startDate?: string;
+      endDate?: string;
+      includeTestCalls?: boolean;
+    }) =>
+      request<AnalyticsTimeseries>(
+        `/analytics/timeseries${buildQuery({
+          metric: params.metric,
+          start_date: params.startDate,
+          end_date: params.endDate,
+          include_test_calls: params.includeTestCalls ?? false,
+        })}`
+      ),
   },
   leads: {
-    list: () => request<LeadOut[]>("/leads"),
+    list: (params?: { startDate?: string; endDate?: string }) =>
+      request<LeadOut[]>(`/leads${buildQuery({ start_date: params?.startDate, end_date: params?.endDate })}`),
     get: (id: string) => request<LeadOut>(`/leads/${id}`),
     update: (id: string, data: LeadUpdate) =>
       request<LeadOut>(`/leads/${id}`, { method: "PATCH", body: JSON.stringify(data) }),

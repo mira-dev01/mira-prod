@@ -81,15 +81,25 @@ async def handle_get_pricing(db: AsyncSession, args: GetPricingArgs) -> str:
         db, property_, args.check_in, args.check_out, apply_discounts=args.apply_discounts
     )
 
-    parts = [
-        f"For {property_.name}, {breakdown.nights} night(s): base rate ₹{breakdown.base_total:,.0f}",
-        f"cleaning fee ₹{breakdown.cleaning_fee:,.0f}",
-        f"taxes ₹{breakdown.tax_amount:,.0f}",
-    ]
+    # Lead with the total as one natural spoken sentence -- this string is
+    # what the LLM tends to read back almost verbatim, so an itemized,
+    # comma-joined ledger (base rate X, cleaning fee Y, taxes Z, ...) comes
+    # out sounding like the agent is reciting a spreadsheet row instead of
+    # talking to the guest. Fee components are appended only as a secondary,
+    # clearly-labeled "if asked" breakdown the model can draw on without it
+    # being the primary thing it parrots.
+    summary = (
+        f"For {property_.name}, {breakdown.nights} night(s) comes to ₹{breakdown.total:,.0f} total "
+        f"(about ₹{breakdown.per_night_avg:,.0f} per night)"
+    )
     if breakdown.discount_amount:
-        parts.append(f"discount -₹{breakdown.discount_amount:,.0f} ({breakdown.discount_percent:.0f}%)")
-    parts.append(f"TOTAL ₹{breakdown.total:,.0f} (≈₹{breakdown.per_night_avg:,.0f}/night)")
-    return ", ".join(parts) + "."
+        summary += f", including a {breakdown.discount_percent:.0f}% discount of ₹{breakdown.discount_amount:,.0f}"
+    summary += "."
+    breakdown_detail = (
+        f" Breakdown if the guest asks: base rate ₹{breakdown.base_total:,.0f}, "
+        f"cleaning fee ₹{breakdown.cleaning_fee:,.0f}, taxes ₹{breakdown.tax_amount:,.0f}."
+    )
+    return summary + breakdown_detail
 
 
 async def handle_dispatch_technician(

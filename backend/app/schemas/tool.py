@@ -55,7 +55,7 @@ class NegotiateRateArgs(BaseModel):
     property_id: str
     check_in: date
     check_out: date
-    guest_offer: float
+    guest_offer: float | None = None
     num_guests: int | None = None
     guest_loyalty: GuestLoyalty = "new"
 

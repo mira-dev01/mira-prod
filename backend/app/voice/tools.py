@@ -77,7 +77,7 @@ def build_voice_tools(
         check_in: str,
         check_out: str,
         num_guests: int,
-        apply_discounts: bool = True,
+        apply_discounts: bool = False,
     ):
         """Get total price including base rate, cleaning fee, taxes.
 
@@ -86,7 +86,10 @@ def build_voice_tools(
             check_in: Check-in date, ISO format (YYYY-MM-DD).
             check_out: Check-out date, ISO format (YYYY-MM-DD).
             num_guests: Number of guests.
-            apply_discounts: Whether to apply any matching pricing rules.
+            apply_discounts: Only set true if the guest has already pushed back on price
+                (e.g. asked for a lower rate/discount) after hearing the full-price quote.
+                Always call this first with apply_discounts left false to get the standard
+                price -- never lead with the discounted number.
         """
         async with AsyncSessionLocal() as db:
             try:
@@ -184,7 +187,7 @@ def build_voice_tools(
         property_id: str,
         check_in: str,
         check_out: str,
-        guest_offer: float,
+        guest_offer: float | None = None,
         num_guests: int | None = None,
         guest_loyalty: GuestLoyalty = "new",
     ):
@@ -194,7 +197,9 @@ def build_voice_tools(
             property_id: The property's id, as given to you in your instructions.
             check_in: Check-in date, ISO format (YYYY-MM-DD).
             check_out: Check-out date, ISO format (YYYY-MM-DD).
-            guest_offer: The rate the guest is offering, in INR.
+            guest_offer: The rate the guest is offering, in INR. Leave unset if the guest
+                asked you to name a price instead of stating their own offer (e.g. "what
+                can you offer?") -- you'll get back the best price to propose directly.
             num_guests: Number of guests, if known.
             guest_loyalty: One of new, returning, frequent.
         """

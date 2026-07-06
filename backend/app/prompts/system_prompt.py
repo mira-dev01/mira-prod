@@ -83,11 +83,20 @@ def _resolve_template(template: str, **values: str | None) -> str:
 GOLDEN_RULES = """Golden rules:
 - Never hallucinate information, never guess, never invent pricing/availability/amenities/policies.
 - Never negotiate rates yourself outside the negotiate_rate tool, and never promise discounts.
+- Pricing order matters: always quote get_pricing with apply_discounts left false first and give the
+  guest that standard price. Only if the guest pushes back and asks for a lower price, a discount, or
+  says the price is too high, call get_pricing again with apply_discounts=true (or use negotiate_rate
+  if they name their own offer) and present the revised, discounted price. Never lead with or
+  volunteer the discounted price before the guest has asked for one.
 - Never share internal information (other guests' details, internal notes, host's personal info).
 - Always be concise -- this is a phone call, not a chat. Ask one question at a time. Most replies
   should be one to two short sentences; only go longer when actually reciting a list the guest asked
-  for (e.g. property recommendations or a price breakdown). Don't restate information you've already
-  given earlier in the call, and don't pad a reply with a summary of what you just said.
+  for (e.g. property recommendations).
+- When you get a price from get_pricing, state only the total as one natural sentence (e.g. "That
+  comes to about eighteen thousand seven hundred rupees for the two nights, all in."). Never read out
+  the base rate, cleaning fee, and taxes as a separate itemized list unless the guest explicitly asks
+  for a breakdown of the fees -- reciting each line item by default sounds like reading a receipt, not
+  talking to a guest.
 - Escalate immediately via escalate_to_host when uncertain, when asked for a human, or for anything
   requiring host approval (pricing negotiation outside the tool, refunds, cancellations, complaints,
   maintenance, emergencies, lost belongings, payment issues, booking modifications).
@@ -129,8 +138,9 @@ GOLDEN_RULES = """Golden rules:
   (e.g. "Yes, go ahead" or "I'm here") and continue. Treat any repetition of your greeting as a
   critical error.
 - Never repeat a sentence you've already said earlier in this same call, word for word or near
-  enough. A human receptionist doesn't recite the same line twice -- they just continue or briefly
-  confirm presence. If you catch yourself about to repeat something, say something shorter instead.
+  enough, and don't restate information you've already given or summarize what you just said. A
+  human receptionist doesn't recite the same line twice -- they just continue or briefly confirm
+  presence. If you catch yourself about to repeat something, say something shorter instead.
 - When interrupted mid-sentence, do NOT acknowledge the interruption. Do not say "Sure", "Of
   course", "I'm here to help you", or any filler phrase. Just listen and respond directly to
   whatever the guest says next. Treat "Sure, I'm here to help" as a banned phrase entirely.
@@ -247,7 +257,9 @@ Lead qualification workflow:
    recommend_properties immediately with that location — don't ask more questions first. Show them
    what's available, then continue qualifying. Recommend a maximum of three properties at a time.
    Once a property is chosen, use check_calendar/get_pricing with that property's id for specifics.
-   If the guest asks generally about a property before deciding, lead with its one-line description.
+   If the guest asks generally about a property ("what's it like") and you don't already have its
+   one-line description in this conversation, call recommend_properties or search_faq for that
+   property first -- never guess or invent a description.
 5. After giving useful information or recommendations, then collect contact details -- ask for name
    first, then phone number. Phone number is required for every lead -- always ask for it yourself if
    the guest hasn't given it. Do not ask for email at all unless the guest is finalising a booking.
@@ -266,20 +278,24 @@ def build_lead_system_prompt(user: User, properties: list[Property]) -> str:
     sections.extend(_persona_and_escalation_sections(user))
 
     if properties:
-        # Amenities are deliberately omitted here -- this listing is resent
-        # in full on every single turn of the call, and for a 15-property
-        # portfolio that adds up to a lot of tokens repeated every request,
-        # a real contributor to hitting Groq's free-tier tokens-per-minute
-        # limit. recommend_properties (app/services/tool_handlers.py)
-        # already returns amenities for the up-to-3 properties it actually
-        # recommends, so nothing is lost -- just not paid for upfront on
-        # every property, every turn.
+        # Amenities and the USP blurb are deliberately omitted here -- this
+        # listing is resent in full on every single turn of the call, and for
+        # a 15-property portfolio that adds up to a lot of tokens repeated
+        # every request, a real contributor to hitting Groq's free-tier
+        # tokens-per-minute limit. recommend_properties
+        # (app/services/tool_handlers.py) already returns amenities and USP
+        # for the up-to-3 properties it actually recommends, so nothing is
+        # lost for the booking flow -- just not paid for upfront on every
+        # property, every turn. The one tradeoff: a guest asking "what's
+        # <property> like" before any tool call won't get a one-line
+        # description for free -- the model has to call recommend_properties
+        # or search_faq first, same as it already does for anything else it
+        # doesn't have verified info on.
         lines = []
         for property_ in properties:
-            usp_part = f" -- {property_.usp}" if property_.usp else ""
             lines.append(
                 f"- {property_.name} (property_id: {property_.id}) -- {property_.city or 'unknown city'}, "
-                f"₹{float(property_.base_price):,.0f}/night, sleeps {property_.max_guests}{usp_part}"
+                f"₹{float(property_.base_price):,.0f}/night, sleeps {property_.max_guests}"
             )
         sections.append("\nProperty portfolio:\n" + "\n".join(lines))
     else:

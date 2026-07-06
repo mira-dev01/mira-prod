@@ -53,6 +53,21 @@ def _ice_servers() -> list[IceServer]:
             servers.append(
                 IceServer(urls=settings.turn_url, username=settings.turn_username, credential=settings.turn_credential)
             )
+    # TURNS-over-TCP fallback for mobile carrier networks that block plain
+    # UDP (see config.py's turn_url_tls comment) -- same credentials as
+    # turn_url, offered as an additional candidate rather than a replacement.
+    if settings.turn_url_tls:
+        if not (settings.turn_url_tls.startswith("turn:") or settings.turn_url_tls.startswith("turns:")):
+            logger.error(
+                "TURN_URL_TLS %r has an invalid scheme (must start with 'turn:' or 'turns:') — skipping",
+                settings.turn_url_tls,
+            )
+        else:
+            servers.append(
+                IceServer(
+                    urls=settings.turn_url_tls, username=settings.turn_username, credential=settings.turn_credential
+                )
+            )
     return servers
 
 
@@ -111,16 +126,13 @@ async def browser_test_page(token: str, property_id: str = "") -> str:
     """Minimal mic-in/speaker-out WebRTC test page. Opened from the
     dashboard with the host's JWT and, optionally, a property id (omit to
     test the Lead Agent across the host's full portfolio instead)."""
+    # Reuses _ice_servers() (not a separate hand-rolled list) so this page's
+    # ICE config can never drift out of sync with what the /test/offer
+    # endpoint actually offers.
     ice_servers: list[dict] = [
-        {"urls": "stun:stun.l.google.com:19302"},
-        {"urls": "stun:stun1.l.google.com:19302"},
+        {"urls": server.urls, "username": server.username or "", "credential": server.credential or ""}
+        for server in _ice_servers()
     ]
-    if settings.turn_url and (settings.turn_url.startswith("turn:") or settings.turn_url.startswith("turns:")):
-        ice_servers.append({
-            "urls": settings.turn_url,
-            "username": settings.turn_username or "",
-            "credential": settings.turn_credential or "",
-        })
 
     return (
         _TEST_PAGE_TEMPLATE

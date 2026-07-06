@@ -186,12 +186,26 @@ export type PriceBreakdown = {
 
 export type AnalyticsSummary = {
   window_days: number;
+  start_date: string | null;
+  end_date: string | null;
   total_calls: number;
   completed_calls: number;
   escalated_calls: number;
   open_notifications: number;
-  revenue_attributed: number;
+  pipeline_value: number;
   answer_rate: number | null;
+};
+
+export type AnalyticsTimeseriesMetric = "total_calls" | "completed_calls" | "escalated_calls" | "pipeline_value";
+
+export type AnalyticsTimeseriesPoint = {
+  date: string;
+  value: number;
+};
+
+export type AnalyticsTimeseries = {
+  metric: AnalyticsTimeseriesMetric;
+  points: AnalyticsTimeseriesPoint[];
 };
 
 export type LeadOut = {
