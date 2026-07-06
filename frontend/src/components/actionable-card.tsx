@@ -29,15 +29,32 @@ type ActionableCardProps = {
 };
 
 export function ActionableCard({ title, summary, metadata, priority, onClick }: ActionableCardProps) {
-  const Comp = onClick ? "button" : "div";
+  // Deliberately NOT a native <button>: the summary renders ExpandableText's
+  // "Read more" button, and a <button> nested inside a <button> is invalid
+  // HTML (React hydration error). A div with role="button" + keyboard
+  // handling is clickable and accessible while legally allowing the inner
+  // control. ExpandableText's own button calls stopPropagation so it doesn't
+  // also fire this card's onClick.
+  const interactive = Boolean(onClick);
 
   return (
-    <Comp
-      type={onClick ? "button" : undefined}
+    <div
+      role={interactive ? "button" : undefined}
+      tabIndex={interactive ? 0 : undefined}
       onClick={onClick}
+      onKeyDown={
+        interactive
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick?.();
+              }
+            }
+          : undefined
+      }
       className={cn(
         "flex w-full items-start justify-between gap-3 border-b pb-3 text-left last:border-0 last:pb-0",
-        onClick && "cursor-pointer"
+        interactive && "cursor-pointer"
       )}
     >
       <div className="min-w-0 flex-1 space-y-1">
@@ -57,6 +74,6 @@ export function ActionableCard({ title, summary, metadata, priority, onClick }: 
         {metadata && <p className="text-xs text-muted-foreground">{metadata}</p>}
       </div>
       {onClick && <ChevronRight className="mt-0.5 size-4 shrink-0 text-muted-foreground" />}
-    </Comp>
+    </div>
   );
 }

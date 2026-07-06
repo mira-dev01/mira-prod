@@ -35,14 +35,38 @@ async def upsert_lead(
     return lead
 
 
+async def backfill_lead(db: AsyncSession, call_session_id: uuid.UUID | None, **fields) -> None:
+    """Fill only currently-blank fields on an EXISTING lead at call end
+    (e.g. the caller's phone from Exotel, or the property a Guest Support
+    call was about). Never creates a lead: a call where the agent captured
+    nothing must leave no row rather than an empty 'unknown guest' phantom,
+    and anything the guest actually stated during the call (via update_lead)
+    is authoritative and must not be overwritten here.
+    """
+    if call_session_id is None:
+        return
+    lead = await db.scalar(select(Lead).where(Lead.call_session_id == call_session_id))
+    if lead is None:
+        return
+    changed = False
+    for key, value in fields.items():
+        # `not getattr(...)` treats None and the default empty list/"" as
+        # blank -- so an already-populated field (a phone the guest gave, a
+        # non-empty properties_discussed) is left untouched.
+        if value and not getattr(lead, key, None):
+            setattr(lead, key, value)
+            changed = True
+    if changed:
+        await db.commit()
+
+
 async def delete_if_empty(db: AsyncSession, call_session_id: uuid.UUID | None) -> None:
-    """Remove the auto-created Lead row for a call that never actually had
-    any content (e.g. a connection that dropped instantly -- a reconnect
-    blip right after a real call ends, or a mic-permission failure). Every
-    call gets a Lead row the moment it starts, before any conversation
-    happens, so a genuinely empty call leaves an empty Lead behind unless
-    cleaned up -- which looks like a duplicate/phantom entry on the Leads
-    page even though it's actually a separate, just-empty call.
+    """Safety net for a lead that got created by a stray tool call on a call
+    that never actually became a conversation (e.g. escalate_to_host firing
+    on a connection that dropped instantly). Leads are no longer created up
+    front (see app/voice/pipeline.py), so in the normal case there's nothing
+    to clean; this just guards against a near-empty row slipping through and
+    looking like a phantom entry on the Leads page.
     """
     if call_session_id is None:
         return

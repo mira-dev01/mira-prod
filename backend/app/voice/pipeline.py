@@ -237,20 +237,16 @@ async def _run_pipeline(
     caller_number: str | None = None,
     property_name: str | None = None,
 ) -> None:
-    # Every call gets a CRM lead record up front -- don't rely on the LLM
-    # remembering to call update_lead. It enriches this same row later
-    # (matched by call_session_id); this just guarantees one exists at all,
-    # even for calls that get escalated/resolved without the LLM ever
-    # touching the tool.
-    async with AsyncSessionLocal() as lead_db:
-        await lead_service.upsert_lead(
-            lead_db,
-            host_user_id,
-            call_session_id,
-            phone=caller_number or None,
-            properties_discussed=[property_name] if property_name else None,
-        )
-
+    # NOTE: we deliberately do NOT create a Lead row up front. Doing so gave
+    # every connection attempt its own empty lead, and a browser/ICE
+    # reconnect (a second, short-lived call session that never reaches
+    # on_pipeline_finished) would leave its empty row uncleaned -- surfacing
+    # as a phantom "unknown guest" duplicate next to the real, enriched lead.
+    # A lead now comes into existence only from real qualification during the
+    # call (update_lead / escalate_to_host, both keyed by call_session_id, so
+    # exactly one row per session), and the caller's phone / the property
+    # discussed are backfilled onto it at call end (see on_pipeline_finished).
+    # A call where the agent captured nothing simply leaves no lead behind.
     stt = SarvamSTTService(
         api_key=settings.sarvam_api_key,
         model=settings.sarvam_stt_model,
@@ -340,12 +336,24 @@ async def _run_pipeline(
             )
             async with AsyncSessionLocal() as finalize_db:
                 await call_service.finalize_call_session(finalize_db, call_session_id, transcript, None)
-                # A call that ended with no user turn at all (e.g. a
-                # reconnect blip right after a real call, or a mic
-                # permission failure) leaves behind the empty Lead row every
-                # call gets up front -- clean it up so it doesn't look like
-                # a duplicate/phantom entry on the Leads page.
-                if not any(m.get("role") == "user" for m in context.messages):
+                if any(m.get("role") == "user" for m in context.messages):
+                    # Backfill the real caller's phone (from Exotel) and the
+                    # property this call was about onto the lead the agent
+                    # created during the call. backfill_lead only fills blank
+                    # fields and NEVER creates a lead -- so a call where the
+                    # agent captured nothing leaves no row (no "unknown guest"
+                    # phantom), while a genuine phone lead still gets the
+                    # caller's number even if the guest never said it aloud.
+                    backfill: dict = {}
+                    if caller_number and caller_number != call_service.BROWSER_TEST_CALLER_NUMBER:
+                        backfill["phone"] = caller_number
+                    if property_name:
+                        backfill["properties_discussed"] = [property_name]
+                    if backfill:
+                        await lead_service.backfill_lead(finalize_db, call_session_id, **backfill)
+                else:
+                    # A connection blip that never became a conversation --
+                    # drop any near-empty lead a stray tool call may have made.
                     await lead_service.delete_if_empty(finalize_db, call_session_id)
 
         @transport.event_handler("on_client_connected")

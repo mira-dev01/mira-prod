@@ -129,11 +129,17 @@ def test_property_neighborhood_info_omitted_when_not_set():
     assert "Neighborhood / local area info" not in prompt
 
 
-def test_property_usp_included_in_lead_agent_portfolio_listing():
+def test_property_usp_omitted_from_lead_agent_portfolio_listing():
+    # Same rationale as amenities below: the portfolio listing is resent on
+    # every turn of every call, so the USP blurb is deliberately omitted to
+    # save tokens (Groq free-tier TPM limit). recommend_properties surfaces
+    # the USP for shortlisted properties, so nothing is lost for the booking
+    # flow -- see the comment in build_lead_system_prompt.
     host = _user()
     prop = _property(usp="Glass house, 1BHK with a private jacuzzi")
     prompt = build_lead_system_prompt(host, [prop])
-    assert "Glass house, 1BHK with a private jacuzzi" in prompt
+    assert "Glasshouse Studio" in prompt
+    assert "Glass house, 1BHK with a private jacuzzi" not in prompt
 
 
 def test_property_amenities_omitted_from_lead_agent_portfolio_listing():
@@ -156,7 +162,7 @@ def test_lead_agent_prompt_requires_phone_and_defers_email():
     # instead of only once a booking is actually being finalized.
     prompt = build_lead_system_prompt(_user(), [])
     assert "Phone number is required for every" in prompt
-    assert "Do not ask for email at all during this stage" in prompt
+    assert "email at all unless the guest is finalising a booking" in prompt
 
 
 def test_lead_agent_prompt_also_gets_persona_and_escalation_overrides():

@@ -181,5 +181,5 @@ async def llm_health_status() -> dict:
     """Per-model health/latency from the last periodic check (see
     _check_llm_health above) -- what app/voice/pipeline.py's _build_llm() is
     actually choosing between right now. Empty until the first check runs
-    (immediately at startup, then every 4 minutes)."""
+    (immediately at startup, then every 60 seconds)."""
     return {"models": llm_health}
