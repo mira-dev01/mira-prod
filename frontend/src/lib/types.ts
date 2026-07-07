@@ -193,10 +193,16 @@ export type AnalyticsSummary = {
   escalated_calls: number;
   open_notifications: number;
   pipeline_value: number;
+  open_leads: number;
   answer_rate: number | null;
 };
 
-export type AnalyticsTimeseriesMetric = "total_calls" | "completed_calls" | "escalated_calls" | "pipeline_value";
+export type AnalyticsTimeseriesMetric =
+  | "total_calls"
+  | "completed_calls"
+  | "escalated_calls"
+  | "pipeline_value"
+  | "open_leads";
 
 export type AnalyticsTimeseriesPoint = {
   date: string;
@@ -230,9 +236,13 @@ export type LeadOut = {
   next_follow_up: string | null;
   escalated: boolean;
   transferred_to_host: boolean;
+  status: string;
+  occasion: string | null;
   created_at: string;
   updated_at: string;
 };
+
+export type LeadStatus = "open" | "contacted" | "booked" | "closed";
 
 export type LeadUpdate = {
   guest_name?: string | null;
@@ -240,6 +250,7 @@ export type LeadUpdate = {
   next_follow_up?: string | null;
   conversation_summary?: string | null;
   transferred_to_host?: boolean | null;
+  status?: LeadStatus | null;
 };
 
 export type FaqEntryOut = {
@@ -265,3 +276,22 @@ export type FaqEntryCreate = {
 };
 
 export type FaqEntryUpdate = Partial<FaqEntryCreate>;
+
+export type FaqGapOut = {
+  sample_id: string;
+  question: string;
+  count: number;
+  property_id: string | null;
+  last_asked_at: string;
+};
+
+export type FaqGapAnswer = {
+  answer: string;
+  apply_to_property?: boolean;
+};
+
+export type FaqGapAnalytics = {
+  most_frequent: { question: string; count: number }[];
+  by_property: { property_id: string | null; count: number }[];
+  over_time: { bucket: string; count: number }[];
+};

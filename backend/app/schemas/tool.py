@@ -85,6 +85,7 @@ class UpdateLeadArgs(BaseModel):
     next_follow_up: str | None = None
     escalated: bool | None = None
     transferred_to_host: bool | None = None
+    occasion: str | None = None
 
 
 class SearchFaqArgs(BaseModel):

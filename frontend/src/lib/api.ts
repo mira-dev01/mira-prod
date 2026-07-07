@@ -8,6 +8,9 @@ import type {
   FaqEntryCreate,
   FaqEntryOut,
   FaqEntryUpdate,
+  FaqGapAnalytics,
+  FaqGapAnswer,
+  FaqGapOut,
   GuestProfileOut,
   GuestProfileUpdate,
   LeadOut,
@@ -93,6 +96,30 @@ async function uploadFiles<T>(path: string, files: File[]): Promise<T> {
   // No Content-Type set here -- the browser fills in multipart/form-data
   // with the correct boundary itself, which it can only do if we don't
   // set the header manually.
+  const res = await fetch(`${API_BASE_URL}${path}`, { method: "POST", headers, body: formData });
+
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const body = await res.json();
+      detail = body.detail ?? detail;
+    } catch {
+      // ignore non-JSON error bodies
+    }
+    throw new ApiError(res.status, typeof detail === "string" ? detail : JSON.stringify(detail));
+  }
+
+  return (await res.json()) as T;
+}
+
+async function uploadAudio<T>(path: string, audio: Blob, filename: string): Promise<T> {
+  const token = getToken();
+  const headers = new Headers();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+
+  const formData = new FormData();
+  formData.append("audio", audio, filename);
+
   const res = await fetch(`${API_BASE_URL}${path}`, { method: "POST", headers, body: formData });
 
   if (!res.ok) {
@@ -227,6 +254,26 @@ export const api = {
     update: (id: string, data: FaqEntryUpdate) =>
       request<FaqEntryOut>(`/faq/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
     remove: (id: string) => request<void>(`/faq/${id}`, { method: "DELETE" }),
+  },
+  faqGaps: {
+    list: (params?: { propertyId?: string; startDate?: string; endDate?: string }) =>
+      request<FaqGapOut[]>(
+        `/faq/gaps${buildQuery({
+          property_id: params?.propertyId,
+          start_date: params?.startDate,
+          end_date: params?.endDate,
+        })}`
+      ),
+    analytics: (bucket: "week" | "month" = "week") =>
+      request<FaqGapAnalytics>(`/faq/gaps/analytics${buildQuery({ bucket })}`),
+    answer: (gapId: string, data: FaqGapAnswer) =>
+      request<FaqEntryOut>(`/faq/gaps/${gapId}/answer`, { method: "POST", body: JSON.stringify(data) }),
+    answerVoice: (gapId: string, audio: Blob, applyToProperty: boolean = false) =>
+      uploadAudio<FaqEntryOut>(
+        `/faq/gaps/${gapId}/answer-voice${buildQuery({ apply_to_property: applyToProperty })}`,
+        audio,
+        "answer.webm"
+      ),
   },
 };
 

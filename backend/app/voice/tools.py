@@ -262,6 +262,7 @@ def build_voice_tools(
         next_follow_up: str | None = None,
         escalated: bool | None = None,
         transferred_to_host: bool | None = None,
+        occasion: str | None = None,
     ):
         """Save or update this guest's CRM lead record. Call this silently
         (don't narrate it to the guest) whenever you learn something new about
@@ -285,6 +286,9 @@ def build_voice_tools(
             next_follow_up: What the host should follow up on, if anything.
             escalated: Whether this call was escalated to the host.
             transferred_to_host: Whether the call was transferred to the host.
+            occasion: Special occasion the guest mentioned (birthday, anniversary,
+                honeymoon, etc.), exactly what they said -- their plans/requests/
+                preferences, verbatim. Never invent host-facing suggestions here.
         """
         async with AsyncSessionLocal() as db:
             try:
@@ -306,6 +310,7 @@ def build_voice_tools(
                     next_follow_up=next_follow_up,
                     escalated=escalated,
                     transferred_to_host=transferred_to_host,
+                    occasion=occasion,
                 )
                 result = await tool_handlers.handle_update_lead(db, args, host_user_id, call_session_id)
             except ValidationError:
@@ -326,7 +331,7 @@ def build_voice_tools(
         """
         async with AsyncSessionLocal() as db:
             args = SearchFaqArgs(query=query, property_id=faq_property_id)
-            result = await tool_handlers.handle_search_faq(db, args, host_user_id, property_id)
+            result = await tool_handlers.handle_search_faq(db, args, host_user_id, property_id, call_session_id)
         await params.result_callback(result)
 
     return [

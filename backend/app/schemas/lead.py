@@ -5,6 +5,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 LeadTemperature = Literal["hot", "warm", "cold"]
+LeadStatus = Literal["open", "contacted", "booked", "closed"]
 
 
 class LeadOut(BaseModel):
@@ -29,6 +30,8 @@ class LeadOut(BaseModel):
     next_follow_up: str | None
     escalated: bool
     transferred_to_host: bool
+    status: str
+    occasion: str | None
     created_at: datetime
     updated_at: datetime
 
@@ -41,3 +44,4 @@ class LeadUpdate(BaseModel):
     next_follow_up: str | None = None
     conversation_summary: str | None = None
     transferred_to_host: bool | None = None
+    status: LeadStatus | None = None

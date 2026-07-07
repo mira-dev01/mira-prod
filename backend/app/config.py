@@ -114,6 +114,18 @@ class Settings(BaseSettings):
 
     ical_sync_interval_minutes: int = 15
 
+    # Experimental (shagun branch only, not deployed to main/production).
+    # "vad_fixed" is today's proven SpeechTimeoutUserTurnStopStrategy
+    # (user_speech_timeout=0.9s) in app/voice/pipeline.py, unchanged by
+    # default. "hybrid_experimental" swaps in
+    # app/voice/turn_strategies.HybridCompletenessUserTurnStopStrategy, which
+    # extends the wait (up to a hard cap) when the transcript looks
+    # mid-sentence, instead of firing at a fixed timeout. Local-only via
+    # TURN_DETECTION_STRATEGY in backend/.env -- deliberately not added to
+    # render.yaml or CLAUDE.md's env var table, since those are shared
+    # production config.
+    turn_detection_strategy: Literal["vad_fixed", "hybrid_experimental"] = "vad_fixed"
+
     default_cleaning_fee_inr: int = 800
     default_tax_percent: float = 12.0
     weekend_surge_multiplier: float = 1.2

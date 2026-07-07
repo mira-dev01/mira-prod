@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.property import Property
+from app.models.unanswered_question import UnansweredQuestion
 from app.schemas.tool import (
     CheckCalendarArgs,
     DispatchTechnicianArgs,
@@ -256,7 +257,11 @@ async def handle_update_lead(
 
 
 async def handle_search_faq(
-    db: AsyncSession, args: SearchFaqArgs, host_user_id: uuid.UUID, default_property_id: uuid.UUID | None
+    db: AsyncSession,
+    args: SearchFaqArgs,
+    host_user_id: uuid.UUID,
+    default_property_id: uuid.UUID | None,
+    call_session_id: uuid.UUID | None = None,
 ) -> str:
     property_id = None
     if args.property_id:
@@ -274,5 +279,23 @@ async def handle_search_faq(
         legacy = await faq_service.search_legacy_property_faq(db, property_id, args.query)
         if legacy:
             return " | ".join(f"{item['question']}: {item['answer']}" for item in legacy)
+
+    # No verified answer anywhere -- log the gap for the FAQ Learning Engine
+    # (app/api/v1/faq.py's /faq/gaps endpoints) so hosts can see frequently
+    # unanswered questions and convert them into real FaqEntry rows. Never
+    # let a logging failure break the guest-facing response.
+    try:
+        db.add(
+            UnansweredQuestion(
+                user_id=host_user_id,
+                property_id=property_id,
+                call_session_id=call_session_id,
+                question=args.query,
+                normalized_question=args.query.strip().lower(),
+            )
+        )
+        await db.commit()
+    except Exception:
+        await db.rollback()
 
     return "I don't have verified information about that. I'll connect you with the host so you receive the correct details."

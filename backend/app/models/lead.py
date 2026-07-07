@@ -38,5 +38,16 @@ class Lead(UUIDPkMixin, TimestampMixin, Base):
     escalated: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     transferred_to_host: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
+    # Lifecycle status for the "Open Leads" overview card -- distinct from
+    # lead_temperature (hot/warm/cold), which describes qualification, not
+    # whether the host has actually followed up. Host-managed from the
+    # Leads page; the voice agent never sets this.
+    status: Mapped[str] = mapped_column(String(16), default="open", server_default="open")
+
+    # Free text, not an enum: guest phrasing for an occasion (birthday,
+    # anniversary, honeymoon, ...) varies too much to bucket cleanly, and the
+    # point is to capture verbatim what the guest said, not classify it.
+    occasion: Mapped[str | None] = mapped_column(String(255))
+
     owner: Mapped["User"] = relationship(back_populates="leads")
     call_session: Mapped["CallSession"] = relationship(back_populates="lead")

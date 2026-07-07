@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,9 +22,10 @@ import { useAsync } from "@/hooks/use-async";
 import { useDateRange } from "@/hooks/use-date-range";
 import { api, ApiError } from "@/lib/api";
 import { isBrowserTestIdentity } from "@/lib/utils";
-import type { LeadOut } from "@/lib/types";
+import type { LeadOut, LeadStatus } from "@/lib/types";
 
 const TEMPERATURES = ["hot", "warm", "cold"] as const;
+const STATUSES: LeadStatus[] = ["open", "contacted", "booked", "closed"];
 
 const temperaturePriority: Record<string, ActionableCardPriority> = {
   hot: { label: "Hot", tone: "high" },
@@ -40,6 +42,7 @@ function leadTitle(lead: LeadOut): string {
 function leadSummary(lead: LeadOut): string | undefined {
   const parts: string[] = [];
   if (lead.purpose_of_stay) parts.push(lead.purpose_of_stay);
+  if (lead.occasion) parts.push(`Occasion: ${lead.occasion}`);
   if (lead.conversation_summary) parts.push(lead.conversation_summary);
   return parts.length > 0 ? parts.join(" — ") : undefined;
 }
@@ -49,25 +52,34 @@ function leadMetadata(lead: LeadOut): string {
   parts.push(isBrowserTestIdentity(lead.phone) ? "Browser test" : lead.phone ?? "No phone");
   if (lead.check_in && lead.check_out) parts.push(`${lead.check_in} → ${lead.check_out}`);
   if (lead.num_guests) parts.push(`${lead.num_guests} guest${lead.num_guests === 1 ? "" : "s"}`);
+  parts.push(lead.status);
   if (lead.escalated) parts.push("Escalated");
   return parts.join(" · ");
 }
 
-export default function LeadsPage() {
+function LeadsPageContent() {
+  const searchParams = useSearchParams();
+  const initialStatus = searchParams.get("status") ?? "all";
+
   const { startDateISO, endDateISO } = useDateRange();
   const { data: leads, loading, refetch } = useAsync(
     () => api.leads.list({ startDate: startDateISO, endDate: endDateISO }),
     [startDateISO, endDateISO]
   );
+  const [statusFilter, setStatusFilter] = useState<string>(initialStatus);
   const [editing, setEditing] = useState<LeadOut | null>(null);
   const [temperature, setTemperature] = useState<string>("warm");
+  const [status, setStatus] = useState<LeadStatus>("open");
   const [nextFollowUp, setNextFollowUp] = useState("");
   const [summary, setSummary] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  const filteredLeads = (leads ?? []).filter((lead) => statusFilter === "all" || lead.status === statusFilter);
+
   function openEdit(lead: LeadOut) {
     setEditing(lead);
     setTemperature(lead.lead_temperature ?? "warm");
+    setStatus((lead.status as LeadStatus) ?? "open");
     setNextFollowUp(lead.next_follow_up ?? "");
     setSummary(lead.conversation_summary ?? "");
   }
@@ -79,6 +91,7 @@ export default function LeadsPage() {
     try {
       await api.leads.update(editing.id, {
         lead_temperature: temperature as "hot" | "warm" | "cold",
+        status,
         next_follow_up: nextFollowUp,
         conversation_summary: summary,
       });
@@ -99,18 +112,35 @@ export default function LeadsPage() {
           <h1 className="page-title">Leads</h1>
           <p className="text-sm text-muted-foreground">Booking enquiries qualified by the Lead Agent</p>
         </div>
-        <DateRangePicker />
+        <div className="flex flex-wrap items-center gap-3">
+          <Select value={statusFilter} onValueChange={(v) => v && setStatusFilter(v)}>
+            <SelectTrigger className="w-36">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All statuses</SelectItem>
+              {STATUSES.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {s}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <DateRangePicker />
+        </div>
       </div>
 
       {loading ? (
         <Skeleton className="h-64 w-full" />
-      ) : !leads || leads.length === 0 ? (
+      ) : filteredLeads.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          No leads yet — they appear here once your portfolio&apos;s lead intake number starts receiving calls.
+          {leads && leads.length > 0
+            ? "No leads match this status filter."
+            : "No leads yet — they appear here once your portfolio's lead intake number starts receiving calls."}
         </p>
       ) : (
         <div className="space-y-3">
-          {leads.map((lead) => (
+          {filteredLeads.map((lead) => (
             <ActionableCard
               key={lead.id}
               title={leadTitle(lead)}
@@ -150,6 +180,21 @@ export default function LeadsPage() {
               </Select>
             </div>
             <div className="space-y-2">
+              <Label>Status</Label>
+              <Select value={status} onValueChange={(v) => v && setStatus(v as LeadStatus)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {STATUSES.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {s}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="next-follow-up">Next follow-up</Label>
               <Input id="next-follow-up" value={nextFollowUp} onChange={(e) => setNextFollowUp(e.target.value)} />
             </div>
@@ -166,5 +211,16 @@ export default function LeadsPage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+export default function LeadsPage() {
+  // useSearchParams requires a Suspense boundary -- see Next.js docs (this
+  // route is behind auth/client-rendered anyway, but this is the documented
+  // pattern to avoid de-opting the whole tree above it to client rendering).
+  return (
+    <Suspense fallback={<Skeleton className="h-64 w-full" />}>
+      <LeadsPageContent />
+    </Suspense>
   );
 }

@@ -184,3 +184,35 @@ def test_prompts_warn_against_narrating_internal_workflow_steps():
     lead_prompt = build_lead_system_prompt(host, [])
     assert "the guest must never hear any of it" in guest_prompt
     assert "the guest must never hear any of it" in lead_prompt
+
+
+def test_prompts_instruct_faithful_occasion_capture_without_host_suggestions():
+    host = _user()
+    guest_prompt = build_system_prompt(_property(), None, host)
+    lead_prompt = build_lead_system_prompt(host, [])
+    for prompt in (guest_prompt, lead_prompt):
+        assert "special occasion" in prompt
+        assert "conversation_summary" in prompt
+        assert "don't generate ideas for them" in prompt
+
+
+def test_prompts_handle_ota_discount_comparisons_via_existing_pricing_tools():
+    host = _user()
+    guest_prompt = build_system_prompt(_property(), None, host)
+    lead_prompt = build_lead_system_prompt(host, [])
+    for prompt in (guest_prompt, lead_prompt):
+        assert "Booking.com" in prompt
+        assert "Aur discount milega?" in prompt
+        assert "negotiate_rate" in prompt
+
+
+def test_prompts_allow_sparing_fillers_but_never_after_an_interruption():
+    host = _user()
+    guest_prompt = build_system_prompt(_property(), None, host)
+    lead_prompt = build_lead_system_prompt(host, [])
+    for prompt in (guest_prompt, lead_prompt):
+        # The interruption-handling ban must still be present, unchanged.
+        assert 'Treat "Sure, I\'m here to help" as a banned phrase entirely.' in prompt
+        # The new sparing-filler allowance must not undo that ban.
+        assert "you may occasionally begin a reply with a short, natural filler word" in prompt
+        assert "a filler as a substitute for actually answering" in prompt

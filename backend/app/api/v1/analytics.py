@@ -16,7 +16,7 @@ from app.services.call_service import BROWSER_TEST_CALLER_NUMBER
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
-TimeseriesMetric = Literal["total_calls", "completed_calls", "escalated_calls", "pipeline_value"]
+TimeseriesMetric = Literal["total_calls", "completed_calls", "escalated_calls", "pipeline_value", "open_leads"]
 
 
 @router.get("/summary")
@@ -108,6 +108,14 @@ async def analytics_summary(
         open_notification_filters.append(Notification.created_at < until)
     open_notifications = await db.scalar(select(func.count()).where(*open_notification_filters))
 
+    # "Open Leads" overview card: leads the host hasn't marked contacted/
+    # booked/closed yet. Distinct from lead_temperature (hot/warm/cold),
+    # which is qualification, not follow-up status.
+    open_leads_filters = [Lead.user_id == current_user.id, Lead.status == "open", Lead.created_at >= since]
+    if until is not None:
+        open_leads_filters.append(Lead.created_at < until)
+    open_leads = await db.scalar(select(func.count()).where(*open_leads_filters))
+
     return {
         "window_days": days,
         "start_date": date_range.start_date.isoformat() if date_range.start_date else None,
@@ -117,6 +125,7 @@ async def analytics_summary(
         "escalated_calls": escalated_calls or 0,
         "open_notifications": open_notifications or 0,
         "pipeline_value": float(pipeline_value or 0),
+        "open_leads": open_leads or 0,
         "answer_rate": round((completed_calls or 0) / total_calls, 3) if total_calls else None,
     }
 
@@ -146,7 +155,20 @@ async def analytics_timeseries(
     # UTC-day semantics used by DateRange/since/until everywhere else in this
     # endpoint (otherwise a non-UTC server timezone shifts records into the
     # wrong day, silently dropping the last day's data from the response).
-    bucket_column = CallSession.created_at if metric != "escalated_calls" else Notification.created_at
+    #
+    # bucket_column must come from whichever table each metric actually
+    # groups by -- day's underlying column reference forces that table into
+    # the query's FROM clause, so picking the wrong one creates an unrelated
+    # implicit cross join with whatever table the WHERE filters are actually
+    # scoping (confirmed bug: pipeline_value's filters are all on Lead, but
+    # bucket_column was always CallSession.created_at, silently cross-joining
+    # call_sessions × leads and inflating every day's summed budget).
+    if metric == "escalated_calls":
+        bucket_column = Notification.created_at
+    elif metric in ("pipeline_value", "open_leads"):
+        bucket_column = Lead.created_at
+    else:
+        bucket_column = CallSession.created_at
     day = func.date_trunc("day", func.timezone("UTC", bucket_column))
 
     if metric == "total_calls":
@@ -188,6 +210,18 @@ async def analytics_timeseries(
                 select(day.label("bucket"), func.coalesce(func.sum(Lead.budget), 0).label("value"))
                 .where(*lead_filters)
                 .group_by(day)
+            )
+        ).all()
+    elif metric == "open_leads":
+        open_leads_filters = [
+            Lead.user_id == current_user.id,
+            Lead.status == "open",
+            Lead.created_at >= since,
+            Lead.created_at < until,
+        ]
+        rows = (
+            await db.execute(
+                select(day.label("bucket"), func.count().label("value")).where(*open_leads_filters).group_by(day)
             )
         ).all()
     else:  # escalated_calls

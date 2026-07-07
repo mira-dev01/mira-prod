@@ -54,6 +54,7 @@ from app.prompts.system_prompt import (
 )
 from app.services import call_service, lead_service
 from app.voice.tools import build_voice_tools
+from app.voice.turn_strategies import HybridCompletenessUserTurnStopStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -298,12 +299,19 @@ async def _run_pipeline(
         # transcript and inference triggering matched this value exactly).
         # 0.9s is the middle ground that was actually validated against the
         # mid-sentence-interruption problem before the jump to 1.4s.
+        #
+        # settings.turn_detection_strategy (default "vad_fixed") gates an
+        # experimental alternative -- see app/voice/turn_strategies.py and
+        # config.py's comment. Local-only, shagun branch only; the default
+        # path below is byte-identical to production's fixed 0.9s strategy.
+        if settings.turn_detection_strategy == "hybrid_experimental":
+            stop_strategy = HybridCompletenessUserTurnStopStrategy(base_timeout=0.9)
+        else:
+            stop_strategy = SpeechTimeoutUserTurnStopStrategy(user_speech_timeout=0.9)
         user_aggregator, assistant_aggregator = LLMContextAggregatorPair(
             context,
             user_params=LLMUserAggregatorParams(
-                user_turn_strategies=UserTurnStrategies(
-                    stop=[SpeechTimeoutUserTurnStopStrategy(user_speech_timeout=0.9)]
-                )
+                user_turn_strategies=UserTurnStrategies(stop=[stop_strategy])
             ),
         )
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowRight, ChevronRight, Phone, PhoneCall, AlertTriangle, Percent, Wallet } from "lucide-react";
+import { ArrowRight, ChevronRight, Phone, PhoneCall, AlertTriangle, Percent, Wallet, Users } from "lucide-react";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -59,6 +59,11 @@ export default function OverviewPage() {
       api.analytics.timeseries({ metric: "pipeline_value", startDate: startDateISO, endDate: endDateISO, includeTestCalls }),
     [startDateISO, endDateISO, includeTestCalls]
   );
+  const { data: openLeadsSeries } = useAsync(
+    () =>
+      api.analytics.timeseries({ metric: "open_leads", startDate: startDateISO, endDate: endDateISO, includeTestCalls }),
+    [startDateISO, endDateISO, includeTestCalls]
+  );
 
   const answerRateSparkline = useMemo(() => {
     if (!totalCallsSeries || !completedCallsSeries) return undefined;
@@ -90,7 +95,7 @@ export default function OverviewPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <StatCard
           icon={Phone}
           iconColorVar="--primary"
@@ -131,6 +136,16 @@ export default function OverviewPage() {
           loading={summaryLoading}
           sparklineData={pipelineValueSeries?.points.map((p) => p.value)}
         />
+        <Link href="/dashboard/leads?status=open" className="block">
+          <StatCard
+            icon={Users}
+            iconColorVar="--primary"
+            label="Open leads"
+            value={summary?.open_leads}
+            loading={summaryLoading}
+            sparklineData={openLeadsSeries?.points.map((p) => p.value)}
+          />
+        </Link>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">

@@ -1,13 +1,18 @@
 from datetime import date, timedelta
 
+from sqlalchemy import select
+
 from app.models.technician import Technician
+from app.models.unanswered_question import UnansweredQuestion
 from app.schemas.tool import (
     CheckCalendarArgs,
     DispatchTechnicianArgs,
     EscalateToHostArgs,
     GetPricingArgs,
     NegotiateRateArgs,
+    SearchFaqArgs,
     SendWhatsappArgs,
+    UpdateLeadArgs,
 )
 from app.services import lead_service, tool_handlers
 from app.services.notification_service import list_notifications
@@ -130,3 +135,39 @@ async def test_negotiate_rate_returns_message(test_property, db_session):
     )
     result = await tool_handlers.handle_negotiate_rate(db_session, args)
     assert test_property.name in result
+
+
+async def test_search_faq_logs_gap_when_no_verified_answer(test_property, test_call_session, db_session):
+    args = SearchFaqArgs(query="Do you allow pets?", property_id=str(test_property.id))
+    result = await tool_handlers.handle_search_faq(
+        db_session, args, test_property.user_id, test_property.id, test_call_session.id
+    )
+    assert "don't have verified information" in result
+
+    gaps = (await db_session.scalars(select(UnansweredQuestion))).all()
+    assert len(gaps) == 1
+    assert gaps[0].question == "Do you allow pets?"
+    assert gaps[0].normalized_question == "do you allow pets?"
+    assert gaps[0].property_id == test_property.id
+    assert gaps[0].call_session_id == test_call_session.id
+    assert gaps[0].status == "pending"
+
+
+async def test_search_faq_no_gap_logged_when_answer_found(test_property, db_session):
+    # test_property's fixture already has a legacy Property.faq entry for
+    # "Is wifi free?" -- a real match should not also create a gap row.
+    args = SearchFaqArgs(query="Is wifi free?", property_id=str(test_property.id))
+    result = await tool_handlers.handle_search_faq(db_session, args, test_property.user_id, test_property.id)
+    assert "Yes" in result
+
+    gaps = (await db_session.scalars(select(UnansweredQuestion))).all()
+    assert len(gaps) == 0
+
+
+async def test_update_lead_persists_occasion(test_property, test_call_session, db_session):
+    args = UpdateLeadArgs(occasion="Guest said it's their honeymoon, wants a room with a view")
+    await tool_handlers.handle_update_lead(db_session, args, test_property.user_id, test_call_session.id)
+
+    leads = await lead_service.list_leads(db_session, test_property.user_id)
+    assert len(leads) == 1
+    assert leads[0].occasion == "Guest said it's their honeymoon, wants a room with a view"

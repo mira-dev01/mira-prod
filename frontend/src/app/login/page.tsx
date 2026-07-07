@@ -14,8 +14,10 @@ export default function LoginPage() {
   const { login, register } = useAuth();
   const [submitting, setSubmitting] = useState(false);
 
-  const [loginEmail, setLoginEmail] = useState("");
-  const [loginPassword, setLoginPassword] = useState("");
+  // Pre-filled with the public demo account so anyone opening this URL for a
+  // demo can just click "Log in" without being handed credentials separately.
+  const [loginEmail, setLoginEmail] = useState("demo@mira.ai");
+  const [loginPassword, setLoginPassword] = useState("MiraDemo2024");
 
   const [regEmail, setRegEmail] = useState("");
   const [regPassword, setRegPassword] = useState("");
@@ -84,6 +86,9 @@ export default function LoginPage() {
                 <Button type="submit" className="w-full" disabled={submitting}>
                   Log in
                 </Button>
+                <p className="text-center text-xs text-muted-foreground">
+                  Demo credentials pre-filled — just click Log in.
+                </p>
               </form>
             </TabsContent>
             <TabsContent value="register">
