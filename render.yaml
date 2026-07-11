@@ -1,9 +1,3 @@
-databases:
-  - name: mira-db
-    plan: free
-    databaseName: mira
-    user: mira
-
 services:
   - type: web
     name: mira-backend
@@ -15,10 +9,12 @@ services:
     envVars:
       - key: ENVIRONMENT
         value: production
+      # Pointed at Neon (external managed Postgres) instead of a Render
+      # database -- Render's free Postgres expires after 90 days. Set the
+      # Neon connection string manually in the Render dashboard; include
+      # ?sslmode=require, config.py rewrites it for asyncpg automatically.
       - key: DATABASE_URL
-        fromDatabase:
-          name: mira-db
-          property: connectionString
+        sync: false
       # Render has no Blueprint property for a service's public HTTPS URL
       # (only its private-network hostname, which a browser can't reach) --
       # fill these in manually with the real https://*.onrender.com URLs

@@ -36,6 +36,7 @@ async def run_migrations_online() -> None:
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         future=True,
+        connect_args={"ssl": True} if settings.database_requires_ssl else {},
     )
 
     async with connectable.connect() as connection:
