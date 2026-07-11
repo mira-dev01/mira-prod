@@ -1,7 +1,8 @@
 from functools import lru_cache
 from typing import Literal
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,19 +24,41 @@ class Settings(BaseSettings):
         return list(dict.fromkeys([self.frontend_base_url, *extra]))
 
     database_url: str = "postgresql+asyncpg://mira:mira@localhost:5432/mira_dev"
-    redis_url: str = "redis://localhost:6379/0"
+    # Whether DATABASE_URL asked for TLS via ?sslmode=require or ?ssl=require
+    # (e.g. Neon). Derived from the raw URL by _use_asyncpg_driver below (that
+    # query param is then stripped from database_url itself, since asyncpg's
+    # connect() rejects an unrecognized "sslmode"/"ssl" kwarg forwarded from
+    # the URL). Consumed as connect_args={"ssl": True} in database.py /
+    # alembic/env.py, where asyncpg wants a bool/SSLContext, not a
+    # query-string value. Render's own internal DB URL has no such param, so
+    # this correctly stays False there and TLS isn't forced on it.
+    database_requires_ssl: bool = False
 
-    @field_validator("database_url")
+    @model_validator(mode="before")
     @classmethod
-    def _use_asyncpg_driver(cls, value: str) -> str:
+    def _normalize_database_url(cls, data: dict) -> dict:
+        value = data.get("database_url")
+        if not value:
+            return data
         # Render (and most hosts) hand out a bare postgres:// or postgresql://
         # connection string -- SQLAlchemy's async engine needs the asyncpg
         # driver named explicitly in the scheme.
         if value.startswith("postgres://"):
-            return "postgresql+asyncpg://" + value[len("postgres://") :]
-        if value.startswith("postgresql://"):
-            return "postgresql+asyncpg://" + value[len("postgresql://") :]
-        return value
+            value = "postgresql+asyncpg://" + value[len("postgres://") :]
+        elif value.startswith("postgresql://"):
+            value = "postgresql+asyncpg://" + value[len("postgresql://") :]
+
+        parsed = urlsplit(value)
+        params = parse_qsl(parsed.query)
+        mode = next((v for k, v in params if k in ("sslmode", "ssl")), None)
+        data["database_requires_ssl"] = mode is not None and mode not in ("disable", "false", "0")
+        if parsed.query:
+            remaining = [(k, v) for k, v in params if k not in ("sslmode", "ssl")]
+            parsed = parsed._replace(query=urlencode(remaining))
+            value = urlunsplit(parsed)
+
+        data["database_url"] = value
+        return data
 
     jwt_secret_key: str = "dev-secret-change-me"
     jwt_algorithm: str = "HS256"
