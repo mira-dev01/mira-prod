@@ -253,3 +253,95 @@ def parse_airbnb_listing(raw: dict[str, Any]) -> dict[str, Any]:
     ]
 
     return {"fields": fields, "faq_entries": faq_entries}
+
+
+def parse_bright_data_listing(record: dict[str, Any]) -> dict[str, Any]:
+    """Adapts one Bright Data Airbnb Scraper API record (dataset
+    gd_ld7ll037kqy322v05 -- see app/integrations/bright_data_client.py) into
+    the same {"fields": ..., "faq_entries": ...} shape parse_airbnb_listing
+    produces, for the same downstream property-creation code
+    (app/api/v1/properties.py).
+
+    NOT a shared parser with parse_airbnb_listing above -- Bright Data's
+    schema is flat and pre-normalized (confirmed against their public sample
+    dataset, github.com/luminati-io/Airbnb-dataset-samples), completely
+    different from Airbnb's own nested GraphQL PDP shape that function
+    expects. Reuses _to_24h/_strip_html since the underlying text (house
+    rules mentioning check-in time, HTML-formatted descriptions) is the same
+    kind of content either way.
+    """
+    fields: dict[str, Any] = {}
+
+    # `name` in Bright Data's schema is often a compound string like "Villa
+    # in Kecamatan Kuta Utara · ★5.0 · 2 bedrooms · 2
+    # baths" -- listing_title/listing_name are closer to a clean name when
+    # present.
+    name = record.get("listing_title") or record.get("listing_name") or record.get("name")
+    if name:
+        fields["name"] = name
+
+    location = record.get("location") or ""
+    if location:
+        fields["city"] = location.split(",")[0].strip()
+
+    description = _strip_html(record.get("description_html") or record.get("description") or "")
+    if description:
+        fields["usp"] = description[:280]
+
+    house_rules_list = record.get("house_rules") or []
+    if isinstance(house_rules_list, list) and house_rules_list:
+        fields["house_rules"] = "\n".join(str(r) for r in house_rules_list)
+        for rule in house_rules_list:
+            lower = str(rule).lower()
+            if "check-in" in lower or "checkin" in lower or "check in" in lower:
+                parsed = _to_24h(str(rule))
+                if parsed:
+                    fields["check_in_time"] = parsed
+            elif "check-out" in lower or "checkout" in lower or "check out" in lower:
+                parsed = _to_24h(str(rule))
+                if parsed:
+                    fields["check_out_time"] = parsed
+
+    location_details = record.get("location_details")
+    if location_details:
+        fields["neighborhood_info"] = _strip_html(record.get("location_details_html") or location_details)
+
+    amenity_names: list[str] = []
+    for group in record.get("amenities") or []:
+        for item in group.get("items") or []:
+            item_name = item.get("name")
+            if item_name:
+                amenity_names.append(item_name)
+    if amenity_names:
+        fields["amenities"] = amenity_names
+
+    guests = record.get("guests")
+    try:
+        if guests is not None:
+            fields["max_guests"] = int(guests)
+    except (TypeError, ValueError):
+        pass
+
+    faq_entries: list[dict[str, str]] = []
+    if description:
+        faq_entries.append(
+            {"question": "Tell me about this property", "answer": description, "category": "description"}
+        )
+    if location_details:
+        faq_entries.append(
+            {
+                "question": "What's the neighbourhood like?",
+                "answer": _strip_html(record.get("location_details_html") or location_details),
+                "category": "neighbourhood",
+            }
+        )
+    if record.get("is_guest_favorite") or record.get("is_supperhost"):
+        faq_entries.append(
+            {
+                "question": "Is this property a Guest Favorite on Airbnb?",
+                "answer": "Yes, this property is recognized as a Guest Favorite on Airbnb.",
+                "category": "reputation",
+            }
+        )
+
+    return {"fields": fields, "faq_entries": faq_entries}

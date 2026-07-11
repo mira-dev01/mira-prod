@@ -19,12 +19,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import { PropertyFormFields } from "@/components/property-form-fields";
 import { StatusChip } from "@/components/status-chip";
 import { TalkToMiraDialog } from "@/components/talk-to-mira-dialog";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError, API_BASE_URL, getToken } from "@/lib/api";
-import type { PropertyCreate, PropertyOut } from "@/lib/types";
+import type { AirbnbUrlImportStatus, PropertyCreate, PropertyOut } from "@/lib/types";
 
 const emptyForm: PropertyCreate = {
   name: "",
@@ -85,6 +86,13 @@ export default function PropertiesPage() {
   const importInputRef = useRef<HTMLInputElement>(null);
   const [talkOpen, setTalkOpen] = useState(false);
   const [phoneBannerDismissed, setPhoneBannerDismissed] = useState(false);
+
+  const [airbnbUrlDialogOpen, setAirbnbUrlDialogOpen] = useState(false);
+  const [airbnbUrlsText, setAirbnbUrlsText] = useState("");
+  const [airbnbImportState, setAirbnbImportState] = useState<
+    "idle" | "triggering" | "polling" | "done" | "failed"
+  >("idle");
+  const [airbnbImportResult, setAirbnbImportResult] = useState<AirbnbUrlImportStatus | null>(null);
 
   const [editing, setEditing] = useState<PropertyOut | null>(null);
   const [editForm, setEditForm] = useState<PropertyCreate>(emptyForm);
@@ -182,6 +190,49 @@ export default function PropertiesPage() {
     }
   }
 
+  async function handleImportAirbnbUrls() {
+    const urls = airbnbUrlsText
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    if (urls.length === 0) return;
+
+    setAirbnbImportState("triggering");
+    setAirbnbImportResult(null);
+    try {
+      const { snapshot_id } = await api.properties.importAirbnbUrls(urls);
+      setAirbnbImportState("polling");
+
+      // Bright Data's scrape job runs async server-side (seconds to a
+      // couple minutes depending on listing count) -- poll rather than
+      // block on one long request. ~4s interval, capped at 5 minutes so a
+      // stuck job doesn't poll forever.
+      const maxAttempts = 75;
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 4000));
+        const result = await api.properties.importAirbnbUrlsStatus(snapshot_id);
+        if (result.status === "running") continue;
+
+        setAirbnbImportResult(result);
+        setAirbnbImportState(result.status === "ready" ? "done" : "failed");
+        if (result.status === "ready") refetch();
+        return;
+      }
+      setAirbnbImportState("failed");
+      toast.error("Import is taking longer than expected -- check back later or try fewer listings at once.");
+    } catch (err) {
+      setAirbnbImportState("failed");
+      toast.error(err instanceof ApiError ? err.message : "Import failed to start");
+    }
+  }
+
+  function resetAirbnbImportDialog() {
+    setAirbnbUrlDialogOpen(false);
+    setAirbnbUrlsText("");
+    setAirbnbImportState("idle");
+    setAirbnbImportResult(null);
+  }
+
   async function handleSync(id: string) {
     setSyncingId(id);
     try {
@@ -210,9 +261,78 @@ export default function PropertiesPage() {
             className="hidden"
             onChange={handleImportFiles}
           />
-          <Button variant="outline" disabled={importing} onClick={() => importInputRef.current?.click()}>
-            {importing ? "Importing…" : "Import from Airbnb"}
+          <Button variant="outline" onClick={() => setAirbnbUrlDialogOpen(true)}>
+            Import from Airbnb
           </Button>
+          <Button variant="ghost" disabled={importing} onClick={() => importInputRef.current?.click()}>
+            {importing ? "Importing…" : "Import from file (advanced)"}
+          </Button>
+          <Dialog
+            open={airbnbUrlDialogOpen}
+            onOpenChange={(next) => (next ? setAirbnbUrlDialogOpen(true) : resetAirbnbImportDialog())}
+          >
+            <DialogContent className="max-h-[85vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Import from Airbnb</DialogTitle>
+              </DialogHeader>
+              {airbnbImportState === "idle" || airbnbImportState === "triggering" ? (
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    Paste your Airbnb listing links below, one per line. We&apos;ll pull each listing&apos;s
+                    details, amenities, house rules, and neighborhood info automatically.
+                  </p>
+                  <Textarea
+                    rows={6}
+                    placeholder={"https://www.airbnb.com/rooms/12345678\nhttps://www.airbnb.com/rooms/87654321"}
+                    value={airbnbUrlsText}
+                    onChange={(e) => setAirbnbUrlsText(e.target.value)}
+                    disabled={airbnbImportState === "triggering"}
+                  />
+                  <DialogFooter>
+                    <Button
+                      onClick={handleImportAirbnbUrls}
+                      disabled={airbnbImportState === "triggering" || !airbnbUrlsText.trim()}
+                    >
+                      {airbnbImportState === "triggering" ? "Starting import…" : "Import"}
+                    </Button>
+                  </DialogFooter>
+                </div>
+              ) : airbnbImportState === "polling" ? (
+                <div className="space-y-3 py-6 text-center">
+                  <Skeleton className="mx-auto h-6 w-48" />
+                  <p className="text-sm text-muted-foreground">
+                    Fetching your listings from Airbnb — this can take a minute or two.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {airbnbImportResult?.results.length ? (
+                    <ul className="space-y-2 text-sm">
+                      {airbnbImportResult.results.map((r, i) => (
+                        <li key={i} className="flex items-start justify-between gap-3 border-b pb-2">
+                          <span className="truncate">{r.property?.name ?? r.filename}</span>
+                          <span
+                            className={
+                              r.status === "error" ? "text-destructive" : "text-muted-foreground"
+                            }
+                          >
+                            {r.status === "error" ? r.error : r.status}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      {airbnbImportResult?.error ?? "The import didn't return any listings — check the URLs and try again."}
+                    </p>
+                  )}
+                  <DialogFooter>
+                    <Button onClick={resetAirbnbImportDialog}>Done</Button>
+                  </DialogFooter>
+                </div>
+              )}
+            </DialogContent>
+          </Dialog>
           <Button variant="secondary" onClick={() => setTalkOpen(true)}>
             Test full portfolio in browser
           </Button>

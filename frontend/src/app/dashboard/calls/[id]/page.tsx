@@ -58,7 +58,6 @@ export default function CallDetailPage() {
         <StatusChip status={call.status} tone={statusTone[call.status] ?? "neutral"} />
         {call.urgency && <Badge variant="destructive" className="capitalize">{call.urgency}</Badge>}
         {duration && <Badge variant="secondary">{duration}</Badge>}
-        <Badge variant="secondary">₹{call.revenue_attributed.toLocaleString("en-IN")} attributed</Badge>
       </div>
 
       <Card>

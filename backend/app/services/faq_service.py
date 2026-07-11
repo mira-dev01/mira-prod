@@ -25,10 +25,28 @@ async def search_faq_entries(
     property_id: uuid.UUID | None = None,
 ) -> list[FaqEntry]:
     pattern = f"%{query}%"
+    # Trigram similarity (pg_trgm, enabled via migration e7c2a4f8d9b1) catches
+    # paraphrases plain substring matching misses. Confirmed live: a guest
+    # re-asked essentially the same question, but the LLM phrases the
+    # search_faq `query` itself fresh on every call rather than passing the
+    # guest's verbatim words -- "distance from Mall Road" the first time,
+    # "distance from Manali shale to Mall Road" the second -- so the
+    # exact-substring ILIKE check missed it entirely even though the host
+    # had already verified an answer, and the guest was told "I don't have
+    # that" for something already on file. 0.35 threshold picked
+    # empirically: real paraphrases of the same question scored 0.47-0.63 in
+    # testing, unrelated questions scored 0.09-0.24 -- clean separation with
+    # margin on both sides.
+    question_similarity = func.similarity(FaqEntry.question, query)
     stmt = select(FaqEntry).where(
         FaqEntry.user_id == user_id,
         FaqEntry.status == "verified",
-        or_(FaqEntry.question.ilike(pattern), FaqEntry.answer.ilike(pattern), FaqEntry.category.ilike(pattern)),
+        or_(
+            FaqEntry.question.ilike(pattern),
+            FaqEntry.answer.ilike(pattern),
+            FaqEntry.category.ilike(pattern),
+            question_similarity > 0.35,
+        ),
     )
     if property_id is not None:
         stmt = stmt.where(or_(FaqEntry.property_id == property_id, FaqEntry.property_id.is_(None)))
@@ -36,8 +54,12 @@ async def search_faq_entries(
         # when both match the same query (e.g. a property-specific "limited
         # roadside parking" override vs. a general Goa-wide parking entry) --
         # property_id.is_(None) sorts as True (1) after False (0), so
-        # property-specific rows come first.
-        stmt = stmt.order_by(FaqEntry.property_id.is_(None))
+        # property-specific rows come first. Best match within that tier
+        # next, so the closest question (not just DB row order) wins the
+        # limit(3) cut.
+        stmt = stmt.order_by(FaqEntry.property_id.is_(None), question_similarity.desc())
+    else:
+        stmt = stmt.order_by(question_similarity.desc())
     stmt = stmt.limit(3)
     return list((await db.scalars(stmt)).all())
 

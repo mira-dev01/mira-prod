@@ -335,7 +335,14 @@ _TEST_PAGE_TEMPLATE = """<!DOCTYPE html>
       rafId = requestAnimationFrame(animate);
     }
 
-    connectBtn.addEventListener("click", async () => {
+    // A plain .onclick assignment (not addEventListener) so that switching
+    // to the "end call" handler below cleanly REPLACES this one instead of
+    // stacking alongside it. They were previously registered through two
+    // different handler slots (addEventListener here, .onclick for end-call)
+    // -- clicking the button to end a call fired BOTH: the end-call logic
+    // AND this connect handler still listening underneath it, which
+    // silently started a brand new call the instant the old one closed.
+    async function startCall() {
       connectBtn.disabled = true;
       captionEl.textContent = "Requesting microphone...";
 
@@ -411,7 +418,9 @@ _TEST_PAGE_TEMPLATE = """<!DOCTYPE html>
       const answer = await res.json();
       await pc.setRemoteDescription(answer);
       animate();
-    });
+    }
+
+    connectBtn.onclick = startCall;
   </script>
 </body>
 </html>

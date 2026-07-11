@@ -279,7 +279,8 @@ def build_voice_tools(
             budget: The guest's nightly budget in INR, if known.
             preferred_location: Preferred city/area, if known.
             lead_temperature: One of hot, warm, cold.
-            properties_discussed: Property names or ids discussed so far.
+            properties_discussed: Property names discussed so far (the dashboard's Leads
+                page displays these as-is -- never pass a property_id here).
             questions_asked: Questions the guest asked.
             support_requests: Any support requests raised.
             conversation_summary: A short summary of the conversation so far.

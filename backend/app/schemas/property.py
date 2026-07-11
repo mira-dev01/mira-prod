@@ -83,3 +83,17 @@ class PropertyImportResult(BaseModel):
     property: PropertyOut | None = None
     faq_entries_created: int = 0
     error: str | None = None
+
+
+class AirbnbUrlImportRequest(BaseModel):
+    urls: list[str] = Field(min_length=1, max_length=50)
+
+
+class AirbnbUrlImportTriggered(BaseModel):
+    snapshot_id: str
+
+
+class AirbnbUrlImportStatus(BaseModel):
+    status: Literal["running", "ready", "failed"]
+    results: list[PropertyImportResult] = Field(default_factory=list)
+    error: str | None = None

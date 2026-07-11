@@ -7,6 +7,7 @@ from pydantic import BaseModel
 class NotificationOut(BaseModel):
     id: uuid.UUID
     property_id: uuid.UUID | None
+    property_name: str | None
     call_session_id: uuid.UUID | None
     channel: str
     urgency: str

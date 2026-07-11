@@ -1,4 +1,5 @@
 import json
+import re
 import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
@@ -8,14 +9,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.common import get_owned_property
 from app.auth.dependencies import get_current_user
 from app.database import AsyncSessionLocal, get_db
+from app.integrations import bright_data_client
+from app.integrations.bright_data_client import BrightDataError
 from app.models.property import Property
 from app.models.user import User
-from app.schemas.property import PropertyCreate, PropertyImportResult, PropertyOut, PropertyUpdate
+from app.schemas.property import (
+    AirbnbUrlImportRequest,
+    AirbnbUrlImportStatus,
+    AirbnbUrlImportTriggered,
+    PropertyCreate,
+    PropertyImportResult,
+    PropertyOut,
+    PropertyUpdate,
+)
 from app.services import faq_service
-from app.services.airbnb_import import parse_airbnb_listing
+from app.services.airbnb_import import parse_airbnb_listing, parse_bright_data_listing
 from app.services.calendar_service import sync_property_ical
 
 router = APIRouter(prefix="/properties", tags=["properties"])
+
+_ROOM_ID_RE = re.compile(r"/rooms/(\d+)")
 
 
 @router.get("", response_model=list[PropertyOut])
@@ -27,6 +40,47 @@ async def list_properties(
     )
 
 
+async def _upsert_property_from_parsed(
+    user_id: uuid.UUID, listing_id: str, label: str, parsed: dict
+) -> PropertyImportResult:
+    """Shared create/update/FAQ-sync logic behind both Airbnb import paths --
+    the bulk JSON-file upload below and the Bright Data URL import
+    (import_airbnb_urls_status). Matches existing properties by
+    airbnb_listing_id so re-importing the same listing updates rather than
+    duplicates. Own DB session per call: reusing one shared session across a
+    batch left it unusable after the first failure (SQLAlchemy's async
+    session doesn't reliably recover mid-request after a rollback when more
+    work follows in the same request) -- one bad record shouldn't take the
+    rest of the batch down with it."""
+    fields = parsed["fields"]
+    faq_entries = parsed["faq_entries"]
+    if not fields.get("name"):
+        return PropertyImportResult(filename=label, status="error", error="Could not find a listing name")
+
+    async with AsyncSessionLocal() as db:
+        existing = await db.scalar(
+            select(Property).where(Property.user_id == user_id, Property.airbnb_listing_id == listing_id)
+        )
+        if existing is not None:
+            for key, value in fields.items():
+                setattr(existing, key, value)
+            await db.commit()
+            await db.refresh(existing)
+            faq_count = await faq_service.sync_imported_faq_entries(db, user_id, existing.id, faq_entries)
+            return PropertyImportResult(
+                filename=label, status="updated", property=existing, faq_entries_created=faq_count
+            )
+
+        property_ = Property(user_id=user_id, airbnb_listing_id=listing_id, base_price=0, **fields)
+        db.add(property_)
+        await db.commit()
+        await db.refresh(property_)
+        faq_count = await faq_service.sync_imported_faq_entries(db, user_id, property_.id, faq_entries)
+        return PropertyImportResult(
+            filename=label, status="created", property=property_, faq_entries_created=faq_count
+        )
+
+
 @router.post("/import", response_model=list[PropertyImportResult])
 async def import_properties(
     files: list[UploadFile] = File(...),
@@ -36,12 +90,6 @@ async def import_properties(
     (one file per listing). Matches existing properties by the filename --
     the Airbnb room id -- so re-uploading a refreshed scrape updates rather
     than duplicates.
-
-    Each file gets its own database session. Reusing one shared session
-    across the whole batch left it unusable after the first failure
-    (SQLAlchemy's async session doesn't reliably recover mid-request after a
-    rollback when more work follows in the same request) -- a bad file would
-    take the rest of the batch down with it.
 
     Beyond the core property fields, the scrape also yields FAQ knowledge-base
     entries (neighbourhood highlights, bedroom/bed/bathroom counts,
@@ -56,49 +104,69 @@ async def import_properties(
         try:
             raw = json.loads(await upload.read())
             parsed = parse_airbnb_listing(raw)
-            fields = parsed["fields"]
-            faq_entries = parsed["faq_entries"]
-            if not fields.get("name"):
-                raise ValueError("Could not find a listing name in this file")
-
-            async with AsyncSessionLocal() as db:
-                existing = await db.scalar(
-                    select(Property).where(
-                        Property.user_id == current_user.id, Property.airbnb_listing_id == listing_id
-                    )
-                )
-                if existing is not None:
-                    for key, value in fields.items():
-                        setattr(existing, key, value)
-                    await db.commit()
-                    await db.refresh(existing)
-                    faq_count = await faq_service.sync_imported_faq_entries(
-                        db, current_user.id, existing.id, faq_entries
-                    )
-                    results.append(
-                        PropertyImportResult(
-                            filename=filename, status="updated", property=existing, faq_entries_created=faq_count
-                        )
-                    )
-                else:
-                    property_ = Property(
-                        user_id=current_user.id, airbnb_listing_id=listing_id, base_price=0, **fields
-                    )
-                    db.add(property_)
-                    await db.commit()
-                    await db.refresh(property_)
-                    faq_count = await faq_service.sync_imported_faq_entries(
-                        db, current_user.id, property_.id, faq_entries
-                    )
-                    results.append(
-                        PropertyImportResult(
-                            filename=filename, status="created", property=property_, faq_entries_created=faq_count
-                        )
-                    )
+            results.append(await _upsert_property_from_parsed(current_user.id, listing_id, filename, parsed))
         except Exception as exc:  # noqa: BLE001 - one bad file shouldn't fail the whole batch
             results.append(PropertyImportResult(filename=filename, status="error", error=str(exc)))
 
     return results
+
+
+def _listing_id_from_url(url: str) -> str:
+    match = _ROOM_ID_RE.search(url)
+    return match.group(1) if match else url
+
+
+@router.post("/import-airbnb-urls", response_model=AirbnbUrlImportTriggered)
+async def import_airbnb_urls_trigger(
+    payload: AirbnbUrlImportRequest, current_user: User = Depends(get_current_user)
+) -> AirbnbUrlImportTriggered:
+    """Starts an async Bright Data scrape job for the given Airbnb listing
+    URLs (see app/integrations/bright_data_client.py -- Bright Data has no
+    "all of this host's listings" mode, so the host pastes each listing URL
+    individually rather than one profile link). Returns immediately with a
+    snapshot_id; poll GET /import-airbnb-urls/{snapshot_id} for completion."""
+    try:
+        snapshot_id = await bright_data_client.trigger_scrape(payload.urls)
+    except BrightDataError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+    return AirbnbUrlImportTriggered(snapshot_id=snapshot_id)
+
+
+@router.get("/import-airbnb-urls/{snapshot_id}", response_model=AirbnbUrlImportStatus)
+async def import_airbnb_urls_status(
+    snapshot_id: str, current_user: User = Depends(get_current_user)
+) -> AirbnbUrlImportStatus:
+    """Poll endpoint for a Bright Data scrape job. While "running", the
+    frontend should call this again after a short delay. Once "ready", each
+    scraped listing is parsed and created/updated exactly like the JSON-file
+    import path (parse_bright_data_listing + _upsert_property_from_parsed),
+    matched by Airbnb's own room id so polling twice after completion is
+    safe (updates, not duplicates)."""
+    try:
+        job_status = await bright_data_client.get_snapshot_status(snapshot_id)
+    except BrightDataError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+
+    if job_status != "ready":
+        return AirbnbUrlImportStatus(status=job_status)
+
+    try:
+        records = await bright_data_client.get_snapshot_data(snapshot_id)
+    except BrightDataError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+
+    results: list[PropertyImportResult] = []
+    for record in records:
+        url = record.get("url") or record.get("final_url") or ""
+        listing_id = str(record.get("property_id") or _listing_id_from_url(url))
+        label = record.get("listing_title") or record.get("name") or url or listing_id
+        try:
+            parsed = parse_bright_data_listing(record)
+            results.append(await _upsert_property_from_parsed(current_user.id, listing_id, label, parsed))
+        except Exception as exc:  # noqa: BLE001 - one bad record shouldn't fail the whole batch
+            results.append(PropertyImportResult(filename=label, status="error", error=str(exc)))
+
+    return AirbnbUrlImportStatus(status="ready", results=results)
 
 
 @router.post("", response_model=PropertyOut, status_code=status.HTTP_201_CREATED)

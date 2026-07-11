@@ -11,6 +11,7 @@ from app.database import get_db
 from app.models.call_session import CallSession
 from app.models.user import User
 from app.schemas.call_session import CallSessionOut
+from app.services.call_service import BROWSER_TEST_CALLER_NUMBER
 
 router = APIRouter(prefix="/calls", tags=["calls"])
 
@@ -20,6 +21,7 @@ async def list_calls(
     status_filter: str | None = Query(default=None, alias="status"),
     urgency: str | None = Query(default=None),
     limit: int = Query(default=100, le=500),
+    include_test_calls: bool = Query(default=False),
     date_range: DateRange = Depends(date_range_query),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -40,6 +42,8 @@ async def list_calls(
         stmt = stmt.where(CallSession.status == status_filter)
     if urgency:
         stmt = stmt.where(CallSession.urgency == urgency)
+    if not include_test_calls:
+        stmt = stmt.where(CallSession.caller_number != BROWSER_TEST_CALLER_NUMBER)
     if date_range.since is not None:
         stmt = stmt.where(CallSession.created_at >= date_range.since)
     if date_range.until is not None:
