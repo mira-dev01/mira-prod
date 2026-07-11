@@ -67,6 +67,15 @@ class Settings(BaseSettings):
     openrouter_api_key: str | None = None
     openrouter_model: str = "openai/gpt-4.1"
 
+    # Bright Data Web Scraper API (Airbnb dataset gd_ld7ll037kqy322v05) --
+    # onboarding's "import from Airbnb" flow. Their Airbnb product takes
+    # individual listing URLs, not a host-profile URL that returns every
+    # listing -- confirmed against their docs and sample dataset (no
+    # discovery-by-host mode exists for Airbnb, unlike some of their other
+    # scrapers). The host pastes each listing URL instead of one profile
+    # link. See app/integrations/bright_data_client.py.
+    bright_data_api_key: str | None = None
+
     sarvam_api_key: str | None = None
     sarvam_stt_model: str = "saaras:v3"
     sarvam_tts_model: str = "bulbul:v3"
@@ -111,6 +120,19 @@ class Settings(BaseSettings):
     exotel_webhook_token: str = "change-me"
     exotel_gateway_ip: str | None = None
     exotel_gateway_port: int = 5070
+
+    # Email escalation summaries -- interim stand-in for a WhatsApp Business
+    # API host notification (that needs Meta business verification + Exotel
+    # KYC approval, no instant sandbox exists unlike Twilio's). Any SMTP
+    # provider works (Gmail app password, Zoho, Amazon SES SMTP, ...); unset
+    # = escalate_to_host still creates the in-app notification, just skips
+    # the email (see app/integrations/email_client.py).
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from_email: str | None = None
+    smtp_use_tls: bool = True
 
     ical_sync_interval_minutes: int = 15
 

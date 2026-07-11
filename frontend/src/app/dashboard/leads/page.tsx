@@ -2,6 +2,7 @@
 
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,46 +16,123 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { ActionableCard, type ActionableCardPriority } from "@/components/actionable-card";
+import { StatusChip, type StatusTone } from "@/components/status-chip";
 import { DateRangePicker } from "@/components/date-range-picker";
 import { useAsync } from "@/hooks/use-async";
 import { useDateRange } from "@/hooks/use-date-range";
 import { api, ApiError } from "@/lib/api";
-import { isBrowserTestIdentity } from "@/lib/utils";
+import { cn, isBrowserTestIdentity } from "@/lib/utils";
 import type { LeadOut, LeadStatus } from "@/lib/types";
 
 const TEMPERATURES = ["hot", "warm", "cold"] as const;
 const STATUSES: LeadStatus[] = ["open", "contacted", "booked", "closed"];
 
-const temperaturePriority: Record<string, ActionableCardPriority> = {
-  hot: { label: "Hot", tone: "high" },
-  warm: { label: "Warm", tone: "medium" },
-  cold: { label: "Cold", tone: "low" },
+// hot/warm/cold is a literal temperature metaphor -- red (urgent/act-now),
+// amber (warming up), neutral gray (not yet) -- reusing the same tones the
+// Calls/Overview pages use for status, so "what does this color mean"
+// stays answerable from one system instead of a lead-specific palette.
+const temperatureTone: Record<string, StatusTone> = {
+  hot: "destructive",
+  warm: "pending",
+  cold: "neutral",
 };
 
-function leadTitle(lead: LeadOut): string {
-  const name = isBrowserTestIdentity(lead.phone) ? "Browser test" : lead.guest_name ?? "Unknown guest";
-  const destination = lead.properties_discussed.length > 0 ? lead.properties_discussed.join(", ") : null;
-  return destination ? `${name} — ${destination}` : name;
+// status is the host's own follow-up lifecycle, separate from temperature
+// (see CLAUDE.md) -- open needs attention (pending/amber), contacted is in
+// motion (progress/blue), booked is the successful end state (live/green),
+// closed is done either way (neutral/gray).
+const statusTone: Record<string, StatusTone> = {
+  open: "pending",
+  contacted: "progress",
+  booked: "live",
+  closed: "neutral",
+};
+
+const temperatureRank: Record<string, number> = { hot: 0, warm: 1, cold: 2 };
+
+// A lead the voice agent never got anywhere with -- no name, no phone, no
+// summary. These are real rows (every escalated/qualifying call creates
+// one) but carry nothing a host can act on, so they shouldn't compete with
+// hot/warm leads for attention at the top of the list.
+function isEmptyLead(lead: LeadOut): boolean {
+  const hasIdentity = Boolean(lead.guest_name) || (Boolean(lead.phone) && !isBrowserTestIdentity(lead.phone));
+  const hasContent = Boolean(
+    lead.purpose_of_stay || lead.conversation_summary || lead.occasion || lead.properties_discussed.length > 0
+  );
+  return !hasIdentity && !hasContent;
 }
 
-function leadSummary(lead: LeadOut): string | undefined {
-  const parts: string[] = [];
-  if (lead.purpose_of_stay) parts.push(lead.purpose_of_stay);
-  if (lead.occasion) parts.push(`Occasion: ${lead.occasion}`);
-  if (lead.conversation_summary) parts.push(lead.conversation_summary);
-  return parts.length > 0 ? parts.join(" — ") : undefined;
+function leadGuestLabel(lead: LeadOut): string {
+  return isBrowserTestIdentity(lead.phone) ? "Browser test" : lead.guest_name ?? "Unknown guest";
 }
 
-function leadMetadata(lead: LeadOut): string {
-  const parts: string[] = [];
-  parts.push(isBrowserTestIdentity(lead.phone) ? "Browser test" : lead.phone ?? "No phone");
-  if (lead.check_in && lead.check_out) parts.push(`${lead.check_in} → ${lead.check_out}`);
-  if (lead.num_guests) parts.push(`${lead.num_guests} guest${lead.num_guests === 1 ? "" : "s"}`);
-  parts.push(lead.status);
-  if (lead.escalated) parts.push("Escalated");
-  return parts.join(" · ");
+function leadPhoneLabel(lead: LeadOut): string {
+  return isBrowserTestIdentity(lead.phone) ? "Browser test" : lead.phone ?? "No phone";
+}
+
+function leadDatesLabel(lead: LeadOut): string {
+  return lead.check_in && lead.check_out ? `${lead.check_in} → ${lead.check_out}` : "—";
+}
+
+function LeadsTable({
+  leads,
+  onRowClick,
+  muted,
+}: {
+  leads: LeadOut[];
+  onRowClick: (lead: LeadOut) => void;
+  muted?: boolean;
+}) {
+  return (
+    <div className={cn("overflow-x-auto", muted && "opacity-60")}>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Guest</TableHead>
+            <TableHead>Property</TableHead>
+            <TableHead>Dates</TableHead>
+            <TableHead>Guests</TableHead>
+            <TableHead>Temperature</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Phone</TableHead>
+            <TableHead />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {leads.map((lead) => (
+            <TableRow key={lead.id} className="cursor-pointer" onClick={() => onRowClick(lead)}>
+              <TableCell className="font-medium">{leadGuestLabel(lead)}</TableCell>
+              <TableCell>
+                {lead.properties_discussed.length > 0 ? lead.properties_discussed.join(", ") : "—"}
+              </TableCell>
+              <TableCell>{leadDatesLabel(lead)}</TableCell>
+              <TableCell>{lead.num_guests ?? "—"}</TableCell>
+              <TableCell>
+                {lead.lead_temperature ? (
+                  <StatusChip status={lead.lead_temperature} tone={temperatureTone[lead.lead_temperature]} />
+                ) : (
+                  "—"
+                )}
+              </TableCell>
+              <TableCell>
+                <div className="flex items-center gap-1.5">
+                  <StatusChip status={lead.status} tone={statusTone[lead.status] ?? "neutral"} />
+                  {lead.escalated && <StatusChip status="escalated" tone="destructive" />}
+                </div>
+              </TableCell>
+              <TableCell>{leadPhoneLabel(lead)}</TableCell>
+              <TableCell>
+                <ChevronRight className="size-4 text-muted-foreground" />
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
 }
 
 function LeadsPageContent() {
@@ -67,6 +145,7 @@ function LeadsPageContent() {
     [startDateISO, endDateISO]
   );
   const [statusFilter, setStatusFilter] = useState<string>(initialStatus);
+  const [showEmpty, setShowEmpty] = useState(false);
   const [editing, setEditing] = useState<LeadOut | null>(null);
   const [temperature, setTemperature] = useState<string>("warm");
   const [status, setStatus] = useState<LeadStatus>("open");
@@ -74,7 +153,15 @@ function LeadsPageContent() {
   const [summary, setSummary] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const filteredLeads = (leads ?? []).filter((lead) => statusFilter === "all" || lead.status === statusFilter);
+  const statusFilteredLeads = (leads ?? []).filter((lead) => statusFilter === "all" || lead.status === statusFilter);
+  const contentLeads = statusFilteredLeads
+    .filter((lead) => !isEmptyLead(lead))
+    .sort((a, b) => {
+      const rankDiff = (temperatureRank[a.lead_temperature ?? ""] ?? 3) - (temperatureRank[b.lead_temperature ?? ""] ?? 3);
+      if (rankDiff !== 0) return rankDiff;
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
+  const emptyLeads = statusFilteredLeads.filter(isEmptyLead);
 
   function openEdit(lead: LeadOut) {
     setEditing(lead);
@@ -132,24 +219,31 @@ function LeadsPageContent() {
 
       {loading ? (
         <Skeleton className="h-64 w-full" />
-      ) : filteredLeads.length === 0 ? (
+      ) : statusFilteredLeads.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           {leads && leads.length > 0
             ? "No leads match this status filter."
             : "No leads yet — they appear here once your portfolio's lead intake number starts receiving calls."}
         </p>
       ) : (
-        <div className="space-y-3">
-          {filteredLeads.map((lead) => (
-            <ActionableCard
-              key={lead.id}
-              title={leadTitle(lead)}
-              summary={leadSummary(lead)}
-              metadata={leadMetadata(lead)}
-              priority={lead.lead_temperature ? temperaturePriority[lead.lead_temperature] : undefined}
-              onClick={() => openEdit(lead)}
-            />
-          ))}
+        <div className="space-y-4">
+          {contentLeads.length > 0 ? (
+            <LeadsTable leads={contentLeads} onRowClick={openEdit} />
+          ) : (
+            <p className="text-sm text-muted-foreground">No leads with captured info yet for this filter.</p>
+          )}
+
+          {emptyLeads.length > 0 && (
+            <div className="space-y-3 border-t pt-4">
+              <div className="flex items-center gap-2">
+                <Switch id="show-empty-leads" checked={showEmpty} onCheckedChange={setShowEmpty} />
+                <Label htmlFor="show-empty-leads" className="text-sm text-muted-foreground">
+                  Show {emptyLeads.length} lead{emptyLeads.length === 1 ? "" : "s"} with no captured info
+                </Label>
+              </div>
+              {showEmpty && <LeadsTable leads={emptyLeads} muted onRowClick={openEdit} />}
+            </div>
+          )}
         </div>
       )}
 

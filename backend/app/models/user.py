@@ -17,6 +17,13 @@ class User(UUIDPkMixin, TimestampMixin, Base):
 
     lead_exophone: Mapped[str | None] = mapped_column(String(32), unique=True, index=True)
 
+    # Where escalation summaries (app/integrations/email_client.py, fired
+    # from handle_escalate_to_host) get sent. None -- the common case -- means
+    # "use the login email above"; set this when the host wants escalations
+    # routed to a different inbox (e.g. a shared front-desk address) without
+    # changing their login email.
+    notification_email: Mapped[str | None] = mapped_column(String(255))
+
     # Per-host voice agent customization (see app/prompts/system_prompt.py).
     # All optional -- None means "use Mira's default". agent_first_message
     # supports {host_name}, {property_name}, {city}, {guest_name} placeholders;

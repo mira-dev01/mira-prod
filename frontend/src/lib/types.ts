@@ -9,6 +9,7 @@ export type UserOut = {
   agent_first_message: string | null;
   agent_persona: string | null;
   agent_escalation_phrase: string | null;
+  notification_email: string | null;
 };
 
 export type UserUpdate = {
@@ -18,6 +19,7 @@ export type UserUpdate = {
   agent_first_message?: string | null;
   agent_persona?: string | null;
   agent_escalation_phrase?: string | null;
+  notification_email?: string | null;
 };
 
 export type FAQItem = { question: string; answer: string };
@@ -47,6 +49,12 @@ export type PropertyImportResult = {
   status: "created" | "updated" | "error";
   property: PropertyOut | null;
   faq_entries_created: number;
+  error: string | null;
+};
+
+export type AirbnbUrlImportStatus = {
+  status: "running" | "ready" | "failed";
+  results: PropertyImportResult[];
   error: string | null;
 };
 
@@ -164,6 +172,7 @@ export type TechnicianCreate = {
 export type NotificationOut = {
   id: string;
   property_id: string | null;
+  property_name: string | null;
   call_session_id: string | null;
   channel: string;
   urgency: string;

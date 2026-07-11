@@ -15,6 +15,9 @@ export default function SettingsPage() {
   const [leadExophone, setLeadExophone] = useState(user?.lead_exophone ?? "");
   const [submitting, setSubmitting] = useState(false);
 
+  const [notificationEmail, setNotificationEmail] = useState(user?.notification_email ?? "");
+  const [savingNotificationEmail, setSavingNotificationEmail] = useState(false);
+
   const [firstMessage, setFirstMessage] = useState(user?.agent_first_message ?? "");
   const [persona, setPersona] = useState(user?.agent_persona ?? "");
   const [escalationPhrase, setEscalationPhrase] = useState(user?.agent_escalation_phrase ?? "");
@@ -31,6 +34,20 @@ export default function SettingsPage() {
       toast.error(err instanceof ApiError ? err.message : "Failed to save lead intake number");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleSaveNotificationEmail(e: React.FormEvent) {
+    e.preventDefault();
+    setSavingNotificationEmail(true);
+    try {
+      await api.auth.updateMe({ notification_email: notificationEmail || null });
+      await refreshUser();
+      toast.success("Notification email saved");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Failed to save notification email");
+    } finally {
+      setSavingNotificationEmail(false);
     }
   }
 
@@ -90,6 +107,29 @@ export default function SettingsPage() {
               {user?.status ?? "—"}
             </Badge>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card className="max-w-md">
+        <CardHeader>
+          <CardTitle>Escalation notifications</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="mb-3 text-sm text-muted-foreground">
+            Where escalation summaries are emailed. Leave blank to use your login email above — set
+            this if you&apos;d rather they go to a shared inbox (e.g. a front-desk address) instead.
+          </p>
+          <form onSubmit={handleSaveNotificationEmail} className="flex gap-2">
+            <Input
+              type="email"
+              placeholder={user?.email ?? "you@example.com"}
+              value={notificationEmail}
+              onChange={(e) => setNotificationEmail(e.target.value)}
+            />
+            <Button type="submit" disabled={savingNotificationEmail}>
+              Save
+            </Button>
+          </form>
         </CardContent>
       </Card>
 

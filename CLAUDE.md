@@ -64,6 +64,9 @@ python -m uvicorn app.main:app --reload
 | `SARVAM_TTS_MODEL` / `SARVAM_TTS_SPEAKER` | `bulbul:v3` / `roopa` |
 | `EXOTEL_*` | Telephony integration |
 | `CORS_EXTRA_ORIGINS` | Comma-separated extra CORS origins (e.g. hit a deployed backend from a local frontend). `FRONTEND_BASE_URL` is always allowed. |
+| `BRIGHT_DATA_API_KEY` | Airbnb listing import (see Airbnb import below). Not set = "Import from Airbnb" fails with a clear `BRIGHT_DATA_API_KEY is not configured` error, doesn't crash. |
+| `TURN_DETECTION_STRATEGY` | `vad_fixed` (default) / `hybrid_experimental`. Local-only experiment — see Intelligent Turn Detection below. Not in `render.yaml`. |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USERNAME` / `SMTP_PASSWORD` / `SMTP_FROM_EMAIL` | Escalation email summaries (see Host notifications below). Any SMTP provider works. Unset = escalations still create the in-app notification, just skip the email. |
 
 ### LLM provider + Groq multi-model fallback
 
@@ -84,10 +87,48 @@ python -m uvicorn app.main:app --reload
 
 - `pricing_engine.calculate_price` — base rate × weekend surge (Fri/Sat/Sun, `WEEKEND_SURGE_MULTIPLIER`), plus cleaning fee (`DEFAULT_CLEANING_FEE_INR`) and tax (`DEFAULT_TAX_PERCENT`). Length-of-stay discounts come from per-property `PricingRule` rows (`rule_type="length_of_stay"`, `min_nights` condition).
 - `pricing_engine.negotiate_rate` — computes a floor price from a max discount (capped at `MAX_NEGOTIATION_DISCOUNT_PERCENT`, plus a small loyalty bonus) and accepts/counters the guest's offer. The LLM only reaches this via the `negotiate_rate` tool — it never negotiates freehand.
+- Prompt rule (`GOLDEN_RULES` in `system_prompt.py`): if a guest compares the price to Booking.com/MMT/Agoda or asks for a discount (English/Hindi/Hinglish, e.g. "Aur discount milega?"), the agent must route through `negotiate_rate`/`get_pricing(apply_discounts=true)` — never invent a match to a competitor's price.
+- After a guest verbally accepts a price, the prompt requires an immediate `update_lead(lead_temperature="hot", ...)` + `escalate_to_host` — there's no tool that finalizes a booking on its own, so a verbal "I'll lock that in" with no backend call means the host never finds out. See `GOLDEN_RULES` step 7.
+
+### Leads
+
+- `Lead.status` (`open` / `contacted` / `booked` / `closed`, default `open`) is a **host-managed follow-up lifecycle**, separate from `lead_temperature` (hot/warm/cold, which is qualification, not follow-up state). The voice agent never sets `status` — only the dashboard's Leads page edit dialog does.
+- `Lead.occasion` — free-text (not an enum; guest phrasing varies too much to bucket). Set via `update_lead`'s `occasion` param when a guest mentions a birthday/anniversary/honeymoon/etc. Prompt rule: record exactly what the guest said, never invent host-facing suggestions ("consider offering a cake" is explicitly banned).
+- Overview page's "Open Leads" stat card = `Lead.status == "open"` count, links to `/dashboard/leads?status=open`.
+
+### FAQ Learning Engine
+
+- When `search_faq` (the voice tool) finds no verified answer, `tool_handlers.handle_search_faq` fire-and-forget logs the guest's question into a new `UnansweredQuestion` row (never blocks/breaks the guest-facing response on a logging failure).
+- `GET /api/v1/faq/gaps` groups these by normalized (trimmed/lowercased) question text with frequency counts; `GET /api/v1/faq/gaps/analytics` gives most-frequent / by-property / over-time breakdowns.
+- `POST /api/v1/faq/gaps/{id}/answer` (text) and `.../answer-voice` (audio upload) convert a gap into a real, verified `FaqEntry` and mark every row sharing that normalized question as answered — the whole group disappears from the gap list, not just the one row you answered.
+- Voice-answer transcription uses `sarvamai`'s **batch REST** `AsyncSpeechToTextClient.transcribe()` (`faq_service.transcribe_gap_answer_audio`) — deliberately NOT the pipecat `SarvamSTTService` used by the live call pipeline, which only works inside a running WebSocket-based pipeline, not for a single pre-recorded clip.
+- `faq_service.search_faq_entries` orders property-specific `FaqEntry` rows before portfolio-wide (`property_id IS NULL`) ones, so a per-property override (e.g. Mocha/Nook/Chic's "limited roadside parking") wins over a general answer when both match the same query.
+
+### Host notifications (in-app + email; WhatsApp not yet built)
+
+- `escalate_to_host`/`send_whatsapp` write to the `Notification` table (`app/services/notification_service.py`) — this is what the dashboard's Live Requests feed polls/streams. That table is also a deliberate stand-in for a real WhatsApp Business API integration: `send_whatsapp` (guest-facing confirmations) queues there instead of calling Meta's API, since the host doesn't have WhatsApp Business approval yet.
+- **No Exotel WhatsApp sandbox exists.** Unlike Twilio's WhatsApp sandbox (join a shared demo number instantly, no approval needed), Exotel's WhatsApp Business API requires a Facebook Business Manager ID plus Exotel KYC/Meta approval before you get any sending number or token at all — confirmed against Exotel's own onboarding docs, there's no lower-friction test path. Budget for the approval step whenever WhatsApp gets built for real; don't expect a quick sandbox to unblock it.
+- Until then, `handle_escalate_to_host` also fires an email to the host (`app/integrations/email_client.py`, plain SMTP so any provider works — Gmail app password, Zoho, SES SMTP, etc.) so escalations reach the host even when they aren't watching the dashboard. Fired via `asyncio.create_task` (not awaited) so a slow/misconfigured SMTP server never adds latency to the tool call — the guest is still on the line. `SMTP_*` unset = skipped silently (logged at info level), same "don't crash, don't block" pattern as `BRIGHT_DATA_API_KEY`.
+- `send_whatsapp` (guest-facing) is untouched by this — it only ever writes to `Notification`, no email fallback. The email hook is specifically for `escalate_to_host`'s host-facing summary.
+
+### Airbnb import (Bright Data)
+
+- `POST /api/v1/properties/import-airbnb-urls` (trigger) + `GET .../import-airbnb-urls/{snapshot_id}` (poll) drive an async scrape via Bright Data's Web Scraper API (`app/integrations/bright_data_client.py`, dataset `gd_ld7ll037kqy322v05`, needs `BRIGHT_DATA_API_KEY`).
+- **Important constraint**: Bright Data's Airbnb product takes individual **listing URLs**, not a host-profile URL that returns everything — there's no "discover all of this host's listings" mode for Airbnb (unlike some of their other scrapers). The onboarding UI reflects this honestly: host pastes each listing URL, one per line.
+- `airbnb_import.parse_bright_data_listing()` adapts Bright Data's flat JSON schema into the same `{"fields": ..., "faq_entries": ...}` shape `parse_airbnb_listing()` produces — **not a shared parser**, Bright Data's schema is completely different from Airbnb's own nested GraphQL PDP shape the older JSON-upload import path expects. Both paths converge on the same `_upsert_property_from_parsed()` helper in `properties.py` for the actual create/update/FAQ-sync.
+- The Properties page has two import buttons now: **"Import from Airbnb"** (the Bright Data URL-paste flow, primary) and **"Import from file (advanced)"** (the older manual JSON-upload path, kept for power users who already have a scrape file).
+
+### Intelligent Turn Detection (experimental, `shagun` branch only)
+
+- `TURN_DETECTION_STRATEGY` env var (`vad_fixed` default / `hybrid_experimental`) picks between today's proven fixed-0.9s VAD strategy and `app/voice/turn_strategies.HybridCompletenessUserTurnStopStrategy`. Deliberately **not** added to `render.yaml` — local-only experiment, `main`/production untouched regardless of this file's setting.
+- The hybrid strategy runs a fast, local (no network call) heuristic on the transcript when the base 0.9s timeout fires: trailing conjunction ("and", "but", "aur", "और", ...), trailing comma, or very short/unpunctuated text → extend the wait once (0.7s) instead of firing, up to a hard 2.8s cap from the original VAD-stop. Falls back to identical behavior to `vad_fixed` if the guest's sentence looks complete.
+- **Known gotcha, already fixed once**: pipecat's transcript can arrive *before* `VADUserStoppedSpeakingFrame` does. Without an explicit fallback for that (mirroring pipecat's own `SpeechTimeoutUserTurnStopStrategy`), the strategy's timer chain never starts at all, and the turn only ever ends via pipecat's generic ~5s stuck-turn watchdog (`strategy: None` in logs) — not the intended adaptive behavior. Fixed in `_handle_transcription`.
+- `[DEBUGTURN]`-prefixed debug logging is still present in `turn_strategies.py` — intentionally left in for live verification. Safe to strip once confirmed working end-to-end on a real call; grep the backend log for `strategy:` to see which class actually fired.
 
 ### Analytics
 
 - `GET /api/v1/analytics/summary` and `GET /api/v1/analytics/timeseries` power the dashboard's stat cards, sparklines, and date-range-filtered charts.
+- `/timeseries`'s bucket column must come from whichever table the metric's WHERE filters actually scope (`Lead` for `pipeline_value`/`open_leads`, `Notification` for `escalated_calls`, `CallSession` otherwise) — using the wrong table's column here doesn't error, it silently adds an unrelated table to the query's FROM clause (implicit cross join), inflating every result. Confirmed as a real bug this way once; check `str(select(...))` if a new metric's numbers look too large.
 
 ### Tests
 
@@ -167,3 +208,6 @@ DATABASE_URL="postgresql://…" python3 seed_demo.py   # additive; doesn't touch
 - **`GROQ_MODEL` deprecation** — Groq renames/deprecates model ids periodically (`llama-3.3-70b-versatile` was removed 2026-06-17). Re-check `GROQ_MODELS` against `client.models.list()` before editing, and confirm any new model supports function calling (required for tools).
 - **`Module not found: react-day-picker` (frontend)** — local `node_modules` is stale after a merge that added the calendar component. Run `npm install` in `frontend/`.
 - **Greeting garbled / not spoken** — don't ask the LLM to generate the opening line and don't push `TTSSpeakFrame` into `llm`/`tts` directly. Use `worker.queue_frame(TTSSpeakFrame(first_message))` on connect (see Voice/WebRTC).
+- **"I changed `.env`/the code but nothing's different" (the single most common time-sink this session)** — a running `uvicorn` process only picks up `.py` file changes if started with `--reload`, and even then, **`.env` changes are never hot-reloaded** — `pydantic-settings`' `Settings()` is read once via `@lru_cache` at process start. Always fully kill and restart (`pkill -f "uvicorn app.main:app"`, then re-run) after any `.env` edit, and confirm with `curl localhost:8000/health` or an OpenAPI check (`m.app.openapi()["paths"]`) that new routes actually exist before assuming a fix didn't work. A route that "should" exist but returns `405 Method Not Allowed` (not `404`) is a strong signal you're hitting a stale process — Starlette matched the path against a different, older route's pattern (e.g. `/{property_id}`) instead.
+- **A `<button>`/element with both `addEventListener(...)` and a later `.onclick = ...` fires both on click** — these are separate handler slots; assigning `.onclick` does not remove or replace an `addEventListener` listener. Bit the voice test page's connect/end-call button this way (ending a call also silently re-triggered the original connect handler, looking like an auto-restarted call). Fix: register both states through the same slot (either both `.onclick =` or explicit `removeEventListener`), never mix.
+- **Voice-agent bugs from a live call log are usually more informative than they look** — `logger.debug` lines like `(strategy: HybridCompletenessUserTurnStopStrategy#0)` or `(strategy: None)` name the exact class/mechanism that fired. `strategy: None` specifically means pipecat's own generic stuck-turn watchdog closed the turn, not any registered strategy — a real signal the strategy's own logic never completed, not just "it was a bit slow."

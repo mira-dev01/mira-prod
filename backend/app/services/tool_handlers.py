@@ -5,13 +5,18 @@ tool result and is what it will speak to the guest, so results are phrased
 for that, not as raw JSON.
 """
 
+import asyncio
+import logging
 import uuid
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
+from app.integrations import email_client
 from app.models.property import Property
 from app.models.unanswered_question import UnansweredQuestion
+from app.models.user import User
 from app.schemas.tool import (
     CheckCalendarArgs,
     DispatchTechnicianArgs,
@@ -31,6 +36,21 @@ from app.services import (
     pricing_engine,
     technician_service,
 )
+
+logger = logging.getLogger(__name__)
+
+
+async def _send_escalation_email(to_email: str, subject: str, body: str) -> None:
+    # Runs detached via asyncio.create_task -- never awaited by the caller,
+    # so exceptions here would otherwise vanish into asyncio's default
+    # handler. Log instead, and never let a slow/failed SMTP send add
+    # latency to the live call turn that triggered it.
+    try:
+        result = await email_client.send_email(to_email, subject, body)
+        if result.get("status") == "skipped":
+            logger.info("Escalation email to %s skipped: %s", to_email, result.get("reason"))
+    except Exception:
+        logger.exception("Failed to send escalation email to %s", to_email)
 
 
 async def _get_property(db: AsyncSession, property_id: str) -> Property | None:
@@ -196,6 +216,23 @@ async def handle_escalate_to_host(
         escalated=True,
     )
 
+    # In-app notification above covers hosts watching the dashboard live;
+    # this email covers the far more common case of a host who isn't. Fired
+    # detached (not awaited) so a slow/misconfigured SMTP server never adds
+    # latency to this tool call's result -- the guest is still on the line.
+    host_user = await db.get(User, host_user_id)
+    if host_user is not None:
+        # notification_email (Settings -> Notifications) lets a host route
+        # escalations to a different inbox -- a shared front-desk address,
+        # say -- without changing their login email. Unset = login email.
+        asyncio.create_task(
+            _send_escalation_email(
+                host_user.notification_email or host_user.email,
+                subject=f"[Mira] {args.urgency.title()} escalation — {property_.name}",
+                body=f"{message}\n\nView in dashboard: {settings.frontend_base_url}/dashboard/leads",
+            )
+        )
+
     return f"I've escalated this to the host as {args.urgency} priority. They'll follow up shortly."
 
 
@@ -249,10 +286,36 @@ async def handle_recommend_properties(db: AsyncSession, args: RecommendPropertie
     return "Here are some options: " + " | ".join(lines)
 
 
+async def _resolve_property_names(db: AsyncSession, values: list[str]) -> list[str]:
+    """properties_discussed is meant to be human-readable names for the
+    dashboard's Leads page, but the model sometimes echoes the property_id
+    it was given in its own tool-call instructions instead of the name --
+    confirmed live, a lead showed a raw UUID where "Pine & Mist Cabin"
+    belonged. Prompt wording alone isn't reliable (same lesson as the phone
+    number normalizer above), so resolve any UUID-shaped entry against the
+    DB here. Anything that isn't a valid UUID is assumed to already be a
+    name and is left untouched.
+    """
+    ids: list[uuid.UUID] = []
+    for value in values:
+        try:
+            ids.append(uuid.UUID(value))
+        except ValueError:
+            continue
+    if not ids:
+        return values
+    properties = (await db.scalars(select(Property).where(Property.id.in_(ids)))).all()
+    names_by_id = {str(p.id): p.name for p in properties}
+    return [names_by_id.get(value, value) for value in values]
+
+
 async def handle_update_lead(
     db: AsyncSession, args: UpdateLeadArgs, host_user_id: uuid.UUID, call_session_id: uuid.UUID | None
 ) -> str:
-    await lead_service.upsert_lead(db, host_user_id, call_session_id, **args.model_dump(exclude_unset=True))
+    updates = args.model_dump(exclude_unset=True)
+    if updates.get("properties_discussed"):
+        updates["properties_discussed"] = await _resolve_property_names(db, updates["properties_discussed"])
+    await lead_service.upsert_lead(db, host_user_id, call_session_id, **updates)
     return "Saved."
 
 

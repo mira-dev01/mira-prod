@@ -1,4 +1,5 @@
 import type {
+  AirbnbUrlImportStatus,
   AnalyticsSummary,
   AnalyticsTimeseries,
   AnalyticsTimeseriesMetric,
@@ -161,9 +162,23 @@ export const api = {
     remove: (id: string) => request<void>(`/properties/${id}`, { method: "DELETE" }),
     syncIcal: (id: string) => request<{ created: number; updated: number }>(`/properties/${id}/sync-ical`, { method: "POST" }),
     importListings: (files: File[]) => uploadFiles<PropertyImportResult[]>("/properties/import", files),
+    importAirbnbUrls: (urls: string[]) =>
+      request<{ snapshot_id: string }>("/properties/import-airbnb-urls", {
+        method: "POST",
+        body: JSON.stringify({ urls }),
+      }),
+    importAirbnbUrlsStatus: (snapshotId: string) =>
+      request<AirbnbUrlImportStatus>(`/properties/import-airbnb-urls/${snapshotId}`),
   },
   calls: {
-    list: (params?: { status?: string; urgency?: string; limit?: number; startDate?: string; endDate?: string }) =>
+    list: (params?: {
+      status?: string;
+      urgency?: string;
+      limit?: number;
+      startDate?: string;
+      endDate?: string;
+      includeTestCalls?: boolean;
+    }) =>
       request<CallSessionOut[]>(
         `/calls${buildQuery({
           status: params?.status,
@@ -171,6 +186,7 @@ export const api = {
           limit: params?.limit,
           start_date: params?.startDate,
           end_date: params?.endDate,
+          include_test_calls: params?.includeTestCalls ?? false,
         })}`
       ),
     get: (id: string) => request<CallSessionOut>(`/calls/${id}`),

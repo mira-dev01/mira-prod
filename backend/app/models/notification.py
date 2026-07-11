@@ -1,3 +1,4 @@
+import builtins
 import uuid
 
 from sqlalchemy import ForeignKey, String, Text
@@ -24,3 +25,18 @@ class Notification(UUIDPkMixin, TimestampMixin, Base):
 
     property: Mapped["Property"] = relationship(back_populates="notifications")
     call_session: Mapped["CallSession"] = relationship(back_populates="notifications")
+
+    # builtins.property, not the bare @property decorator -- the
+    # relationship above is itself named `property`, which shadows the
+    # decorator name within this class body (bare @property here resolves
+    # to that relationship's descriptor, not the builtin, and fails with
+    # "'_RelationshipDeclared' object is not callable").
+    @builtins.property
+    def property_name(self) -> str | None:
+        # Computed, not stored -- the Live Requests panel needs a
+        # human-readable property name (hosts are non-technical, a raw
+        # property_id means nothing to them), not just property_id.
+        # Requires the caller to eager-load `property` (see
+        # notification_service.list_notifications) since this can run after
+        # the async session that fetched the row has already closed.
+        return self.property.name if self.property_id and self.property else None

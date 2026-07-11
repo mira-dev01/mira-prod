@@ -1,8 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAsync } from "@/hooks/use-async";
 import { useDateRange } from "@/hooks/use-date-range";
@@ -28,10 +31,11 @@ function formatDuration(minutes: number | null): string {
 }
 
 export default function CallsPage() {
+  const [includeTestCalls, setIncludeTestCalls] = useState(false);
   const { startDateISO, endDateISO } = useDateRange();
   const { data: calls, loading } = useAsync(
-    () => api.calls.list({ startDate: startDateISO, endDate: endDateISO }),
-    [startDateISO, endDateISO]
+    () => api.calls.list({ startDate: startDateISO, endDate: endDateISO, includeTestCalls }),
+    [startDateISO, endDateISO, includeTestCalls]
   );
 
   return (
@@ -41,7 +45,15 @@ export default function CallsPage() {
           <h1 className="page-title">Calls</h1>
           <p className="text-sm text-muted-foreground">Every call MIRA has answered across your properties</p>
         </div>
-        <DateRangePicker />
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Switch id="include-test-calls" checked={includeTestCalls} onCheckedChange={setIncludeTestCalls} />
+            <Label htmlFor="include-test-calls" className="text-sm text-muted-foreground">
+              Include browser test calls
+            </Label>
+          </div>
+          <DateRangePicker />
+        </div>
       </div>
 
       {loading ? (
@@ -59,7 +71,6 @@ export default function CallsPage() {
               <TableHead>Duration</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Urgency</TableHead>
-              <TableHead>Revenue</TableHead>
               <TableHead>Started</TableHead>
             </TableRow>
           </TableHeader>
@@ -84,7 +95,6 @@ export default function CallsPage() {
                   <StatusChip status={call.status} tone={statusTone[call.status] ?? "neutral"} />
                 </TableCell>
                 <TableCell className="capitalize">{call.urgency ?? "—"}</TableCell>
-                <TableCell>₹{call.revenue_attributed.toLocaleString("en-IN")}</TableCell>
                 <TableCell>{call.started_at ? new Date(call.started_at).toLocaleString() : "—"}</TableCell>
               </TableRow>
             ))}

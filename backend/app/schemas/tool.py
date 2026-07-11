@@ -4,15 +4,37 @@ the LLM, so the wrappers and our handlers in app/services/tool_handlers.py
 stay in lockstep.
 """
 
+import re
 from datetime import date
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 Urgency = Literal["low", "medium", "high", "emergency"]
 IssueType = Literal["plumbing", "electrical", "ac", "wifi", "lock", "general"]
 GuestLoyalty = Literal["new", "returning", "frequent"]
 LeadTemperature = Literal["hot", "warm", "cold"]
+
+
+def _normalize_phone(value: str) -> str:
+    """Keep only digits, then the last 10.
+
+    Confirmed live: a guest self-correcting mid-dictation ("93263... [pause]
+    9326359081") gets captured as one turn (the whole point of the
+    turn-detection extension in app/voice/turn_strategies.py -- it's meant
+    to wait through exactly this pause instead of splitting it in two), but
+    the model then has no instruction on which fragment is the real
+    answer and just concatenates both: "932639326359081". The complete,
+    corrected number is always the LAST digits spoken, never the first --
+    a guest restarts by speaking the whole number again, not by resuming
+    mid-digit. Taking the last 10 also incidentally strips a leading
+    "91"/"+91" country code. Left permissive (no length/format rejection)
+    since a guest can legitimately still be mid-dictation when this runs.
+    """
+    digits = re.sub(r"\D", "", value)
+    if not digits:
+        return value
+    return digits[-10:] if len(digits) > 10 else digits
 
 
 class CheckCalendarArgs(BaseModel):
@@ -36,11 +58,21 @@ class DispatchTechnicianArgs(BaseModel):
     urgency: Urgency
     guest_phone: str | None = None
 
+    @field_validator("guest_phone")
+    @classmethod
+    def _clean_guest_phone(cls, value: str | None) -> str | None:
+        return _normalize_phone(value) if value else value
+
 
 class SendWhatsappArgs(BaseModel):
     phone: str
     message: str
     template_name: str | None = None
+
+    @field_validator("phone")
+    @classmethod
+    def _clean_phone(cls, value: str) -> str:
+        return _normalize_phone(value)
 
 
 class EscalateToHostArgs(BaseModel):
@@ -49,6 +81,11 @@ class EscalateToHostArgs(BaseModel):
     urgency: Urgency
     guest_phone: str | None = None
     call_summary: str | None = None
+
+    @field_validator("guest_phone")
+    @classmethod
+    def _clean_guest_phone(cls, value: str | None) -> str | None:
+        return _normalize_phone(value) if value else value
 
 
 class NegotiateRateArgs(BaseModel):
@@ -71,6 +108,11 @@ class UpdateLeadArgs(BaseModel):
     guest_name: str | None = None
     phone: str | None = None
     email: str | None = None
+
+    @field_validator("phone")
+    @classmethod
+    def _clean_phone(cls, value: str | None) -> str | None:
+        return _normalize_phone(value) if value else value
     check_in: date | None = None
     check_out: date | None = None
     num_guests: int | None = None

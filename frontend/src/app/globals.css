@@ -64,7 +64,7 @@
   --secondary: #fdfaf5;
   --secondary-foreground: #1a1714;
   --muted: #ede8df;
-  --muted-foreground: #7a6f63;
+  --muted-foreground: #635747;
   --accent: #ede8df;
   --accent-foreground: #1a1714;
   --destructive: #d94f3d;
@@ -96,6 +96,13 @@
   --status-progress-bg: rgba(107, 143, 212, 0.12);
   --accent-warm: #c9a882;
   --accent-warm-bg: rgba(201, 168, 130, 0.12);
+
+  /* Low-priority/-urgency tone. Deliberately a cool slate rather than a
+     washed-out red -- "high" (destructive red) and "medium" (status-pending
+     amber) already have distinct hues; giving "low" a red-family tint too
+     made all three tiers hard to tell apart at a glance during triage. */
+  --priority-low: #6b7280;
+  --priority-low-bg: rgba(107, 114, 128, 0.12);
 }
 
 .dark {
@@ -180,6 +187,11 @@
   .badge-status-progress {
     background: var(--status-progress-bg);
     color: var(--status-progress);
+    border-color: transparent;
+  }
+  .badge-priority-low {
+    background: var(--priority-low-bg);
+    color: var(--priority-low);
     border-color: transparent;
   }
 

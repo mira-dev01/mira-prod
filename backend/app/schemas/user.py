@@ -22,6 +22,7 @@ class UserUpdate(BaseModel):
     agent_first_message: str | None = None
     agent_persona: str | None = None
     agent_escalation_phrase: str | None = None
+    notification_email: EmailStr | None = None
 
 
 class UserOut(BaseModel):
@@ -35,6 +36,7 @@ class UserOut(BaseModel):
     agent_first_message: str | None
     agent_persona: str | None
     agent_escalation_phrase: str | None
+    notification_email: str | None
 
     model_config = {"from_attributes": True}
 

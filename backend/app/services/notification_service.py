@@ -9,6 +9,7 @@ from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.notification import Notification
 
@@ -41,7 +42,16 @@ async def list_notifications(
     since: datetime | None = None,
     limit: int = 100,
 ) -> list[Notification]:
-    stmt = select(Notification).order_by(Notification.created_at.desc()).limit(limit)
+    # eager-load property -- Notification.property_name (NotificationOut's
+    # source for it) reads this relationship, and the async session that
+    # fetched these rows may already be closed by the time it's accessed
+    # (see notification.py's property_name docstring).
+    stmt = (
+        select(Notification)
+        .options(selectinload(Notification.property))
+        .order_by(Notification.created_at.desc())
+        .limit(limit)
+    )
     if user_property_ids is not None:
         stmt = stmt.where(Notification.property_id.in_(user_property_ids))
     if since is not None:
@@ -50,10 +60,14 @@ async def list_notifications(
 
 
 async def mark_read(db: AsyncSession, notification_id: uuid.UUID) -> Notification | None:
+    # db.get() doesn't take eager-load options, and async SQLAlchemy has no
+    # implicit lazy-load -- refresh() with attribute_names populates
+    # `property` after the update so NotificationOut's property_name can
+    # read it without a MissingGreenlet error.
     notification = await db.get(Notification, notification_id)
     if notification is None:
         return None
     notification.status = "read"
     await db.commit()
-    await db.refresh(notification)
+    await db.refresh(notification, attribute_names=["property"])
     return notification

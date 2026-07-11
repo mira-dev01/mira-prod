@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { ArrowRight, ChevronRight, Phone, PhoneCall, AlertTriangle, Percent, Wallet, Users } from "lucide-react";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +15,7 @@ import { NotificationsFeed } from "@/components/notifications-feed";
 import { StatCard } from "@/components/stat-card";
 import { StatusChip, type StatusTone } from "@/components/status-chip";
 import { DateRangePicker } from "@/components/date-range-picker";
+import { UnansweredQuestionsCard } from "@/components/unanswered-questions-card";
 
 const statusTone: Record<string, StatusTone> = {
   completed: "live",
@@ -35,44 +36,10 @@ export default function OverviewPage() {
     [startDateISO, endDateISO, includeTestCalls]
   );
   const { data: calls, loading: callsLoading } = useAsync(
-    () => api.calls.list({ startDate: startDateISO, endDate: endDateISO, limit: 8 }),
-    [startDateISO, endDateISO]
+    () => api.calls.list({ startDate: startDateISO, endDate: endDateISO, limit: 8, includeTestCalls }),
+    [startDateISO, endDateISO, includeTestCalls]
   );
   const { data: notifications, loading: notificationsLoading } = useAsync(() => api.notifications.list(), []);
-
-  const { data: totalCallsSeries } = useAsync(
-    () => api.analytics.timeseries({ metric: "total_calls", startDate: startDateISO, endDate: endDateISO, includeTestCalls }),
-    [startDateISO, endDateISO, includeTestCalls]
-  );
-  const { data: completedCallsSeries } = useAsync(
-    () =>
-      api.analytics.timeseries({ metric: "completed_calls", startDate: startDateISO, endDate: endDateISO, includeTestCalls }),
-    [startDateISO, endDateISO, includeTestCalls]
-  );
-  const { data: escalatedCallsSeries } = useAsync(
-    () =>
-      api.analytics.timeseries({ metric: "escalated_calls", startDate: startDateISO, endDate: endDateISO, includeTestCalls }),
-    [startDateISO, endDateISO, includeTestCalls]
-  );
-  const { data: pipelineValueSeries } = useAsync(
-    () =>
-      api.analytics.timeseries({ metric: "pipeline_value", startDate: startDateISO, endDate: endDateISO, includeTestCalls }),
-    [startDateISO, endDateISO, includeTestCalls]
-  );
-  const { data: openLeadsSeries } = useAsync(
-    () =>
-      api.analytics.timeseries({ metric: "open_leads", startDate: startDateISO, endDate: endDateISO, includeTestCalls }),
-    [startDateISO, endDateISO, includeTestCalls]
-  );
-
-  const answerRateSparkline = useMemo(() => {
-    if (!totalCallsSeries || !completedCallsSeries) return undefined;
-    return totalCallsSeries.points.map((point, i) => {
-      const total = point.value;
-      const completed = completedCallsSeries.points[i]?.value ?? 0;
-      return total > 0 ? completed / total : 0;
-    });
-  }, [totalCallsSeries, completedCallsSeries]);
 
   const recentCalls = calls ?? [];
   const activeNotifications = (notifications ?? []).filter((n) => n.status === "new");
@@ -96,21 +63,13 @@ export default function OverviewPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        <StatCard
-          icon={Phone}
-          iconColorVar="--primary"
-          label="Total calls"
-          value={summary?.total_calls}
-          loading={summaryLoading}
-          sparklineData={totalCallsSeries?.points.map((p) => p.value)}
-        />
+        <StatCard icon={Phone} label="Total calls" value={summary?.total_calls} loading={summaryLoading} />
         <StatCard
           icon={PhoneCall}
           iconColorVar="--status-live"
           label="Completed"
           value={summary?.completed_calls}
           loading={summaryLoading}
-          sparklineData={completedCallsSeries?.points.map((p) => p.value)}
         />
         <StatCard
           icon={AlertTriangle}
@@ -118,33 +77,21 @@ export default function OverviewPage() {
           label="Escalated"
           value={summary?.escalated_calls}
           loading={summaryLoading}
-          sparklineData={escalatedCallsSeries?.points.map((p) => p.value)}
         />
         <StatCard
           icon={Percent}
-          iconColorVar="--status-progress"
           label="Answer rate"
           value={summary?.answer_rate != null ? `${Math.round(summary.answer_rate * 100)}%` : undefined}
           loading={summaryLoading}
-          sparklineData={answerRateSparkline}
         />
         <StatCard
           icon={Wallet}
-          iconColorVar="--accent-warm"
           label="Pipeline value"
           value={summary?.pipeline_value != null ? `₹${summary.pipeline_value.toLocaleString("en-IN")}` : undefined}
           loading={summaryLoading}
-          sparklineData={pipelineValueSeries?.points.map((p) => p.value)}
         />
         <Link href="/dashboard/leads?status=open" className="block">
-          <StatCard
-            icon={Users}
-            iconColorVar="--primary"
-            label="Open leads"
-            value={summary?.open_leads}
-            loading={summaryLoading}
-            sparklineData={openLeadsSeries?.points.map((p) => p.value)}
-          />
+          <StatCard icon={Users} label="Open leads" value={summary?.open_leads} loading={summaryLoading} />
         </Link>
       </div>
 
@@ -205,6 +152,8 @@ export default function OverviewPage() {
           <NotificationsFeed initial={notifications ?? []} activeCount={activeNotifications.length} />
         )}
       </div>
+
+      <UnansweredQuestionsCard />
     </div>
   );
 }
