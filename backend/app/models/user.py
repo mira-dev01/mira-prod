@@ -1,4 +1,6 @@
-from sqlalchemy import String, Text
+from datetime import datetime
+
+from sqlalchemy import DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -16,6 +18,13 @@ class User(UUIDPkMixin, TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(32), default="active", server_default="active")
 
     lead_exophone: Mapped[str | None] = mapped_column(String(32), unique=True, index=True)
+
+    # Host registration profile (self-reported, no verification against Airbnb).
+    business_name: Mapped[str | None] = mapped_column(String(255))
+    airbnb_host_status: Mapped[str | None] = mapped_column(String(32))
+    property_count_estimate: Mapped[int | None] = mapped_column(Integer)
+    timezone: Mapped[str] = mapped_column(String(64), default="Asia/Kolkata", server_default="Asia/Kolkata")
+    terms_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     # Where escalation summaries (app/integrations/email_client.py, fired
     # from handle_escalate_to_host) get sent. None -- the common case -- means

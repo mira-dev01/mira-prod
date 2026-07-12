@@ -1,7 +1,9 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Link from "next/link";
 import { toast } from "sonner";
+import { ArrowRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -20,13 +22,16 @@ import { useAsync } from "@/hooks/use-async";
 import { api, ApiError } from "@/lib/api";
 import type { FaqGapOut } from "@/lib/types";
 
-// Lives on the Overview page (not the FAQ page) on purpose -- these are
-// guest questions Mira had to escalate instead of answering, so a host
-// should see them the moment they open the dashboard, not only if they
-// happen to click into the separate FAQ tab.
-export function UnansweredQuestionsCard() {
+// Shared by two call sites:
+//  - Overview page: compact preview (limit=2), links out to the FAQ page
+//    so a host sees the headline the moment they open the dashboard.
+//  - FAQ page: full list (no limit), as the left half of the
+//    unanswered/verified split view.
+export function UnansweredQuestionsCard({ limit, linkToFaqPage }: { limit?: number; linkToFaqPage?: boolean } = {}) {
   const { data: properties } = useAsync(() => api.properties.list(), []);
-  const { data: gaps, loading: gapsLoading, refetch: refetchGaps } = useAsync(() => api.faqGaps.list(), []);
+  const { data: allGaps, loading: gapsLoading, refetch: refetchGaps } = useAsync(() => api.faqGaps.list(), []);
+  const gaps = limit ? allGaps?.slice(0, limit) : allGaps;
+  const totalCount = allGaps?.length ?? 0;
 
   const propertyName = (id: string | null) =>
     id ? properties?.find((p) => p.id === id)?.name ?? id : "All properties";
@@ -99,7 +104,7 @@ export function UnansweredQuestionsCard() {
 
   return (
     <>
-      <Card>
+      <Card className="min-w-0">
         <CardHeader>
           <CardTitle>Questions Mira couldn&apos;t answer</CardTitle>
           <CardDescription>
@@ -107,7 +112,7 @@ export function UnansweredQuestionsCard() {
             Mira will use it automatically next time.
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="min-w-0">
           {gapsLoading ? (
             <Skeleton className="h-32 w-full" />
           ) : !gaps || gaps.length === 0 ? (
@@ -122,9 +127,9 @@ export function UnansweredQuestionsCard() {
                   className="flex flex-wrap items-start justify-between gap-3 border-b pb-3 last:border-0 last:pb-0"
                 >
                   <div className="min-w-0 flex-1 space-y-1">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium">{gap.question}</p>
-                      <Badge variant="destructive">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="min-w-0 break-words text-sm font-medium">{gap.question}</p>
+                      <Badge variant="destructive" className="shrink-0">
                         asked {gap.count}× {gap.count === 1 ? "time" : "times"}
                       </Badge>
                     </div>
@@ -132,7 +137,7 @@ export function UnansweredQuestionsCard() {
                       {propertyName(gap.property_id)} · last asked {new Date(gap.last_asked_at).toLocaleDateString()}
                     </p>
                   </div>
-                  <Button size="sm" onClick={() => openAnswerDialog(gap)}>
+                  <Button size="sm" className="shrink-0" onClick={() => openAnswerDialog(gap)}>
                     Answer this question
                   </Button>
                 </div>
@@ -140,6 +145,17 @@ export function UnansweredQuestionsCard() {
             </div>
           )}
         </CardContent>
+        {linkToFaqPage && totalCount > 0 && (
+          <div className="border-t px-4 py-3">
+            <Link
+              href="/dashboard/faq"
+              className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+            >
+              View all {totalCount} unanswered question{totalCount === 1 ? "" : "s"}
+              <ArrowRight className="size-3.5" />
+            </Link>
+          </div>
+        )}
       </Card>
 
       <Dialog

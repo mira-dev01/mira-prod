@@ -14,6 +14,8 @@ import html
 import re
 from typing import Any
 
+from app.integrations import cloudinary_client
+
 _TIME_RE = re.compile(r"(\d{1,2})(?::(\d{2}))?\s*([ap]m)", re.IGNORECASE)
 _TAG_RE = re.compile(r"<[^>]+>")
 _COUNT_RE = re.compile(r"(\d+)\s+(bedroom|bed|bathroom)s?", re.IGNORECASE)
@@ -255,7 +257,7 @@ def parse_airbnb_listing(raw: dict[str, Any]) -> dict[str, Any]:
     return {"fields": fields, "faq_entries": faq_entries}
 
 
-def parse_bright_data_listing(record: dict[str, Any]) -> dict[str, Any]:
+async def parse_bright_data_listing(record: dict[str, Any], *, photo_folder: str | None = None) -> dict[str, Any]:
     """Adapts one Bright Data Airbnb Scraper API record (dataset
     gd_ld7ll037kqy322v05 -- see app/integrations/bright_data_client.py) into
     the same {"fields": ..., "faq_entries": ...} shape parse_airbnb_listing
@@ -269,6 +271,13 @@ def parse_bright_data_listing(record: dict[str, Any]) -> dict[str, Any]:
     expects. Reuses _to_24h/_strip_html since the underlying text (house
     rules mentioning check-in time, HTML-formatted descriptions) is the same
     kind of content either way.
+
+    Async (unlike parse_airbnb_listing) because it re-hosts the listing's
+    photos on Cloudinary via cloudinary_client.upload_images_from_urls --
+    photo_folder scopes where they land (e.g. per-host) and is required to
+    actually upload; omitted (None) just means fields["photos"] stays empty,
+    same "skip, don't fail the import" stance as an unconfigured Cloudinary
+    account.
     """
     fields: dict[str, Any] = {}
 
@@ -321,6 +330,17 @@ def parse_bright_data_listing(record: dict[str, Any]) -> dict[str, Any]:
             fields["max_guests"] = int(guests)
     except (TypeError, ValueError):
         pass
+
+    # `images` is Bright Data's list field (a0.muscache.com URLs); `image`
+    # is sometimes present as a single cover-photo string instead/as well
+    # -- fall back to it so a listing with only one photo still gets it.
+    image_urls = record.get("images")
+    if not isinstance(image_urls, list) or not image_urls:
+        single = record.get("image")
+        image_urls = [single] if single else []
+    image_urls = [str(u) for u in image_urls if u]
+    if image_urls and photo_folder:
+        fields["photos"] = await cloudinary_client.upload_images_from_urls(image_urls, folder=photo_folder)
 
     faq_entries: list[dict[str, str]] = []
     if description:

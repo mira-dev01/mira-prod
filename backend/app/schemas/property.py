@@ -21,6 +21,7 @@ class PropertyCreate(BaseModel):
     neighborhood_info: str | None = None
     faq: list[FAQItem] = Field(default_factory=list)
     amenities: list[str] = Field(default_factory=list)
+    photos: list[str] = Field(default_factory=list)
     check_in_time: str = "14:00"
     check_out_time: str = "11:00"
     max_guests: int = 4
@@ -45,6 +46,7 @@ class PropertyUpdate(BaseModel):
     neighborhood_info: str | None = None
     faq: list[FAQItem] | None = None
     amenities: list[str] | None = None
+    photos: list[str] | None = None
     check_in_time: str | None = None
     check_out_time: str | None = None
     max_guests: int | None = None
@@ -68,6 +70,7 @@ class PropertyOut(BaseModel):
     neighborhood_info: str | None
     faq: list[dict]
     amenities: list[str]
+    photos: list[str]
     check_in_time: str
     check_out_time: str
     max_guests: int

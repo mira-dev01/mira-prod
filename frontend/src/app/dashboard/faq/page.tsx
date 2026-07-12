@@ -1,10 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ExpandableText } from "@/components/expandable-text";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,6 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError } from "@/lib/api";
+import { UnansweredQuestionsCard } from "@/components/unanswered-questions-card";
 
 export default function FaqPage() {
   const { data: properties } = useAsync(() => api.properties.list(), []);
@@ -73,19 +73,12 @@ export default function FaqPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       <div>
         <h1 className="page-title">FAQ knowledge base</h1>
         <p className="text-sm text-muted-foreground">
           Verified answers the voice agent&apos;s search_faq tool can use — anything not verified here gets
           escalated to you instead of guessed.
-        </p>
-        <p className="text-sm text-muted-foreground">
-          Looking for guest questions Mira couldn&apos;t answer? That list now lives on the{" "}
-          <Link href="/dashboard" className="underline">
-            Overview page
-          </Link>
-          , so you see it as soon as you open the dashboard.
         </p>
       </div>
 
@@ -95,10 +88,10 @@ export default function FaqPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleCreate} className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-2 sm:col-span-2">
+            <div className="min-w-0 space-y-2 sm:col-span-2">
               <Label>Applies to</Label>
               <Select value={propertyId} onValueChange={(v) => v && setPropertyId(v)}>
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   <SelectValue>{(value: string) => propertyName(value === "all" ? null : value)}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
@@ -111,15 +104,15 @@ export default function FaqPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
+            <div className="min-w-0 space-y-2">
               <Label htmlFor="category">Category</Label>
               <Input id="category" placeholder="e.g. wifi, parking" value={category} onChange={(e) => setCategory(e.target.value)} />
             </div>
-            <div className="space-y-2 sm:col-span-2">
+            <div className="min-w-0 space-y-2 sm:col-span-2">
               <Label htmlFor="question">Question</Label>
               <Input id="question" required value={question} onChange={(e) => setQuestion(e.target.value)} />
             </div>
-            <div className="space-y-2 sm:col-span-2">
+            <div className="min-w-0 space-y-2 sm:col-span-2">
               <Label htmlFor="answer">Answer</Label>
               <Textarea id="answer" required value={answer} onChange={(e) => setAnswer(e.target.value)} />
             </div>
@@ -130,49 +123,67 @@ export default function FaqPage() {
         </CardContent>
       </Card>
 
-      {loading ? (
-        <Skeleton className="h-64 w-full" />
-      ) : !entries || entries.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No FAQ entries yet.</p>
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Question</TableHead>
-              <TableHead>Answer</TableHead>
-              <TableHead>Applies to</TableHead>
-              <TableHead>Category</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="w-40" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {entries.map((entry) => (
-              <TableRow key={entry.id} className="align-top">
-                <TableCell className="w-[220px] max-w-[220px] py-3">
-                  <ExpandableText text={entry.question} maxLength={80} />
-                </TableCell>
-                <TableCell className="w-[320px] max-w-[320px] py-3 text-muted-foreground">
-                  <ExpandableText text={entry.answer} maxLength={120} />
-                </TableCell>
-                <TableCell className="whitespace-normal break-words py-3">{propertyName(entry.property_id)}</TableCell>
-                <TableCell className="py-3 capitalize">{entry.category ?? "—"}</TableCell>
-                <TableCell className="py-3">
-                  <StatusChip status={entry.status} tone={entry.status === "verified" ? "live" : "pending"} />
-                </TableCell>
-                <TableCell className="flex gap-2 py-3">
-                  <Button variant="outline" size="sm" onClick={() => handleToggleVerified(entry.id, entry.status)}>
-                    {entry.status === "verified" ? "Unverify" : "Verify"}
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => handleDelete(entry.id)}>
-                    Remove
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      )}
+      <div className="grid min-w-0 gap-6 lg:grid-cols-2">
+        <div className="min-w-0">
+          <UnansweredQuestionsCard />
+        </div>
+
+        <Card className="min-w-0">
+          <CardHeader>
+            <CardTitle>Verified FAQ entries</CardTitle>
+            <CardDescription>Answers already in the knowledge base, added by you or resolved from a gap.</CardDescription>
+          </CardHeader>
+          <CardContent className="min-w-0">
+            {loading ? (
+              <Skeleton className="h-64 w-full" />
+            ) : !entries || entries.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No FAQ entries yet.</p>
+            ) : (
+              <div className="min-w-0 overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Question</TableHead>
+                      <TableHead>Answer</TableHead>
+                      <TableHead>Applies to</TableHead>
+                      <TableHead>Category</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="w-40" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {entries.map((entry) => (
+                      <TableRow key={entry.id} className="align-top">
+                        <TableCell className="w-[180px] max-w-[180px] py-3">
+                          <ExpandableText text={entry.question} maxLength={60} />
+                        </TableCell>
+                        <TableCell className="w-[220px] max-w-[220px] py-3 text-muted-foreground">
+                          <ExpandableText text={entry.answer} maxLength={90} />
+                        </TableCell>
+                        <TableCell className="whitespace-normal break-words py-3">{propertyName(entry.property_id)}</TableCell>
+                        <TableCell className="py-3 capitalize">{entry.category ?? "—"}</TableCell>
+                        <TableCell className="py-3">
+                          <StatusChip status={entry.status} tone={entry.status === "verified" ? "live" : "pending"} />
+                        </TableCell>
+                        <TableCell className="py-3">
+                          <div className="flex flex-wrap gap-2">
+                            <Button variant="outline" size="sm" onClick={() => handleToggleVerified(entry.id, entry.status)}>
+                              {entry.status === "verified" ? "Unverify" : "Verify"}
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={() => handleDelete(entry.id)}>
+                              Remove
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

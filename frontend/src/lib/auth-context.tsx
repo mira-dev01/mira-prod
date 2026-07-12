@@ -3,13 +3,20 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, clearToken, getToken, setToken } from "@/lib/api";
-import type { UserOut } from "@/lib/types";
+import type { HostRegistration, UserOut } from "@/lib/types";
+
+// Sessionstorage key the dashboard reads on first load after a host
+// registration to resume polling the Bright Data scrape triggered during
+// signup (see app/api/v1/auth.py register_host -- registration never blocks
+// on that scrape, so the poll has to continue somewhere after the redirect).
+export const PENDING_IMPORT_KEY = "mira_pending_import";
 
 type AuthContextValue = {
   user: UserOut | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name?: string, phone?: string) => Promise<void>;
+  registerHost: (data: HostRegistration) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
 };
@@ -50,6 +57,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [router]
   );
 
+  const registerHost = useCallback(
+    async (data: HostRegistration) => {
+      const { access_token, snapshot_id, import_error } = await api.auth.registerHost(data);
+      setToken(access_token);
+      setUser(await api.auth.me());
+      if (snapshot_id) {
+        window.sessionStorage.setItem(
+          PENDING_IMPORT_KEY,
+          JSON.stringify({ snapshotId: snapshot_id, icalUrl: data.ical_url ?? null })
+        );
+      } else if (import_error) {
+        window.sessionStorage.setItem(PENDING_IMPORT_KEY, JSON.stringify({ error: import_error }));
+      }
+      router.push("/");
+    },
+    [router]
+  );
+
   const logout = useCallback(() => {
     clearToken();
     setUser(null);
@@ -61,7 +86,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, loading, login, register, registerHost, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

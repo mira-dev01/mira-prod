@@ -99,6 +99,17 @@ class Settings(BaseSettings):
     # link. See app/integrations/bright_data_client.py.
     bright_data_api_key: str | None = None
 
+    # Cloudinary -- re-hosts property photos scraped via Bright Data
+    # (see app/integrations/cloudinary_client.py) so listing images survive
+    # even if the source Airbnb listing is edited/removed, and so MIRA can
+    # serve a resized/optimized version to guests later rather than hotlink
+    # Airbnb's own CDN. All three required together; any missing = upload
+    # skipped silently (same "don't crash, don't block" pattern as
+    # bright_data_api_key/SMTP_*).
+    cloudinary_cloud_name: str | None = None
+    cloudinary_api_key: str | None = None
+    cloudinary_api_secret: str | None = None
+
     sarvam_api_key: str | None = None
     sarvam_stt_model: str = "saaras:v3"
     sarvam_tts_model: str = "bulbul:v3"
