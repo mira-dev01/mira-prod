@@ -37,6 +37,13 @@ class Property(UUIDPkMixin, TimestampMixin, Base):
 
     faq: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
     amenities: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
+
+    # Cloudinary-hosted URLs (see app/integrations/cloudinary_client.py) --
+    # re-hosted rather than storing Airbnb's own a0.muscache.com links
+    # directly, so they survive the source listing being edited/removed.
+    # Populated during Bright Data import; sent to guests who ask to see the
+    # property (guest-facing send flow built separately from this column).
+    photos: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
     check_in_time: Mapped[str] = mapped_column(String(8), default="14:00", server_default="14:00")
     check_out_time: Mapped[str] = mapped_column(String(8), default="11:00", server_default="11:00")
     max_guests: Mapped[int] = mapped_column(default=4, server_default="4")

@@ -161,7 +161,7 @@ async def import_airbnb_urls_status(
         listing_id = str(record.get("property_id") or _listing_id_from_url(url))
         label = record.get("listing_title") or record.get("name") or url or listing_id
         try:
-            parsed = parse_bright_data_listing(record)
+            parsed = await parse_bright_data_listing(record, photo_folder=f"mira/properties/{current_user.id}")
             results.append(await _upsert_property_from_parsed(current_user.id, listing_id, label, parsed))
         except Exception as exc:  # noqa: BLE001 - one bad record shouldn't fail the whole batch
             results.append(PropertyImportResult(filename=label, status="error", error=str(exc)))

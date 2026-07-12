@@ -153,7 +153,7 @@ export default function OverviewPage() {
         )}
       </div>
 
-      <UnansweredQuestionsCard />
+      <UnansweredQuestionsCard limit={2} linkToFaqPage />
     </div>
   );
 }

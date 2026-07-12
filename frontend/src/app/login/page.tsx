@@ -6,12 +6,25 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError } from "@/lib/api";
+import type { AirbnbHostStatus } from "@/lib/types";
+
+const HOST_STATUS_OPTIONS: { value: AirbnbHostStatus; label: string }[] = [
+  { value: "new_host", label: "New host" },
+  { value: "individual_host", label: "Individual host" },
+  { value: "superhost", label: "Superhost" },
+  { value: "guest_favorite", label: "Guest Favorite" },
+  { value: "professional_host", label: "Professional host" },
+  { value: "prefer_not_to_say", label: "Prefer not to say" },
+];
+
+const HOST_REG_STEPS = ["Your details", "Hosting profile", "First property"] as const;
 
 export default function LoginPage() {
-  const { login, register } = useAuth();
+  const { login, registerHost } = useAuth();
   const [submitting, setSubmitting] = useState(false);
 
   // Pre-filled with the public demo account so anyone opening this URL for a
@@ -19,10 +32,23 @@ export default function LoginPage() {
   const [loginEmail, setLoginEmail] = useState("demo@mira.ai");
   const [loginPassword, setLoginPassword] = useState("MiraDemo2024");
 
-  const [regEmail, setRegEmail] = useState("");
-  const [regPassword, setRegPassword] = useState("");
+  const [regStep, setRegStep] = useState(0);
+
+  // Step 1 -- identity
   const [regName, setRegName] = useState("");
+  const [regBusinessName, setRegBusinessName] = useState("");
+  const [regEmail, setRegEmail] = useState("");
   const [regPhone, setRegPhone] = useState("");
+  const [regPassword, setRegPassword] = useState("");
+
+  // Step 2 -- hosting profile
+  const [regBusinessPhone, setRegBusinessPhone] = useState("");
+  const [regHostStatus, setRegHostStatus] = useState<AirbnbHostStatus | "">("");
+  const [regPropertyCount, setRegPropertyCount] = useState("");
+
+  // Step 3 -- first property
+  const [regAirbnbUrl, setRegAirbnbUrl] = useState("");
+  const [regIcalUrl, setRegIcalUrl] = useState("");
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -36,11 +62,31 @@ export default function LoginPage() {
     }
   }
 
+  function goToNextStep(e: React.FormEvent) {
+    e.preventDefault();
+    setRegStep((s) => Math.min(s + 1, HOST_REG_STEPS.length - 1));
+  }
+
+  function goToPreviousStep() {
+    setRegStep((s) => Math.max(s - 1, 0));
+  }
+
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
     try {
-      await register(regEmail, regPassword, regName || undefined, regPhone || undefined);
+      await registerHost({
+        email: regEmail,
+        password: regPassword,
+        name: regName,
+        phone: regPhone || undefined,
+        business_name: regBusinessName || undefined,
+        business_phone: regBusinessPhone,
+        airbnb_host_status: regHostStatus || undefined,
+        property_count_estimate: regPropertyCount ? Number(regPropertyCount) : undefined,
+        airbnb_url: regAirbnbUrl,
+        ical_url: regIcalUrl || undefined,
+      });
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Registration failed");
     } finally {
@@ -50,13 +96,13 @@ export default function LoginPage() {
 
   return (
     <div className="flex flex-1 items-center justify-center p-4">
-      <Card className="w-full max-w-sm">
+      <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle className="text-2xl">MIRA</CardTitle>
           <CardDescription>Sign in to manage your properties and live calls</CardDescription>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="login">
+          <Tabs defaultValue="login" onValueChange={() => setRegStep(0)}>
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="login">Log in</TabsTrigger>
               <TabsTrigger value="register">Register</TabsTrigger>
@@ -92,40 +138,158 @@ export default function LoginPage() {
               </form>
             </TabsContent>
             <TabsContent value="register">
-              <form onSubmit={handleRegister} className="space-y-4 pt-4">
-                <div className="space-y-2">
-                  <Label htmlFor="reg-name">Name</Label>
-                  <Input id="reg-name" value={regName} onChange={(e) => setRegName(e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="reg-email">Email</Label>
-                  <Input
-                    id="reg-email"
-                    type="email"
-                    required
-                    value={regEmail}
-                    onChange={(e) => setRegEmail(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="reg-phone">Phone</Label>
-                  <Input id="reg-phone" value={regPhone} onChange={(e) => setRegPhone(e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="reg-password">Password</Label>
-                  <Input
-                    id="reg-password"
-                    type="password"
-                    required
-                    minLength={8}
-                    value={regPassword}
-                    onChange={(e) => setRegPassword(e.target.value)}
-                  />
-                </div>
-                <Button type="submit" className="w-full" disabled={submitting}>
-                  Create account
-                </Button>
-              </form>
+              <div className="flex items-center justify-center gap-2 pt-4 pb-2">
+                {HOST_REG_STEPS.map((label, i) => (
+                  <div key={label} className="flex items-center gap-2">
+                    <div
+                      className={`flex h-6 w-6 items-center justify-center rounded-full text-xs ${
+                        i === regStep
+                          ? "bg-primary text-primary-foreground"
+                          : i < regStep
+                            ? "bg-primary/20 text-primary"
+                            : "bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      {i + 1}
+                    </div>
+                    {i < HOST_REG_STEPS.length - 1 && <div className="h-px w-4 bg-border" />}
+                  </div>
+                ))}
+              </div>
+              <p className="pb-2 text-center text-xs text-muted-foreground">{HOST_REG_STEPS[regStep]}</p>
+
+              {regStep === 0 && (
+                <form onSubmit={goToNextStep} className="space-y-4 pt-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="reg-name">Your name</Label>
+                    <Input id="reg-name" required value={regName} onChange={(e) => setRegName(e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="reg-business-name">Business name (optional)</Label>
+                    <Input
+                      id="reg-business-name"
+                      value={regBusinessName}
+                      onChange={(e) => setRegBusinessName(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="reg-email">Email</Label>
+                    <Input
+                      id="reg-email"
+                      type="email"
+                      required
+                      value={regEmail}
+                      onChange={(e) => setRegEmail(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="reg-phone">Personal phone (optional)</Label>
+                    <Input id="reg-phone" value={regPhone} onChange={(e) => setRegPhone(e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="reg-password">Password</Label>
+                    <Input
+                      id="reg-password"
+                      type="password"
+                      required
+                      minLength={8}
+                      value={regPassword}
+                      onChange={(e) => setRegPassword(e.target.value)}
+                    />
+                  </div>
+                  <Button type="submit" className="w-full">
+                    Continue
+                  </Button>
+                </form>
+              )}
+
+              {regStep === 1 && (
+                <form onSubmit={goToNextStep} className="space-y-4 pt-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="reg-business-phone">Business number</Label>
+                    <Input
+                      id="reg-business-phone"
+                      required
+                      placeholder="+91XXXXXXXXXX"
+                      value={regBusinessPhone}
+                      onChange={(e) => setRegBusinessPhone(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      The number your voice agent will run on for guest calls.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="reg-host-status">Airbnb host status (optional)</Label>
+                    <Select
+                      value={regHostStatus}
+                      onValueChange={(v) => setRegHostStatus((v as AirbnbHostStatus) || "")}
+                    >
+                      <SelectTrigger id="reg-host-status">
+                        <SelectValue placeholder="Select your host status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {HOST_STATUS_OPTIONS.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="reg-property-count">Approx. number of properties (optional)</Label>
+                    <Input
+                      id="reg-property-count"
+                      type="number"
+                      min={1}
+                      value={regPropertyCount}
+                      onChange={(e) => setRegPropertyCount(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <Button type="button" variant="outline" className="w-full" onClick={goToPreviousStep}>
+                      Back
+                    </Button>
+                    <Button type="submit" className="w-full">
+                      Continue
+                    </Button>
+                  </div>
+                </form>
+              )}
+
+              {regStep === 2 && (
+                <form onSubmit={handleRegister} className="space-y-4 pt-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="reg-airbnb-url">Airbnb listing URL</Label>
+                    <Input
+                      id="reg-airbnb-url"
+                      required
+                      placeholder="https://www.airbnb.co.in/rooms/12345678"
+                      value={regAirbnbUrl}
+                      onChange={(e) => setRegAirbnbUrl(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      We&apos;ll import this property automatically. Add the rest later from the Properties page.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="reg-ical-url">iCal link (optional)</Label>
+                    <Input
+                      id="reg-ical-url"
+                      value={regIcalUrl}
+                      onChange={(e) => setRegIcalUrl(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <Button type="button" variant="outline" className="w-full" onClick={goToPreviousStep}>
+                      Back
+                    </Button>
+                    <Button type="submit" className="w-full" disabled={submitting}>
+                      Create account
+                    </Button>
+                  </div>
+                </form>
+              )}
             </TabsContent>
           </Tabs>
         </CardContent>

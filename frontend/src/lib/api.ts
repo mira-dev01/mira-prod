@@ -14,6 +14,8 @@ import type {
   FaqGapOut,
   GuestProfileOut,
   GuestProfileUpdate,
+  HostRegistration,
+  HostRegistrationResponse,
   LeadOut,
   LeadUpdate,
   NotificationOut,
@@ -148,6 +150,11 @@ export const api = {
       request<{ access_token: string; token_type: string }>("/auth/register", {
         method: "POST",
         body: JSON.stringify({ email, password, name, phone }),
+      }),
+    registerHost: (data: HostRegistration) =>
+      request<HostRegistrationResponse>("/auth/register-host", {
+        method: "POST",
+        body: JSON.stringify(data),
       }),
     me: () => request<UserOut>("/auth/me"),
     updateMe: (data: UserUpdate) => request<UserOut>("/auth/me", { method: "PATCH", body: JSON.stringify(data) }),

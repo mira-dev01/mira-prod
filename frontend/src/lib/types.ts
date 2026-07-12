@@ -1,3 +1,12 @@
+// Self-reported only -- MIRA has no Airbnb API access to verify this.
+export type AirbnbHostStatus =
+  | "new_host"
+  | "individual_host"
+  | "superhost"
+  | "guest_favorite"
+  | "professional_host"
+  | "prefer_not_to_say";
+
 export type UserOut = {
   id: string;
   email: string;
@@ -6,6 +15,11 @@ export type UserOut = {
   tier: string;
   status: string;
   lead_exophone: string | null;
+  business_name: string | null;
+  airbnb_host_status: AirbnbHostStatus | null;
+  property_count_estimate: number | null;
+  timezone: string;
+  terms_accepted_at: string | null;
   agent_first_message: string | null;
   agent_persona: string | null;
   agent_escalation_phrase: string | null;
@@ -16,10 +30,34 @@ export type UserUpdate = {
   name?: string | null;
   phone?: string | null;
   lead_exophone?: string | null;
+  business_name?: string | null;
+  airbnb_host_status?: AirbnbHostStatus | null;
+  property_count_estimate?: number | null;
+  timezone?: string | null;
   agent_first_message?: string | null;
   agent_persona?: string | null;
   agent_escalation_phrase?: string | null;
   notification_email?: string | null;
+};
+
+export type HostRegistration = {
+  email: string;
+  password: string;
+  name: string;
+  phone?: string | null;
+  business_name?: string | null;
+  business_phone: string;
+  airbnb_host_status?: AirbnbHostStatus | null;
+  property_count_estimate?: number | null;
+  airbnb_url: string;
+  ical_url?: string | null;
+};
+
+export type HostRegistrationResponse = {
+  access_token: string;
+  token_type: string;
+  snapshot_id: string | null;
+  import_error: string | null;
 };
 
 export type FAQItem = { question: string; answer: string };

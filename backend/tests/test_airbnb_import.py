@@ -1,7 +1,8 @@
 import json
 from pathlib import Path
 
-from app.services.airbnb_import import parse_airbnb_listing
+from app.integrations import bright_data_client
+from app.services.airbnb_import import parse_airbnb_listing, parse_bright_data_listing
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "airbnb_listing_sample.json"
 
@@ -123,3 +124,94 @@ async def test_import_bad_json_reports_error_without_failing_batch(client, auth_
     )
     assert resp.status_code == 200
     assert resp.json()[0]["status"] == "error"
+
+
+def _bright_data_record(**overrides) -> dict:
+    record = {
+        "listing_title": "Daloha 2BR luxury Villa-private pool in Canggu",
+        "location": "Kecamatan Kuta Utara, Bali, Indonesia",
+        "description": "A lovely villa.",
+        "guests": 4,
+        "images": [
+            "https://a0.muscache.com/im/pictures/hosting/one.jpeg",
+            "https://a0.muscache.com/im/pictures/hosting/two.jpeg",
+        ],
+    }
+    record.update(overrides)
+    return record
+
+
+async def test_parse_bright_data_listing_skips_photos_without_folder():
+    parsed = await parse_bright_data_listing(_bright_data_record())
+    assert "photos" not in parsed["fields"]
+
+
+async def test_parse_bright_data_listing_skips_photos_when_cloudinary_unconfigured():
+    # No CLOUDINARY_* configured in the test env -- upload_images_from_urls
+    # should return [] rather than raising, and the caller (properties.py)
+    # only sets fields["photos"] when upload_images_from_urls found
+    # something, so this asserts the "not configured" branch stays silent.
+    parsed = await parse_bright_data_listing(_bright_data_record(), photo_folder="mira/properties/test-host")
+    assert parsed["fields"].get("photos", []) == []
+
+
+async def test_parse_bright_data_listing_uploads_photos_when_cloudinary_configured(monkeypatch):
+    from app.integrations import cloudinary_client
+
+    async def fake_upload_images_from_urls(urls, folder, max_images=10):
+        assert folder == "mira/properties/test-host"
+        return [f"https://res.cloudinary.com/mira/{i}.jpg" for i in range(len(urls))]
+
+    monkeypatch.setattr(cloudinary_client, "upload_images_from_urls", fake_upload_images_from_urls)
+
+    parsed = await parse_bright_data_listing(_bright_data_record(), photo_folder="mira/properties/test-host")
+    assert parsed["fields"]["photos"] == [
+        "https://res.cloudinary.com/mira/0.jpg",
+        "https://res.cloudinary.com/mira/1.jpg",
+    ]
+
+
+async def test_parse_bright_data_listing_falls_back_to_single_image_field(monkeypatch):
+    from app.integrations import cloudinary_client
+
+    captured = {}
+
+    async def fake_upload_images_from_urls(urls, folder, max_images=10):
+        captured["urls"] = urls
+        return []
+
+    monkeypatch.setattr(cloudinary_client, "upload_images_from_urls", fake_upload_images_from_urls)
+
+    await parse_bright_data_listing(
+        _bright_data_record(images=None, image="https://a0.muscache.com/im/pictures/hosting/cover.jpeg"),
+        photo_folder="mira/properties/test-host",
+    )
+
+    assert captured["urls"] == ["https://a0.muscache.com/im/pictures/hosting/cover.jpeg"]
+
+
+async def test_import_airbnb_urls_status_ready_creates_property_with_photos(client, auth_headers, monkeypatch):
+    from app.integrations import cloudinary_client
+
+    async def fake_get_snapshot_status(snapshot_id, timeout=15.0):
+        return "ready"
+
+    async def fake_get_snapshot_data(snapshot_id, timeout=30.0):
+        return [_bright_data_record(property_id="99999999")]
+
+    async def fake_upload_images_from_urls(urls, folder, max_images=10):
+        return [f"https://res.cloudinary.com/mira/{i}.jpg" for i in range(len(urls))]
+
+    monkeypatch.setattr(bright_data_client, "get_snapshot_status", fake_get_snapshot_status)
+    monkeypatch.setattr(bright_data_client, "get_snapshot_data", fake_get_snapshot_data)
+    monkeypatch.setattr(cloudinary_client, "upload_images_from_urls", fake_upload_images_from_urls)
+
+    resp = await client.get("/api/v1/properties/import-airbnb-urls/snap_test", headers=auth_headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "ready"
+    assert body["results"][0]["status"] == "created"
+    assert body["results"][0]["property"]["photos"] == [
+        "https://res.cloudinary.com/mira/0.jpg",
+        "https://res.cloudinary.com/mira/1.jpg",
+    ]
