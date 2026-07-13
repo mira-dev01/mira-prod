@@ -53,6 +53,7 @@ from app.prompts.system_prompt import (
     lead_first_message_for,
 )
 from app.services import call_service, lead_service
+from app.voice.conversation_state import ConversationState
 from app.voice.tools import build_voice_tools
 from app.voice.turn_strategies import HybridCompletenessUserTurnStopStrategy
 
@@ -266,7 +267,15 @@ async def _run_pipeline(
         )
         llm = _build_llm()
 
-        tools = build_voice_tools(call_session_id, property_id, host_user_id)
+        # Tracks which property is "locked" for the rest of a Lead Agent
+        # (portfolio-wide) call once the guest names/selects one -- Guest
+        # Support calls already have a fixed property_id above and never
+        # touch this. See app/voice/conversation_state.py.
+        conversation_state = ConversationState(
+            selected_property_id=str(property_id) if property_id else None,
+            selected_property_name=property_name,
+        )
+        tools = build_voice_tools(call_session_id, property_id, host_user_id, conversation_state)
         # first_message is pre-seeded as an assistant turn so the LLM knows
         # it was already said (the "don't repeat greeting" rule relies on
         # this being in context) -- it is spoken directly via TTSSpeakFrame

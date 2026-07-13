@@ -7,7 +7,11 @@ for the actual business logic).
 
 `call_session_id`/`property_id`/`host_user_id` aren't something the LLM
 knows, so they're captured via the `build_voice_tools` factory closure rather
-than being tool parameters.
+than being tool parameters. `conversation_state` is similar, but mutable --
+it's how the call programmatically remembers which property the guest has
+locked onto in a Lead Agent (portfolio-wide) call, instead of relying solely
+on the LLM re-supplying a property_id on every tool call (see
+app/voice/conversation_state.py and memory-architecture-plan.md section 2).
 """
 
 import uuid
@@ -31,6 +35,7 @@ from app.schemas.tool import (
     UpdateLeadArgs,
 )
 from app.services import tool_handlers
+from app.voice.conversation_state import ConversationState
 
 Urgency = Literal["low", "medium", "high", "emergency"]
 IssueType = Literal["plumbing", "electrical", "ac", "wifi", "lock", "general"]
@@ -43,8 +48,10 @@ def build_voice_tools(
     call_session_id: uuid.UUID | None,
     property_id: uuid.UUID | None,
     host_user_id: uuid.UUID,
+    conversation_state: ConversationState | None = None,
 ) -> list:
     """Build the tool functions for one call, bound to its call_session_id/property_id/host_user_id."""
+    state = conversation_state or ConversationState()
 
     async def check_calendar(
         params: FunctionCallParams,
@@ -67,6 +74,7 @@ def build_voice_tools(
                     property_id=property_id, check_in=check_in, check_out=check_out, num_guests=num_guests
                 )
                 result = await tool_handlers.handle_check_calendar(db, args)
+                state.lock_property(args.property_id)
             except ValidationError:
                 result = INVALID_ARGS_MESSAGE
         await params.result_callback(result)
@@ -101,6 +109,7 @@ def build_voice_tools(
                     apply_discounts=apply_discounts,
                 )
                 result = await tool_handlers.handle_get_pricing(db, args)
+                state.lock_property(args.property_id)
             except ValidationError:
                 result = INVALID_ARGS_MESSAGE
         await params.result_callback(result)
@@ -214,6 +223,7 @@ def build_voice_tools(
                     guest_loyalty=guest_loyalty,
                 )
                 result = await tool_handlers.handle_negotiate_rate(db, args)
+                state.lock_property(args.property_id)
             except ValidationError:
                 result = INVALID_ARGS_MESSAGE
         await params.result_callback(result)
@@ -226,6 +236,11 @@ def build_voice_tools(
         purpose_of_stay: str | None = None,
     ):
         """Recommend properties from the portfolio matching the guest's needs.
+        Do NOT call this again with the SAME criteria once the guest has
+        already settled on a specific property -- use search_faq/
+        check_calendar/get_pricing for that property instead. Only call this
+        again if the guest gives a new, different location/name/criteria,
+        e.g. explicitly asking to compare with or switch to another property.
 
         Args:
             budget: The guest's nightly budget in INR, if known.
@@ -233,6 +248,24 @@ def build_voice_tools(
             preferred_location: Preferred city/area, if known.
             purpose_of_stay: e.g. family trip, couples getaway, workcation.
         """
+        # A property is already locked for this call AND the guest hasn't
+        # given any new distinguishing criteria (no location/budget/purpose
+        # this time) -- almost certainly a redundant re-browse rather than a
+        # genuine switch/compare request, which would come with a new
+        # location or property name. Block only that case; a call with new
+        # criteria goes through normally, which is what makes "compare this
+        # with Palm Retreat" / "look at Ocean View instead" work -- the model
+        # names the new property/area as preferred_location and this still
+        # resolves it. This only fires if the model calls the tool anyway
+        # despite the docstring above; it's the enforced backstop, not the
+        # primary mechanism.
+        if state.selected_property_id and not any([preferred_location, budget, purpose_of_stay]):
+            locked_name = state.selected_property_name or "that property"
+            await params.result_callback(
+                f"We're already looking at {locked_name}. Ask the guest what they'd like to compare it "
+                "with or switch to, rather than listing unrelated options unprompted."
+            )
+            return
         async with AsyncSessionLocal() as db:
             args = RecommendPropertiesArgs(
                 budget=budget,
@@ -332,7 +365,20 @@ def build_voice_tools(
         """
         async with AsyncSessionLocal() as db:
             args = SearchFaqArgs(query=query, property_id=faq_property_id)
-            result = await tool_handlers.handle_search_faq(db, args, host_user_id, property_id, call_session_id)
+            # Fallback chain: LLM-supplied faq_property_id -> whatever property
+            # is already locked for this call (state.selected_property_id, set
+            # by check_calendar/get_pricing/negotiate_rate above) -> the call's
+            # own fixed property_id (Guest Support) -> None (portfolio-wide).
+            # The state-based fallback exists so correct scoping doesn't
+            # depend on the LLM remembering to pass faq_property_id every
+            # single time once a property has been named.
+            default_property_id = property_id
+            if state.selected_property_id:
+                try:
+                    default_property_id = uuid.UUID(state.selected_property_id)
+                except ValueError:
+                    default_property_id = property_id
+            result = await tool_handlers.handle_search_faq(db, args, host_user_id, default_property_id, call_session_id)
         await params.result_callback(result)
 
     return [
