@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { UserRound } from "lucide-react";
 import { toast } from "sonner";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,6 +24,14 @@ import { useDateRange } from "@/hooks/use-date-range";
 import { api, ApiError } from "@/lib/api";
 import { isBrowserTestIdentity } from "@/lib/utils";
 import type { GuestProfileOut } from "@/lib/types";
+
+function guestInitials(name: string | null): string | null {
+  const trimmed = name?.trim();
+  if (!trimmed) return null;
+  const parts = trimmed.split(/\s+/);
+  const initials = parts.length > 1 ? parts[0][0] + parts[parts.length - 1][0] : parts[0].slice(0, 2);
+  return initials.toUpperCase();
+}
 
 export default function GuestsPage() {
   const { startDateISO, endDateISO } = useDateRange();
@@ -58,7 +68,7 @@ export default function GuestsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="page-title">Guests</h1>
           <p className="text-sm text-muted-foreground">Guest CRM built from past calls and stays</p>
@@ -83,7 +93,16 @@ export default function GuestsPage() {
           <TableBody>
             {guests.map((guest) => (
               <TableRow key={guest.id}>
-                <TableCell>{guest.name ?? "—"}</TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-2">
+                    <Avatar size="sm">
+                      <AvatarFallback>
+                        {guestInitials(guest.name) ?? <UserRound className="size-3.5" />}
+                      </AvatarFallback>
+                    </Avatar>
+                    {guest.name ?? "—"}
+                  </div>
+                </TableCell>
                 <TableCell>
                   {isBrowserTestIdentity(guest.phone) ? <Badge variant="outline">Browser test</Badge> : guest.phone}
                 </TableCell>

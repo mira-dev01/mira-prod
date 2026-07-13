@@ -1,9 +1,12 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { Building2, MoreHorizontal, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ListRow } from "@/components/ui/list-row";
+import { StatusChip } from "@/components/status-chip";
 import {
   Dialog,
   DialogContent,
@@ -21,7 +24,6 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { PropertyFormFields } from "@/components/property-form-fields";
-import { StatusChip } from "@/components/status-chip";
 import { TalkToMiraDialog } from "@/components/talk-to-mira-dialog";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError, API_BASE_URL, getToken } from "@/lib/api";
@@ -93,6 +95,22 @@ export default function PropertiesPage() {
     "idle" | "triggering" | "polling" | "done" | "failed"
   >("idle");
   const [airbnbImportResult, setAirbnbImportResult] = useState<AirbnbUrlImportStatus | null>(null);
+
+  // Derived, not new state -- airbnbUrlsText stays populated through
+  // triggering/polling/done (only cleared by resetAirbnbImportDialog), so
+  // the real submitted count is always recomputable from it. Used to show
+  // "Importing N listings…" during polling instead of a vague message,
+  // without fabricating any percentage/progress data the backend doesn't
+  // actually provide (AirbnbUrlImportStatus.status is only
+  // running|ready|failed).
+  const airbnbUrlCount = useMemo(
+    () =>
+      airbnbUrlsText
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean).length,
+    [airbnbUrlsText]
+  );
 
   const [editing, setEditing] = useState<PropertyOut | null>(null);
   const [editForm, setEditForm] = useState<PropertyCreate>(emptyForm);
@@ -247,7 +265,7 @@ export default function PropertiesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="page-title">Properties</h1>
           <p className="text-sm text-muted-foreground">Listings MIRA answers calls for</p>
@@ -301,26 +319,30 @@ export default function PropertiesPage() {
                 <div className="space-y-3 py-6 text-center">
                   <Skeleton className="mx-auto h-6 w-48" />
                   <p className="text-sm text-muted-foreground">
-                    Fetching your listings from Airbnb — this can take a minute or two.
+                    Importing {airbnbUrlCount} {airbnbUrlCount === 1 ? "listing" : "listings"} from Airbnb — this
+                    can take a minute or two.
                   </p>
                 </div>
               ) : (
                 <div className="space-y-4">
                   {airbnbImportResult?.results.length ? (
-                    <ul className="space-y-2 text-sm">
+                    <div className="space-y-0">
                       {airbnbImportResult.results.map((r, i) => (
-                        <li key={i} className="flex items-start justify-between gap-3 border-b pb-2">
-                          <span className="truncate">{r.property?.name ?? r.filename}</span>
-                          <span
-                            className={
-                              r.status === "error" ? "text-destructive" : "text-muted-foreground"
-                            }
-                          >
-                            {r.status === "error" ? r.error : r.status}
-                          </span>
-                        </li>
+                        <ListRow key={i}>
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="min-w-0 flex-1 truncate text-sm">{r.property?.name ?? r.filename}</span>
+                            {r.status === "error" ? (
+                              <StatusChip status="error" tone="destructive" />
+                            ) : (
+                              <StatusChip status={r.status} tone={r.status === "created" ? "live" : "progress"} />
+                            )}
+                          </div>
+                          {r.status === "error" && r.error && (
+                            <p className="text-xs text-muted-foreground">{r.error}</p>
+                          )}
+                        </ListRow>
                       ))}
-                    </ul>
+                    </div>
                   ) : (
                     <p className="text-sm text-muted-foreground">
                       {airbnbImportResult?.error ?? "The import didn't return any listings — check the URLs and try again."}
@@ -377,7 +399,7 @@ export default function PropertiesPage() {
             onClick={() => setPhoneBannerDismissed(true)}
             className="shrink-0 text-muted-foreground hover:text-foreground"
           >
-            ✕
+            <X className="size-4" />
           </button>
         </div>
       )}
@@ -393,7 +415,14 @@ export default function PropertiesPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {properties.map((property) => (
-            <Card key={property.id}>
+            <Card key={property.id} className="overflow-hidden">
+              {property.photos[0] ? (
+                <img src={property.photos[0]} alt={property.name} className="h-36 w-full object-cover" />
+              ) : (
+                <div className="flex h-36 w-full items-center justify-center bg-muted">
+                  <Building2 className="size-8 text-muted-foreground" />
+                </div>
+              )}
               <CardHeader>
                 <CardTitle className="flex items-center justify-between text-base">
                   {property.name}
@@ -416,7 +445,7 @@ export default function PropertiesPage() {
                     <DropdownMenuTrigger
                       render={
                         <Button variant="outline" size="icon-sm" aria-label="More actions">
-                          ⋯
+                          <MoreHorizontal className="size-4" />
                         </Button>
                       }
                     />

@@ -75,6 +75,7 @@ export type PropertyOut = {
   neighborhood_info: string | null;
   faq: FAQItem[];
   amenities: string[];
+  photos: string[];
   check_in_time: string;
   check_out_time: string;
   max_guests: number;

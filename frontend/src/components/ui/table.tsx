@@ -19,11 +19,29 @@ function Table({ className, ...props }: React.ComponentProps<"table">) {
   )
 }
 
-function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
+function TableHeader({
+  className,
+  sticky = false,
+  ...props
+}: React.ComponentProps<"thead"> & {
+  /** Pins the header to the top of its scroll container while the body scrolls
+   *  underneath. Opt-in: the consumer must give the table's wrapping
+   *  container a bounded height (e.g. `max-h-[...] overflow-y-auto`) for this
+   *  to do anything -- on an unbounded page-scroll table (the default for
+   *  every table in the app today) it's a no-op. Needs an opaque background
+   *  (uses --card, matching the header row's usual card context) so body
+   *  rows don't show through while pinned. */
+  sticky?: boolean
+}) {
   return (
     <thead
       data-slot="table-header"
-      className={cn("[&_tr]:border-b", className)}
+      data-sticky={sticky}
+      className={cn(
+        "[&_tr]:border-b",
+        sticky && "sticky top-0 z-10 bg-card [&_tr]:bg-card",
+        className
+      )}
       {...props}
     />
   )

@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 
 type StatCardProps = {
   icon: LucideIcon;
@@ -12,11 +13,24 @@ type StatCardProps = {
   label: string;
   value?: number | string;
   loading?: boolean;
+  /** Adds the shared hover-lift treatment -- only pass this when the card is
+   * itself wrapped in a real interactive element (e.g. a Link), so the
+   * lift affordance isn't shown on purely informational stat cards. */
+  interactive?: boolean;
+  className?: string;
 };
 
-export function StatCard({ icon: Icon, iconColorVar = "--accent-warm", label, value, loading }: StatCardProps) {
+export function StatCard({
+  icon: Icon,
+  iconColorVar = "--accent-warm",
+  label,
+  value,
+  loading,
+  interactive,
+  className,
+}: StatCardProps) {
   return (
-    <Card>
+    <Card className={cn(interactive && "surface-interactive", className)}>
       <CardContent className="space-y-2">
         <span
           className="flex size-8 items-center justify-center rounded-full"

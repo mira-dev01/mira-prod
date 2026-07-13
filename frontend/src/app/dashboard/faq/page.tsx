@@ -87,7 +87,7 @@ export default function FaqPage() {
           <CardTitle>Add FAQ entry</CardTitle>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleCreate} className="grid gap-3 sm:grid-cols-2">
+          <form onSubmit={handleCreate} className="grid gap-4 sm:grid-cols-2">
             <div className="min-w-0 space-y-2 sm:col-span-2">
               <Label>Applies to</Label>
               <Select value={propertyId} onValueChange={(v) => v && setPropertyId(v)}>
