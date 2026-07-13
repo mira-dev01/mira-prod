@@ -1,5 +1,5 @@
 async def test_register_and_login(client):
-    payload = {"email": "newhost@example.com", "password": "supersecret1"}
+    payload = {"email": "newhost@example.com", "password": "12345678"}
     register_resp = await client.post("/api/v1/auth/register", json=payload)
     assert register_resp.status_code == 201
     assert "access_token" in register_resp.json()
@@ -14,7 +14,7 @@ async def test_register_and_login(client):
 
 
 async def test_login_wrong_password(client):
-    payload = {"email": "wronghost@example.com", "password": "supersecret1"}
+    payload = {"email": "wronghost@example.com", "password": "12345678"}
     await client.post("/api/v1/auth/register", json=payload)
 
     resp = await client.post(
@@ -24,7 +24,7 @@ async def test_login_wrong_password(client):
 
 
 async def test_duplicate_registration_rejected(client):
-    payload = {"email": "dupe@example.com", "password": "supersecret1"}
+    payload = {"email": "dupe@example.com", "password": "12345678"}
     first = await client.post("/api/v1/auth/register", json=payload)
     second = await client.post("/api/v1/auth/register", json=payload)
     assert first.status_code == 201
@@ -44,7 +44,7 @@ async def test_update_me_sets_lead_exophone(client, auth_headers):
 
 async def test_update_me_rejects_duplicate_lead_exophone(client, auth_headers):
     other = await client.post(
-        "/api/v1/auth/register", json={"email": "other-host@example.com", "password": "supersecret1"}
+        "/api/v1/auth/register", json={"email": "other-host@example.com", "password": "12345678"}
     )
     other_token = other.json()["access_token"]
     await client.patch(
@@ -62,7 +62,7 @@ async def test_update_me_rejects_duplicate_lead_exophone(client, auth_headers):
 def _register_host_payload(**overrides):
     payload = {
         "email": "fullhost@example.com",
-        "password": "supersecret1",
+        "password": "12345678",
         "name": "Priya Sharma",
         "phone": "+919876543210",
         "business_name": "Sharma Stays",

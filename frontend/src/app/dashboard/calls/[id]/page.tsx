@@ -20,6 +20,16 @@ const statusTone: Record<string, StatusTone> = {
   missed: "destructive",
 };
 
+// Same urgency vocabulary/tones as calls/page.tsx's urgencyTone -- kept
+// local to each page rather than shared, consistent with how statusTone is
+// already duplicated per-page in this codebase.
+const urgencyTone: Record<string, StatusTone> = {
+  emergency: "destructive",
+  high: "destructive",
+  medium: "pending",
+  low: "neutral",
+};
+
 function formatDuration(minutes: number | null): string | null {
   if (minutes === null) return null;
   const whole = Math.floor(minutes);
@@ -54,9 +64,9 @@ export default function CallDetailPage() {
         </Button>
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <StatusChip status={call.status} tone={statusTone[call.status] ?? "neutral"} />
-        {call.urgency && <Badge variant="destructive" className="capitalize">{call.urgency}</Badge>}
+        {call.urgency && <StatusChip status={call.urgency} tone={urgencyTone[call.urgency] ?? "neutral"} />}
         {duration && <Badge variant="secondary">{duration}</Badge>}
       </div>
 

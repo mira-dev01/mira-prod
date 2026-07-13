@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Drawer } from "@base-ui/react/drawer";
 import {
   Home,
   Building2,
@@ -57,7 +58,7 @@ function NavLinks({ onNavigate, onTalkToMira }: { onNavigate?: () => void; onTal
             onTalkToMira();
             onNavigate?.();
           }}
-          className="rounded-[var(--radius)] px-3 py-2 text-left text-sm font-medium text-accent-foreground transition-colors duration-150 hover:bg-accent"
+          className="rounded-lg px-3 py-2 text-left text-sm font-medium text-accent-foreground transition-colors duration-150 hover:bg-accent"
         >
           <span className="mr-1.5 text-[var(--accent-warm)]">{"✳︎"}</span>
           Talk to Mira
@@ -75,7 +76,7 @@ function NavLinks({ onNavigate, onTalkToMira }: { onNavigate?: () => void; onTal
               href={link.href}
               onClick={onNavigate}
               className={cn(
-                "flex items-center gap-2 rounded-[var(--radius)] px-3 py-2 text-sm transition-colors duration-150 hover:bg-accent hover:text-accent-foreground",
+                "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors duration-150 hover:bg-accent hover:text-accent-foreground",
                 active
                   ? "bg-accent font-medium text-accent-foreground"
                   : "font-normal text-muted-foreground"
@@ -102,24 +103,19 @@ export function SidebarNav() {
   const [talkOpen, setTalkOpen] = useState(false);
   const pathname = usePathname();
 
-  // Close drawer on route change
+  // Belt-and-suspenders close on route change -- NavLinks' onNavigate
+  // already closes on a direct link click, but this also covers browser
+  // back/forward and any programmatic router.push() elsewhere in the app.
   useEffect(() => {
     setOpen(false);
   }, [pathname]);
 
-  // Prevent body scroll when drawer is open
-  useEffect(() => {
-    if (open) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
-    return () => { document.body.style.overflow = ""; };
-  }, [open]);
-
   return (
     <>
-      {/* ── Desktop sidebar (md+) ── */}
+      {/* ── Desktop sidebar (md+): a permanently visible rail, not a
+          dismissible overlay, so it stays plain markup rather than a Drawer
+          instance (Drawer's backdrop/focus-trap/scroll-lock machinery is for
+          the mobile overlay case below). ── */}
       <aside className="hidden md:flex h-screen w-56 shrink-0 flex-col overflow-y-auto border-r bg-card p-4">
         <div className="mb-6 px-2">
           <MiraLogo />
@@ -128,48 +124,48 @@ export function SidebarNav() {
         <NavLinks onTalkToMira={() => setTalkOpen(true)} />
       </aside>
 
-      {/* ── Mobile top bar ── */}
-      <header className="md:hidden fixed top-0 left-0 right-0 z-40 flex items-center justify-between border-b bg-card px-4 h-14">
-        <MiraLogo />
-        <button
-          aria-label="Open menu"
-          onClick={() => setOpen(true)}
-          className="flex h-9 w-9 items-center justify-center rounded-md text-foreground hover:bg-accent"
-        >
-          <Menu className="size-5" />
-        </button>
-      </header>
-
-      {/* ── Mobile drawer backdrop ── */}
-      {open && (
-        <div
-          className="md:hidden fixed inset-0 z-50 bg-black/40"
-          onClick={() => setOpen(false)}
-        />
-      )}
-
-      {/* ── Mobile drawer panel ── */}
-      <aside
-        className={cn(
-          "md:hidden fixed top-0 left-0 z-50 h-full w-64 bg-card flex flex-col p-4 transition-transform duration-200",
-          open ? "translate-x-0" : "-translate-x-full"
-        )}
-      >
-        <div className="mb-6 flex items-center justify-between px-2">
-          <div>
-            <MiraLogo />
-            <p className="mt-0.5 text-xs text-muted-foreground">Host dashboard</p>
-          </div>
-          <button
-            aria-label="Close menu"
-            onClick={() => setOpen(false)}
-            className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-accent"
+      {/* ── Mobile top bar + slide-in drawer, built on @base-ui/react's
+          Drawer primitive: portal, backdrop, focus trap, scroll lock, and
+          swipe-to-dismiss all come from the library instead of a hand-rolled
+          translate-x + manual document.body.style.overflow toggle. ── */}
+      <Drawer.Root open={open} onOpenChange={setOpen} swipeDirection="left">
+        <header className="md:hidden fixed top-0 left-0 right-0 z-40 flex items-center justify-between border-b bg-card px-4 h-14">
+          <MiraLogo />
+          <Drawer.Trigger
+            aria-label="Open menu"
+            className="flex h-9 w-9 items-center justify-center rounded-md text-foreground hover:bg-accent"
           >
-            <X className="size-4" />
-          </button>
-        </div>
-        <NavLinks onNavigate={() => setOpen(false)} onTalkToMira={() => setTalkOpen(true)} />
-      </aside>
+            <Menu className="size-5" />
+          </Drawer.Trigger>
+        </header>
+
+        <Drawer.Portal>
+          <Drawer.Backdrop className="md:hidden fixed inset-0 z-50 bg-black/40 transition-opacity duration-200 data-ending-style:opacity-0 data-starting-style:opacity-0" />
+          <Drawer.Viewport className="md:hidden fixed inset-0 z-50 flex items-stretch justify-start">
+            <Drawer.Popup
+              className={cn(
+                "flex h-full w-64 flex-col bg-card p-4 outline-none",
+                "transition-transform duration-200 [transform:translateX(var(--drawer-swipe-movement-x))]",
+                "data-starting-style:-translate-x-full data-ending-style:-translate-x-full"
+              )}
+            >
+              <div className="mb-6 flex items-center justify-between px-2">
+                <div>
+                  <MiraLogo />
+                  <p className="mt-0.5 text-xs text-muted-foreground">Host dashboard</p>
+                </div>
+                <Drawer.Close
+                  aria-label="Close menu"
+                  className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-accent"
+                >
+                  <X className="size-4" />
+                </Drawer.Close>
+              </div>
+              <NavLinks onNavigate={() => setOpen(false)} onTalkToMira={() => setTalkOpen(true)} />
+            </Drawer.Popup>
+          </Drawer.Viewport>
+        </Drawer.Portal>
+      </Drawer.Root>
 
       <TalkToMiraDialog open={talkOpen} onOpenChange={setTalkOpen} />
     </>

@@ -5,13 +5,34 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CreditCard, KeyRound, Users } from "lucide-react";
+import { DefinitionRow } from "@/components/ui/definition-row";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { API_BASE_URL, ApiError, api, getToken } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 
+function ComingSoonTab({ icon: Icon, label }: { icon: React.ComponentType<{ className?: string }>; label: string }) {
+  return (
+    <Card className="max-w-md">
+      <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
+        <span className="flex size-10 items-center justify-center rounded-full bg-muted">
+          <Icon className="size-5 text-muted-foreground" />
+        </span>
+        <div className="space-y-1">
+          <p className="text-sm font-medium">{label}</p>
+          <p className="text-xs text-muted-foreground">Coming soon.</p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function SettingsPage() {
-  const { user, refreshUser } = useAuth();
+  const { user, loading, refreshUser } = useAuth();
   const [leadExophone, setLeadExophone] = useState(user?.lead_exophone ?? "");
   const [submitting, setSubmitting] = useState(false);
 
@@ -80,6 +101,29 @@ export default function SettingsPage() {
     window.open(url, "_blank");
   }
 
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="page-title">Settings</h1>
+          <p className="text-sm text-muted-foreground">Account details</p>
+        </div>
+        {[5, 3, 4, 6].map((rows, i) => (
+          <Card key={i} className="max-w-md">
+            <CardHeader>
+              <Skeleton variant="text" className="w-1/2" />
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {Array.from({ length: rows }, (_, j) => (
+                <Skeleton key={j} variant="text" />
+              ))}
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -87,143 +131,152 @@ export default function SettingsPage() {
         <p className="text-sm text-muted-foreground">Account details</p>
       </div>
 
-      <Card className="max-w-md">
-        <CardHeader>
-          <CardTitle>Host account</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3 text-sm">
-          <Row label="Name" value={user?.name ?? "—"} />
-          <Row label="Email" value={user?.email ?? "—"} />
-          <Row label="Phone" value={user?.phone ?? "—"} />
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">Plan tier</span>
-            <Badge variant="secondary" className="capitalize">
-              {user?.tier ?? "—"}
-            </Badge>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">Status</span>
-            <Badge variant="outline" className="capitalize">
-              {user?.status ?? "—"}
-            </Badge>
-          </div>
-        </CardContent>
-      </Card>
+      <Tabs defaultValue="workspace">
+        <TabsList>
+          <TabsTrigger value="workspace">Workspace</TabsTrigger>
+          <TabsTrigger value="voice-ai">Voice AI</TabsTrigger>
+          <TabsTrigger value="billing">Billing</TabsTrigger>
+          <TabsTrigger value="api">API</TabsTrigger>
+          <TabsTrigger value="team">Team</TabsTrigger>
+        </TabsList>
 
-      <Card className="max-w-md">
-        <CardHeader>
-          <CardTitle>Escalation notifications</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="mb-3 text-sm text-muted-foreground">
-            Where escalation summaries are emailed. Leave blank to use your login email above — set
-            this if you&apos;d rather they go to a shared inbox (e.g. a front-desk address) instead.
-          </p>
-          <form onSubmit={handleSaveNotificationEmail} className="flex gap-2">
-            <Input
-              type="email"
-              placeholder={user?.email ?? "you@example.com"}
-              value={notificationEmail}
-              onChange={(e) => setNotificationEmail(e.target.value)}
-            />
-            <Button type="submit" disabled={savingNotificationEmail}>
-              Save
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+        <TabsContent value="workspace" className="space-y-6 pt-4">
+          <Card className="max-w-md">
+            <CardHeader>
+              <CardTitle>Host account</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <DefinitionRow label="Name" value={user?.name ?? "—"} />
+              <DefinitionRow label="Email" value={user?.email ?? "—"} />
+              <DefinitionRow label="Phone" value={user?.phone ?? "—"} />
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Plan tier</span>
+                <Badge variant="secondary" className="capitalize">
+                  {user?.tier ?? "—"}
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Status</span>
+                <Badge variant="outline" className="capitalize">
+                  {user?.status ?? "—"}
+                </Badge>
+              </div>
+            </CardContent>
+          </Card>
 
-      <Card className="max-w-md">
-        <CardHeader>
-          <CardTitle>Lead intake number</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="mb-3 text-sm text-muted-foreground">
-            Calls to this number run the Lead Agent across your full property portfolio instead of one
-            property — for booking enquiries, not existing-guest support. This is also your general
-            testing link: it asks the caller which property they mean instead of testing just one.
-          </p>
-          <form onSubmit={handleSaveLeadExophone} className="flex gap-2">
-            <Input
-              placeholder="+9180XXXXXXXX"
-              value={leadExophone}
-              onChange={(e) => setLeadExophone(e.target.value)}
-            />
-            <Button type="submit" disabled={submitting}>
-              Save
-            </Button>
-          </form>
-          <Button variant="secondary" size="sm" className="mt-3" onClick={handleTestLeadAgent}>
-            Test Lead Agent in browser
-          </Button>
-        </CardContent>
-      </Card>
-
-      <Card className="max-w-md">
-        <CardHeader>
-          <CardTitle>Voice agent personalization</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="mb-3 text-sm text-muted-foreground">
-            Leave any field blank to use MIRA&apos;s default. The golden rules (never hallucinate
-            pricing, always escalate when unsure, etc.) stay fixed regardless — these only change tone
-            and wording.
-          </p>
-          <form onSubmit={handleSavePersonalization} className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium" htmlFor="agent_first_message">
-                First message
-              </label>
-              <Textarea
-                id="agent_first_message"
-                placeholder="Namaste {guest_name}! I'm Mira, calling on behalf of {host_name} about {property_name}."
-                value={firstMessage}
-                onChange={(e) => setFirstMessage(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">
-                Placeholders: {"{host_name}"}, {"{property_name}"}, {"{city}"}, {"{guest_name}"} — any
-                that don&apos;t apply to a given call (e.g. {"{property_name}"} on the Lead Agent line)
-                are left blank automatically.
+          <Card className="max-w-md">
+            <CardHeader>
+              <CardTitle>Escalation notifications</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="mb-3 text-sm text-muted-foreground">
+                Where escalation summaries are emailed. Leave blank to use your login email above — set
+                this if you&apos;d rather they go to a shared inbox (e.g. a front-desk address) instead.
               </p>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium" htmlFor="agent_persona">
-                Personality note
-              </label>
-              <Textarea
-                id="agent_persona"
-                placeholder="e.g. Sound like a warm, chatty local host -- informal, never corporate."
-                value={persona}
-                onChange={(e) => setPersona(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium" htmlFor="agent_escalation_phrase">
-                Escalation phrase
-              </label>
-              <Textarea
-                id="agent_escalation_phrase"
-                placeholder="e.g. One moment, let me get my colleague on the line for you."
-                value={escalationPhrase}
-                onChange={(e) => setEscalationPhrase(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">Said right before MIRA hands off to you.</p>
-            </div>
-            <Button type="submit" disabled={savingPersonalization}>
-              Save personalization
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
+              <form onSubmit={handleSaveNotificationEmail} className="flex gap-2">
+                <Input
+                  type="email"
+                  placeholder={user?.email ?? "you@example.com"}
+                  value={notificationEmail}
+                  onChange={(e) => setNotificationEmail(e.target.value)}
+                />
+                <Button type="submit" disabled={savingNotificationEmail}>
+                  Save
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
 
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className="text-muted-foreground">{label}</span>
-      <span>{value}</span>
+          <Card className="max-w-md">
+            <CardHeader>
+              <CardTitle>Lead intake number</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="mb-3 text-sm text-muted-foreground">
+                Calls to this number run the Lead Agent across your full property portfolio instead of one
+                property — for booking enquiries, not existing-guest support. This is also your general
+                testing link: it asks the caller which property they mean instead of testing just one.
+              </p>
+              <form onSubmit={handleSaveLeadExophone} className="flex gap-2">
+                <Input
+                  placeholder="+9180XXXXXXXX"
+                  value={leadExophone}
+                  onChange={(e) => setLeadExophone(e.target.value)}
+                />
+                <Button type="submit" disabled={submitting}>
+                  Save
+                </Button>
+              </form>
+              <Button variant="secondary" size="sm" className="mt-3" onClick={handleTestLeadAgent}>
+                Test Lead Agent in browser
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="voice-ai" className="space-y-6 pt-4">
+          <Card className="max-w-md">
+            <CardHeader>
+              <CardTitle>Voice agent personalization</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="mb-3 text-sm text-muted-foreground">
+                Leave any field blank to use MIRA&apos;s default. The golden rules (never hallucinate
+                pricing, always escalate when unsure, etc.) stay fixed regardless — these only change
+                tone and wording.
+              </p>
+              <form onSubmit={handleSavePersonalization} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="agent_first_message">First message</Label>
+                  <Textarea
+                    id="agent_first_message"
+                    placeholder="Namaste {guest_name}! I'm Mira, calling on behalf of {host_name} about {property_name}."
+                    value={firstMessage}
+                    onChange={(e) => setFirstMessage(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Placeholders: {"{host_name}"}, {"{property_name}"}, {"{city}"}, {"{guest_name}"} —
+                    any that don&apos;t apply to a given call (e.g. {"{property_name}"} on the Lead
+                    Agent line) are left blank automatically.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="agent_persona">Personality note</Label>
+                  <Textarea
+                    id="agent_persona"
+                    placeholder="e.g. Sound like a warm, chatty local host -- informal, never corporate."
+                    value={persona}
+                    onChange={(e) => setPersona(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="agent_escalation_phrase">Escalation phrase</Label>
+                  <Textarea
+                    id="agent_escalation_phrase"
+                    placeholder="e.g. One moment, let me get my colleague on the line for you."
+                    value={escalationPhrase}
+                    onChange={(e) => setEscalationPhrase(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">Said right before MIRA hands off to you.</p>
+                </div>
+                <Button type="submit" disabled={savingPersonalization}>
+                  Save personalization
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="billing" className="pt-4">
+          <ComingSoonTab icon={CreditCard} label="Billing" />
+        </TabsContent>
+        <TabsContent value="api" className="pt-4">
+          <ComingSoonTab icon={KeyRound} label="API access" />
+        </TabsContent>
+        <TabsContent value="team" className="pt-4">
+          <ComingSoonTab icon={Users} label="Team members" />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

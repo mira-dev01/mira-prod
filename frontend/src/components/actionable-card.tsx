@@ -1,6 +1,8 @@
 import { ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ExpandableText } from "@/components/expandable-text";
+import { ListRow } from "@/components/ui/list-row";
+import { toneBadgeVariant, toneClassName, type StatusTone } from "@/lib/tone";
 import { cn } from "@/lib/utils";
 
 export type ActionableCardPriority = {
@@ -8,16 +10,14 @@ export type ActionableCardPriority = {
   tone: "high" | "medium" | "low";
 };
 
-const priorityBadgeVariant: Record<ActionableCardPriority["tone"], "destructive" | "outline"> = {
+// ActionableCard's priority vocabulary (high/medium/low) maps onto the
+// shared StatusTone vocabulary so the badge styling comes from the same
+// single source of truth as StatusChip and Calendar, rather than a second
+// hand-rolled tone->className map.
+const priorityStatusTone: Record<ActionableCardPriority["tone"], StatusTone> = {
   high: "destructive",
-  medium: "outline",
-  low: "outline",
-};
-
-const priorityClassName: Record<ActionableCardPriority["tone"], string> = {
-  high: "",
-  medium: "badge-status-pending",
-  low: "badge-priority-low",
+  medium: "pending",
+  low: "low",
 };
 
 type ActionableCardProps = {
@@ -41,33 +41,31 @@ export function ActionableCard({ title, summary, metadata, priority, onClick, mu
   // also fire this card's onClick.
   const interactive = Boolean(onClick);
 
-  const priorityBadge = priority && (
-    <Badge variant={priorityBadgeVariant[priority.tone]} className={cn(priorityClassName[priority.tone], "shrink-0")}>
+  const priorityTone = priority && priorityStatusTone[priority.tone];
+  const priorityBadge = priority && priorityTone && (
+    <Badge variant={toneBadgeVariant[priorityTone]} className={cn(toneClassName[priorityTone], "shrink-0")}>
       {priority.label}
     </Badge>
   );
 
+  const keyDown = interactive
+    ? (e: React.KeyboardEvent) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick?.();
+        }
+      }
+    : undefined;
+
   if (compact) {
     return (
-      <div
+      <ListRow
         role={interactive ? "button" : undefined}
         tabIndex={interactive ? 0 : undefined}
         onClick={onClick}
-        onKeyDown={
-          interactive
-            ? (e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  onClick?.();
-                }
-              }
-            : undefined
-        }
-        className={cn(
-          "flex w-full items-center gap-3 border-b py-2.5 text-left last:border-0 last:pb-0",
-          interactive && "cursor-pointer",
-          muted && "opacity-60"
-        )}
+        onKeyDown={keyDown}
+        muted={muted}
+        className={cn("flex-row items-center gap-3 py-2.5", interactive && "cursor-pointer")}
       >
         {priorityBadge}
         <p className="min-w-0 flex-1 truncate text-sm">
@@ -76,30 +74,18 @@ export function ActionableCard({ title, summary, metadata, priority, onClick, mu
         </p>
         {metadata && <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">{metadata}</span>}
         {onClick && <ChevronRight className="size-4 shrink-0 text-muted-foreground" />}
-      </div>
+      </ListRow>
     );
   }
 
   return (
-    <div
+    <ListRow
       role={interactive ? "button" : undefined}
       tabIndex={interactive ? 0 : undefined}
       onClick={onClick}
-      onKeyDown={
-        interactive
-          ? (e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                onClick?.();
-              }
-            }
-          : undefined
-      }
-      className={cn(
-        "flex w-full items-start justify-between gap-3 border-b pb-3 text-left last:border-0 last:pb-0",
-        interactive && "cursor-pointer",
-        muted && "opacity-60"
-      )}
+      onKeyDown={keyDown}
+      muted={muted}
+      className={cn("flex-row items-start justify-between gap-3", interactive && "cursor-pointer")}
     >
       <div className="min-w-0 flex-1 space-y-1">
         <div className="flex items-center gap-2">
@@ -114,6 +100,6 @@ export function ActionableCard({ title, summary, metadata, priority, onClick, mu
         {metadata && <p className="text-xs text-muted-foreground">{metadata}</p>}
       </div>
       {onClick && <ChevronRight className="mt-0.5 size-4 shrink-0 text-muted-foreground" />}
-    </div>
+    </ListRow>
   );
 }

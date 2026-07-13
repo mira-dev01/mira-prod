@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DefinitionRow } from "@/components/ui/definition-row";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -124,7 +125,7 @@ function PricingPageContent() {
             <CardTitle>Pricing rules</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <form onSubmit={handleCreateRule} className="grid grid-cols-2 gap-3">
+            <form onSubmit={handleCreateRule} className="grid grid-cols-2 gap-4">
               {!scopedPropertyId && (
                 <div className="col-span-2 space-y-2">
                   <Label>Property</Label>
@@ -212,7 +213,7 @@ function PricingPageContent() {
             <CardTitle>Quote calculator</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <form onSubmit={handleQuote} className="grid grid-cols-2 gap-3">
+            <form onSubmit={handleQuote} className="grid grid-cols-2 gap-4">
               {!scopedPropertyId && (
                 <div className="col-span-2 space-y-2">
                   <Label>Property</Label>
@@ -251,12 +252,12 @@ function PricingPageContent() {
 
             {quote && (
               <div className="space-y-1 rounded-md border p-4 text-sm">
-                <Row label="Nights" value={quote.nights} />
-                <Row label="Base total" value={`₹${quote.base_total.toLocaleString("en-IN")}`} />
-                <Row label="Weekend nights" value={quote.weekend_nights} />
-                <Row label="Cleaning fee" value={`₹${quote.cleaning_fee.toLocaleString("en-IN")}`} />
-                <Row label="Tax" value={`₹${quote.tax_amount.toLocaleString("en-IN")}`} />
-                <Row
+                <DefinitionRow label="Nights" value={quote.nights} />
+                <DefinitionRow label="Base total" value={`₹${quote.base_total.toLocaleString("en-IN")}`} />
+                <DefinitionRow label="Weekend nights" value={quote.weekend_nights} />
+                <DefinitionRow label="Cleaning fee" value={`₹${quote.cleaning_fee.toLocaleString("en-IN")}`} />
+                <DefinitionRow label="Tax" value={`₹${quote.tax_amount.toLocaleString("en-IN")}`} />
+                <DefinitionRow
                   label="Discount"
                   value={quote.discount_percent ? `${quote.discount_percent}% (-₹${quote.discount_amount.toLocaleString("en-IN")})` : "—"}
                 />
@@ -271,15 +272,6 @@ function PricingPageContent() {
           </CardContent>
         </Card>
       </div>
-    </div>
-  );
-}
-
-function Row({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className="text-muted-foreground">{label}</span>
-      <span>{value}</span>
     </div>
   );
 }

@@ -19,6 +19,18 @@ import { api, ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { BookingOut, PropertyOut } from "@/lib/types";
 
+// Booking-source color mapping. Deliberately NOT drawn from the StatusTone
+// system (live/pending/progress/destructive) -- those tones carry a
+// semantic urgency/state meaning elsewhere in the app (a "live" call, a
+// "pending" FAQ) that doesn't apply here: Airbnb-vs-manual is a category
+// label, not a status. Reuses the existing chart-1..5 categorical palette
+// instead, centralized here so the legend and grid cells share one lookup
+// rather than each hardcoding var(--chart-n) separately.
+const bookingSourceColor = {
+  airbnb: "var(--chart-3)",
+  manual: "var(--chart-4)",
+} as const;
+
 function toISODate(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
@@ -142,11 +154,11 @@ export default function CalendarPage() {
         </Button>
         <div className="ml-4 flex items-center gap-3 text-xs text-muted-foreground">
           <span className="flex items-center gap-1">
-            <span className="inline-block h-3 w-3 rounded-sm" style={{ background: "var(--chart-3)" }} />
+            <span className="inline-block h-3 w-3 rounded-sm" style={{ background: bookingSourceColor.airbnb }} />
             Airbnb
           </span>
           <span className="flex items-center gap-1">
-            <span className="inline-block h-3 w-3 rounded-sm" style={{ background: "var(--chart-4)" }} />
+            <span className="inline-block h-3 w-3 rounded-sm" style={{ background: bookingSourceColor.manual }} />
             Manual block
           </span>
         </div>
@@ -178,6 +190,11 @@ export default function CalendarPage() {
                   {days.map((day) => {
                     const dayBookings = bookingsForDay(property.id, day);
                     const booking = dayBookings[0];
+                    const tone = booking
+                      ? booking.platform === "airbnb"
+                        ? bookingSourceColor.airbnb
+                        : bookingSourceColor.manual
+                      : undefined;
                     return (
                       <td
                         key={day}
@@ -191,14 +208,14 @@ export default function CalendarPage() {
                             ? setUnblockTarget({ booking, propertyName: property.name })
                             : openBlockDialog(property.id, day)
                         }
-                        className={cn(
-                          "h-7 min-w-[28px] cursor-pointer border-b border-l",
-                          booking &&
-                            (booking.platform === "airbnb"
-                              ? "bg-[var(--chart-3)]/70 hover:bg-[var(--chart-3)]"
-                              : "bg-[var(--chart-4)]/70 hover:bg-[var(--chart-4)]"),
-                          !booking && "hover:bg-accent"
-                        )}
+                        style={tone ? { background: `color-mix(in srgb, ${tone} 70%, transparent)` } : undefined}
+                        onMouseEnter={(e) => {
+                          if (tone) e.currentTarget.style.background = tone;
+                        }}
+                        onMouseLeave={(e) => {
+                          if (tone) e.currentTarget.style.background = `color-mix(in srgb, ${tone} 70%, transparent)`;
+                        }}
+                        className={cn("h-7 min-w-[28px] cursor-pointer border-b border-l", !booking && "hover:bg-accent")}
                       />
                     );
                   })}

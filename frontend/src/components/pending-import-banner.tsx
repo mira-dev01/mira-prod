@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { api, ApiError } from "@/lib/api";
 import { PENDING_IMPORT_KEY } from "@/lib/auth-context";
+import { toneCssVar } from "@/lib/tone";
 
 type PendingImport = { snapshotId: string; icalUrl: string | null } | { error: string };
 
@@ -100,9 +101,18 @@ export function PendingImportBanner() {
   if (state !== "polling") return null;
 
   return (
-    <Card className="mb-4 border-primary/30 bg-primary/5">
+    <Card
+      className="mb-4"
+      style={{
+        borderColor: `color-mix(in srgb, ${toneCssVar.progress} 30%, transparent)`,
+        backgroundColor: `color-mix(in srgb, ${toneCssVar.progress} 5%, transparent)`,
+      }}
+    >
       <CardContent className="flex items-center gap-3 py-3 text-sm">
-        <span className="h-2 w-2 animate-pulse rounded-full bg-primary" />
+        <span
+          className="h-2 w-2 shrink-0 animate-pulse rounded-full"
+          style={{ backgroundColor: toneCssVar.progress }}
+        />
         Importing your property from Airbnb — this can take a minute. You can keep using the dashboard meanwhile.
       </CardContent>
     </Card>

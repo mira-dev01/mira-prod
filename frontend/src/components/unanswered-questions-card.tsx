@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { ListRow } from "@/components/ui/list-row";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -122,10 +123,7 @@ export function UnansweredQuestionsCard({ limit, linkToFaqPage }: { limit?: numb
           ) : (
             <div className="space-y-3">
               {gaps.map((gap) => (
-                <div
-                  key={gap.sample_id}
-                  className="flex flex-wrap items-start justify-between gap-3 border-b pb-3 last:border-0 last:pb-0"
-                >
+                <ListRow key={gap.sample_id} className="flex-row flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0 flex-1 space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="min-w-0 break-words text-sm font-medium">{gap.question}</p>
@@ -140,7 +138,7 @@ export function UnansweredQuestionsCard({ limit, linkToFaqPage }: { limit?: numb
                   <Button size="sm" className="shrink-0" onClick={() => openAnswerDialog(gap)}>
                     Answer this question
                   </Button>
-                </div>
+                </ListRow>
               ))}
             </div>
           )}

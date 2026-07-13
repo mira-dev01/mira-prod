@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Phone, Star, Wrench, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,7 +9,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError } from "@/lib/api";
 
@@ -68,7 +68,7 @@ export default function TechniciansPage() {
           <CardTitle>Add technician</CardTitle>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleCreate} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <form onSubmit={handleCreate} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
             <div className="space-y-2 lg:col-span-2">
               <Label>Property</Label>
               <Select value={propertyId} onValueChange={(v) => v && setPropertyId(v)} disabled={propertiesLoading}>
@@ -117,38 +117,49 @@ export default function TechniciansPage() {
       </Card>
 
       {loading ? (
-        <Skeleton className="h-48 w-full" />
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="h-40 w-full" />
+          ))}
+        </div>
       ) : !technicians || technicians.length === 0 ? (
         <p className="text-sm text-muted-foreground">No technicians on file yet.</p>
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Property</TableHead>
-              <TableHead>Specialty</TableHead>
-              <TableHead>Phone</TableHead>
-              <TableHead>Rating</TableHead>
-              <TableHead className="w-16" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {technicians.map((tech) => (
-              <TableRow key={tech.id}>
-                <TableCell>{tech.name}</TableCell>
-                <TableCell>{propertyName(tech.property_id)}</TableCell>
-                <TableCell className="capitalize">{tech.specialty}</TableCell>
-                <TableCell>{tech.phone}</TableCell>
-                <TableCell>{tech.rating.toFixed(1)}</TableCell>
-                <TableCell>
-                  <Button variant="ghost" size="sm" onClick={() => handleDelete(tech.id)}>
-                    Remove
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {technicians.map((tech) => (
+            <Card key={tech.id}>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between text-base">
+                  <span className="min-w-0 truncate">{tech.name}</span>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${tech.name}`}
+                    onClick={() => handleDelete(tech.id)}
+                    className="shrink-0 text-muted-foreground hover:text-destructive"
+                  >
+                    <X className="size-4" />
+                  </button>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <p className="flex items-center gap-1.5 text-muted-foreground">
+                  <Wrench className="size-3.5 shrink-0" />
+                  <span className="capitalize">{tech.specialty}</span>
+                  <span aria-hidden="true">·</span>
+                  <span>{propertyName(tech.property_id)}</span>
+                </p>
+                <p className="flex items-center gap-1.5 text-muted-foreground">
+                  <Star className="size-3.5 shrink-0 fill-current text-(--status-pending)" />
+                  {tech.rating.toFixed(1)}
+                </p>
+                <Button variant="outline" size="sm" className="mt-2 w-full" render={<a href={`tel:${tech.phone}`} />}>
+                  <Phone className="size-3.5" />
+                  {tech.phone}
+                </Button>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       )}
     </div>
   );

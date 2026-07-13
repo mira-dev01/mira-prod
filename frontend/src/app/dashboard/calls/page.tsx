@@ -23,6 +23,18 @@ const statusTone: Record<string, StatusTone> = {
   missed: "destructive",
 };
 
+// Same vocabulary/meaning as notifications-feed.tsx's urgencyTone (both read
+// escalate_to_host's `urgency: low|medium|high|emergency`) -- kept as its
+// own small map rather than importing that one since these are two
+// unrelated pages coincidentally sharing a domain value, not a shared
+// component that should import from each other.
+const urgencyTone: Record<string, StatusTone> = {
+  emergency: "destructive",
+  high: "destructive",
+  medium: "pending",
+  low: "neutral",
+};
+
 function formatDuration(minutes: number | null): string {
   if (minutes === null) return "—";
   const whole = Math.floor(minutes);
@@ -40,12 +52,12 @@ export default function CallsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="page-title">Calls</h1>
           <p className="text-sm text-muted-foreground">Every call MIRA has answered across your properties</p>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-2">
             <Switch id="include-test-calls" checked={includeTestCalls} onCheckedChange={setIncludeTestCalls} />
             <Label htmlFor="include-test-calls" className="text-sm text-muted-foreground">
@@ -94,7 +106,13 @@ export default function CallsPage() {
                 <TableCell>
                   <StatusChip status={call.status} tone={statusTone[call.status] ?? "neutral"} />
                 </TableCell>
-                <TableCell className="capitalize">{call.urgency ?? "—"}</TableCell>
+                <TableCell>
+                  {call.urgency ? (
+                    <StatusChip status={call.urgency} tone={urgencyTone[call.urgency] ?? "neutral"} />
+                  ) : (
+                    "—"
+                  )}
+                </TableCell>
                 <TableCell>{call.started_at ? new Date(call.started_at).toLocaleString() : "—"}</TableCell>
               </TableRow>
             ))}

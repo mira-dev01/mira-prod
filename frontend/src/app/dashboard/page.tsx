@@ -51,7 +51,7 @@ export default function OverviewPage() {
           <h1 className="page-title">Overview</h1>
           <p className="text-sm text-muted-foreground">Across all properties</p>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-4">
           <DateRangePicker />
           <div className="flex items-center gap-2">
             <Switch id="include-test-calls" checked={includeTestCalls} onCheckedChange={setIncludeTestCalls} />
@@ -91,7 +91,7 @@ export default function OverviewPage() {
           loading={summaryLoading}
         />
         <Link href="/dashboard/leads?status=open" className="block">
-          <StatCard icon={Users} label="Open leads" value={summary?.open_leads} loading={summaryLoading} />
+          <StatCard icon={Users} label="Open leads" value={summary?.open_leads} loading={summaryLoading} interactive />
         </Link>
       </div>
 

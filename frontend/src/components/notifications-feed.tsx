@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ListRow, ListRowFooter, ListRowHeader } from "@/components/ui/list-row";
 import { StatusChip, type StatusTone } from "@/components/status-chip";
 import { API_BASE_URL, api, ApiError, getToken } from "@/lib/api";
 import type { NotificationOut } from "@/lib/types";
@@ -110,20 +111,20 @@ export function NotificationsFeed({ initial, activeCount }: { initial: Notificat
           </p>
         )}
         {activeNotifications.map((n) => (
-          <div key={n.id} className="space-y-2.5 rounded-lg border p-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+          <ListRow key={n.id} variant="boxed">
+            <ListRowHeader>
               <div className="flex flex-wrap items-center gap-2">
                 <StatusChip status={n.urgency} tone={urgencyTone[n.urgency] ?? "neutral"} />
                 <span className="text-sm font-medium">{n.property_name ?? capitalize(n.channel)}</span>
               </div>
               <span className="whitespace-nowrap text-xs text-muted-foreground">{formatTime(n.created_at)}</span>
-            </div>
+            </ListRowHeader>
             {/* Full message, always -- never truncated. This is exactly the
                 text the host needs to act on, and there's no dashboard-wide
                 pattern here for "click to reveal the rest" that a
                 non-technical host would reliably discover. */}
             <p className="text-sm leading-relaxed">{n.message}</p>
-            <div className="flex items-center gap-2 pt-1">
+            <ListRowFooter className="pt-1">
               {n.call_session_id && (
                 <Link href={`/dashboard/calls/${n.call_session_id}`}>
                   <Button variant="outline" size="sm">
@@ -134,8 +135,8 @@ export function NotificationsFeed({ initial, activeCount }: { initial: Notificat
               <Button size="sm" disabled={resolving === n.id} onClick={() => handleResolve(n.id)}>
                 Mark as handled
               </Button>
-            </div>
-          </div>
+            </ListRowFooter>
+          </ListRow>
         ))}
       </CardContent>
     </Card>
