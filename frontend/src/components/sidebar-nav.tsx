@@ -14,6 +14,7 @@ import {
   HelpCircle,
   Wrench,
   Settings,
+  Sparkles,
   Menu,
   X,
   type LucideIcon,
@@ -32,6 +33,7 @@ const links: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/dashboard/guests", label: "Guests", icon: UserRound },
   { href: "/dashboard/faq", label: "FAQ", icon: HelpCircle },
   { href: "/dashboard/technicians", label: "Technicians", icon: Wrench },
+  { href: "/dashboard/ai-training", label: "AI Training", icon: Sparkles },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 

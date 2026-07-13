@@ -12,9 +12,12 @@ import type {
   FaqGapAnalytics,
   FaqGapAnswer,
   FaqGapOut,
+  DiscountPolicyParseResponse,
   GuestProfileDetailOut,
   GuestProfileOut,
   GuestProfileUpdate,
+  HostDiscountRuleOut,
+  HostDiscountRuleUpdate,
   HostRegistration,
   HostRegistrationResponse,
   LeadOut,
@@ -230,6 +233,17 @@ export const api = {
     removeRule: (id: string) => request<void>(`/pricing/rules/${id}`, { method: "DELETE" }),
     quote: (data: { property_id: string; check_in: string; check_out: string; num_guests: number }) =>
       request<PriceBreakdown>("/pricing/quote", { method: "POST", body: JSON.stringify(data) }),
+  },
+  hostDiscountRules: {
+    list: () => request<HostDiscountRuleOut[]>("/host-discount-rules"),
+    parse: (discountPolicyText: string) =>
+      request<DiscountPolicyParseResponse>("/host-discount-rules/parse", {
+        method: "POST",
+        body: JSON.stringify({ discount_policy_text: discountPolicyText }),
+      }),
+    update: (id: string, data: HostDiscountRuleUpdate) =>
+      request<HostDiscountRuleOut>(`/host-discount-rules/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    remove: (id: string) => request<void>(`/host-discount-rules/${id}`, { method: "DELETE" }),
   },
   technicians: {
     list: () => request<TechnicianOut[]>("/technicians"),

@@ -2,6 +2,7 @@ from app.models.booking import Booking
 from app.models.call_session import CallSession
 from app.models.faq_entry import FaqEntry
 from app.models.guest_profile import GuestProfile
+from app.models.host_discount_rule import HostDiscountRule
 from app.models.lead import Lead
 from app.models.notification import Notification
 from app.models.pricing_rule import PricingRule
@@ -15,6 +16,7 @@ __all__ = [
     "CallSession",
     "FaqEntry",
     "GuestProfile",
+    "HostDiscountRule",
     "Lead",
     "Notification",
     "PricingRule",

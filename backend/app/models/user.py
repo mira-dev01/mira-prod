@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Integer, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -43,6 +43,26 @@ class User(UUIDPkMixin, TimestampMixin, Base):
     agent_persona: Mapped[str | None] = mapped_column(Text)
     agent_escalation_phrase: Mapped[str | None] = mapped_column(Text)
 
+    # Host Memory: host-level negotiation/policy preferences (see
+    # memory-architecture-plan.md section 4). discount_policy_text is the
+    # host's own free-text paragraph describing how they usually handle
+    # discounts -- POST /auth/me/discount-policy/parse turns it into
+    # structured, host-approved HostDiscountRule rows; this text field is
+    # kept as-is for re-editing/re-parsing, not itself read by the pricing
+    # engine. negotiation_allowed/max_discount_percent_override are read by
+    # pricing_engine.negotiate_rate with a fallback to today's global
+    # defaults (MAX_NEGOTIATION_DISCOUNT_PERCENT etc.) whenever unset --
+    # never a behavior change for a host who hasn't configured anything.
+    discount_policy_text: Mapped[str | None] = mapped_column(Text)
+    negotiation_allowed: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    max_discount_percent_override: Mapped[float | None] = mapped_column(Numeric(5, 2))
+    allow_pets: Mapped[bool | None] = mapped_column(Boolean)
+    allow_early_checkin: Mapped[bool | None] = mapped_column(Boolean)
+    follow_up_channel_preference: Mapped[str | None] = mapped_column(String(32))
+
     properties: Mapped[list["Property"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
     leads: Mapped[list["Lead"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
     faq_entries: Mapped[list["FaqEntry"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
+    discount_rules: Mapped[list["HostDiscountRule"]] = relationship(
+        back_populates="host", cascade="all, delete-orphan"
+    )

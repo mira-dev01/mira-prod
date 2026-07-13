@@ -444,20 +444,24 @@ refactor.
       answer?" with edit-before-approve.
 
 ### 3.3 New "AI Training / Validations" tab
-- [ ] New top-level nav entry (see 0) or new page under
-      `frontend/src/app/dashboard/`. Reuses existing primitives:
-      `ListRow`/`ListRowHeader`/`ListRowBody` (`components/ui/list-row.tsx`)
-      for each pending item, same shape as `UnansweredQuestionsCard`
-      already uses.
-- [ ] Two queues on this page:
-      1. **Knowledge validations** — auto-drafted FAQ answers awaiting
-         host approve/edit/reject (from 3.2). Approving calls the existing
-         `answer_faq_gap` path (`api.faqGaps.answer`), no new backend
-         endpoint needed for this part.
-      2. **Host preference validations** — discount-placeholder review
-         (see 4.3) and any future free-text-derived settings.
-- [ ] This becomes the single place a host reviews anything the AI
-      inferred before it goes live — matches the rule in section 0.
+- [x] **Implemented** as a new top-level nav entry (`frontend/src/components/sidebar-nav.tsx`,
+      `/dashboard/ai-training`, `Sparkles` icon) rather than a Settings tab —
+      per section 0's reasoning (review queues need action, not just static
+      config). Page at `frontend/src/app/dashboard/ai-training/page.tsx`
+      reuses `ListRow`/`ListRowHeader`/`ListRowBody`/`ListRowFooter`,
+      `StatusChip`, `Card`, same primitives/conventions as
+      `UnansweredQuestionsCard` and `settings/page.tsx`.
+- [~] Two queues planned; **only the Host preference queue is implemented
+      so far** (discount-policy paragraph → parse → pending-validation
+      cards → approve/edit/reject, see 4.1–4.3). The Knowledge-validations
+      queue (auto-drafted FAQ answers from 3.2) is not yet built since 3.1/3.2
+      (semantic dedup + auto-draft) haven't been implemented yet — the page
+      is structured so that queue can be added as its own card section
+      without restructuring anything.
+- [x] This is now the actual single place a host reviews AI-derived content
+      before it goes live — confirmed end-to-end (see 4.6): parsed rules
+      land `pending_validation`, only move to `approved` via explicit host
+      action on this page.
 
 ### 3.4 Confirm existing gap→answer pipeline needs no fix
 - [ ] Already verified: answering a gap creates a `status="verified"`
@@ -484,55 +488,64 @@ refactor.
 ## 4. Host Memory (host-level policy — the highest-leverage gap)
 
 ### 4.1 Schema
-- [ ] Add to `User` model (`user.py`) alongside existing
-      `agent_persona`/`agent_first_message`/`agent_escalation_phrase`:
-      - `discount_policy_text` (Text, nullable) — the host's raw free-text
-        paragraph, e.g. "if guest doesn't ask, keep price as offered; if
-        they ask for a discount, offer 5%; repeat customers across my
-        properties get 8%."
-      - `negotiation_allowed` (bool, default True)
-      - `max_discount_percent_override` (nullable float — replaces the
-        global `MAX_NEGOTIATION_DISCOUNT_PERCENT` constant per host when set)
-      - `tone` (enum/str: luxury/friendly/formal — or fold into existing
-        `agent_persona` free text if that's already expressive enough;
-        check before adding a redundant field)
-      - `allow_pets` / `allow_early_checkin` (bool, nullable = "no policy
-        set", falls back to current behavior)
-      - `follow_up_channel_preference` (str: whatsapp/call/email)
-- [ ] New table `HostDiscountRule` (structured, derived from
-      `discount_policy_text` by the LLM-parsing step in 4.2):
-      `host_id`, `trigger_type` (enum: `"no_ask"`, `"guest_requests"`,
-      `"repeat_guest_same_host"`, custom), `discount_percent`,
-      `source` ("ai_parsed" | "host_edited"), `status`
-      ("pending_validation" | "approved"), `raw_source_text` (traceability
-      back to the paragraph that produced it).
-      This is the "placeholders" the host paragraph gets broken into.
-- [ ] Alembic migrations for both.
+- [x] Added to `User` model (`backend/app/models/user.py`):
+      `discount_policy_text` (Text, nullable), `negotiation_allowed`
+      (Boolean, default True), `max_discount_percent_override`
+      (Numeric(5,2), nullable), `allow_pets`/`allow_early_checkin`
+      (Boolean, nullable), `follow_up_channel_preference` (String(32),
+      nullable). **`tone` was deliberately not added** — folded into the
+      existing `agent_persona` free-text field per the plan's own caveat
+      ("check before adding a redundant field"); `agent_persona` is already
+      expressive enough for tone.
+- [x] New table `HostDiscountRule` (`backend/app/models/host_discount_rule.py`):
+      `host_id`, `trigger_type`, `discount_percent`, `source`
+      (`ai_parsed`/`host_edited`), `status`
+      (`pending_validation`/`approved`/`rejected` — added `rejected` beyond
+      the plan's original two, needed for the reject button in 4.3),
+      `raw_source_text`.
+- [x] Alembic migration `c8e1f4a02b7d_add_host_memory_discount_policy.py` —
+      validated end-to-end (upgrade + downgrade + re-upgrade all clean
+      against a local Postgres instance running the full migration chain
+      from scratch). **Never run against the real/production DB** — this
+      environment's `.env` `DATABASE_URL` points at what's almost certainly
+      the production Neon DB; all schema work was done against a local
+      `mira_test` instance only. Deploying this migration to production is
+      still a manual step for whoever runs `alembic upgrade head` there.
 
 ### 4.2 Paragraph → structured placeholders (LLM parsing step)
-- [ ] New backend endpoint, e.g. `POST /auth/me/discount-policy/parse`:
-      takes `discount_policy_text`, calls the LLM (reuse existing
-      `_build_llm()` / Groq fallback chain — no new provider needed) with a
-      constrained extraction prompt: "break this into
-      {trigger_type, discount_percent} rules." Returns structured
-      `HostDiscountRule` drafts with `status="pending_validation"`.
-    - This does not write directly to live pricing — output lands in the
-      validation tab (3.3/4.3) first. Matches the "no silent self-updating
-      pricing" rule from section 0.
-- [ ] Store `raw_source_text` per rule so the host can see *why* the AI
-      derived a given placeholder when reviewing it.
+- [x] Implemented as `POST /host-discount-rules/parse` (not
+      `/auth/me/discount-policy/parse` as originally sketched — grouped
+      under the new `host_discount_rules` router instead, matches the
+      resource being created). New service
+      `backend/app/services/discount_policy_service.py` — deliberately
+      **not** built on `app/voice/pipeline.py`'s `_build_llm()` (that's
+      wired for pipecat's streaming/function-calling voice services, not a
+      fit for a one-shot JSON-extraction REST call); calls the Groq/
+      Anthropic/OpenRouter SDKs directly instead, same settings/provider
+      priority. Returns `HostDiscountRule` drafts with
+      `status="pending_validation"` — confirmed via a real (non-mocked)
+      Groq API call using the user's own example paragraph verbatim
+      ("if a guest doesn't ask... 5%... repeat guests... 8%") that it
+      extracts exactly `{no_ask: 0%, guest_requests: 5%,
+      repeat_guest_same_host: 8%}` — matches the user's spec precisely.
+- [x] `raw_source_text` stored per rule (the full paragraph, not just a
+      snippet) so the host can see why a placeholder was derived.
 
 ### 4.3 Validation UI (same tab as 3.3)
-- [ ] Host pastes/edits `discount_policy_text` somewhere on the Settings
-      "Voice AI" tab (natural extension of the existing persona/escalation
-      textareas at `settings/page.tsx:217-268`) or a new "Pricing Policy"
-      field — triggers the parse endpoint (4.2) on save.
-- [ ] Resulting draft rules show up in the new validation tab as editable
-      cards: trigger description + discount % + "Approve" / "Edit" /
-      "Reject" buttons. Approving flips `status="approved"`.
-- [ ] Approved `HostDiscountRule` rows become the source of truth for 4.4.
-      Host can always come back and edit/deactivate later (no re-parse
-      required for manual edits — direct CRUD on the approved rule).
+- [x] Host pastes/edits `discount_policy_text` on the new **AI Training**
+      page (`frontend/src/app/dashboard/ai-training/page.tsx`) — a
+      dedicated "Discount policy" card, not folded into Settings' Voice AI
+      tab as originally sketched, since it's the trigger for a validation
+      queue rather than a static preference (consistent with 3.3's nav
+      decision).
+- [x] Draft rules show up as editable cards: trigger description (mapped
+      from `trigger_type` to plain English via `TRIGGER_LABELS`) + discount
+      % + Approve/Edit/Reject buttons. Approving flips `status="approved"`;
+      editing sets `discount_percent` and approves in one action, marking
+      `source="host_edited"` server-side so the origin is traceable.
+- [x] Approved rows are queryable via `GET /host-discount-rules` — this is
+      what 4.4 (not yet built) will consult. Host can edit/remove
+      already-approved rules directly (PATCH/DELETE), no re-parse required.
 
 ### 4.4 Wire into pricing engine + `/pricing` tab (per-property propagation)
 - [ ] `pricing_engine.negotiate_rate` (`:106-151`) currently reads the
@@ -575,6 +588,14 @@ refactor.
       it runs live, mid-call, in the guest's negotiation path — treat it
       with the same "don't crash, don't block" discipline already used for
       `BRIGHT_DATA_API_KEY`/`SMTP_*` elsewhere in this codebase.
+
+**Status: 4.1–4.3 implemented and verified (schema, parsing endpoint, validation
+UI). 4.4/4.5 below — wiring into `pricing_engine`/`GOLDEN_RULES`/the
+`/pricing` tab — are the next task, not yet started.** Until 4.4 lands,
+`HostDiscountRule` rows exist and can be approved, but `negotiate_rate`
+still runs on the pre-existing global constants exactly as before — this is
+a deliberate, safe intermediate state (additive, zero behavior change to
+the live agent), not an oversight.
 
 ### 4.5 Consume in negotiation prompt/tool path
 - [ ] `GOLDEN_RULES` (`system_prompt.py:83-170`) currently has one fixed

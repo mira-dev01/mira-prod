@@ -60,6 +60,17 @@ class UserUpdate(BaseModel):
     agent_persona: str | None = None
     agent_escalation_phrase: str | None = None
     notification_email: EmailStr | None = None
+    # Host Memory (see memory-architecture-plan.md section 4). Setting
+    # discount_policy_text alone does NOT change pricing -- it's just the
+    # host's raw text, parsed into HostDiscountRule drafts via
+    # POST /auth/me/discount-policy/parse, which still need host approval
+    # (status="approved") before pricing_engine reads them.
+    discount_policy_text: str | None = None
+    negotiation_allowed: bool | None = None
+    max_discount_percent_override: float | None = Field(default=None, ge=0, le=100)
+    allow_pets: bool | None = None
+    allow_early_checkin: bool | None = None
+    follow_up_channel_preference: str | None = None
 
 
 class UserOut(BaseModel):
@@ -79,6 +90,12 @@ class UserOut(BaseModel):
     agent_persona: str | None
     agent_escalation_phrase: str | None
     notification_email: str | None
+    discount_policy_text: str | None
+    negotiation_allowed: bool
+    max_discount_percent_override: float | None
+    allow_pets: bool | None
+    allow_early_checkin: bool | None
+    follow_up_channel_preference: str | None
 
     model_config = {"from_attributes": True}
 

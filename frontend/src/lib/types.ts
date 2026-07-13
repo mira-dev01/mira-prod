@@ -24,6 +24,12 @@ export type UserOut = {
   agent_persona: string | null;
   agent_escalation_phrase: string | null;
   notification_email: string | null;
+  discount_policy_text: string | null;
+  negotiation_allowed: boolean;
+  max_discount_percent_override: number | null;
+  allow_pets: boolean | null;
+  allow_early_checkin: boolean | null;
+  follow_up_channel_preference: string | null;
 };
 
 export type UserUpdate = {
@@ -38,6 +44,36 @@ export type UserUpdate = {
   agent_persona?: string | null;
   agent_escalation_phrase?: string | null;
   notification_email?: string | null;
+  discount_policy_text?: string | null;
+  negotiation_allowed?: boolean | null;
+  max_discount_percent_override?: number | null;
+  allow_pets?: boolean | null;
+  allow_early_checkin?: boolean | null;
+  follow_up_channel_preference?: string | null;
+};
+
+export type HostDiscountRuleTriggerType = "no_ask" | "guest_requests" | "repeat_guest_same_host" | "custom";
+export type HostDiscountRuleStatus = "pending_validation" | "approved" | "rejected";
+
+export type HostDiscountRuleOut = {
+  id: string;
+  host_id: string;
+  trigger_type: string;
+  discount_percent: number;
+  source: string;
+  status: string;
+  raw_source_text: string | null;
+  created_at: string;
+};
+
+export type DiscountPolicyParseResponse = {
+  rules: HostDiscountRuleOut[];
+};
+
+export type HostDiscountRuleUpdate = {
+  trigger_type?: HostDiscountRuleTriggerType;
+  discount_percent?: number;
+  status?: HostDiscountRuleStatus;
 };
 
 export type HostRegistration = {

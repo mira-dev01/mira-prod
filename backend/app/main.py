@@ -14,6 +14,7 @@ from app.api.v1 import (
     calls,
     faq,
     guests,
+    host_discount_rules,
     leads,
     notifications,
     pricing,
@@ -167,6 +168,7 @@ app.include_router(analytics.router, prefix=API_PREFIX)
 app.include_router(notifications.router, prefix=API_PREFIX)
 app.include_router(leads.router, prefix=API_PREFIX)
 app.include_router(faq.router, prefix=API_PREFIX)
+app.include_router(host_discount_rules.router, prefix=API_PREFIX)
 app.include_router(voice.router, prefix=API_PREFIX)
 app.include_router(exotel.router, prefix=API_PREFIX)
 
