@@ -2,9 +2,10 @@
 
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, LayoutGrid, Table2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -135,6 +136,110 @@ function LeadsTable({
   );
 }
 
+const KANBAN_COLUMNS: { status: LeadStatus; label: string }[] = [
+  { status: "open", label: "Open" },
+  { status: "contacted", label: "Contacted" },
+  { status: "booked", label: "Booked" },
+  { status: "closed", label: "Closed" },
+];
+
+function LeadCard({
+  lead,
+  onClick,
+  onDragStart,
+}: {
+  lead: LeadOut;
+  onClick: () => void;
+  onDragStart: (e: React.DragEvent) => void;
+}) {
+  return (
+    <Card
+      draggable
+      onDragStart={onDragStart}
+      onClick={onClick}
+      className="surface-interactive cursor-grab active:cursor-grabbing"
+    >
+      <CardContent className="space-y-2 text-sm">
+        <div className="flex items-center justify-between gap-2">
+          <span className="min-w-0 truncate font-medium">{leadGuestLabel(lead)}</span>
+          {lead.lead_temperature && (
+            <StatusChip status={lead.lead_temperature} tone={temperatureTone[lead.lead_temperature]} />
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {lead.properties_discussed.length > 0 ? lead.properties_discussed.join(", ") : "No property discussed"}
+        </p>
+        <p className="text-xs text-muted-foreground">{leadDatesLabel(lead)}</p>
+        {lead.escalated && <StatusChip status="escalated" tone="destructive" />}
+      </CardContent>
+    </Card>
+  );
+}
+
+function LeadsKanban({
+  leads,
+  onCardClick,
+  onDropStatus,
+}: {
+  leads: LeadOut[];
+  onCardClick: (lead: LeadOut) => void;
+  onDropStatus: (leadId: string, status: LeadStatus) => void;
+}) {
+  const [dragOverColumn, setDragOverColumn] = useState<LeadStatus | null>(null);
+
+  function leadsForColumn(status: LeadStatus): LeadOut[] {
+    return leads
+      .filter((lead) => lead.status === status)
+      .sort((a, b) => (temperatureRank[a.lead_temperature ?? ""] ?? 3) - (temperatureRank[b.lead_temperature ?? ""] ?? 3));
+  }
+
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {KANBAN_COLUMNS.map((column) => (
+        <div
+          key={column.status}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragOverColumn(column.status);
+          }}
+          onDragLeave={() => setDragOverColumn((current) => (current === column.status ? null : current))}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOverColumn(null);
+            const leadId = e.dataTransfer.getData("text/plain");
+            if (leadId) onDropStatus(leadId, column.status);
+          }}
+          className={cn(
+            "flex flex-col gap-3 rounded-lg border border-dashed p-3 transition-colors",
+            dragOverColumn === column.status ? "border-ring bg-accent" : "border-transparent"
+          )}
+        >
+          <div className="flex items-center justify-between px-1">
+            <h2 className="text-sm font-medium">{column.label}</h2>
+            <span className="text-xs text-muted-foreground">{leadsForColumn(column.status).length}</span>
+          </div>
+          <div className="flex flex-col gap-2">
+            {leadsForColumn(column.status).map((lead) => (
+              <LeadCard
+                key={lead.id}
+                lead={lead}
+                onClick={() => onCardClick(lead)}
+                onDragStart={(e) => {
+                  e.dataTransfer.setData("text/plain", lead.id);
+                  e.dataTransfer.effectAllowed = "move";
+                }}
+              />
+            ))}
+            {leadsForColumn(column.status).length === 0 && (
+              <p className="px-1 text-xs text-muted-foreground">No leads.</p>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function LeadsPageContent() {
   const searchParams = useSearchParams();
   const initialStatus = searchParams.get("status") ?? "all";
@@ -152,6 +257,7 @@ function LeadsPageContent() {
   const [nextFollowUp, setNextFollowUp] = useState("");
   const [summary, setSummary] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [view, setView] = useState<"table" | "board">("table");
 
   const statusFilteredLeads = (leads ?? []).filter((lead) => statusFilter === "all" || lead.status === statusFilter);
   const contentLeads = statusFilteredLeads
@@ -192,33 +298,83 @@ function LeadsPageContent() {
     }
   }
 
+  // Deliberately a separate function from handleSave, not a shared helper
+  // that both call into -- a drag-drop should only ever be able to send
+  // {status}, and keeping this code path structurally independent of the
+  // edit-dialog's temperature+status bundle makes it impossible for a
+  // future edit here to accidentally start sending lead_temperature too.
+  // The backend's PATCH /leads/{id} uses exclude_unset (see
+  // backend/app/api/v1/leads.py), so omitting lead_temperature from this
+  // payload leaves it completely untouched server-side -- this is not a
+  // partial/best-effort safety measure, it's the same mechanism the
+  // existing edit-dialog's update already relies on.
+  async function handleStatusDrop(leadId: string, newStatus: LeadStatus) {
+    const lead = leads?.find((l) => l.id === leadId);
+    if (!lead || lead.status === newStatus) return;
+    try {
+      await api.leads.update(leadId, { status: newStatus });
+      toast.success(`Moved to ${newStatus}`);
+      refetch();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Failed to update lead status");
+    }
+  }
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="page-title">Leads</h1>
           <p className="text-sm text-muted-foreground">Booking enquiries qualified by the Lead Agent</p>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <Select value={statusFilter} onValueChange={(v) => v && setStatusFilter(v)}>
-            <SelectTrigger className="w-36">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All statuses</SelectItem>
-              {STATUSES.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {s}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-1 rounded-lg border p-0.5">
+            <Button
+              variant={view === "table" ? "secondary" : "ghost"}
+              size="icon-sm"
+              aria-label="Table view"
+              onClick={() => setView("table")}
+            >
+              <Table2 className="size-4" />
+            </Button>
+            <Button
+              variant={view === "board" ? "secondary" : "ghost"}
+              size="icon-sm"
+              aria-label="Board view"
+              onClick={() => setView("board")}
+            >
+              <LayoutGrid className="size-4" />
+            </Button>
+          </div>
+          {view === "table" && (
+            <Select value={statusFilter} onValueChange={(v) => v && setStatusFilter(v)}>
+              <SelectTrigger className="w-36">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                {STATUSES.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {s}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <DateRangePicker />
         </div>
       </div>
 
       {loading ? (
         <Skeleton className="h-64 w-full" />
+      ) : view === "board" ? (
+        (leads ?? []).length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No leads yet — they appear here once your portfolio's lead intake number starts receiving calls.
+          </p>
+        ) : (
+          <LeadsKanban leads={leads ?? []} onCardClick={openEdit} onDropStatus={handleStatusDrop} />
+        )
       ) : statusFilteredLeads.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           {leads && leads.length > 0

@@ -145,6 +145,20 @@ export type GuestProfileOut = {
   created_at: string;
 };
 
+export type GuestRecentCall = {
+  id: string;
+  property_id: string | null;
+  property_name: string | null;
+  status: string;
+  ai_summary: string | null;
+  started_at: string | null;
+};
+
+export type GuestProfileDetailOut = GuestProfileOut & {
+  lifetime_revenue: number;
+  recent_calls: GuestRecentCall[];
+};
+
 export type GuestProfileUpdate = {
   name?: string | null;
   preferences?: Record<string, unknown> | null;

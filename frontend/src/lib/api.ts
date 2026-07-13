@@ -12,6 +12,7 @@ import type {
   FaqGapAnalytics,
   FaqGapAnswer,
   FaqGapOut,
+  GuestProfileDetailOut,
   GuestProfileOut,
   GuestProfileUpdate,
   HostRegistration,
@@ -204,6 +205,7 @@ export const api = {
         `/guests${buildQuery({ start_date: params?.startDate, end_date: params?.endDate })}`
       ),
     get: (id: string) => request<GuestProfileOut>(`/guests/${id}`),
+    detail: (id: string) => request<GuestProfileDetailOut>(`/guests/${id}/detail`),
     update: (id: string, data: GuestProfileUpdate) =>
       request<GuestProfileOut>(`/guests/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   },

@@ -247,10 +247,10 @@ export default function LoginPage() {
                     />
                   </div>
                   <div className="flex gap-2">
-                    <Button type="button" variant="outline" className="w-full" onClick={goToPreviousStep}>
+                    <Button type="button" variant="outline" className="min-w-0 flex-1" onClick={goToPreviousStep}>
                       Back
                     </Button>
-                    <Button type="submit" className="w-full">
+                    <Button type="submit" className="min-w-0 flex-1">
                       Continue
                     </Button>
                   </div>
@@ -281,10 +281,10 @@ export default function LoginPage() {
                     />
                   </div>
                   <div className="flex gap-2">
-                    <Button type="button" variant="outline" className="w-full" onClick={goToPreviousStep}>
+                    <Button type="button" variant="outline" className="min-w-0 flex-1" onClick={goToPreviousStep}>
                       Back
                     </Button>
-                    <Button type="submit" className="w-full" disabled={submitting}>
+                    <Button type="submit" className="min-w-0 flex-1" disabled={submitting}>
                       Create account
                     </Button>
                   </div>

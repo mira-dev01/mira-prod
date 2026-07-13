@@ -346,7 +346,9 @@ _TEST_PAGE_TEMPLATE = """<!DOCTYPE html>
       connectBtn.disabled = true;
       captionEl.textContent = "Requesting microphone...";
 
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
       localAnalyser = audioCtx.createAnalyser();

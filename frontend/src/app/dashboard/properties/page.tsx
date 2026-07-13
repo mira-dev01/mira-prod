@@ -289,7 +289,7 @@ export default function PropertiesPage() {
             open={airbnbUrlDialogOpen}
             onOpenChange={(next) => (next ? setAirbnbUrlDialogOpen(true) : resetAirbnbImportDialog())}
           >
-            <DialogContent className="max-h-[85vh] overflow-y-auto">
+            <DialogContent className="max-h-[85vh] w-full overflow-y-auto sm:max-w-lg">
               <DialogHeader>
                 <DialogTitle>Import from Airbnb</DialogTitle>
               </DialogHeader>
@@ -329,7 +329,7 @@ export default function PropertiesPage() {
                     <div className="space-y-0">
                       {airbnbImportResult.results.map((r, i) => (
                         <ListRow key={i}>
-                          <div className="flex items-center justify-between gap-3">
+                          <div className="flex min-w-0 items-center justify-between gap-3">
                             <span className="min-w-0 flex-1 truncate text-sm">{r.property?.name ?? r.filename}</span>
                             {r.status === "error" ? (
                               <StatusChip status="error" tone="destructive" />
@@ -338,7 +338,7 @@ export default function PropertiesPage() {
                             )}
                           </div>
                           {r.status === "error" && r.error && (
-                            <p className="text-xs text-muted-foreground">{r.error}</p>
+                            <p className="text-xs break-words text-muted-foreground">{r.error}</p>
                           )}
                         </ListRow>
                       ))}
@@ -436,7 +436,7 @@ export default function PropertiesPage() {
                 <div className="flex items-center gap-2 pt-2">
                   <Button
                     size="sm"
-                    className="flex-1"
+                    className="min-w-0 flex-1"
                     onClick={() => handleSetDiscount(property.id)}
                   >
                     Set Discount
@@ -444,7 +444,7 @@ export default function PropertiesPage() {
                   <DropdownMenu>
                     <DropdownMenuTrigger
                       render={
-                        <Button variant="outline" size="icon-sm" aria-label="More actions">
+                        <Button variant="outline" size="icon-sm" className="shrink-0" aria-label="More actions">
                           <MoreHorizontal className="size-4" />
                         </Button>
                       }
