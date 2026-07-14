@@ -1,11 +1,13 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
+from app.models.guest_profile import GuestProfile
 from app.models.property import Property
 from app.models.user import User
 from app.prompts import system_prompt
 from app.prompts.system_prompt import (
     DEFAULT_ESCALATION_PHRASE,
+    _active_seasonal_notes,
     build_lead_system_prompt,
     build_system_prompt,
     first_message_for,
@@ -41,6 +43,12 @@ def _property(**overrides) -> Property:
     )
     defaults.update(overrides)
     return Property(**defaults)
+
+
+def _guest(**overrides) -> GuestProfile:
+    defaults = dict(id=uuid.uuid4(), phone="+919999999999", total_stays=0)
+    defaults.update(overrides)
+    return GuestProfile(**defaults)
 
 
 def test_first_message_default_has_no_placeholders_left_unresolved():
@@ -107,6 +115,84 @@ def test_persona_note_omitted_when_not_set():
     host = _user(agent_persona=None)
     prompt = build_system_prompt(_property(), None, host)
     assert "Host-defined personality note" not in prompt
+
+
+def test_negotiation_off_note_omitted_by_default():
+    """Regression test: _user()'s in-memory User never went through a DB
+    flush, so negotiation_allowed is None (server_default only applies on
+    INSERT) -- this must be treated as "unset"/allowed, not "disabled",
+    otherwise every host who hasn't touched this setting would silently get
+    told negotiation is off."""
+    host = _user()
+    assert host.negotiation_allowed is None  # confirms the in-memory default this test guards against
+    prompt = build_system_prompt(_property(), None, host)
+    assert "does not offer discounts" not in prompt
+
+
+def test_negotiation_off_note_included_when_explicitly_disabled():
+    host = _user(negotiation_allowed=False)
+    prompt = build_system_prompt(_property(), None, host)
+    assert "does not offer discounts" in prompt
+
+
+def test_no_guest_profile_says_new_guest():
+    prompt = build_system_prompt(_property(), None, _user())
+    assert "not in our guest records" in prompt
+    assert "returning guest" not in prompt
+
+
+def test_guest_profile_with_zero_stays_is_treated_as_new():
+    """A GuestProfile row that was JUST created for this call (total_stays
+    still 0, per call_service.get_or_create_guest_profile) is a first-time
+    caller, not a returning one."""
+    guest = _guest(total_stays=0)
+    prompt = build_system_prompt(_property(), guest, _user())
+    assert "not in our guest records" in prompt
+    assert "returning guest" not in prompt
+
+
+def test_returning_guest_included_with_name_and_stay_count():
+    guest = _guest(name="Priya", total_stays=3)
+    prompt = build_system_prompt(_property(), guest, _user())
+    assert "returning guest: Priya, 3 past stay(s)" in prompt
+
+
+def test_returning_guest_includes_preferred_language_and_last_outcome():
+    guest = _guest(name="Priya", total_stays=2, preferred_language="Hinglish", last_outcome="hot")
+    prompt = build_system_prompt(_property(), guest, _user())
+    assert "Prefers Hinglish." in prompt
+    assert "Last call ended: hot." in prompt
+
+
+def test_returning_guest_includes_last_conversation_summary():
+    guest = _guest(
+        name="Priya",
+        total_stays=2,
+        conversation_summaries=[
+            {"summary": "Asked about parking at Villa Sunset, budget-conscious.", "lead_temperature": "warm"}
+        ],
+    )
+    prompt = build_system_prompt(_property(), guest, _user())
+    assert "Asked about parking at Villa Sunset, budget-conscious." in prompt
+
+
+def test_lead_agent_prompt_also_gets_guest_memory_section():
+    guest = _guest(name="Priya", total_stays=1)
+    prompt = build_lead_system_prompt(_user(), [], guest)
+    assert "returning guest: Priya, 1 past stay(s)" in prompt
+
+
+def test_lead_agent_prompt_defaults_to_new_guest_when_omitted():
+    """Every existing call site that doesn't pass guest= must keep working
+    exactly as before -- confirms the new parameter is genuinely optional."""
+    prompt = build_lead_system_prompt(_user(), [])
+    assert "not in our guest records" in prompt
+
+
+def test_negotiation_off_note_omitted_when_explicitly_enabled():
+    host = _user(negotiation_allowed=True)
+    prompt = build_system_prompt(_property(), None, host)
+    assert "does not offer discounts" not in prompt
 
 
 def test_property_usp_included_in_guest_support_prompt():
@@ -216,3 +302,71 @@ def test_prompts_allow_sparing_fillers_but_never_after_an_interruption():
         # The new sparing-filler allowance must not undo that ban.
         assert "you may occasionally begin a reply with a short, natural filler word" in prompt
         assert "a filler as a substitute for actually answering" in prompt
+
+
+# --- Property Memory: seasonal notes (memory-architecture-plan.md section 5) ---
+
+
+def test_active_seasonal_notes_simple_range():
+    notes = [{"note": "Pool closed for maintenance.", "start_month": 6, "end_month": 8}]
+    assert _active_seasonal_notes(notes, today=date(2026, 7, 1)) == ["Pool closed for maintenance."]
+    assert _active_seasonal_notes(notes, today=date(2026, 9, 1)) == []
+
+
+def test_active_seasonal_notes_wraparound_range():
+    """Nov-Feb (11-2) is a valid wraparound range spanning the year
+    boundary -- must be active in Nov/Dec/Jan/Feb, inactive in Mar-Oct."""
+    notes = [{"note": "Extra heater provided.", "start_month": 11, "end_month": 2}]
+    assert _active_seasonal_notes(notes, today=date(2026, 12, 15)) == ["Extra heater provided."]
+    assert _active_seasonal_notes(notes, today=date(2026, 1, 15)) == ["Extra heater provided."]
+    assert _active_seasonal_notes(notes, today=date(2026, 2, 28)) == ["Extra heater provided."]
+    assert _active_seasonal_notes(notes, today=date(2026, 11, 1)) == ["Extra heater provided."]
+    assert _active_seasonal_notes(notes, today=date(2026, 6, 15)) == []
+    assert _active_seasonal_notes(notes, today=date(2026, 3, 1)) == []
+
+
+def test_active_seasonal_notes_handles_none_and_empty():
+    assert _active_seasonal_notes(None, today=date(2026, 6, 1)) == []
+    assert _active_seasonal_notes([], today=date(2026, 6, 1)) == []
+
+
+def test_active_seasonal_notes_skips_malformed_entries():
+    notes = [{"note": "Missing months"}, {"start_month": 1, "end_month": 2}]  # no "note" key
+    assert _active_seasonal_notes(notes, today=date(2026, 1, 15)) == []
+
+
+def test_active_seasonal_notes_multiple_notes_only_active_ones_returned():
+    notes = [
+        {"note": "Pool closed in monsoon.", "start_month": 6, "end_month": 8},
+        {"note": "Extra heater Nov-Feb.", "start_month": 11, "end_month": 2},
+    ]
+    assert _active_seasonal_notes(notes, today=date(2026, 7, 1)) == ["Pool closed in monsoon."]
+    assert _active_seasonal_notes(notes, today=date(2026, 1, 1)) == ["Extra heater Nov-Feb."]
+    assert _active_seasonal_notes(notes, today=date(2026, 4, 1)) == []
+
+
+def test_build_system_prompt_includes_active_seasonal_note(monkeypatch):
+    monkeypatch.setattr(system_prompt, "datetime", _FixedDatetime)  # fixed at 2026-06-30
+    prop = _property(seasonal_notes=[{"note": "Pool closed for monsoon cleaning.", "start_month": 6, "end_month": 8}])
+    prompt = build_system_prompt(prop, None, _user())
+    assert "Pool closed for monsoon cleaning." in prompt
+    assert "Seasonal notes currently in effect" in prompt
+
+
+def test_build_system_prompt_omits_inactive_seasonal_note(monkeypatch):
+    monkeypatch.setattr(system_prompt, "datetime", _FixedDatetime)  # fixed at 2026-06-30
+    prop = _property(seasonal_notes=[{"note": "Extra heater provided.", "start_month": 11, "end_month": 2}])
+    prompt = build_system_prompt(prop, None, _user())
+    assert "Extra heater provided." not in prompt
+    assert "Seasonal notes currently in effect" not in prompt
+
+
+def test_build_system_prompt_handles_no_seasonal_notes():
+    """seasonal_notes is None for an in-memory Property never flushed
+    through the DB (server_default only applies on INSERT) -- must not
+    error, same pattern as the negotiation_allowed/total_stays None-handling
+    bugs found elsewhere in this file."""
+    prop = _property()
+    assert prop.seasonal_notes is None
+    prompt = build_system_prompt(prop, None, _user())
+    assert "Seasonal notes currently in effect" not in prompt

@@ -502,25 +502,106 @@ confirming no voice-path file (`app/voice/**`, `tool_handlers.py`) references `G
 
 ## Phase 4 — New interaction patterns (highest risk, reviewed independently)
 
-- [ ] **20. Calendar grid rebuild** — sticky property column + date header, hover-preview, filters.
-      First: read current data-fetching fully; enumerate every existing interactive element
-      (cell-click→dialog, filters, date nav) as a checklist before starting.
-      - Reverify: every enumerated interactive element re-tested post-rebuild; block dates →
-        confirm blocked; unblock → confirm cleared; confirm blocking/unblocking dates doesn't
-        affect iCal-derived bookings or availability the voice agent reads via `calendar_service`
-        at call time (read-only check on that service, no code change expected, just confirm the
-        data model isn't altered).
-- [ ] **21. Leads Kanban board** — columns on `status` axis only; `lead_temperature` shown, never
-      mutated by drag; drag must call the exact same typed update the edit-dialog uses.
-      - Reverify: drag a card, inspect the actual network payload sent — confirm it contains only
-        `status`, never `lead_temperature`; confirm the voice agent's lead-creation/update tool
-        path (`app/services/tool_handlers.py`, off-limits per standing rule 2) is untouched by
-        grep-diffing that file against its pre-task version.
-- [ ] **22. Guests CRM drawer** — gated on Task 0.1 shipping first. Drawer-not-navigation using
-      `name`/`phone`/`total_stays`/`notes`/`preferences`/Avatar + real `lifetime_revenue`/
-      `recent_calls` from the new endpoint.
-      - Reverify: open drawer for a guest with calls and one with none (empty state); confirm
-        `lifetime_revenue` matches a manual sum check against that guest's call sessions in the DB.
+- [x] **20. Calendar grid rebuild — scoped down to minimal-risk, per your explicit choice.** Read
+      the full page and enumerated all 13 interactive elements first (header "Block dates" button,
+      prev/next month nav, empty-cell click→block dialog, booked-cell click→unblock dialog,
+      booked-cell hover color darken, both dialogs' full form/submit/close surface). Given no
+      browser is available to click-test a structural rebuild, chose (with your explicit sign-off)
+      the minimal-risk option: kept the exact same `<table>` markup, click handlers, and dialogs
+      completely untouched — only added `sticky top-0`/`z-20` on the header row (matching the
+      existing `sticky left-0` property column, corner cell bumped to `z-20` so it wins over both
+      sticky axes at their intersection) plus a bounded `max-h-[calc(100vh-20rem)] overflow-auto`
+      container so the sticky positioning actually does something. Also fixed the same off-8pt
+      `gap-3`→`gap-4` pattern in the month-nav/legend row and added `flex-wrap` there for narrow
+      screens (this page's header row was the one page missing it). Did NOT add hover-preview
+      popovers or filters — reconsidered mid-task and deliberately kept the native `title` tooltip
+      (same info: platform/guest/dates/action-hint) rather than introduce a new interaction
+      surface (Popover-per-cell across 30+ cells × N properties) I have no way to verify without a
+      browser.
+      - Reverify: ✅ `npx tsc --noEmit` clean. ✅ `npm run build` clean, all 15 routes compiled. ✅
+        `git diff` confirms literally every changed line is a `className` value — zero changes to
+        any `onClick`, `onMouseEnter`/`onMouseLeave`, `title`, state, or handler; all 13 enumerated
+        interactive elements are structurally byte-identical to before. ✅ Confirmed
+        `calendar_service.py` (the voice agent's `is_available`/`next_available_window` functions
+        — read-only checked, not modified) and `backend/app/models/booking.py`/
+        `backend/app/api/v1/bookings.py` all show empty diffs against HEAD — this task touched
+        zero backend files, so the voice agent's availability-check data model is provably
+        unaffected regardless of how the grid renders. ✅ Verified against real production data:
+        23 real confirmed bookings exist, all `platform: manual` — confirms the manual-block
+        color path is genuinely exercised; zero `airbnb`-platform bookings currently exist (no
+        demo property has an `ical_url` synced), so that color path remains only
+        structurally-verified, not exercised against real rows. ⚠️ No browser-automation tool;
+        the actual sticky-scroll behavior (does the header/column really stay pinned while
+        scrolling a real multi-property grid) is unverified — recommend a manual scroll-test next
+        time a browser is available, along with clicking through all 13 enumerated elements to
+        confirm none regressed.
+- [x] **21. Leads Kanban board.** Confirmed the safety mechanism before writing any code: the
+      backend's `PATCH /leads/{id}` uses `payload.model_dump(exclude_unset=True)` (read
+      `backend/app/api/v1/leads.py`), so a request that never includes `lead_temperature` leaves
+      it completely untouched server-side — not a best-effort convention, a structural guarantee.
+      Also confirmed the voice agent's own `UpdateLeadArgs` tool schema
+      (`backend/app/schemas/tool.py`) **has no `status` field at all** — the agent is
+      schema-incapable of setting `status`, matching CLAUDE.md's documented rule independent of
+      anything built here. Added a native-HTML5-drag-and-drop Kanban (`LeadsKanban`/`LeadCard`, no
+      new dependency — none existed in the app) as a **view toggle** alongside the existing table
+      (table remains the default view, fully unchanged). 4 columns on the `status` axis only;
+      `lead_temperature` renders as a read-only `StatusChip` on each card, never a drop target.
+      Built `handleStatusDrop` as a function **structurally separate** from the edit-dialog's
+      `handleSave` (not a shared helper both call into) specifically so a future edit to one
+      cannot accidentally leak into the other — its only backend call is
+      `api.leads.update(leadId, { status: newStatus })`, a single-key object literal with no
+      spread from any larger lead object.
+      - Reverify: ✅ `npx tsc --noEmit` clean. ✅ `npm run build` clean, all 15 routes compiled.
+        ✅ **Actually serialized the payload in Node** rather than just reading the code:
+        `JSON.stringify({ status: newStatus })` → confirmed literal wire output
+        `{"status":"contacted"}`, single key, `'lead_temperature' in payload` → `false`. ✅
+        `git diff HEAD` confirms zero changes to `tool_handlers.py`, `lead_service.py`,
+        `schemas/tool.py`, `schemas/lead.py`, and `api/v1/leads.py` — the entire lead backend
+        surface is untouched. ✅ `git diff` on the frontend page confirms `handleSave` itself
+        has zero changes (only a new comment referencing it). ✅ Verified against real
+        production data: 20 real leads, **all currently `status: open`** (6 hot, 14 no
+        temperature) — meaning every column except "Open" is empty against real data today, and
+        **no lead in this account has ever been set to contacted/booked/closed** — the first
+        real drag-drop you do will be the first time this status transition has ever happened
+        for this account. Flagging this explicitly since it's a meaningful fact for testing,
+        not just a caveat. ⚠️ No browser-automation tool; the actual HTML5 drag interaction
+        (dragstart/dragover/drop, the drop-zone highlight styling) is completely unverified
+        beyond static code reading — this is the single most important manual test in the whole
+        redesign given the business-rule sensitivity here.
+- [x] **22. Guests CRM drawer.** Wired up the Task 0.1 endpoint on the frontend for the first
+      time: added `GuestRecentCall`/`GuestProfileDetailOut` types (`frontend/src/lib/types.ts`)
+      and `api.guests.detail(id)` (`frontend/src/lib/api.ts`) — both purely additive, matching the
+      backend schema exactly. Replaced the small centered edit `Dialog` with a right-side
+      `Drawer` (same `@base-ui/react` primitive proven in Task 8's sidebar rebuild, mirrored with
+      `swipeDirection="right"`/`translate-x-full` instead of the sidebar's left/negative variant)
+      showing: avatar+name+phone header, total_stays + lifetime_revenue stat tiles, a
+      `recent_calls` list (via `ListRow`/`StatusChip`, "Portfolio-wide" label when
+      `property_id`/`property_name` are null for Lead Agent calls), and the existing editable
+      name/notes form below — same `api.guests.update` mutation call, same two fields, just reads
+      from the drawer's loaded guest instead of the old dialog's `editing` state. Table rows are
+      now clickable (open the drawer) with a "View" button as a secondary trigger, replacing the
+      old "Edit" button.
+      - Reverify: ✅ `npx tsc --noEmit` clean. ✅ `npm run build` clean, all 15 routes compiled.
+        ✅ **Ran the real endpoint end-to-end against production**, not just checked types: fetched
+        `GET /guests/{id}/detail` for the one real demo guest — confirmed the exact response shape
+        my new frontend types expect, correctly ordered `recent_calls` (newest first, capped at
+        10), correct null-property-name handling for Lead Agent calls (`property_id: null` →
+        `property_name: null`, not dropped, via the `LEFT OUTER JOIN` from Task 0.1). ✅
+        **Manually verified `lifetime_revenue`**: fetched all 28 real calls, summed
+        `revenue_attributed` across all of them → `0.0`, matches the endpoint's reported
+        `lifetime_revenue: 0.0` exactly (every real call in this account has zero attributed
+        revenue — not a bug, a real data fact). ✅ Confirmed 404 behavior for a nonexistent guest
+        ID matches `get_guest`'s existing ownership check. ✅ `git diff --stat backend/` for this
+        task shows zero backend changes (Task 0.1 already shipped the endpoint) — **found one
+        unrelated uncommitted change in `backend/app/api/v1/voice.py`** (adds
+        echoCancellation/noiseSuppression/autoGainControl to the browser test page's mic capture)
+        that I did not make and never touched this session — flagged to you directly rather than
+        silently noting it, since it's the one file in the whole diff I can't personally account
+        for. ⚠️ **Could not test the "guest with zero calls" empty state against real data** — only
+        1 real guest exists and it has 10 calls; the empty-state code path
+        (`recent_calls.length === 0 ? "No calls yet." : ...`) is verified by reading the logic
+        only, not by observing a real empty row. ⚠️ No browser-automation tool; the drawer's
+        slide-in-from-right animation and swipe-to-dismiss are unverified interactively.
 
 ---
 

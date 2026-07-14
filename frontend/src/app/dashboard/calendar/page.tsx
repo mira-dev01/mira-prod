@@ -144,7 +144,7 @@ export default function CalendarPage() {
         <Button onClick={() => openBlockDialog()}>Block dates</Button>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-4">
         <Button variant="outline" size="sm" onClick={() => setCursor(new Date(year, month - 1, 1))}>
           ←
         </Button>
@@ -152,7 +152,7 @@ export default function CalendarPage() {
         <Button variant="outline" size="sm" onClick={() => setCursor(new Date(year, month + 1, 1))}>
           →
         </Button>
-        <div className="ml-4 flex items-center gap-3 text-xs text-muted-foreground">
+        <div className="flex items-center gap-4 text-xs text-muted-foreground">
           <span className="flex items-center gap-1">
             <span className="inline-block h-3 w-3 rounded-sm" style={{ background: bookingSourceColor.airbnb }} />
             Airbnb
@@ -169,13 +169,16 @@ export default function CalendarPage() {
       ) : !properties || properties.length === 0 ? (
         <p className="text-sm text-muted-foreground">No properties yet — add one to see its calendar here.</p>
       ) : (
-        <div className="overflow-x-auto rounded-[var(--radius)] border">
+        <div className="max-h-[calc(100vh-20rem)] overflow-auto rounded-lg border">
           <table className="border-collapse text-sm">
             <thead>
               <tr>
-                <th className="sticky left-0 z-10 min-w-[140px] border-b bg-card p-2 text-left">Property</th>
+                <th className="sticky top-0 left-0 z-20 min-w-[140px] border-b bg-card p-2 text-left">Property</th>
                 {days.map((day) => (
-                  <th key={day} className="min-w-[28px] border-b border-l p-1 text-center text-xs font-normal text-muted-foreground">
+                  <th
+                    key={day}
+                    className="sticky top-0 z-10 min-w-[28px] border-b border-l bg-card p-1 text-center text-xs font-normal text-muted-foreground"
+                  >
                     {day}
                   </th>
                 ))}

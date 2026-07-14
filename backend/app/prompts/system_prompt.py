@@ -18,7 +18,7 @@ tool-calling instructions stay fixed so a host can't accidentally disable a
 safety rail while personalizing tone/wording.
 """
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from app.models.guest_profile import GuestProfile
@@ -187,6 +187,9 @@ Capabilities:
 - If the guest reports an urgent issue (no water, no AC, lockout, safety concern), use escalate_to_host
   or dispatch_technician as appropriate -- do not try to resolve physical issues yourself.
 - For WhatsApp confirmations the guest asks for, use send_whatsapp.
+- Do NOT call recommend_properties on this call. This call is already about one specific property
+  (given below) -- recommend_properties searches the host's entire portfolio and would surface other,
+  unrelated properties to a guest who has already called about this one.
 """
 
 
@@ -196,6 +199,23 @@ def _persona_and_escalation_sections(host: User) -> list[str]:
         sections.append(f"\nHost-defined personality note (apply this to your tone, don't recite it): {host.agent_persona}")
     escalation_phrase = host.agent_escalation_phrase or DEFAULT_ESCALATION_PHRASE
     sections.append(f'\nEscalation phrasing: "{escalation_phrase}" -- say this, then call escalate_to_host.')
+    # Host Memory (memory-architecture-plan.md section 4.5): the actual
+    # discount math is already enforced inside negotiate_rate regardless of
+    # what's said here (this line can't be relied on alone) -- this note
+    # only needs to cover the one case that changes what the model should
+    # even attempt: a host who has turned negotiation off entirely.
+    # Kept to one short line deliberately, per the prompt token budget in
+    # section 0.1 -- normal per-host discount amounts don't need restating
+    # here since the tool's own response already carries the right number.
+    # host.negotiation_allowed is only None for an in-memory User never
+    # flushed through the DB (server_default populates real rows) -- treat
+    # that as "unset"/allowed, not as "disabled".
+    if host.negotiation_allowed is False:
+        sections.append(
+            "\nThis host does not offer discounts. If a guest asks for a lower price or compares to another "
+            "platform, still call negotiate_rate (it will tell you there's no discount to offer) rather than "
+            "refusing yourself -- never invent a discount or say you can't help with pricing."
+        )
     return sections
 
 
@@ -229,16 +249,66 @@ def build_system_prompt(property_: Property, guest: GuestProfile | None, host: U
         faq_lines = "\n".join(f"Q: {item['question']}\nA: {item['answer']}" for item in property_.faq)
         sections.append(f"\nFrequently asked questions:\n{faq_lines}")
 
-    if guest is not None:
-        sections.append(
-            f"\nThis caller is a returning guest: {guest.name or 'name unknown'}, "
-            f"{guest.total_stays} past stay(s). Greet them personally and use this history "
-            f"to inform your tone (e.g. loyalty tier for negotiate_rate)."
-        )
-    else:
-        sections.append("\nThis caller is not in our guest records -- treat them as a new guest.")
+    active_notes = _active_seasonal_notes(property_.seasonal_notes)
+    if active_notes:
+        notes_lines = "\n".join(f"- {note}" for note in active_notes)
+        sections.append(f"\nSeasonal notes currently in effect:\n{notes_lines}")
+
+    sections.append(_guest_memory_section(guest))
 
     return "\n".join(sections)
+
+
+def _active_seasonal_notes(seasonal_notes: list, today: date | None = None) -> list[str]:
+    """Property Memory (memory-architecture-plan.md section 5) -- only
+    surfaces a note when the call's current date falls within its
+    start_month/end_month range, never unconditionally (a stale "pool
+    closed in monsoon" note shown in December would actively mislead a
+    guest). start_month > end_month is a valid wraparound range (e.g.
+    Nov-Feb = 11-2, meaning the note is active in Nov, Dec, Jan, Feb).
+    """
+    current_month = (today or datetime.now(IST).date()).month
+    active = []
+    for entry in seasonal_notes or []:
+        start_month = entry.get("start_month")
+        end_month = entry.get("end_month")
+        note = entry.get("note")
+        if not note or start_month is None or end_month is None:
+            continue
+        if start_month <= end_month:
+            in_range = start_month <= current_month <= end_month
+        else:
+            in_range = current_month >= start_month or current_month <= end_month
+        if in_range:
+            active.append(note)
+    return active
+
+
+def _guest_memory_section(guest: GuestProfile | None) -> str:
+    """Guest Memory (memory-architecture-plan.md section 1) -- kept to one
+    short paragraph deliberately, since this competes with GOLDEN_RULES and
+    property FAQs for context budget on every single turn. Never a
+    transcript dump -- just enough to inform tone/loyalty tier, pulled from
+    conversation_summaries (already-written, short Lead.conversation_summary
+    text, not raw dialogue -- see guest_memory_service.py)."""
+    if guest is None:
+        return "\nThis caller is not in our guest records -- treat them as a new guest."
+
+    # total_stays == 0 means this GuestProfile row was only just created for
+    # this very call (see call_service.get_or_create_guest_profile) -- a
+    # genuinely first-time caller, not a returning one.
+    if not guest.total_stays:
+        return "\nThis caller is not in our guest records -- treat them as a new guest."
+
+    parts = [f"This caller is a returning guest: {guest.name or 'name unknown'}, {guest.total_stays} past stay(s)."]
+    if guest.preferred_language:
+        parts.append(f"Prefers {guest.preferred_language}.")
+    if guest.last_outcome:
+        parts.append(f"Last call ended: {guest.last_outcome}.")
+    if guest.conversation_summaries:
+        parts.append(f"Last time: {guest.conversation_summaries[-1].get('summary', '')}")
+    parts.append("Greet them personally and use this history to inform your tone (e.g. loyalty tier for negotiate_rate).")
+    return "\n" + " ".join(parts)
 
 
 def first_message_for(property_: Property, guest: GuestProfile | None, host: User) -> str:
@@ -275,7 +345,14 @@ Lead qualification workflow:
 4. If the guest mentions a city or region ("properties in Rajasthan", "something in Goa"), call
    recommend_properties immediately with that location — don't ask more questions first. Show them
    what's available, then continue qualifying. Recommend a maximum of three properties at a time.
-   Once a property is chosen, use check_calendar/get_pricing with that property's id for specifics.
+   Once a property is chosen (the guest names it, or shows interest in one from a recommendation),
+   that property is now the active one for the rest of this call -- use its property_id for
+   check_calendar/get_pricing/negotiate_rate/search_faq's faq_property_id from then on, for every
+   question about it (amenities, policies, "does it have a pool", "is breakfast included", etc.),
+   not just calendar/pricing. Never search or answer from a different property's information once one
+   is active. If the guest later names a different property explicitly (e.g. "what about Ocean View
+   instead", "compare this with Palm Retreat"), that new property becomes the active one instead --
+   look it up the same way, don't mix its details with the previous property's.
    If the guest asks generally about a property ("what's it like") and you don't already have its
    one-line description in this conversation, call recommend_properties or search_faq for that
    property first -- never guess or invent a description.
@@ -305,14 +382,17 @@ Lead qualification workflow:
    dates) and then escalate_to_host so the host actually sees it and can confirm. Never tell the guest
    "I'll lock this in" or "you're all set" without having just made both of those calls -- a verbal
    promise with no update_lead/escalate_to_host behind it means the host never finds out.
-8. Property/support questions: use search_faq. If no verified answer, escalate immediately.
+8. Property/support questions: use search_faq, passing faq_property_id for whichever property is
+   currently active (see step 4) -- never search without it once a property has been chosen. If no
+   verified answer, escalate immediately.
 """
 
 
-def build_lead_system_prompt(user: User, properties: list[Property]) -> str:
+def build_lead_system_prompt(user: User, properties: list[Property], guest: GuestProfile | None = None) -> str:
     host_name = user.name or "this host"
     sections = [LEAD_AGENT_INSTRUCTIONS.format(host_name=host_name), _today_anchor()]
     sections.extend(_persona_and_escalation_sections(user))
+    sections.append(_guest_memory_section(guest))
 
     if properties:
         # Amenities and the USP blurb are deliberately omitted here -- this

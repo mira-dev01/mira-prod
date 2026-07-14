@@ -137,6 +137,26 @@ async def test_negotiate_rate_returns_message(test_property, db_session):
     assert test_property.name in result
 
 
+async def test_negotiate_rate_threads_host_user_id_to_disable_negotiation(test_property, test_user, db_session):
+    """Confirms handle_negotiate_rate's new host_user_id parameter actually
+    reaches pricing_engine.negotiate_rate -- a host with negotiation_allowed
+    turned off should get the refusal message through this exact call path,
+    the same one app/voice/tools.py's negotiate_rate wrapper uses."""
+    test_user.negotiation_allowed = False
+    await db_session.commit()
+
+    today = date.today()
+    args = NegotiateRateArgs(
+        property_id=str(test_property.id),
+        check_in=today + timedelta(days=1),
+        check_out=today + timedelta(days=3),
+        guest_offer=1,
+        guest_loyalty="new",
+    )
+    result = await tool_handlers.handle_negotiate_rate(db_session, args, host_user_id=test_user.id)
+    assert "best price" in result.lower()
+
+
 async def test_search_faq_logs_gap_when_no_verified_answer(test_property, test_call_session, db_session):
     args = SearchFaqArgs(query="Do you allow pets?", property_id=str(test_property.id))
     result = await tool_handlers.handle_search_faq(

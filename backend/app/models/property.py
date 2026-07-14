@@ -48,6 +48,18 @@ class Property(UUIDPkMixin, TimestampMixin, Base):
     check_out_time: Mapped[str] = mapped_column(String(8), default="11:00", server_default="11:00")
     max_guests: Mapped[int] = mapped_column(default=4, server_default="4")
 
+    # Property Memory (memory-architecture-plan.md section 5) -- the one
+    # genuinely new piece beyond consolidating existing fields (house_rules/
+    # neighborhood_info/amenities/faq already cover everything else).
+    # Time-varying property facts nothing else models: "pool closed in
+    # monsoon," "extra heater provided Nov-Feb." Each entry:
+    # {note: str, start_month: int (1-12), end_month: int (1-12)}.
+    # start_month > end_month is a valid wraparound range (e.g. Nov-Feb =
+    # 11-2) -- see system_prompt.py's _active_seasonal_notes for how that's
+    # evaluated. Surfaced in the system prompt only when the call's current
+    # date falls within a note's range, never unconditionally.
+    seasonal_notes: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
+
     # Unique per-host (see __table_args__), not globally -- different hosts'
     # own copies of their listing data shouldn't collide with each other,
     # and dev/test data under multiple accounts shouldn't either.

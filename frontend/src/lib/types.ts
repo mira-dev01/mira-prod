@@ -24,6 +24,12 @@ export type UserOut = {
   agent_persona: string | null;
   agent_escalation_phrase: string | null;
   notification_email: string | null;
+  discount_policy_text: string | null;
+  negotiation_allowed: boolean;
+  max_discount_percent_override: number | null;
+  allow_pets: boolean | null;
+  allow_early_checkin: boolean | null;
+  follow_up_channel_preference: string | null;
 };
 
 export type UserUpdate = {
@@ -38,6 +44,36 @@ export type UserUpdate = {
   agent_persona?: string | null;
   agent_escalation_phrase?: string | null;
   notification_email?: string | null;
+  discount_policy_text?: string | null;
+  negotiation_allowed?: boolean | null;
+  max_discount_percent_override?: number | null;
+  allow_pets?: boolean | null;
+  allow_early_checkin?: boolean | null;
+  follow_up_channel_preference?: string | null;
+};
+
+export type HostDiscountRuleTriggerType = "no_ask" | "guest_requests" | "repeat_guest_same_host" | "custom";
+export type HostDiscountRuleStatus = "pending_validation" | "approved" | "rejected";
+
+export type HostDiscountRuleOut = {
+  id: string;
+  host_id: string;
+  trigger_type: string;
+  discount_percent: number;
+  source: string;
+  status: string;
+  raw_source_text: string | null;
+  created_at: string;
+};
+
+export type DiscountPolicyParseResponse = {
+  rules: HostDiscountRuleOut[];
+};
+
+export type HostDiscountRuleUpdate = {
+  trigger_type?: HostDiscountRuleTriggerType;
+  discount_percent?: number;
+  status?: HostDiscountRuleStatus;
 };
 
 export type HostRegistration = {
@@ -62,6 +98,8 @@ export type HostRegistrationResponse = {
 
 export type FAQItem = { question: string; answer: string };
 
+export type SeasonalNote = { note: string; start_month: number; end_month: number };
+
 export type PropertyOut = {
   id: string;
   user_id: string;
@@ -76,6 +114,7 @@ export type PropertyOut = {
   faq: FAQItem[];
   amenities: string[];
   photos: string[];
+  seasonal_notes: SeasonalNote[];
   check_in_time: string;
   check_out_time: string;
   max_guests: number;
@@ -108,6 +147,8 @@ export type PropertyCreate = {
   neighborhood_info?: string | null;
   faq?: FAQItem[];
   amenities?: string[];
+  photos?: string[];
+  seasonal_notes?: SeasonalNote[];
   check_in_time?: string;
   check_out_time?: string;
   max_guests?: number;
@@ -135,6 +176,15 @@ export type CallSessionOut = {
   created_at: string;
 };
 
+export type ConversationSummaryEntry = {
+  call_session_id: string;
+  property_id: string | null;
+  property_name: string | null;
+  date: string;
+  summary: string;
+  lead_temperature: string | null;
+};
+
 export type GuestProfileOut = {
   id: string;
   phone: string;
@@ -142,7 +192,27 @@ export type GuestProfileOut = {
   total_stays: number;
   preferences: Record<string, unknown>;
   notes: string | null;
+  last_property_id: string | null;
+  preferred_language: string | null;
+  last_outcome: string | null;
+  last_follow_up: string | null;
+  last_call_at: string | null;
+  conversation_summaries: ConversationSummaryEntry[];
   created_at: string;
+};
+
+export type GuestRecentCall = {
+  id: string;
+  property_id: string | null;
+  property_name: string | null;
+  status: string;
+  ai_summary: string | null;
+  started_at: string | null;
+};
+
+export type GuestProfileDetailOut = GuestProfileOut & {
+  lifetime_revenue: number;
+  recent_calls: GuestRecentCall[];
 };
 
 export type GuestProfileUpdate = {
@@ -331,6 +401,9 @@ export type FaqGapOut = {
   count: number;
   property_id: string | null;
   last_asked_at: string;
+  suggested_faq_entry_id: string | null;
+  suggested_answer: string | null;
+  match_score: number | null;
 };
 
 export type FaqGapAnswer = {

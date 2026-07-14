@@ -1,7 +1,7 @@
 import uuid
 
 from sqlalchemy import ForeignKey, Index, String, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -39,3 +39,9 @@ class UnansweredQuestion(UUIDPkMixin, TimestampMixin, Base):
     resolved_faq_entry_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("faq_entries.id", ondelete="SET NULL")
     )
+    # Knowledge Memory (memory-architecture-plan.md section 3.1) -- see
+    # FaqEntry.question_embedding for why this is a plain float array, not
+    # pgvector. Computed once when the gap is first logged
+    # (handle_search_faq); null means no semantic suggestion is possible
+    # for this row, never an error.
+    question_embedding: Mapped[list | None] = mapped_column(JSONB)

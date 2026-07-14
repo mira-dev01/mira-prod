@@ -11,6 +11,7 @@ app/voice/tools.py, which wraps the unchanged business logic in
 app/services/tool_handlers.py) -> Sarvam TTS.
 """
 
+import asyncio
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -52,7 +53,8 @@ from app.prompts.system_prompt import (
     first_message_for,
     lead_first_message_for,
 )
-from app.services import call_service, lead_service
+from app.services import call_service, guest_memory_service, lead_service
+from app.voice.conversation_state import ConversationState
 from app.voice.tools import build_voice_tools
 from app.voice.turn_strategies import HybridCompletenessUserTurnStopStrategy
 
@@ -237,6 +239,7 @@ async def _run_pipeline(
     first_message: str,
     caller_number: str | None = None,
     property_name: str | None = None,
+    guest_profile_id: uuid.UUID | None = None,
 ) -> None:
     # NOTE: we deliberately do NOT create a Lead row up front. Doing so gave
     # every connection attempt its own empty lead, and a browser/ICE
@@ -266,7 +269,15 @@ async def _run_pipeline(
         )
         llm = _build_llm()
 
-        tools = build_voice_tools(call_session_id, property_id, host_user_id)
+        # Tracks which property is "locked" for the rest of a Lead Agent
+        # (portfolio-wide) call once the guest names/selects one -- Guest
+        # Support calls already have a fixed property_id above and never
+        # touch this. See app/voice/conversation_state.py.
+        conversation_state = ConversationState(
+            selected_property_id=str(property_id) if property_id else None,
+            selected_property_name=property_name,
+        )
+        tools = build_voice_tools(call_session_id, property_id, host_user_id, conversation_state, guest_profile_id)
         # first_message is pre-seeded as an assistant turn so the LLM knows
         # it was already said (the "don't repeat greeting" rule relies on
         # this being in context) -- it is spoken directly via TTSSpeakFrame
@@ -364,6 +375,23 @@ async def _run_pipeline(
                     # drop any near-empty lead a stray tool call may have made.
                     await lead_service.delete_if_empty(finalize_db, call_session_id)
 
+            # Guest Memory (memory-architecture-plan.md section 1) -- fire
+            # detached in its own session, after the lead backfill/cleanup
+            # above has resolved, so it reads the lead's final state and
+            # never adds latency to call teardown. A guest with no
+            # resolvable profile (no caller_number) or no lead this call
+            # (nothing captured) is a no-op, not an error.
+            async def _update_guest_memory():
+                try:
+                    async with AsyncSessionLocal() as guest_memory_db:
+                        await guest_memory_service.update_guest_memory_from_call(
+                            guest_memory_db, call_session_id, guest_profile_id, property_id, property_name
+                        )
+                except Exception:
+                    logger.exception("Guest memory update failed for call_session_id=%s", call_session_id)
+
+            asyncio.create_task(_update_guest_memory())
+
         @transport.event_handler("on_client_connected")
         async def _on_connected_greeting(transport, client):
             # worker.queue_frame() injects the frame at the true SOURCE of the
@@ -418,7 +446,11 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
                 pass  # caller already disconnected
             return
 
-        guest = await call_service.get_or_create_guest_profile(db, caller_number)
+        if property_ is not None:
+            host_user_id = property_.user_id
+        else:
+            host_user_id = lead_user.id
+        guest = await call_service.get_or_create_guest_profile(db, caller_number, host_user_id)
 
         if property_ is not None:
             host = await db.get(User, property_.user_id)
@@ -434,7 +466,6 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
             first_message = first_message_for(property_, guest, host)
             property_id = property_.id
             property_name = property_.name
-            host_user_id = property_.user_id
         else:
             properties = list(
                 (await db.scalars(select(Property).where(Property.user_id == lead_user.id))).all()
@@ -447,11 +478,10 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
                 caller_number=caller_number,
                 user_id=lead_user.id,
             )
-            system_prompt = build_lead_system_prompt(lead_user, properties)
+            system_prompt = build_lead_system_prompt(lead_user, properties, guest)
             first_message = lead_first_message_for(lead_user)
             property_id = None
             property_name = None
-            host_user_id = lead_user.id
 
         call_session_id = session.id
 
@@ -476,6 +506,7 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
         first_message,
         caller_number=caller_number,
         property_name=property_name,
+        guest_profile_id=guest.id if guest else None,
     )
 
 
@@ -489,7 +520,7 @@ async def run_browser_voice_pipeline(connection: SmallWebRTCConnection, property
     async with AsyncSessionLocal() as db:
         host = await db.get(User, property_.user_id)
         guest = await call_service.get_or_create_guest_profile(
-            db, call_service.BROWSER_TEST_CALLER_NUMBER, name="Browser test guest"
+            db, call_service.BROWSER_TEST_CALLER_NUMBER, property_.user_id, name="Browser test guest"
         )
         session = await call_service.get_or_create_call_session(
             db,
@@ -504,6 +535,7 @@ async def run_browser_voice_pipeline(connection: SmallWebRTCConnection, property
         property_id = property_.id
         host_user_id = property_.user_id
         call_session_id = session.id
+        guest_profile_id = guest.id if guest else None
 
     transport = SmallWebRTCTransport(
         webrtc_connection=connection,
@@ -515,7 +547,14 @@ async def run_browser_voice_pipeline(connection: SmallWebRTCConnection, property
     )
 
     await _run_pipeline(
-        transport, property_id, call_session_id, host_user_id, system_prompt, first_message, property_name=property_.name
+        transport,
+        property_id,
+        call_session_id,
+        host_user_id,
+        system_prompt,
+        first_message,
+        property_name=property_.name,
+        guest_profile_id=guest_profile_id,
     )
 
 
@@ -525,7 +564,7 @@ async def run_browser_lead_pipeline(connection: SmallWebRTCConnection, user: Use
     async with AsyncSessionLocal() as db:
         properties = list((await db.scalars(select(Property).where(Property.user_id == user.id))).all())
         guest = await call_service.get_or_create_guest_profile(
-            db, call_service.BROWSER_TEST_CALLER_NUMBER, name="Browser test guest"
+            db, call_service.BROWSER_TEST_CALLER_NUMBER, user.id, name="Browser test guest"
         )
         session = await call_service.get_or_create_call_session(
             db,
@@ -535,9 +574,10 @@ async def run_browser_lead_pipeline(connection: SmallWebRTCConnection, user: Use
             caller_number=call_service.BROWSER_TEST_CALLER_NUMBER,
             user_id=user.id,
         )
-        system_prompt = build_lead_system_prompt(user, properties)
+        system_prompt = build_lead_system_prompt(user, properties, guest)
         first_message = lead_first_message_for(user)
         call_session_id = session.id
+        guest_profile_id = guest.id if guest else None
 
     transport = SmallWebRTCTransport(
         webrtc_connection=connection,
@@ -548,4 +588,6 @@ async def run_browser_lead_pipeline(connection: SmallWebRTCConnection, user: Use
         ),
     )
 
-    await _run_pipeline(transport, None, call_session_id, user.id, system_prompt, first_message)
+    await _run_pipeline(
+        transport, None, call_session_id, user.id, system_prompt, first_message, guest_profile_id=guest_profile_id
+    )

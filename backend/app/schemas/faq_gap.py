@@ -10,6 +10,9 @@ class FaqGapOut(BaseModel):
     count: int
     property_id: uuid.UUID | None
     last_asked_at: datetime
+    suggested_faq_entry_id: uuid.UUID | None = None
+    suggested_answer: str | None = None
+    match_score: float | None = None
 
 
 class FaqGapAnswerIn(BaseModel):

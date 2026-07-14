@@ -30,6 +30,7 @@ from app.schemas.tool import (
 )
 from app.services import (
     calendar_service,
+    embedding_service,
     faq_service,
     lead_service,
     notification_service,
@@ -236,7 +237,12 @@ async def handle_escalate_to_host(
     return f"I've escalated this to the host as {args.urgency} priority. They'll follow up shortly."
 
 
-async def handle_negotiate_rate(db: AsyncSession, args: NegotiateRateArgs) -> str:
+async def handle_negotiate_rate(
+    db: AsyncSession,
+    args: NegotiateRateArgs,
+    host_user_id: uuid.UUID | None = None,
+    guest_profile_id: uuid.UUID | None = None,
+) -> str:
     property_ = await _get_property(db, args.property_id)
     if property_ is None:
         return "I couldn't find that property to negotiate a rate for."
@@ -245,7 +251,14 @@ async def handle_negotiate_rate(db: AsyncSession, args: NegotiateRateArgs) -> st
         return "The check-out date needs to be after check-in. Could you confirm the dates?"
 
     result = await pricing_engine.negotiate_rate(
-        db, property_, args.check_in, args.check_out, args.guest_offer, args.guest_loyalty
+        db,
+        property_,
+        args.check_in,
+        args.check_out,
+        args.guest_offer,
+        args.guest_loyalty,
+        host_id=host_user_id,
+        guest_profile_id=guest_profile_id,
     )
     return result.message
 
@@ -348,16 +361,23 @@ async def handle_search_faq(
     # unanswered questions and convert them into real FaqEntry rows. Never
     # let a logging failure break the guest-facing response.
     try:
-        db.add(
-            UnansweredQuestion(
-                user_id=host_user_id,
-                property_id=property_id,
-                call_session_id=call_session_id,
-                question=args.query,
-                normalized_question=args.query.strip().lower(),
-            )
+        gap = UnansweredQuestion(
+            user_id=host_user_id,
+            property_id=property_id,
+            call_session_id=call_session_id,
+            question=args.query,
+            normalized_question=args.query.strip().lower(),
         )
+        db.add(gap)
         await db.commit()
+        await db.refresh(gap)
+        # Knowledge Memory (memory-architecture-plan.md section 3.1):
+        # embedding computed fire-and-forget, AFTER the DB commit above and
+        # never awaited here -- an embedding API call must never add
+        # latency to this live guest turn. Uses its own DB session (see
+        # embedding_service.py), so it's safe even after this handler
+        # returns.
+        asyncio.create_task(embedding_service.backfill_unanswered_question_embedding(gap.id, gap.question))
     except Exception:
         await db.rollback()
 

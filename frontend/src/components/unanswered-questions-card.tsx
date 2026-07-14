@@ -50,7 +50,11 @@ export function UnansweredQuestionsCard({ limit, linkToFaqPage }: { limit?: numb
 
   function openAnswerDialog(gap: FaqGapOut) {
     setAnsweringGap(gap);
-    setGapAnswerText("");
+    // Pre-fill from Knowledge Memory's semantic match, if one was found
+    // (memory-architecture-plan.md section 3.2) -- the host can edit or
+    // clear it before saving, same "AI suggests, host approves" pattern as
+    // the Host Memory discount rules on the AI Training page.
+    setGapAnswerText(gap.suggested_answer ?? "");
     setApplyToProperty(false);
     setRecordedBlob(null);
     setRecordedUrl(null);
@@ -130,13 +134,18 @@ export function UnansweredQuestionsCard({ limit, linkToFaqPage }: { limit?: numb
                       <Badge variant="destructive" className="shrink-0">
                         asked {gap.count}× {gap.count === 1 ? "time" : "times"}
                       </Badge>
+                      {gap.suggested_answer && (
+                        <Badge variant="secondary" className="shrink-0">
+                          Suggested answer found
+                        </Badge>
+                      )}
                     </div>
                     <p className="text-xs text-muted-foreground">
                       {propertyName(gap.property_id)} · last asked {new Date(gap.last_asked_at).toLocaleDateString()}
                     </p>
                   </div>
                   <Button size="sm" className="shrink-0" onClick={() => openAnswerDialog(gap)}>
-                    Answer this question
+                    {gap.suggested_answer ? "Review suggestion" : "Answer this question"}
                   </Button>
                 </ListRow>
               ))}
@@ -167,6 +176,12 @@ export function UnansweredQuestionsCard({ limit, linkToFaqPage }: { limit?: numb
             <DialogTitle>Answer — {answeringGap?.question}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleAnswerGap} className="space-y-4">
+            {answeringGap?.suggested_answer && (
+              <p className="text-xs text-muted-foreground">
+                This looks similar to a question you already answered — pre-filled below, edit or clear it if it
+                doesn&apos;t fit.
+              </p>
+            )}
             <div className="space-y-2">
               <Label htmlFor="gap-answer">Type an answer</Label>
               <Textarea

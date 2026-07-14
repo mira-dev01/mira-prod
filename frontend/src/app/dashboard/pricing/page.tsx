@@ -1,11 +1,13 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
+import { ArrowRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DefinitionRow } from "@/components/ui/definition-row";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,6 +34,8 @@ function PricingPageContent() {
 
   const { data: properties, loading: propertiesLoading } = useAsync(() => api.properties.list(), []);
   const { data: rules, loading: rulesLoading, refetch: refetchRules } = useAsync(() => api.pricing.rules(), []);
+  const { data: discountRules } = useAsync(() => api.hostDiscountRules.list(), []);
+  const approvedDiscountRulesCount = discountRules?.filter((r) => r.status === "approved").length ?? 0;
 
   const [ruleProperty, setRuleProperty] = useState<string>(scopedPropertyId ?? "");
   const [ruleType, setRuleType] = useState(RULE_TYPES[0]);
@@ -118,6 +122,29 @@ function PricingPageContent() {
             : "Negotiation rules and rate preview, mirroring the get_pricing tool"}
         </p>
       </div>
+
+      {approvedDiscountRulesCount > 0 && (
+        <Card className="max-w-2xl border-primary/30">
+          <CardHeader>
+            <CardTitle>Negotiation policy</CardTitle>
+            <CardDescription>
+              {approvedDiscountRulesCount} approved discount rule{approvedDiscountRulesCount === 1 ? "" : "s"} from
+              your AI Training policy apply{approvedDiscountRulesCount === 1 ? "ies" : ""} to live negotiations across
+              all your properties. These aren&apos;t listed as pricing rules below since they only affect what Mira
+              offers when negotiating, not the standard quoted price.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link
+              href="/dashboard/ai-training"
+              className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+            >
+              Review negotiation policy
+              <ArrowRight className="size-3.5" />
+            </Link>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>

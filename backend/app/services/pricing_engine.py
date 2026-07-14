@@ -4,6 +4,7 @@ engine described in the spec is Tier 3 (weeks 13-20) and intentionally not
 built here — this gives the tool a real, useful response in the meantime.
 """
 
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -12,8 +13,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.models.guest_profile import GuestProfile
+from app.models.host_discount_rule import HostDiscountRule
 from app.models.pricing_rule import PricingRule
 from app.models.property import Property
+from app.models.user import User
+
+logger = logging.getLogger(__name__)
 
 WEEKEND_WEEKDAYS = {4, 5, 6}  # Friday, Saturday, Sunday
 MAX_NEGOTIATION_DISCOUNT_PERCENT = 15.0
@@ -101,6 +107,103 @@ class NegotiationResult:
     counter_offer: float
     asking_price: float
     message: str
+    refused: bool = False
+
+
+@dataclass
+class HostNegotiationPolicy:
+    """Resolved, ready-to-use negotiation policy for one host -- either
+    derived from their approved HostDiscountRule rows, or the untouched
+    global defaults if the host has none / the lookup fails. Never
+    constructed with a status other than "approved" rows -- see
+    _get_host_negotiation_policy."""
+
+    negotiation_allowed: bool
+    max_discount_percent: float
+    guest_requests_percent: float | None
+    repeat_guest_percent: float | None
+
+
+async def _get_host_negotiation_policy(db: AsyncSession, host_id: uuid.UUID | None) -> HostNegotiationPolicy:
+    """Derive-on-read from the host's approved HostDiscountRule rows
+    (memory-architecture-plan.md section 4.4) -- never materialized per
+    property, so editing a host-level rule applies everywhere immediately.
+
+    Mandatory fallback: any failure here (no host_id, DB error, no approved
+    rows) returns today's exact pre-existing global-constant behavior.
+    negotiate_rate must never error, hang, or silently default to a 0%/100%
+    discount because of this lookup -- same "don't crash, don't block"
+    discipline as BRIGHT_DATA_API_KEY/SMTP_* elsewhere in this codebase,
+    since this runs live, mid-call, in the guest's negotiation path.
+    """
+    default_policy = HostNegotiationPolicy(
+        negotiation_allowed=True,
+        max_discount_percent=MAX_NEGOTIATION_DISCOUNT_PERCENT,
+        guest_requests_percent=None,
+        repeat_guest_percent=None,
+    )
+    if host_id is None:
+        return default_policy
+
+    try:
+        host = await db.get(User, host_id)
+        rules = (
+            await db.scalars(
+                select(HostDiscountRule).where(
+                    HostDiscountRule.host_id == host_id,
+                    HostDiscountRule.status == "approved",
+                )
+            )
+        ).all()
+    except Exception:
+        logger.exception("Host negotiation policy lookup failed for host_id=%s -- using global defaults", host_id)
+        return default_policy
+
+    # host.negotiation_allowed is only ever None for an in-memory User that
+    # was never flushed through the DB (server_default populates real rows)
+    # -- treat that the same as "unset", i.e. allowed, not as "disabled".
+    negotiation_allowed = True if host is None or host.negotiation_allowed is None else host.negotiation_allowed
+    max_discount_percent = (
+        float(host.max_discount_percent_override)
+        if host is not None and host.max_discount_percent_override is not None
+        else MAX_NEGOTIATION_DISCOUNT_PERCENT
+    )
+
+    guest_requests_percent = None
+    repeat_guest_percent = None
+    for rule in rules:
+        percent = float(rule.discount_percent)
+        if rule.trigger_type == "guest_requests":
+            guest_requests_percent = percent if guest_requests_percent is None else max(guest_requests_percent, percent)
+        elif rule.trigger_type == "repeat_guest_same_host":
+            repeat_guest_percent = percent if repeat_guest_percent is None else max(repeat_guest_percent, percent)
+
+    return HostNegotiationPolicy(
+        negotiation_allowed=negotiation_allowed,
+        max_discount_percent=max_discount_percent,
+        guest_requests_percent=guest_requests_percent,
+        repeat_guest_percent=repeat_guest_percent,
+    )
+
+
+async def _is_repeat_guest_for_host(db: AsyncSession, guest_profile_id: uuid.UUID | None) -> bool | None:
+    """Real Guest Memory check (memory-architecture-plan.md section 1):
+    GuestProfile is now host-scoped (phone, host_id), so total_stays >= 2
+    genuinely means this guest has completed at least one prior call with
+    THIS host, not just "the guest claims to be a repeat visitor." Returns
+    None (not False) when no signal is available at all, so the caller can
+    fall back to the LLM-supplied guest_loyalty instead of assuming "new."
+    """
+    if guest_profile_id is None:
+        return None
+    try:
+        guest = await db.get(GuestProfile, guest_profile_id)
+    except Exception:
+        logger.exception("Guest memory lookup failed for guest_profile_id=%s -- falling back to guest_loyalty", guest_profile_id)
+        return None
+    if guest is None:
+        return None
+    return (guest.total_stays or 0) >= 2
 
 
 async def negotiate_rate(
@@ -110,12 +213,48 @@ async def negotiate_rate(
     check_out: date,
     guest_offer: float | None,
     guest_loyalty: str = "new",
+    host_id: uuid.UUID | None = None,
+    guest_profile_id: uuid.UUID | None = None,
 ) -> NegotiationResult:
     breakdown = await calculate_price(db, property_, check_in, check_out, apply_discounts=False)
     asking_price = breakdown.total
 
-    loyalty_bonus_percent = {"new": 0.0, "returning": 5.0, "frequent": 10.0}.get(guest_loyalty, 0.0)
-    max_discount_percent = min(MAX_NEGOTIATION_DISCOUNT_PERCENT, loyalty_bonus_percent + 10.0)
+    policy = await _get_host_negotiation_policy(db, host_id)
+
+    if not policy.negotiation_allowed:
+        return NegotiationResult(
+            accepted=False,
+            counter_offer=asking_price,
+            asking_price=asking_price,
+            refused=True,
+            message=(
+                f"I'm not able to offer a discount on {property_.name} -- ₹{asking_price:,.0f} "
+                f"for {breakdown.nights} nights is our best price. I can connect you with the host "
+                f"if you'd like to discuss further."
+            ),
+        )
+
+    # trigger_type="repeat_guest_same_host": prefer the real Guest Memory
+    # signal (GuestProfile.total_stays, host-scoped) when a guest profile is
+    # resolvable; fall back to the LLM-supplied guest_loyalty argument
+    # ("returning"/"frequent") only when it isn't -- e.g. a caller_number
+    # that never resolved to a profile. Never silently treat "no signal" as
+    # "not a repeat guest" if the LLM itself said otherwise.
+    guest_memory_signal = await _is_repeat_guest_for_host(db, guest_profile_id)
+    if guest_memory_signal is not None:
+        is_repeat_guest = guest_memory_signal
+    else:
+        is_repeat_guest = guest_loyalty in ("returning", "frequent")
+
+    if is_repeat_guest and policy.repeat_guest_percent is not None:
+        discount_percent = policy.repeat_guest_percent
+    elif policy.guest_requests_percent is not None:
+        discount_percent = policy.guest_requests_percent
+    else:
+        loyalty_bonus_percent = {"new": 0.0, "returning": 5.0, "frequent": 10.0}.get(guest_loyalty, 0.0)
+        discount_percent = loyalty_bonus_percent + 10.0
+
+    max_discount_percent = min(policy.max_discount_percent, discount_percent)
     floor_price = round(asking_price * (1 - max_discount_percent / 100), 2)
 
     if guest_offer is None:
