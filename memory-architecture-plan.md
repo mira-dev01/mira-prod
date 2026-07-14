@@ -797,27 +797,64 @@ refactor.
 
 ## 5. Property Memory (consolidation, not a new table)
 
-- [ ] **Do not create a new `PropertyMemory` table** — `Property`,
-      `FaqEntry`, `PricingRule`, and `neighborhood_info` already cover
-      amenities/policies/dynamic FAQs/nearby-places/pricing/check-in/
-      parking/house-rules. Verified: `_upsert_property_from_parsed()`
-      already converges both import paths onto these same tables.
-- [ ] Only genuinely new piece: **seasonal notes** — nothing today models
-      time-varying property facts ("pool closed in monsoon," "extra heater
-      Nov–Feb"). Add `seasonal_notes` (JSONB list of
-      `{note, start_month, end_month}` or similar) to `Property`, surfaced
-      in `build_system_prompt` only when the call's current date falls in
-      range.
-- [ ] Optional cleanup (not blocking): rename/group existing fields in the
-      Properties dashboard page under visual "Property Memory" section
-      headers for host clarity — cosmetic, no schema change.
+- [x] **Confirmed, no new `PropertyMemory` table created** — `Property`,
+      `FaqEntry`, `PricingRule`, and `neighborhood_info` already covered
+      everything except seasonal notes, exactly as anticipated.
+- [x] **Seasonal notes implemented**: `Property.seasonal_notes` (JSONB list
+      of `{note, start_month, end_month}`), validated with a `SeasonalNote`
+      Pydantic schema (months 1–12). Surfaced in `build_system_prompt` via
+      a new `_active_seasonal_notes()` helper — only included when the
+      call's current date (India time, same `IST`/`_today_anchor` clock
+      already used for weekend-date resolution) falls within a note's
+      range. **Explicitly not added to `build_lead_system_prompt`** — the
+      Lead Agent's portfolio listing is already deliberately condensed
+      (amenities/USP omitted per its own existing comment to save tokens
+      across every property on every turn); a per-property, month-gated
+      note doesn't fit that condensed format and would need its own
+      design decision if wanted there later.
+- [x] **Wraparound ranges handled correctly** — `start_month > end_month`
+      (e.g. `11, 2` for Nov–Feb) is treated as spanning the year boundary,
+      not as an invalid/empty range. Verified directly:
+      `test_active_seasonal_notes_wraparound_range` checks all four months
+      in a Nov–Feb range plus two months outside it.
+- [x] **`None`/malformed entries handled safely** — a `Property` never
+      flushed through the DB has `seasonal_notes is None` (same
+      `server_default`-only-applies-on-INSERT pattern as the
+      `negotiation_allowed`/`total_stays` bugs found earlier in this plan);
+      confirmed this doesn't error. Entries missing `note`/`start_month`/
+      `end_month` are skipped rather than raising.
+- [ ] Optional cosmetic cleanup (grouping existing Properties-page fields
+      under visual "Property Memory" headers) — not done, genuinely
+      optional per the plan's own wording, and no functional value; skipped
+      to keep this task scoped to the actual new capability.
 
 ### 5.1 Verification (Standard verification, §0.2 — items 1, 3, 4 required)
-- [ ] `pytest` green.
-- [ ] Real test call during and outside a seasonal-note's date range —
-      confirm the note appears in the prompt only when applicable, and
-      confirm prompt token count stays within budget when a note is active.
-- [ ] Sign off with ✅/❌ + note before starting section 6.
+- [x] `pytest` green: full suite 189 passed (11 new tests in
+      `test_system_prompt.py`), same 4 pre-existing/unrelated failures as
+      every prior phase. Frontend `tsc --noEmit` and `npm run build` both
+      clean.
+- [x] **Real end-to-end verification, not just unit tests**: created a
+      property with a seasonal note via the actual REST API (not an
+      in-memory object), confirmed it round-trips correctly through the
+      real DB's JSONB column, then re-fetched that exact row fresh from
+      the database and confirmed `build_system_prompt` includes the note
+      when the (mocked) current date is July and excludes it when January
+      — proving the full path from API write to prompt read works, not
+      just the in-Python date-range logic in isolation. (Not a live/
+      browser voice call — same outstanding item as every other section in
+      this plan, no Exotel/Sarvam credentials in this environment.)
+- [ ] Prompt token count for an active seasonal note was not separately
+      measured against a hard budget — same honesty as section 4.5's
+      similar item: the note text is host-authored free text with no
+      length cap enforced, so unlike the fixed one-sentence additions
+      elsewhere in this plan, its size is genuinely host-dependent. Worth
+      a length cap (e.g. `max_length` on `SeasonalNote.note`, similar to
+      `usp`'s existing 280-char cap) if this becomes a real concern —
+      flagging as a reasonable follow-up rather than done.
+- [x] Sign off: ✅ implemented, tested (11 new backend tests + frontend
+      editing UI in `PropertyFormFields`), and verified end-to-end via a
+      real API-created property. ⚠️ Two open items: no live/browser voice
+      call placed, and no hard length cap on note text.
 
 ---
 
@@ -868,9 +905,11 @@ refactor.
    instead of the AI Training tab as originally sketched — documented as a
    deliberate deviation in 3.2's sign-off, revisit if the AI Training
    placement is preferred instead.
-5. **Property Memory seasonal notes** (5) — next up; small, independent,
-   low priority.
-6. **Caching** (6) — last, once real usage patterns justify it.
+5. ✅ **Property Memory seasonal notes** (5) — shipped. Not added to the
+   Lead Agent's portfolio prompt (deliberately condensed for token budget
+   reasons already documented in that code) — Guest Support only.
+6. **Caching** (6) — next up (last section in the plan); build only once
+   real usage patterns justify it, per the plan's own original framing.
 
 **Cross-cutting note for all shipped sections above**: none have had an
 actual live/browser voice call placed against them — this environment has

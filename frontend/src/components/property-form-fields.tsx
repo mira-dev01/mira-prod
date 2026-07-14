@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import type { FAQItem, PropertyCreate } from "@/lib/types";
+import type { FAQItem, PropertyCreate, SeasonalNote } from "@/lib/types";
 
 type PropertyFormValue = PropertyCreate;
 
@@ -21,6 +21,7 @@ export function PropertyFormFields({
 }) {
   const amenitiesText = (form.amenities ?? []).join(", ");
   const faq = form.faq ?? [];
+  const seasonalNotes = form.seasonal_notes ?? [];
 
   function updateFaqItem(index: number, patch: Partial<FAQItem>) {
     const next = faq.map((item, i) => (i === index ? { ...item, ...patch } : item));
@@ -33,6 +34,19 @@ export function PropertyFormFields({
 
   function removeFaqItem(index: number) {
     onChange({ ...form, faq: faq.filter((_, i) => i !== index) });
+  }
+
+  function updateSeasonalNote(index: number, patch: Partial<SeasonalNote>) {
+    const next = seasonalNotes.map((item, i) => (i === index ? { ...item, ...patch } : item));
+    onChange({ ...form, seasonal_notes: next });
+  }
+
+  function addSeasonalNote() {
+    onChange({ ...form, seasonal_notes: [...seasonalNotes, { note: "", start_month: 1, end_month: 1 }] });
+  }
+
+  function removeSeasonalNote(index: number) {
+    onChange({ ...form, seasonal_notes: seasonalNotes.filter((_, i) => i !== index) });
   }
 
   return (
@@ -195,6 +209,62 @@ export function PropertyFormFields({
                   onChange={(e) => updateFaqItem(index, { answer: e.target.value })}
                 />
                 <Button type="button" variant="ghost" size="sm" onClick={() => removeFaqItem(index)}>
+                  Remove
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <SectionLabel>Seasonal notes</SectionLabel>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <Label>Seasonal notes</Label>
+          <Button type="button" variant="outline" size="sm" onClick={addSeasonalNote}>
+            Add note
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Time-varying facts MIRA should only mention during the months they apply -- e.g. &quot;pool closed for
+          monsoon cleaning&quot; (Jun-Aug) or &quot;extra heater provided&quot; (Nov-Feb, wrapping the year is fine).
+        </p>
+        {seasonalNotes.length === 0 ? (
+          <p className="text-xs text-muted-foreground">No seasonal notes on this property yet.</p>
+        ) : (
+          <div className="space-y-3">
+            {seasonalNotes.map((item, index) => (
+              <div key={index} className="space-y-2 rounded-md border p-3">
+                <Textarea
+                  placeholder="e.g. Pool closed for monsoon cleaning."
+                  value={item.note}
+                  onChange={(e) => updateSeasonalNote(index, { note: e.target.value })}
+                />
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label htmlFor={`seasonal-start-${index}`}>Start month</Label>
+                    <Input
+                      id={`seasonal-start-${index}`}
+                      type="number"
+                      min={1}
+                      max={12}
+                      value={item.start_month}
+                      onChange={(e) => updateSeasonalNote(index, { start_month: Number(e.target.value) })}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor={`seasonal-end-${index}`}>End month</Label>
+                    <Input
+                      id={`seasonal-end-${index}`}
+                      type="number"
+                      min={1}
+                      max={12}
+                      value={item.end_month}
+                      onChange={(e) => updateSeasonalNote(index, { end_month: Number(e.target.value) })}
+                    />
+                  </div>
+                </div>
+                <Button type="button" variant="ghost" size="sm" onClick={() => removeSeasonalNote(index)}>
                   Remove
                 </Button>
               </div>

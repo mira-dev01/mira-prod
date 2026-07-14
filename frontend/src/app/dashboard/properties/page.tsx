@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { Building2, MoreHorizontal, X } from "lucide-react";
+import { MoreHorizontal, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,6 +24,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { PropertyFormFields } from "@/components/property-form-fields";
+import { PropertyPhotoCarousel } from "@/components/property-photo-carousel";
+import { PropertyPhotosManager } from "@/components/property-photos-manager";
 import { TalkToMiraDialog } from "@/components/talk-to-mira-dialog";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError, API_BASE_URL, getToken } from "@/lib/api";
@@ -40,6 +42,7 @@ const emptyForm: PropertyCreate = {
   neighborhood_info: "",
   amenities: [],
   faq: [],
+  seasonal_notes: [],
   check_in_time: "14:00",
   check_out_time: "11:00",
   max_guests: 4,
@@ -72,6 +75,8 @@ function propertyToForm(property: PropertyOut): PropertyCreate {
     neighborhood_info: property.neighborhood_info ?? "",
     amenities: property.amenities,
     faq: property.faq as PropertyCreate["faq"],
+    photos: property.photos,
+    seasonal_notes: property.seasonal_notes,
     check_in_time: property.check_in_time,
     check_out_time: property.check_out_time,
     max_guests: property.max_guests,
@@ -416,13 +421,7 @@ export default function PropertiesPage() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {properties.map((property) => (
             <Card key={property.id} className="overflow-hidden">
-              {property.photos[0] ? (
-                <img src={property.photos[0]} alt={property.name} className="h-36 w-full object-cover" />
-              ) : (
-                <div className="flex h-36 w-full items-center justify-center bg-muted">
-                  <Building2 className="size-8 text-muted-foreground" />
-                </div>
-              )}
+              <PropertyPhotoCarousel photos={property.photos} name={property.name} />
               <CardHeader>
                 <CardTitle className="flex items-center justify-between text-base">
                   {property.name}
@@ -476,6 +475,17 @@ export default function PropertiesPage() {
             <DialogTitle>Edit {editing?.name}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSaveEdit} className="space-y-4">
+            {editing && (
+              <div className="space-y-2">
+                <p className="text-micro pt-2 text-muted-foreground">Photos</p>
+                <PropertyPhotosManager
+                  propertyId={editing.id}
+                  photos={editForm.photos ?? []}
+                  onChange={(photos) => setEditForm((f) => ({ ...f, photos }))}
+                  propertyName={editing.name}
+                />
+              </div>
+            )}
             <PropertyFormFields form={editForm} onChange={setEditForm} />
             <DialogFooter>
               <Button type="submit" disabled={savingEdit}>

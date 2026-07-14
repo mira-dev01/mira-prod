@@ -18,7 +18,7 @@ tool-calling instructions stay fixed so a host can't accidentally disable a
 safety rail while personalizing tone/wording.
 """
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from app.models.guest_profile import GuestProfile
@@ -249,9 +249,39 @@ def build_system_prompt(property_: Property, guest: GuestProfile | None, host: U
         faq_lines = "\n".join(f"Q: {item['question']}\nA: {item['answer']}" for item in property_.faq)
         sections.append(f"\nFrequently asked questions:\n{faq_lines}")
 
+    active_notes = _active_seasonal_notes(property_.seasonal_notes)
+    if active_notes:
+        notes_lines = "\n".join(f"- {note}" for note in active_notes)
+        sections.append(f"\nSeasonal notes currently in effect:\n{notes_lines}")
+
     sections.append(_guest_memory_section(guest))
 
     return "\n".join(sections)
+
+
+def _active_seasonal_notes(seasonal_notes: list, today: date | None = None) -> list[str]:
+    """Property Memory (memory-architecture-plan.md section 5) -- only
+    surfaces a note when the call's current date falls within its
+    start_month/end_month range, never unconditionally (a stale "pool
+    closed in monsoon" note shown in December would actively mislead a
+    guest). start_month > end_month is a valid wraparound range (e.g.
+    Nov-Feb = 11-2, meaning the note is active in Nov, Dec, Jan, Feb).
+    """
+    current_month = (today or datetime.now(IST).date()).month
+    active = []
+    for entry in seasonal_notes or []:
+        start_month = entry.get("start_month")
+        end_month = entry.get("end_month")
+        note = entry.get("note")
+        if not note or start_month is None or end_month is None:
+            continue
+        if start_month <= end_month:
+            in_range = start_month <= current_month <= end_month
+        else:
+            in_range = current_month >= start_month or current_month <= end_month
+        if in_range:
+            active.append(note)
+    return active
 
 
 def _guest_memory_section(guest: GuestProfile | None) -> str:

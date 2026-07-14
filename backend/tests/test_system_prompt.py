@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from app.models.guest_profile import GuestProfile
 from app.models.property import Property
@@ -7,6 +7,7 @@ from app.models.user import User
 from app.prompts import system_prompt
 from app.prompts.system_prompt import (
     DEFAULT_ESCALATION_PHRASE,
+    _active_seasonal_notes,
     build_lead_system_prompt,
     build_system_prompt,
     first_message_for,
@@ -301,3 +302,71 @@ def test_prompts_allow_sparing_fillers_but_never_after_an_interruption():
         # The new sparing-filler allowance must not undo that ban.
         assert "you may occasionally begin a reply with a short, natural filler word" in prompt
         assert "a filler as a substitute for actually answering" in prompt
+
+
+# --- Property Memory: seasonal notes (memory-architecture-plan.md section 5) ---
+
+
+def test_active_seasonal_notes_simple_range():
+    notes = [{"note": "Pool closed for maintenance.", "start_month": 6, "end_month": 8}]
+    assert _active_seasonal_notes(notes, today=date(2026, 7, 1)) == ["Pool closed for maintenance."]
+    assert _active_seasonal_notes(notes, today=date(2026, 9, 1)) == []
+
+
+def test_active_seasonal_notes_wraparound_range():
+    """Nov-Feb (11-2) is a valid wraparound range spanning the year
+    boundary -- must be active in Nov/Dec/Jan/Feb, inactive in Mar-Oct."""
+    notes = [{"note": "Extra heater provided.", "start_month": 11, "end_month": 2}]
+    assert _active_seasonal_notes(notes, today=date(2026, 12, 15)) == ["Extra heater provided."]
+    assert _active_seasonal_notes(notes, today=date(2026, 1, 15)) == ["Extra heater provided."]
+    assert _active_seasonal_notes(notes, today=date(2026, 2, 28)) == ["Extra heater provided."]
+    assert _active_seasonal_notes(notes, today=date(2026, 11, 1)) == ["Extra heater provided."]
+    assert _active_seasonal_notes(notes, today=date(2026, 6, 15)) == []
+    assert _active_seasonal_notes(notes, today=date(2026, 3, 1)) == []
+
+
+def test_active_seasonal_notes_handles_none_and_empty():
+    assert _active_seasonal_notes(None, today=date(2026, 6, 1)) == []
+    assert _active_seasonal_notes([], today=date(2026, 6, 1)) == []
+
+
+def test_active_seasonal_notes_skips_malformed_entries():
+    notes = [{"note": "Missing months"}, {"start_month": 1, "end_month": 2}]  # no "note" key
+    assert _active_seasonal_notes(notes, today=date(2026, 1, 15)) == []
+
+
+def test_active_seasonal_notes_multiple_notes_only_active_ones_returned():
+    notes = [
+        {"note": "Pool closed in monsoon.", "start_month": 6, "end_month": 8},
+        {"note": "Extra heater Nov-Feb.", "start_month": 11, "end_month": 2},
+    ]
+    assert _active_seasonal_notes(notes, today=date(2026, 7, 1)) == ["Pool closed in monsoon."]
+    assert _active_seasonal_notes(notes, today=date(2026, 1, 1)) == ["Extra heater Nov-Feb."]
+    assert _active_seasonal_notes(notes, today=date(2026, 4, 1)) == []
+
+
+def test_build_system_prompt_includes_active_seasonal_note(monkeypatch):
+    monkeypatch.setattr(system_prompt, "datetime", _FixedDatetime)  # fixed at 2026-06-30
+    prop = _property(seasonal_notes=[{"note": "Pool closed for monsoon cleaning.", "start_month": 6, "end_month": 8}])
+    prompt = build_system_prompt(prop, None, _user())
+    assert "Pool closed for monsoon cleaning." in prompt
+    assert "Seasonal notes currently in effect" in prompt
+
+
+def test_build_system_prompt_omits_inactive_seasonal_note(monkeypatch):
+    monkeypatch.setattr(system_prompt, "datetime", _FixedDatetime)  # fixed at 2026-06-30
+    prop = _property(seasonal_notes=[{"note": "Extra heater provided.", "start_month": 11, "end_month": 2}])
+    prompt = build_system_prompt(prop, None, _user())
+    assert "Extra heater provided." not in prompt
+    assert "Seasonal notes currently in effect" not in prompt
+
+
+def test_build_system_prompt_handles_no_seasonal_notes():
+    """seasonal_notes is None for an in-memory Property never flushed
+    through the DB (server_default only applies on INSERT) -- must not
+    error, same pattern as the negotiation_allowed/total_stays None-handling
+    bugs found elsewhere in this file."""
+    prop = _property()
+    assert prop.seasonal_notes is None
+    prompt = build_system_prompt(prop, None, _user())
+    assert "Seasonal notes currently in effect" not in prompt

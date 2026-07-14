@@ -98,6 +98,8 @@ export type HostRegistrationResponse = {
 
 export type FAQItem = { question: string; answer: string };
 
+export type SeasonalNote = { note: string; start_month: number; end_month: number };
+
 export type PropertyOut = {
   id: string;
   user_id: string;
@@ -112,6 +114,7 @@ export type PropertyOut = {
   faq: FAQItem[];
   amenities: string[];
   photos: string[];
+  seasonal_notes: SeasonalNote[];
   check_in_time: string;
   check_out_time: string;
   max_guests: number;
@@ -145,6 +148,7 @@ export type PropertyCreate = {
   faq?: FAQItem[];
   amenities?: string[];
   photos?: string[];
+  seasonal_notes?: SeasonalNote[];
   check_in_time?: string;
   check_out_time?: string;
   max_guests?: number;
