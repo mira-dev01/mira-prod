@@ -30,6 +30,7 @@ from app.schemas.tool import (
 )
 from app.services import (
     calendar_service,
+    embedding_service,
     faq_service,
     lead_service,
     notification_service,
@@ -360,16 +361,23 @@ async def handle_search_faq(
     # unanswered questions and convert them into real FaqEntry rows. Never
     # let a logging failure break the guest-facing response.
     try:
-        db.add(
-            UnansweredQuestion(
-                user_id=host_user_id,
-                property_id=property_id,
-                call_session_id=call_session_id,
-                question=args.query,
-                normalized_question=args.query.strip().lower(),
-            )
+        gap = UnansweredQuestion(
+            user_id=host_user_id,
+            property_id=property_id,
+            call_session_id=call_session_id,
+            question=args.query,
+            normalized_question=args.query.strip().lower(),
         )
+        db.add(gap)
         await db.commit()
+        await db.refresh(gap)
+        # Knowledge Memory (memory-architecture-plan.md section 3.1):
+        # embedding computed fire-and-forget, AFTER the DB commit above and
+        # never awaited here -- an embedding API call must never add
+        # latency to this live guest turn. Uses its own DB session (see
+        # embedding_service.py), so it's safe even after this handler
+        # returns.
+        asyncio.create_task(embedding_service.backfill_unanswered_question_embedding(gap.id, gap.question))
     except Exception:
         await db.rollback()
 

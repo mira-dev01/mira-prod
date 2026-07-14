@@ -397,6 +397,9 @@ export type FaqGapOut = {
   count: number;
   property_id: string | null;
   last_asked_at: string;
+  suggested_faq_entry_id: string | null;
+  suggested_answer: string | null;
+  match_score: number | null;
 };
 
 export type FaqGapAnswer = {

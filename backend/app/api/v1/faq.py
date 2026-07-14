@@ -89,6 +89,9 @@ async def list_faq_gaps(
             "count": gap.count,
             "property_id": gap.property_id,
             "last_asked_at": gap.last_asked_at,
+            "suggested_faq_entry_id": gap.suggested_faq_entry_id,
+            "suggested_answer": gap.suggested_answer,
+            "match_score": gap.match_score,
         }
         for gap in await faq_service.list_faq_gaps(db, current_user.id, property_id, date_range)
     ]

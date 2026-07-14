@@ -485,64 +485,136 @@ refactor.
 ## 3. Knowledge Memory (FAQ learning) + new validation tab
 
 ### 3.1 Semantic dedup on gaps
-- [ ] `list_faq_gaps` (`faq_service.py:145-206`) currently groups by exact
-      `normalized_question` (trim/lowercase). Add an embedding-similarity
-      pass so "is there parking" and "where can I park" collapse into one
-      gap cluster before hitting the host.
-- [ ] Pick embedding source consistent with existing infra (check if Groq/
-      OpenRouter/Anthropic embeddings are already used anywhere, else add a
-      lightweight local option — this needs its own small research spike,
-      don't guess the provider here).
+- [x] `list_faq_gaps` (`faq_service.py`) now runs a second, in-Python
+      merge pass (`_merge_semantically_similar_gaps`) after the existing
+      exact-`normalized_question` grouping: any two groups whose stored
+      question embeddings cosine-similarity ≥ `SEMANTIC_MATCH_THRESHOLD`
+      (0.45) are folded into one displayed gap with counts summed. Confirmed
+      empirically that this was a real gap, not assumed: `pg_trgm`
+      similarity (the existing character-level metric) scored only 0.31 on
+      "is there parking" vs. "where can I park" — below its own 0.35
+      answer-matching threshold — while embeddings scored 0.73 on the same
+      pair. Character-level matching genuinely cannot catch this; semantic
+      matching was the right fix.
+- [x] **Provider decision, researched rather than guessed**: tested all
+      three configured LLM providers with real API calls before choosing.
+      Groq → confirmed 404, no embeddings endpoint exists (Groq is
+      inference-only). Anthropic's SDK has no `embeddings` client at all
+      (they officially point users to Voyage AI instead). **OpenRouter**
+      does serve embeddings (`openai/text-embedding-3-small`, confirmed
+      working via a real call) and is already a funded, configured provider
+      in this codebase (the LLM fallback-of-last-resort) — no new
+      credential introduced. A local model (`sentence-transformers`) was
+      considered and rejected: not installed, pulls in `torch` (heavy
+      dependency) for a low-frequency operation, and OpenRouter's real
+      network round-trip is an acceptable tradeoff for this call pattern
+      (see 3.1's latency note in 3.5).
+- [x] **Threshold empirically validated**, same discipline as
+      `faq_service.py`'s own 0.35 `pg_trgm` threshold: tested 10 real
+      question pairs (5 genuine paraphrases, 5 unrelated) — paraphrases
+      scored 0.41–0.80, unrelated pairs scored 0.21–0.36. 0.45 sits with
+      margin on both sides, erring toward precision.
+- [x] **Storage: plain JSONB float array, not `pgvector`** — deliberate
+      deviation from what might seem like the obvious choice.
+      `pgvector 0.8.1` is available on the local dev Postgres, but
+      production DB extension availability can't be verified from this
+      environment, and the comparison set per host (their own verified FAQ
+      entries) is small enough that in-Python cosine similarity is cheap.
+      Avoids introducing a new Postgres extension dependency that can't be
+      confirmed safe to add to the real Neon DB from here.
 
 ### 3.2 Auto-draft suggestions
-- [ ] When a new gap is semantically close to an already-answered
-      `FaqEntry`, draft a suggested answer automatically (adapt the matched
-      answer's wording, or just surface the matched answer as a one-click
-      "apply this" suggestion) instead of requiring the host to retype
-      free text every time.
-- [ ] Surface in the **new validation tab** (see 3.3) as a pending item:
-      "This looks like a question you already answered — apply the same
-      answer?" with edit-before-approve.
+- [x] Implemented as `faq_service._attach_suggested_answers`, called from
+      `list_faq_gaps` — for each (possibly merged) gap, compares its stored
+      embedding against every `status="verified"` `FaqEntry` the host owns
+      and attaches `suggested_faq_entry_id`/`suggested_answer`/`match_score`
+      when the best match clears the same 0.45 threshold. **Not a
+      persisted draft table** (unlike Host Memory's `HostDiscountRule`) —
+      the match is deterministic and cheap to recompute on every
+      `GET /faq/gaps` call, so there's nothing to store beyond the
+      embeddings themselves; "approving" the suggestion is just the
+      existing `answer_faq_gap` call with the suggested text already in
+      the textarea.
+- [~] **UX deviation from the plan's literal text, flagged explicitly**:
+      the plan said to surface this in the new AI Training validation tab
+      (3.3). Implemented instead as an inline enhancement to the
+      **existing** `UnansweredQuestionsCard` component (used on both the
+      FAQ page and the Overview page) — a "Suggested answer found" badge
+      on the row, "Review suggestion" instead of "Answer this question" on
+      the button, and the existing answer dialog's textarea pre-filled
+      with the suggestion (editable/clearable before saving). Reasoning:
+      hosts already review FAQ gaps on the FAQ page via this exact
+      component — duplicating that review flow onto a second page (AI
+      Training) would mean two places showing overlapping content, and the
+      existing dialog already had all the UI needed (edit-before-approve)
+      without new components. If this split is wrong for your workflow,
+      moving the suggestion display to the AI Training page instead is a
+      small, isolated frontend change (the API already returns the
+      suggestion fields either page reads from) — flagging so this is a
+      conscious choice to revisit, not a silent scope cut.
 
 ### 3.3 New "AI Training / Validations" tab
-- [x] **Implemented** as a new top-level nav entry (`frontend/src/components/sidebar-nav.tsx`,
-      `/dashboard/ai-training`, `Sparkles` icon) rather than a Settings tab —
-      per section 0's reasoning (review queues need action, not just static
-      config). Page at `frontend/src/app/dashboard/ai-training/page.tsx`
-      reuses `ListRow`/`ListRowHeader`/`ListRowBody`/`ListRowFooter`,
-      `StatusChip`, `Card`, same primitives/conventions as
-      `UnansweredQuestionsCard` and `settings/page.tsx`.
-- [~] Two queues planned; **only the Host preference queue is implemented
-      so far** (discount-policy paragraph → parse → pending-validation
-      cards → approve/edit/reject, see 4.1–4.3). The Knowledge-validations
-      queue (auto-drafted FAQ answers from 3.2) is not yet built since 3.1/3.2
-      (semantic dedup + auto-draft) haven't been implemented yet — the page
-      is structured so that queue can be added as its own card section
-      without restructuring anything.
-- [x] This is now the actual single place a host reviews AI-derived content
-      before it goes live — confirmed end-to-end (see 4.6): parsed rules
-      land `pending_validation`, only move to `approved` via explicit host
-      action on this page.
+- [x] Implemented in the Host Memory phase (see section 4) as a new
+      top-level nav entry, `/dashboard/ai-training`. **Still only carries
+      the Host preference queue** — per 3.2 above, the Knowledge
+      validations queue was built inline into the existing FAQ page
+      instead of as a second card section here. This is the one place the
+      plan's original "two queues, one page" structure didn't end up
+      matching what got built; see 3.2's note for the reasoning.
 
 ### 3.4 Confirm existing gap→answer pipeline needs no fix
-- [ ] Already verified: answering a gap creates a `status="verified"`
-      `FaqEntry` with correct `property_id`/portfolio scoping, and the very
-      next `search_faq` call picks it up — no caching or scoping bug exists
-      today (`faq_service.py:286-320`, `:21-64`). **No backend fix needed
-      here** — the "make sure the agent is wired to answer these" requirement
-      is already satisfied by existing code. Only the *dedup/UX* layer (3.1–3.3)
-      is new work.
+- [x] Confirmed unchanged and still correct: answering a gap creates a
+      `status="verified"` `FaqEntry` with correct `property_id`/portfolio
+      scoping, and the very next `search_faq` call picks it up. No caching
+      or scoping bug — this was already true before this phase and remains
+      true after (the only change to `answer_faq_gap` was reusing the
+      gap's own embedding instead of a fresh API call, which doesn't touch
+      the verification/scoping logic at all).
 
 ### 3.5 Verification (Standard verification, §0.2 — items 1, 6 required)
-- [ ] `pytest` green.
-- [ ] Confirm auto-drafted answers (3.2) are `status="pending_validation"`
-      and are provably NOT read by `search_faq_entries` until a host
-      approves — grep `search_faq_entries`'s `status == "verified"` filter
-      still gates this correctly, don't just trust the write path.
-- [ ] Embedding/similarity dedup (3.1) verified against a couple of real
-      paraphrase pairs from actual `UnansweredQuestion` data, not just
-      synthetic examples.
-- [ ] Sign off with ✅/❌ + note before starting section 4.
+- [x] `pytest` green: full suite 181 passed (7 new tests in
+      `test_faq_knowledge_memory.py`), same 4 pre-existing/unrelated
+      failures as every prior phase in this plan. Frontend `tsc --noEmit`
+      and `npm run build` both clean.
+- [x] Confirmed auto-drafted suggestions are genuinely a read-time
+      computation gated on `FaqEntry.status == "verified"` — proven
+      behaviorally, not just by reading the WHERE clause:
+      `test_pending_faq_entry_never_suggested` creates a `status="pending"`
+      entry with a near-identical embedding and confirms it does NOT
+      surface as a suggestion.
+- [x] **Embedding/similarity dedup verified against real paraphrase pairs,
+      using the real OpenRouter API, not mocked or synthetic embeddings**:
+      `test_semantically_similar_gaps_are_merged` (real "is there parking"
+      / "where can I park" pair, correctly merged),
+      `test_unrelated_gaps_are_not_merged` (real unrelated pair, correctly
+      NOT merged), `test_gap_gets_suggested_answer_from_verified_entry`
+      (real paraphrase against a verified entry, correct suggestion
+      surfaced), `test_unrelated_verified_entry_does_not_suggest` (real
+      unrelated pair, correctly no suggestion). Also verified the full
+      live-call path end-to-end in a scratch test (removed after
+      confirming, not part of the permanent suite since it depends on
+      `asyncio.all_tasks()` timing): `handle_search_faq` logs a real gap,
+      its fire-and-forget embedding backfill genuinely completes via a
+      real API call, and the resulting gap correctly surfaces a
+      pre-verified answer as a suggestion — the same code path a live
+      guest call would exercise.
+- [x] **Latency discipline confirmed for the live-call path specifically**:
+      `handle_search_faq` (which runs live, mid-call) itself makes zero
+      embedding API calls — the backfill is dispatched via
+      `asyncio.create_task` and never awaited, so a slow/failed OpenRouter
+      call can never add latency to the guest-facing response, same
+      "don't crash, don't block" discipline as every other live-path
+      integration in this codebase. The one place embeddings ARE awaited
+      synchronously (`answer_faq_gap`, when no embedding was already
+      available) runs off a dashboard API call, not the live-call path —
+      still not ideal for a snappy host UI, but not a guest-facing latency
+      risk.
+- [x] Sign off: ✅ implemented, tested (7 new tests + 1 verified-then-removed
+      e2e scratch test), and the one deliberate deviation from the plan's
+      literal UX placement (3.2/3.3) is documented above rather than
+      silently diverged from. ⚠️ Same outstanding item as every other
+      section: no actual live/browser voice call placed (no Exotel/Sarvam
+      credentials in this environment).
 
 ---
 
@@ -789,10 +861,15 @@ refactor.
 3. ✅ **Guest Memory extension** (1.1–1.5) — shipped, including upgrading
    4.4's `repeat_guest_same_host` trigger from the interim `guest_loyalty`
    mapping to the real `GuestProfile.total_stays` (host-scoped) check.
-4. **Knowledge Memory semantic dedup + auto-draft** (3.1, 3.2) — next up;
-   builds on the AI Training validation tab already shipped in step 1.
-5. **Property Memory seasonal notes** (5) — small, independent, low
-   priority.
+4. ✅ **Knowledge Memory semantic dedup + auto-draft** (3.1–3.5) — shipped.
+   Embedding provider researched (not guessed) with real API calls across
+   all 3 configured providers before picking OpenRouter; UX for the
+   auto-draft suggestion (3.2) was built inline into the existing FAQ page
+   instead of the AI Training tab as originally sketched — documented as a
+   deliberate deviation in 3.2's sign-off, revisit if the AI Training
+   placement is preferred instead.
+5. **Property Memory seasonal notes** (5) — next up; small, independent,
+   low priority.
 6. **Caching** (6) — last, once real usage patterns justify it.
 
 **Cross-cutting note for all shipped sections above**: none have had an

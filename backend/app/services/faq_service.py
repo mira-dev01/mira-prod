@@ -3,6 +3,7 @@ dashboard (app/api/v1/faq.py) or auto-generated on Airbnb import
 (app/services/airbnb_import.py); search_faq (the voice tool) only reads.
 """
 
+import asyncio
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -15,6 +16,7 @@ from app.config import settings
 from app.models.faq_entry import FaqEntry
 from app.models.property import Property
 from app.models.unanswered_question import UnansweredQuestion
+from app.services import embedding_service
 from app.services.airbnb_import import AUTO_FAQ_CATEGORIES
 
 
@@ -140,6 +142,17 @@ class FaqGap:
     count: int
     property_id: uuid.UUID | None
     last_asked_at: datetime
+    # Knowledge Memory (memory-architecture-plan.md section 3.2) -- set only
+    # when this gap's embedding is semantically close (see
+    # embedding_service.SEMANTIC_MATCH_THRESHOLD) to an already-verified
+    # FaqEntry's question. Computed live from stored embeddings (no external
+    # API call at read time -- see embedding_service.py's module docstring),
+    # never persisted; a host approving it just calls the existing
+    # answer_faq_gap with suggested_answer pre-filled, same write path as a
+    # manually-typed answer.
+    suggested_faq_entry_id: uuid.UUID | None = None
+    suggested_answer: str | None = None
+    match_score: float | None = None
 
 
 async def list_faq_gaps(
@@ -151,7 +164,22 @@ async def list_faq_gaps(
     """Groups pending UnansweredQuestion rows by normalized_question,
     ranked by frequency. property_id/date_range narrow which occurrences
     count, but every group's displayed question/property/timestamp comes
-    from its most recent occurrence."""
+    from its most recent occurrence.
+
+    Two further passes fold in Knowledge Memory (memory-architecture-plan.md
+    section 3.1/3.2), both computed in Python over stored embeddings only --
+    never a live embedding API call on this read path:
+      1. Groups whose representative embeddings are semantically close to
+         EACH OTHER (e.g. "is there parking" / "where can I park", still
+         two different normalized_question values) are merged into one
+         displayed gap, counts summed -- exact-text grouping alone misses
+         these (see faq_service.py's own pg_trgm precedent for why
+         character-level matching isn't enough).
+      2. Each resulting gap is checked against the host's verified
+         FaqEntry questions; a close match attaches a one-click
+         `suggested_answer` instead of requiring the host to retype
+         something they already answered under slightly different wording.
+    """
     filters = [UnansweredQuestion.user_id == user_id, UnansweredQuestion.status == "pending"]
     if property_id is not None:
         filters.append(UnansweredQuestion.property_id == property_id)
@@ -187,13 +215,15 @@ async def list_faq_gaps(
             representative.c.question,
             representative.c.property_id,
             representative.c.created_at,
+            representative.c.question_embedding,
             counts_subq.c.count,
         )
         .join(counts_subq, counts_subq.c.normalized_question == representative.c.normalized_question)
         .order_by(counts_subq.c.count.desc())
     )
     rows = (await db.execute(stmt)).all()
-    return [
+
+    gaps = [
         FaqGap(
             sample_id=row.id,
             normalized_question=row.normalized_question,
@@ -204,6 +234,89 @@ async def list_faq_gaps(
         )
         for row in rows
     ]
+    embeddings_by_sample_id = {row.id: row.question_embedding for row in rows}
+    gaps = _merge_semantically_similar_gaps(gaps, embeddings_by_sample_id)
+    await _attach_suggested_answers(db, user_id, gaps, embeddings_by_sample_id)
+    return gaps
+
+
+def _merge_semantically_similar_gaps(
+    gaps: list[FaqGap], embeddings_by_sample_id: dict[uuid.UUID, list | None]
+) -> list[FaqGap]:
+    """Section 3.1: two gaps with different normalized_question text but
+    near-identical embeddings ("is there parking" / "where can I park") are
+    folded into one displayed gap, counts summed, keeping whichever was
+    asked more recently as the surfaced representative. Already sorted by
+    count descending on entry, so earlier items in the list are merge
+    targets for later, lower-count duplicates -- greedy, O(n^2) over a
+    per-host gap list that's realistically dozens of rows, not thousands.
+    """
+    from app.services.embedding_service import SEMANTIC_MATCH_THRESHOLD, cosine_similarity
+
+    merged: list[FaqGap] = []
+    for gap in gaps:
+        embedding = embeddings_by_sample_id.get(gap.sample_id)
+        match = None
+        if embedding is not None:
+            for existing in merged:
+                existing_embedding = embeddings_by_sample_id.get(existing.sample_id)
+                if existing_embedding is not None and cosine_similarity(embedding, existing_embedding) >= SEMANTIC_MATCH_THRESHOLD:
+                    match = existing
+                    break
+        if match is not None:
+            match.count += gap.count
+            if gap.last_asked_at > match.last_asked_at:
+                match.question = gap.question
+                match.last_asked_at = gap.last_asked_at
+                match.sample_id = gap.sample_id
+        else:
+            merged.append(gap)
+    merged.sort(key=lambda g: g.count, reverse=True)
+    return merged
+
+
+async def _attach_suggested_answers(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    gaps: list[FaqGap],
+    embeddings_by_sample_id: dict[uuid.UUID, list | None],
+) -> None:
+    """Section 3.2: mutates each gap in place with a suggested_answer if its
+    embedding is close to one of the host's already-verified FaqEntry
+    questions. No live embedding API call here -- only stored embeddings on
+    both sides are compared."""
+    from app.services.embedding_service import SEMANTIC_MATCH_THRESHOLD, cosine_similarity
+
+    if not any(embeddings_by_sample_id.values()):
+        return  # nothing to compare against without at least one embedding
+
+    verified_entries = (
+        await db.scalars(
+            select(FaqEntry).where(
+                FaqEntry.user_id == user_id,
+                FaqEntry.status == "verified",
+                FaqEntry.question_embedding.isnot(None),
+            )
+        )
+    ).all()
+    if not verified_entries:
+        return
+
+    for gap in gaps:
+        embedding = embeddings_by_sample_id.get(gap.sample_id)
+        if embedding is None:
+            continue
+        best_entry = None
+        best_score = 0.0
+        for entry in verified_entries:
+            score = cosine_similarity(embedding, entry.question_embedding)
+            if score > best_score:
+                best_score = score
+                best_entry = entry
+        if best_entry is not None and best_score >= SEMANTIC_MATCH_THRESHOLD:
+            gap.suggested_faq_entry_id = best_entry.id
+            gap.suggested_answer = best_entry.answer
+            gap.match_score = round(best_score, 4)
 
 
 async def faq_gap_analytics(db: AsyncSession, user_id: uuid.UUID, bucket: str = "week") -> dict:
@@ -302,6 +415,11 @@ async def answer_faq_gap(
         category="host_answered",
         status="verified",
         verified_by=verified_by,
+        # Reuse the gap's own embedding (identical question text) instead of
+        # a fresh API call, if one was already computed -- see
+        # embedding_service.py. None here just means the fire-and-forget
+        # backfill below will compute it.
+        question_embedding=gap.question_embedding,
     )
     db.add(entry)
     await db.flush()  # need entry.id before the bulk-update below
@@ -317,4 +435,8 @@ async def answer_faq_gap(
     )
     await db.commit()
     await db.refresh(entry)
+
+    if entry.question_embedding is None:
+        asyncio.create_task(embedding_service.backfill_faq_entry_embedding(entry.id, entry.question))
+
     return entry
