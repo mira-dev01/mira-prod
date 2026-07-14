@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.common import get_owned_property
 from app.auth.dependencies import get_current_user
 from app.database import AsyncSessionLocal, get_db
-from app.integrations import bright_data_client
+from app.integrations import bright_data_client, cloudinary_client
 from app.integrations.bright_data_client import BrightDataError
 from app.models.property import Property
 from app.models.user import User
@@ -204,6 +204,41 @@ async def update_property(
         updates["faq"] = [item if isinstance(item, dict) else item.model_dump() for item in payload.faq]
     for field, value in updates.items():
         setattr(property_, field, value)
+    await db.commit()
+    await db.refresh(property_)
+    return property_
+
+
+_MAX_PHOTO_BYTES = 10 * 1024 * 1024  # 10MB -- generous for a phone-camera photo, small enough to keep upload snappy
+_ALLOWED_PHOTO_TYPES = {"image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"}
+
+
+@router.post("/{property_id}/photos", response_model=PropertyOut)
+async def add_property_photo(
+    property_id: uuid.UUID,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Property:
+    """Host-driven photo upload for the property edit dialog -- distinct
+    from the Airbnb/Bright Data import paths, which populate `photos` from
+    scraped listing URLs. Appends the newly uploaded image to the end of the
+    existing photos array rather than replacing it, so this can be called
+    once per file as the host adds pictures one at a time."""
+    if file.content_type not in _ALLOWED_PHOTO_TYPES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "File must be an image (jpeg, png, webp, or heic)")
+
+    data = await file.read()
+    if len(data) > _MAX_PHOTO_BYTES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Image must be under 10MB")
+
+    property_ = await get_owned_property(db, property_id, current_user)
+    try:
+        url = await cloudinary_client.upload_image_bytes(data, folder=f"mira/properties/{current_user.id}")
+    except Exception as exc:  # noqa: BLE001 - surface as a clean 502 rather than a raw SDK/connection error
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Photo upload failed: {exc}") from exc
+
+    property_.photos = [*property_.photos, url]
     await db.commit()
     await db.refresh(property_)
     return property_

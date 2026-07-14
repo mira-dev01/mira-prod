@@ -74,3 +74,23 @@ async def upload_images_from_urls(source_urls: list[str], folder: str, max_image
         *(upload_image_from_url(url, folder) for url in source_urls[:max_images])
     )
     return [url for url in results if url]
+
+
+async def upload_image_bytes(data: bytes, folder: str) -> str:
+    """Uploads a host-provided image file (from the property edit dialog's
+    "add photos" control, not an Airbnb import) directly from raw bytes --
+    unlike upload_image_from_url, Cloudinary can't fetch this one itself
+    since it never had its own URL. Raises (doesn't swallow) on failure since
+    this is a direct, awaited user action with a visible spinner, not a
+    best-effort background import -- the host needs to see the error."""
+    if not _ensure_configured():
+        raise RuntimeError("Cloudinary is not configured (CLOUDINARY_* env vars missing)")
+
+    result = await asyncio.to_thread(
+        cloudinary.uploader.upload,
+        data,
+        folder=folder,
+        public_id=str(uuid.uuid4()),
+        resource_type="image",
+    )
+    return result["secure_url"]
