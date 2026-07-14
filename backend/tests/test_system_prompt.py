@@ -109,6 +109,30 @@ def test_persona_note_omitted_when_not_set():
     assert "Host-defined personality note" not in prompt
 
 
+def test_negotiation_off_note_omitted_by_default():
+    """Regression test: _user()'s in-memory User never went through a DB
+    flush, so negotiation_allowed is None (server_default only applies on
+    INSERT) -- this must be treated as "unset"/allowed, not "disabled",
+    otherwise every host who hasn't touched this setting would silently get
+    told negotiation is off."""
+    host = _user()
+    assert host.negotiation_allowed is None  # confirms the in-memory default this test guards against
+    prompt = build_system_prompt(_property(), None, host)
+    assert "does not offer discounts" not in prompt
+
+
+def test_negotiation_off_note_included_when_explicitly_disabled():
+    host = _user(negotiation_allowed=False)
+    prompt = build_system_prompt(_property(), None, host)
+    assert "does not offer discounts" in prompt
+
+
+def test_negotiation_off_note_omitted_when_explicitly_enabled():
+    host = _user(negotiation_allowed=True)
+    prompt = build_system_prompt(_property(), None, host)
+    assert "does not offer discounts" not in prompt
+
+
 def test_property_usp_included_in_guest_support_prompt():
     host = _user()
     prop = _property(usp="Glass house, 1BHK with a private jacuzzi")

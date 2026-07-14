@@ -199,6 +199,23 @@ def _persona_and_escalation_sections(host: User) -> list[str]:
         sections.append(f"\nHost-defined personality note (apply this to your tone, don't recite it): {host.agent_persona}")
     escalation_phrase = host.agent_escalation_phrase or DEFAULT_ESCALATION_PHRASE
     sections.append(f'\nEscalation phrasing: "{escalation_phrase}" -- say this, then call escalate_to_host.')
+    # Host Memory (memory-architecture-plan.md section 4.5): the actual
+    # discount math is already enforced inside negotiate_rate regardless of
+    # what's said here (this line can't be relied on alone) -- this note
+    # only needs to cover the one case that changes what the model should
+    # even attempt: a host who has turned negotiation off entirely.
+    # Kept to one short line deliberately, per the prompt token budget in
+    # section 0.1 -- normal per-host discount amounts don't need restating
+    # here since the tool's own response already carries the right number.
+    # host.negotiation_allowed is only None for an in-memory User never
+    # flushed through the DB (server_default populates real rows) -- treat
+    # that as "unset"/allowed, not as "disabled".
+    if host.negotiation_allowed is False:
+        sections.append(
+            "\nThis host does not offer discounts. If a guest asks for a lower price or compares to another "
+            "platform, still call negotiate_rate (it will tell you there's no discount to offer) rather than "
+            "refusing yourself -- never invent a discount or say you can't help with pricing."
+        )
     return sections
 
 

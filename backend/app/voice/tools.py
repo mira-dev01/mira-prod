@@ -222,7 +222,7 @@ def build_voice_tools(
                     num_guests=num_guests,
                     guest_loyalty=guest_loyalty,
                 )
-                result = await tool_handlers.handle_negotiate_rate(db, args)
+                result = await tool_handlers.handle_negotiate_rate(db, args, host_user_id)
                 state.lock_property(args.property_id)
             except ValidationError:
                 result = INVALID_ARGS_MESSAGE

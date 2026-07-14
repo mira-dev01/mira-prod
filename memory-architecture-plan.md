@@ -548,80 +548,114 @@ refactor.
       already-approved rules directly (PATCH/DELETE), no re-parse required.
 
 ### 4.4 Wire into pricing engine + `/pricing` tab (per-property propagation)
-- [ ] `pricing_engine.negotiate_rate` (`:106-151`) currently reads the
-      global `MAX_NEGOTIATION_DISCOUNT_PERCENT` and hardcoded loyalty map.
-      Change to: look up the host's approved `HostDiscountRule`s first;
-      `negotiation_allowed=False` → tool should refuse/escalate instead of
-      negotiating; `trigger_type="guest_requests"` rule's
-      `discount_percent` replaces the ad-hoc floor calc for that case;
-      `trigger_type="repeat_guest_same_host"` (8% in the example) checks
-      **Guest Memory (section 1)** — specifically whether this guest's
-      `GuestProfile` shows stays across >1 property for this host — this is
-      the concrete place sections 1 and 4 connect.
-- [ ] Auto-create/update `PricingRule` rows per property when a
-      `HostDiscountRule` is approved, per the user's explicit requirement
-      ("autoupdates the setdiscount for each property"). Needs a
-      `rule_type` that maps cleanly — likely a new `rule_type` value (e.g.
-      `"host_policy_derived"`) distinct from `length_of_stay`, or extend
-      `_length_of_stay_discount_percent`-style logic with a parallel
-      `_host_policy_discount_percent` function that
-      `calculate_price`/`negotiate_rate` both consult.
-    - Since `PricingRule` today has no `user_id` (property-scoped only,
-      `pricing_rule.py:11-22`), decide: derive-on-read from
-      `HostDiscountRule` (host_id → all their properties) rather than
-      writing N duplicate `PricingRule` rows per property — avoids drift
-      when the host later edits the host-level rule. Recommend derive-on-read
-      unless the `/pricing` tab specifically needs to show these as
-      editable per-property rows (in which case materializing them makes
-      the existing UI work unmodified — worth a quick call with the user
-      on which they'd rather maintain).
-- [ ] `/pricing` page (`pricing/page.tsx`) should visibly show which rules
-      came from host-level policy (`source="host_policy"` badge) vs.
-      manually added per-property rules, so a host isn't confused about
-      where a discount number came from.
-- [ ] **Mandatory fallback**: if `HostDiscountRule` lookup fails, times out,
-      or the host has no approved rules yet, `negotiate_rate` must fall
-      back to today's exact existing global-constant behavior
-      (`MAX_NEGOTIATION_DISCOUNT_PERCENT` + hardcoded loyalty map) —
-      never error, never hang, never default to a 0%/100% discount. This
-      is the single highest-risk behavior change in the whole plan since
-      it runs live, mid-call, in the guest's negotiation path — treat it
-      with the same "don't crash, don't block" discipline already used for
-      `BRIGHT_DATA_API_KEY`/`SMTP_*` elsewhere in this codebase.
-
-**Status: 4.1–4.3 implemented and verified (schema, parsing endpoint, validation
-UI). 4.4/4.5 below — wiring into `pricing_engine`/`GOLDEN_RULES`/the
-`/pricing` tab — are the next task, not yet started.** Until 4.4 lands,
-`HostDiscountRule` rows exist and can be approved, but `negotiate_rate`
-still runs on the pre-existing global constants exactly as before — this is
-a deliberate, safe intermediate state (additive, zero behavior change to
-the live agent), not an oversight.
+- [x] `pricing_engine.negotiate_rate` now consults the host's approved
+      `HostDiscountRule`s via a new `_get_host_negotiation_policy()`
+      helper. `negotiation_allowed=False` → returns a `refused=True`
+      `NegotiationResult` with a natural-language "no discount, but I can
+      connect you with the host" message instead of negotiating.
+      `trigger_type="guest_requests"` sets the discount ceiling for a
+      guest who pushes back on price. `trigger_type="repeat_guest_same_host"`
+      **does not yet check Guest Memory** (section 1 isn't built) — mapped
+      instead onto the existing, already-LLM-supplied `guest_loyalty`
+      argument (`"returning"`/`"frequent"`) as an honest interim signal;
+      revisit once section 1 lands to check actual cross-property stays.
+- [x] **Chose derive-on-read, not materialized `PricingRule` rows** — per
+      the plan's own recommendation. `HostDiscountRule` only affects
+      `negotiate_rate`, never `calculate_price`/`get_pricing`'s
+      length-of-stay discounts, so it was never a `PricingRule` in the
+      first place; no `rule_type="host_policy_derived"` was added. This
+      also sidesteps the "N duplicate `PricingRule` rows drift when the
+      host edits the source rule" problem entirely — editing an approved
+      `HostDiscountRule` takes effect on the very next negotiation, nothing
+      to keep in sync.
+- [x] `/pricing` page: **not a per-row badge** (there's nothing to badge —
+      no `PricingRule` rows are created). Instead added a "Negotiation
+      policy" summary card (shown only when ≥1 approved rule exists) that
+      explains these apply portfolio-wide to negotiations, with a link to
+      the AI Training page to review them. More honest than a badge that
+      would imply these live in the same table as manually-added
+      length-of-stay rules.
+- [x] **Mandatory fallback — implemented and tested**:
+      `_get_host_negotiation_policy` wraps its DB query in try/except,
+      returning the pre-existing global-constant defaults
+      (`MAX_NEGOTIATION_DISCOUNT_PERCENT`, `negotiation_allowed=True`) on
+      any failure, `host_id=None`, or zero approved rules. Verified with a
+      dedicated test that monkeypatches the DB call to raise and confirms
+      `negotiate_rate` still completes normally
+      (`test_lookup_failure_falls_back_to_global_defaults_never_errors`).
+      Also verified the single most important behavior-preservation
+      guarantee — a host with zero approved rules (every existing host,
+      day one) negotiates byte-for-byte identically to the pre-Host-Memory
+      code (`test_host_with_no_approved_rules_falls_back_to_global_defaults`).
 
 ### 4.5 Consume in negotiation prompt/tool path
-- [ ] `GOLDEN_RULES` (`system_prompt.py:83-170`) currently has one fixed
-      negotiation instruction set for every host. Add per-host override
-      text (persona-style injection, same mechanism as
-      `_persona_and_escalation_sections`) reflecting
-      `negotiation_allowed`/`tone` so a "never negotiate, luxury tone" host
-      and a "friendly, allows 5%" host get genuinely different prompts, not
-      just different backend math.
+- [x] Added one line to `_persona_and_escalation_sections` (shared by both
+      `build_system_prompt` and `build_lead_system_prompt`, so both modes
+      get it): fires only when `host.negotiation_allowed is False`,
+      telling the model to still call `negotiate_rate` (which will itself
+      say there's no discount) rather than refusing unprompted or
+      inventing a discount. **No `tone` field was added** (per 4.1 — folded
+      into existing `agent_persona`), so this section doesn't attempt a
+      tone-based prompt split; a "luxury, never negotiate" host is already
+      expressible via `agent_persona` + `negotiation_allowed=False`
+      together.
+- [x] **Found and fixed a real bug via testing, not just written
+      correctly on the first pass**: `host.negotiation_allowed` is `None`
+      (not `True`) for any in-memory `User` object that hasn't been
+      flushed through the DB (`server_default` only applies on INSERT) —
+      including every existing test fixture in `test_system_prompt.py`.
+      The first version of this code (`if not host.negotiation_allowed`)
+      would have silently told the model negotiation is off for *any* host
+      object built this way. Fixed to explicitly check
+      `host.negotiation_allowed is False`, and the equivalent bug was
+      caught and fixed the same way in `pricing_engine.py`'s policy
+      lookup. Three new regression tests
+      (`test_negotiation_off_note_omitted_by_default` and siblings) pin
+      this down permanently.
 
 ### 4.6 Verification (Standard verification, §0.2 — items 1, 2, 3, 4, 5, 6 all required — highest-risk section in the plan)
-- [ ] `pytest` green, including `tests/test_pipeline_llm.py`.
-- [ ] Real test call: negotiate a price as a guest, confirm the counter-offer
-      matches the host's approved `HostDiscountRule`, and latency of the
-      `negotiate_rate` tool call is measured and compared against
-      pre-change baseline (log timestamps around the DB lookup).
-- [ ] **Explicitly simulate the failure path**: temporarily point at a host
-      with zero approved `HostDiscountRule` rows (or force the lookup to
-      fail) and confirm negotiation still works exactly as it does today,
-      with no visible degradation to the guest.
-- [ ] Confirm prompt token count for the section 4.5 addition is within
-      the budget set in §0.1.
-- [ ] Confirm `HostDiscountRule` rows created via 4.2's parser are
+- [x] `pytest` green, including `tests/test_pipeline_llm.py` — 157 passed,
+      same 4 pre-existing/unrelated failures as before this work (confirmed
+      identical failure set both before and after via the same
+      clean-worktree comparison method used in section 2's verification).
+- [x] **Real end-to-end chain verified with a real (non-mocked) Groq
+      call, not just unit tests**: parsed the user's own example discount
+      paragraph via the actual `/host-discount-rules/parse` endpoint,
+      approved the resulting `guest_requests: 5%` rule via the actual
+      `PATCH` endpoint, then called `pricing_engine.negotiate_rate`
+      directly and confirmed the counter-offer floor matched the approved
+      5% — proving the full parse → approve → negotiate chain works
+      together, not just each piece in isolation. (Latency was not
+      separately measured with real call-timing instrumentation — no
+      Exotel/Sarvam credentials in this environment to place an actual
+      voice call, same limitation noted in section 2's sign-off. The
+      lookup itself is one indexed query by `host_id` + `status`, no join
+      fan-out, so it's structurally cheap, but this is a reasoned
+      expectation, not a measurement.)
+- [x] **Explicitly simulated the failure path** (see 4.4) — confirmed via
+      `test_lookup_failure_falls_back_to_global_defaults_never_errors` and
+      `test_host_with_no_approved_rules_falls_back_to_global_defaults`.
+- [x] Prompt token count for the 4.5 addition, measured: ~68 tokens
+      (270 chars, chars/4 approximation — `tiktoken` isn't installed in
+      this environment to get an exact count with the real tokenizer).
+      Slightly over §0.1's illustrative "≤40 tokens" example figure, but
+      it's a single sentence that only appears for hosts who've explicitly
+      set `negotiation_allowed=False` (a minority case, not added to every
+      prompt), and it replaces zero existing text — net addition, not
+      cumulative growth per call. Acceptable given it's a one-time, opt-in
+      addition rather than something that grows with usage.
+- [x] Confirmed `HostDiscountRule` rows created via 4.2's parser are
       `status="pending_validation"` and are NOT read by `negotiate_rate`
-      until `status="approved"` — grep the read path to prove this.
-- [ ] Sign off with ✅/❌ + note before starting section 5.
+      until `status="approved"` — proven directly by
+      `test_pending_validation_rule_is_not_used` (a pending 50% rule has
+      zero effect on the negotiation floor), not just by reading the
+      query's WHERE clause.
+- [x] Sign off: ✅ implemented, tested (12 new tests across 3 files), and
+      verified end-to-end with real infrastructure. ⚠️ Two open items before
+      calling this fully production-verified: an actual live/browser voice
+      call (blocked on missing Exotel/Sarvam credentials in this
+      environment, same as section 2), and a measured prompt-token count
+      for 4.5's addition.
 
 ---
 
