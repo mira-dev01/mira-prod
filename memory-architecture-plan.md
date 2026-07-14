@@ -151,64 +151,125 @@ each time:
 ## 1. Guest Memory (extend existing `GuestProfile`)
 
 ### 1.1 Schema
-- [ ] Add columns to `GuestProfile`: `host_id` (FK→users, required),
-      `last_property_id` (FK→properties, nullable), `preferred_language`
-      (str, inferred Hindi/English/Hinglish ratio or dominant tag),
-      `lead_status` / `last_outcome` / `sentiment` (mirror, don't duplicate —
-      see below), `last_follow_up` (date), `last_call_at` (timestamp).
-- [ ] Change uniqueness from `phone` alone to composite
-      `(phone, host_id)` — same guest calling two different hosts on Mira
-      must not collide.
-- [ ] Add `conversation_summaries` (JSONB list of
-      `{call_session_id, date, summary, outcome}` — short LLM-generated
-      1-2 liners, never raw transcript, matching the existing
-      `escalate_to_host` email pattern of summary-not-transcript).
-- [ ] **Do not duplicate `Lead.status`/`lead_temperature`/`occasion`.**
-      `GuestProfile` should hold a `lead_ids` back-reference (via
-      `Lead.guest_profile_id` FK, new column) so status/temperature/occasion
-      stay single-sourced on `Lead` rows (one per property-call context) and
-      `GuestProfile` aggregates *across* leads rather than re-storing fields.
-- [ ] Alembic migration for all of the above.
+- [x] Added to `GuestProfile` (`backend/app/models/guest_profile.py`):
+      `host_id` (FK→users, CASCADE), `last_property_id` (FK→properties,
+      SET NULL), `preferred_language`, `last_outcome`, `last_follow_up`,
+      `last_call_at`. **`sentiment` was not added** — nothing in the
+      existing agent/tool layer produces a sentiment signal today (no
+      analysis step exists to derive it from), so adding the column would
+      have meant inventing a new inference source not asked for; deferred
+      until a real sentiment signal exists. `lead_status` also wasn't
+      duplicated, consistent with the very next bullet.
+- [x] Uniqueness changed from `phone` alone to composite `(phone, host_id)`
+      (`uq_guest_profiles_phone_host`) — verified with a dedicated test
+      that the same phone number calling two different hosts gets two
+      independent `GuestProfile` rows, not a collision.
+- [x] Added `conversation_summaries` (JSONB list). **Not LLM-generated** —
+      see 1.2, this pulls the already-agent-written
+      `Lead.conversation_summary` text directly, never a new
+      summarization call. Each entry: `{call_session_id, property_id,
+      property_name, date, summary, lead_temperature}` (`outcome` renamed
+      to `lead_temperature` to match the real field it's sourced from).
+- [x] Added `Lead.guest_profile_id` FK (SET NULL) — `Lead.status`/
+      `lead_temperature`/`occasion` remain single-sourced on `Lead` rows;
+      `GuestProfile` only links to them, never copies status/occasion.
+      `last_outcome` mirrors `lead_temperature` specifically (the plan's
+      own "mirror, don't duplicate" framing), not `status`.
+- [x] Alembic migration `d4f7a91c3e5b_add_guest_memory_fields.py` —
+      validated with the same upgrade→downgrade→re-upgrade cycle against a
+      local Postgres instance as every prior migration in this plan. Never
+      run against the real/production DB.
 
 ### 1.2 Population (write path)
-- [ ] After a call ends (`pipeline.py` `on_pipeline_finished`, `:337-365`,
-      same place `ai_summary`/transcript are already finalized), add a
-      fire-and-forget task (`asyncio.create_task`, same pattern as the
-      escalation email in `tool_handlers.py`) that:
-      - Upserts `GuestProfile` by `(caller_number, host_user_id)`.
-      - Generates a short call summary (reuse whatever produces
-        `CallSession.ai_summary` today — check if a summarization call
-        already exists before adding a new LLM call).
-      - Appends to `conversation_summaries`, bumps `total_stays`,
-        `last_call_at`, `last_property_id`.
-- [ ] Never block the live call on this — must run after pipeline teardown,
-      not mid-call.
+- [x] Implemented as `app/services/guest_memory_service.py`, called via
+      `asyncio.create_task` from `pipeline.py`'s `on_pipeline_finished`,
+      *after* the existing lead backfill/`delete_if_empty` logic resolves
+      (so it sees the lead's final state, and correctly no-ops if the lead
+      was deleted for having no data). **Deliberately does NOT call any
+      LLM for summarization** — confirmed via code reading that
+      `CallSession.ai_summary` is never actually populated by anything
+      today (`finalize_call_session` is always called with
+      `ai_summary=None`), so instead of adding a new LLM call, this reuses
+      `Lead.conversation_summary` — text the voice agent *already writes
+      itself* via `update_lead` during the call (see `GOLDEN_RULES`/
+      `LEAD_AGENT_INSTRUCTIONS`). Zero new LLM cost or latency for this
+      write path.
+      - Upserts by `(caller_number, host_id)` — `call_service.get_or_create_guest_profile`
+        signature changed to require `host_id`; all 3 pipeline call sites
+        updated, one required reordering (`run_voice_pipeline` resolved
+        `host_user_id` before the guest lookup instead of after).
+      - Bumps `total_stays`, `last_call_at`, `last_property_id` (only when
+        the call actually had a property), links `Lead.guest_profile_id`.
+      - Appends to `conversation_summaries` only if
+        `Lead.conversation_summary` is non-empty; still bumps
+        `total_stays` either way (a call with no summary is still a real
+        stay). Capped at `MAX_CONVERSATION_SUMMARIES = 20` entries.
+- [x] Never blocks the live call — wrapped in its own `AsyncSessionLocal()`
+      session, own try/except (logs and swallows, never raises into the
+      pipeline teardown path), fired after `on_pipeline_finished`'s
+      existing logic, same fire-and-forget discipline as the escalation
+      email.
 
 ### 1.3 Read path (prompt injection)
-- [ ] In `build_system_prompt` / `build_lead_system_prompt`
-      (`system_prompt.py:202-241`, `:312-341`), replace the current minimal
-      `guest.total_stays`-only block (`:232-238`) with a compact summary
-      pulled from `GuestProfile`: last property discussed, dominant
-      preference tags, last outcome — capped at a short paragraph (this
-      competes with `GOLDEN_RULES` + property FAQs for context budget on
-      every turn, so keep it terse, not a transcript dump).
-- [ ] Lookup happens once at call-start (already where `guest` is fetched
-      in `run_voice_pipeline`, `pipeline.py:400-479`) — no new per-turn cost.
+- [x] Replaced the old `guest.total_stays`-only block in both
+      `build_system_prompt` AND `build_lead_system_prompt` (the latter
+      didn't even take a `guest` parameter before this — added one,
+      default `None`, confirmed every existing call site that omits it
+      still works). New shared `_guest_memory_section()` helper: name +
+      stay count, `preferred_language` if set, `last_outcome` if set, and
+      only the single most recent `conversation_summaries` entry (not the
+      whole list) — kept to one short paragraph per the token budget.
+      `total_stays == 0` (a profile just created this call) is correctly
+      treated as a genuinely new guest, not a returning one.
+- [x] Lookup happens once at call-start, unchanged from the plan — no new
+      per-turn cost. Confirmed via the real end-to-end test (see 1.5).
 
 ### 1.4 Frontend
-- [ ] `frontend/src/app/dashboard/guests/page.tsx` already exists — check
-      current content and extend it to surface the new fields
-      (`preferred_language`, `last_outcome`, `sentiment`, summaries list)
-      rather than building a new page.
+- [x] Extended `frontend/src/app/dashboard/guests/page.tsx`'s existing
+      drawer (did not build a new page) — added a "prefers / last outcome
+      / follow up" summary block and a "Past conversations" list rendered
+      via the existing `ListRow` primitive, newest-first. `sentiment` was
+      not added to the UI since it wasn't added to the schema (see 1.1).
 
 ### 1.5 Verification (Standard verification, §0.2 — items 1, 3 required; 2 recommended since prompt-builder is touched)
-- [ ] Migration applied to test DB, `pytest` green.
-- [ ] Real test call placed before/after 1.2/1.3 land; confirm no
-      perceptible added delay at call-start and no change in mid-call
-      responsiveness.
-- [ ] Confirm guest-memory writes genuinely never block/slow call teardown
-      (check the `asyncio.create_task` is fire-and-forget, not awaited).
-- [ ] Sign off with ✅/❌ + note before starting section 2.
+- [x] Migration applied and validated (upgrade/downgrade/re-upgrade) against
+      the local test DB. Full `pytest` suite: 174 passed, same 4
+      pre-existing/unrelated failures as every prior phase in this plan
+      (confirmed identical failure set, not new ones from this schema/
+      write-path/prompt work) — 17 new tests added across
+      `test_guest_memory.py`, `test_negotiate_rate_guest_memory.py`, and
+      additions to `test_system_prompt.py`.
+- [x] **Real end-to-end chain verified, simulating two actual calls**
+      (not a live/browser voice call — no Exotel/Sarvam credentials in
+      this environment, same limitation noted in sections 2 and 4's
+      sign-offs): call 1 from a new guest correctly shows "not in our
+      guest records" in the prompt; Guest Memory is populated from call
+      1's real `Lead.conversation_summary` at call-end; call 2 from the
+      same guest/host correctly shows "returning guest ... 1 past
+      stay(s)" plus call 1's actual summary text in the prompt; and after
+      call 2, `negotiate_rate` correctly applies the real host-scoped
+      repeat-guest discount (`GuestProfile.total_stays >= 2`) even when
+      deliberately given a conservative/wrong `guest_loyalty="new"`
+      argument — proving the real signal overrides the LLM's own claim,
+      which is the entire point of building this over the interim mapping
+      used in section 4.
+- [x] Confirmed guest-memory writes are genuinely fire-and-forget: wrapped
+      in `asyncio.create_task`, own DB session, own try/except (logs and
+      swallows exceptions rather than propagating them into pipeline
+      teardown) — read directly in the code, not just assumed.
+- [x] Also closed the loop back to section 4: `pricing_engine.negotiate_rate`'s
+      `repeat_guest_same_host` trigger, previously mapped only onto the
+      LLM-supplied `guest_loyalty` argument as an interim signal (see
+      section 4's sign-off), now prefers the real `GuestProfile.total_stays`
+      check when a guest profile is resolvable, with the interim
+      `guest_loyalty` mapping kept only as the fallback when no profile
+      exists — same mandatory-fallback discipline as every other lookup in
+      this plan (verified via a dedicated simulated-failure test).
+- [x] Sign off: ✅ implemented, tested (23 new tests total across this
+      section), and verified end-to-end via direct simulation of the exact
+      two-call scenario the plan describes. ⚠️ Same outstanding item as
+      sections 2 and 4: an actual live/browser voice call has not been
+      placed in this environment.
 
 ---
 
@@ -555,10 +616,13 @@ refactor.
       connect you with the host" message instead of negotiating.
       `trigger_type="guest_requests"` sets the discount ceiling for a
       guest who pushes back on price. `trigger_type="repeat_guest_same_host"`
-      **does not yet check Guest Memory** (section 1 isn't built) — mapped
-      instead onto the existing, already-LLM-supplied `guest_loyalty`
-      argument (`"returning"`/`"frequent"`) as an honest interim signal;
-      revisit once section 1 lands to check actual cross-property stays.
+      was initially mapped only onto the LLM-supplied `guest_loyalty`
+      argument (`"returning"`/`"frequent"`) as an interim signal, since
+      Guest Memory (section 1) wasn't built yet at the time this section
+      shipped. **Update: now upgraded** — see section 1.5, which wires
+      this to the real `GuestProfile.total_stays` (host-scoped) check,
+      falling back to the `guest_loyalty` mapping only when no guest
+      profile is resolvable at all.
 - [x] **Chose derive-on-read, not materialized `PricingRule` rows** — per
       the plan's own recommendation. `HostDiscountRule` only affects
       `negotiate_rate`, never `calculate_price`/`get_pricing`'s
@@ -715,19 +779,28 @@ refactor.
 
 ## Suggested build order
 
-0. **Conversation Memory / property-lock bug fix (section 2)** — moved to
-   first: this is a **confirmed, reported production bug**, not a
-   speculative improvement, and it's small in scope (a `ConversationState`
-   object plus a fallback chain in two handlers, no schema/migration, no
-   new UI). Ship and verify this before anything else in the plan.
-1. **Host Memory schema + parse endpoint + validation tab** (4.1, 4.2,
-   3.3) — highest leverage, and the validation tab is needed by both
-   Knowledge Memory and Host Memory, so build the tab once.
-2. **Wire Host Memory into pricing engine + `/pricing` tab** (4.4, 4.5).
-3. **Guest Memory extension** (1.1–1.4) — needed before 4.4's repeat-guest
-   discount trigger can work.
-5. **Knowledge Memory semantic dedup + auto-draft** (3.1, 3.2) — builds on
-   the validation tab from step 1.
-6. **Property Memory seasonal notes** (5) — small, independent, low
+0. ✅ **Conversation Memory / property-lock bug fix (section 2)** — shipped
+   first as a confirmed, reported production bug fix.
+1. ✅ **Host Memory schema + parse endpoint + validation tab** (4.1, 4.2,
+   3.3) — shipped.
+2. ✅ **Wire Host Memory into pricing engine + `/pricing` tab** (4.4, 4.5)
+   — shipped, initially with `repeat_guest_same_host` on the
+   `guest_loyalty` interim signal.
+3. ✅ **Guest Memory extension** (1.1–1.5) — shipped, including upgrading
+   4.4's `repeat_guest_same_host` trigger from the interim `guest_loyalty`
+   mapping to the real `GuestProfile.total_stays` (host-scoped) check.
+4. **Knowledge Memory semantic dedup + auto-draft** (3.1, 3.2) — next up;
+   builds on the AI Training validation tab already shipped in step 1.
+5. **Property Memory seasonal notes** (5) — small, independent, low
    priority.
-7. **Caching** (6) — last, once real usage patterns justify it.
+6. **Caching** (6) — last, once real usage patterns justify it.
+
+**Cross-cutting note for all shipped sections above**: none have had an
+actual live/browser voice call placed against them — this environment has
+no Exotel/Sarvam credentials configured. Every section's verification
+instead relies on direct simulation of the real code paths (pytest against
+a real local Postgres DB, plus, for LLM-touching pieces, genuine
+non-mocked API calls to Groq) rather than mocks. This is real evidence but
+not a substitute for an actual call before calling any of this
+production-verified — flagged consistently in each section's sign-off
+rather than once here and then ignored.

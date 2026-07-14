@@ -16,6 +16,14 @@ class Lead(UUIDPkMixin, TimestampMixin, Base):
     call_session_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("call_sessions.id", ondelete="SET NULL"), unique=True
     )
+    # Links to Guest Memory (memory-architecture-plan.md section 1) --
+    # GuestProfile aggregates across this guest's leads for this host
+    # rather than re-storing status/lead_temperature/occasion itself.
+    # Nullable: not every lead has a resolvable caller identity (e.g. no
+    # caller_number, or a call where the guest never gave a phone number).
+    guest_profile_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("guest_profiles.id", ondelete="SET NULL"), index=True
+    )
 
     guest_name: Mapped[str | None] = mapped_column(String(255))
     phone: Mapped[str | None] = mapped_column(String(32))

@@ -141,6 +141,50 @@ function GuestDrawer({
                   </div>
                 </div>
 
+                {(detail.preferred_language || detail.last_outcome || detail.last_follow_up) && (
+                  <div className="space-y-2 rounded-lg border p-3 text-sm">
+                    {detail.preferred_language && (
+                      <p>
+                        <span className="text-muted-foreground">Prefers:</span> {detail.preferred_language}
+                      </p>
+                    )}
+                    {detail.last_outcome && (
+                      <p>
+                        <span className="text-muted-foreground">Last outcome:</span> {detail.last_outcome}
+                      </p>
+                    )}
+                    {detail.last_follow_up && (
+                      <p>
+                        <span className="text-muted-foreground">Follow up:</span> {detail.last_follow_up}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {detail.conversation_summaries.length > 0 && (
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-medium">Past conversations</h3>
+                    <div className="space-y-0">
+                      {[...detail.conversation_summaries].reverse().map((entry, i) => (
+                        <ListRow key={i}>
+                          <ListRowHeader>
+                            <span className="text-sm font-medium">{entry.property_name ?? "Portfolio-wide"}</span>
+                            {entry.lead_temperature && (
+                              <Badge variant="outline" className="capitalize">
+                                {entry.lead_temperature}
+                              </Badge>
+                            )}
+                          </ListRowHeader>
+                          <p className="text-xs text-muted-foreground">{entry.summary}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {entry.date ? new Date(entry.date).toLocaleDateString() : "—"}
+                          </p>
+                        </ListRow>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div className="space-y-2">
                   <h3 className="text-sm font-medium">Recent calls</h3>
                   {detail.recent_calls.length === 0 ? (

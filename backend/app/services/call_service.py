@@ -33,16 +33,27 @@ def extract_caller_number(call: dict) -> str | None:
 
 
 async def get_or_create_guest_profile(
-    db: AsyncSession, caller_number: str | None, name: str | None = None
+    db: AsyncSession, caller_number: str | None, host_id: uuid.UUID | None, name: str | None = None
 ) -> GuestProfile | None:
+    """Scoped by (phone, host_id) -- see memory-architecture-plan.md section
+    1 -- so the same phone number calling two different hosts on Mira gets
+    two independent profiles, never one shared/leaked across hosts.
+    host_id should always be resolvable by the time this is called (every
+    voice-pipeline entry point knows the host before it needs a guest
+    profile); it's optional here only to tolerate a caller_number with no
+    dialed-number match at all, which already short-circuits before this in
+    every real call path.
+    """
     if not caller_number:
         return None
 
-    guest = await db.scalar(select(GuestProfile).where(GuestProfile.phone == caller_number))
+    guest = await db.scalar(
+        select(GuestProfile).where(GuestProfile.phone == caller_number, GuestProfile.host_id == host_id)
+    )
     if guest is not None:
         return guest
 
-    guest = GuestProfile(phone=caller_number, name=name, total_stays=0)
+    guest = GuestProfile(phone=caller_number, host_id=host_id, name=name, total_stays=0)
     db.add(guest)
     await db.commit()
     await db.refresh(guest)

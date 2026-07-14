@@ -49,6 +49,7 @@ def build_voice_tools(
     property_id: uuid.UUID | None,
     host_user_id: uuid.UUID,
     conversation_state: ConversationState | None = None,
+    guest_profile_id: uuid.UUID | None = None,
 ) -> list:
     """Build the tool functions for one call, bound to its call_session_id/property_id/host_user_id."""
     state = conversation_state or ConversationState()
@@ -222,7 +223,7 @@ def build_voice_tools(
                     num_guests=num_guests,
                     guest_loyalty=guest_loyalty,
                 )
-                result = await tool_handlers.handle_negotiate_rate(db, args, host_user_id)
+                result = await tool_handlers.handle_negotiate_rate(db, args, host_user_id, guest_profile_id)
                 state.lock_property(args.property_id)
             except ValidationError:
                 result = INVALID_ARGS_MESSAGE

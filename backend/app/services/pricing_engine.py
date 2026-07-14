@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.models.guest_profile import GuestProfile
 from app.models.host_discount_rule import HostDiscountRule
 from app.models.pricing_rule import PricingRule
 from app.models.property import Property
@@ -185,6 +186,26 @@ async def _get_host_negotiation_policy(db: AsyncSession, host_id: uuid.UUID | No
     )
 
 
+async def _is_repeat_guest_for_host(db: AsyncSession, guest_profile_id: uuid.UUID | None) -> bool | None:
+    """Real Guest Memory check (memory-architecture-plan.md section 1):
+    GuestProfile is now host-scoped (phone, host_id), so total_stays >= 2
+    genuinely means this guest has completed at least one prior call with
+    THIS host, not just "the guest claims to be a repeat visitor." Returns
+    None (not False) when no signal is available at all, so the caller can
+    fall back to the LLM-supplied guest_loyalty instead of assuming "new."
+    """
+    if guest_profile_id is None:
+        return None
+    try:
+        guest = await db.get(GuestProfile, guest_profile_id)
+    except Exception:
+        logger.exception("Guest memory lookup failed for guest_profile_id=%s -- falling back to guest_loyalty", guest_profile_id)
+        return None
+    if guest is None:
+        return None
+    return (guest.total_stays or 0) >= 2
+
+
 async def negotiate_rate(
     db: AsyncSession,
     property_: Property,
@@ -193,6 +214,7 @@ async def negotiate_rate(
     guest_offer: float | None,
     guest_loyalty: str = "new",
     host_id: uuid.UUID | None = None,
+    guest_profile_id: uuid.UUID | None = None,
 ) -> NegotiationResult:
     breakdown = await calculate_price(db, property_, check_in, check_out, apply_discounts=False)
     asking_price = breakdown.total
@@ -212,13 +234,17 @@ async def negotiate_rate(
             ),
         )
 
-    # trigger_type="repeat_guest_same_host" maps onto the existing
-    # guest_loyalty argument ("returning"/"frequent") until Guest Memory
-    # (memory-architecture-plan.md section 1) exists to check this
-    # properly across a host's full portfolio -- guest_loyalty is already
-    # the LLM-supplied signal for "this guest has stayed before," so this is
-    # a safe, honest interim mapping, not a guess.
-    is_repeat_guest = guest_loyalty in ("returning", "frequent")
+    # trigger_type="repeat_guest_same_host": prefer the real Guest Memory
+    # signal (GuestProfile.total_stays, host-scoped) when a guest profile is
+    # resolvable; fall back to the LLM-supplied guest_loyalty argument
+    # ("returning"/"frequent") only when it isn't -- e.g. a caller_number
+    # that never resolved to a profile. Never silently treat "no signal" as
+    # "not a repeat guest" if the LLM itself said otherwise.
+    guest_memory_signal = await _is_repeat_guest_for_host(db, guest_profile_id)
+    if guest_memory_signal is not None:
+        is_repeat_guest = guest_memory_signal
+    else:
+        is_repeat_guest = guest_loyalty in ("returning", "frequent")
 
     if is_repeat_guest and policy.repeat_guest_percent is not None:
         discount_percent = policy.repeat_guest_percent

@@ -144,6 +144,7 @@ export type PropertyCreate = {
   neighborhood_info?: string | null;
   faq?: FAQItem[];
   amenities?: string[];
+  photos?: string[];
   check_in_time?: string;
   check_out_time?: string;
   max_guests?: number;
@@ -171,6 +172,15 @@ export type CallSessionOut = {
   created_at: string;
 };
 
+export type ConversationSummaryEntry = {
+  call_session_id: string;
+  property_id: string | null;
+  property_name: string | null;
+  date: string;
+  summary: string;
+  lead_temperature: string | null;
+};
+
 export type GuestProfileOut = {
   id: string;
   phone: string;
@@ -178,6 +188,12 @@ export type GuestProfileOut = {
   total_stays: number;
   preferences: Record<string, unknown>;
   notes: string | null;
+  last_property_id: string | null;
+  preferred_language: string | null;
+  last_outcome: string | null;
+  last_follow_up: string | null;
+  last_call_at: string | null;
+  conversation_summaries: ConversationSummaryEntry[];
   created_at: string;
 };
 

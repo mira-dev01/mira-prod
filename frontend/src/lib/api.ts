@@ -92,13 +92,13 @@ function buildQuery(params: Record<string, string | number | boolean | undefined
   return query ? `?${query}` : "";
 }
 
-async function uploadFiles<T>(path: string, files: File[]): Promise<T> {
+async function uploadFiles<T>(path: string, files: File[], fieldName: string = "files"): Promise<T> {
   const token = getToken();
   const headers = new Headers();
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
   const formData = new FormData();
-  files.forEach((file) => formData.append("files", file));
+  files.forEach((file) => formData.append(fieldName, file));
 
   // No Content-Type set here -- the browser fills in multipart/form-data
   // with the correct boundary itself, which it can only do if we don't
@@ -171,6 +171,7 @@ export const api = {
     update: (id: string, data: PropertyUpdate) =>
       request<PropertyOut>(`/properties/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
     remove: (id: string) => request<void>(`/properties/${id}`, { method: "DELETE" }),
+    uploadPhoto: (id: string, file: File) => uploadFiles<PropertyOut>(`/properties/${id}/photos`, [file], "file"),
     syncIcal: (id: string) => request<{ created: number; updated: number }>(`/properties/${id}/sync-ical`, { method: "POST" }),
     importListings: (files: File[]) => uploadFiles<PropertyImportResult[]>("/properties/import", files),
     importAirbnbUrls: (urls: string[]) =>

@@ -249,16 +249,36 @@ def build_system_prompt(property_: Property, guest: GuestProfile | None, host: U
         faq_lines = "\n".join(f"Q: {item['question']}\nA: {item['answer']}" for item in property_.faq)
         sections.append(f"\nFrequently asked questions:\n{faq_lines}")
 
-    if guest is not None:
-        sections.append(
-            f"\nThis caller is a returning guest: {guest.name or 'name unknown'}, "
-            f"{guest.total_stays} past stay(s). Greet them personally and use this history "
-            f"to inform your tone (e.g. loyalty tier for negotiate_rate)."
-        )
-    else:
-        sections.append("\nThis caller is not in our guest records -- treat them as a new guest.")
+    sections.append(_guest_memory_section(guest))
 
     return "\n".join(sections)
+
+
+def _guest_memory_section(guest: GuestProfile | None) -> str:
+    """Guest Memory (memory-architecture-plan.md section 1) -- kept to one
+    short paragraph deliberately, since this competes with GOLDEN_RULES and
+    property FAQs for context budget on every single turn. Never a
+    transcript dump -- just enough to inform tone/loyalty tier, pulled from
+    conversation_summaries (already-written, short Lead.conversation_summary
+    text, not raw dialogue -- see guest_memory_service.py)."""
+    if guest is None:
+        return "\nThis caller is not in our guest records -- treat them as a new guest."
+
+    # total_stays == 0 means this GuestProfile row was only just created for
+    # this very call (see call_service.get_or_create_guest_profile) -- a
+    # genuinely first-time caller, not a returning one.
+    if not guest.total_stays:
+        return "\nThis caller is not in our guest records -- treat them as a new guest."
+
+    parts = [f"This caller is a returning guest: {guest.name or 'name unknown'}, {guest.total_stays} past stay(s)."]
+    if guest.preferred_language:
+        parts.append(f"Prefers {guest.preferred_language}.")
+    if guest.last_outcome:
+        parts.append(f"Last call ended: {guest.last_outcome}.")
+    if guest.conversation_summaries:
+        parts.append(f"Last time: {guest.conversation_summaries[-1].get('summary', '')}")
+    parts.append("Greet them personally and use this history to inform your tone (e.g. loyalty tier for negotiate_rate).")
+    return "\n" + " ".join(parts)
 
 
 def first_message_for(property_: Property, guest: GuestProfile | None, host: User) -> str:
@@ -338,10 +358,11 @@ Lead qualification workflow:
 """
 
 
-def build_lead_system_prompt(user: User, properties: list[Property]) -> str:
+def build_lead_system_prompt(user: User, properties: list[Property], guest: GuestProfile | None = None) -> str:
     host_name = user.name or "this host"
     sections = [LEAD_AGENT_INSTRUCTIONS.format(host_name=host_name), _today_anchor()]
     sections.extend(_persona_and_escalation_sections(user))
+    sections.append(_guest_memory_section(guest))
 
     if properties:
         # Amenities and the USP blurb are deliberately omitted here -- this

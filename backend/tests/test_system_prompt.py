@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime
 
+from app.models.guest_profile import GuestProfile
 from app.models.property import Property
 from app.models.user import User
 from app.prompts import system_prompt
@@ -41,6 +42,12 @@ def _property(**overrides) -> Property:
     )
     defaults.update(overrides)
     return Property(**defaults)
+
+
+def _guest(**overrides) -> GuestProfile:
+    defaults = dict(id=uuid.uuid4(), phone="+919999999999", total_stays=0)
+    defaults.update(overrides)
+    return GuestProfile(**defaults)
 
 
 def test_first_message_default_has_no_placeholders_left_unresolved():
@@ -125,6 +132,60 @@ def test_negotiation_off_note_included_when_explicitly_disabled():
     host = _user(negotiation_allowed=False)
     prompt = build_system_prompt(_property(), None, host)
     assert "does not offer discounts" in prompt
+
+
+def test_no_guest_profile_says_new_guest():
+    prompt = build_system_prompt(_property(), None, _user())
+    assert "not in our guest records" in prompt
+    assert "returning guest" not in prompt
+
+
+def test_guest_profile_with_zero_stays_is_treated_as_new():
+    """A GuestProfile row that was JUST created for this call (total_stays
+    still 0, per call_service.get_or_create_guest_profile) is a first-time
+    caller, not a returning one."""
+    guest = _guest(total_stays=0)
+    prompt = build_system_prompt(_property(), guest, _user())
+    assert "not in our guest records" in prompt
+    assert "returning guest" not in prompt
+
+
+def test_returning_guest_included_with_name_and_stay_count():
+    guest = _guest(name="Priya", total_stays=3)
+    prompt = build_system_prompt(_property(), guest, _user())
+    assert "returning guest: Priya, 3 past stay(s)" in prompt
+
+
+def test_returning_guest_includes_preferred_language_and_last_outcome():
+    guest = _guest(name="Priya", total_stays=2, preferred_language="Hinglish", last_outcome="hot")
+    prompt = build_system_prompt(_property(), guest, _user())
+    assert "Prefers Hinglish." in prompt
+    assert "Last call ended: hot." in prompt
+
+
+def test_returning_guest_includes_last_conversation_summary():
+    guest = _guest(
+        name="Priya",
+        total_stays=2,
+        conversation_summaries=[
+            {"summary": "Asked about parking at Villa Sunset, budget-conscious.", "lead_temperature": "warm"}
+        ],
+    )
+    prompt = build_system_prompt(_property(), guest, _user())
+    assert "Asked about parking at Villa Sunset, budget-conscious." in prompt
+
+
+def test_lead_agent_prompt_also_gets_guest_memory_section():
+    guest = _guest(name="Priya", total_stays=1)
+    prompt = build_lead_system_prompt(_user(), [], guest)
+    assert "returning guest: Priya, 1 past stay(s)" in prompt
+
+
+def test_lead_agent_prompt_defaults_to_new_guest_when_omitted():
+    """Every existing call site that doesn't pass guest= must keep working
+    exactly as before -- confirms the new parameter is genuinely optional."""
+    prompt = build_lead_system_prompt(_user(), [])
+    assert "not in our guest records" in prompt
 
 
 def test_negotiation_off_note_omitted_when_explicitly_enabled():
