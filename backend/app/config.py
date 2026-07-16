@@ -108,6 +108,29 @@ class Settings(BaseSettings):
     # bright_data_api_key).
     searchapi_api_key: str | None = None
 
+    # Twilio WhatsApp Sandbox (https://www.twilio.com/docs/whatsapp/sandbox)
+    # -- no Meta Business verification needed, unlike a real WhatsApp
+    # Business number. The tradeoff: it can only message numbers that have
+    # first opted in by texting "join <sandbox-code>" to
+    # twilio_whatsapp_from from WhatsApp (Twilio's console shows the code
+    # for this account's sandbox) -- fine for testing against your own
+    # phone, not usable for arbitrary real guests until upgraded to a real
+    # WhatsApp Business number. See app/integrations/twilio_client.py.
+    # Unset = send_whatsapp/send_photos fall back to the in-app notification
+    # stand-in only (same "don't crash, don't block" pattern as SMTP/Bright
+    # Data above).
+    twilio_account_sid: str | None = None
+    twilio_auth_token: str | None = None
+    twilio_whatsapp_from: str = "whatsapp:+14155238886"  # Twilio's shared sandbox number
+
+    # ContentSid of the "mira_escalation" twilio/call-to-action template
+    # (see scripts/create_escalation_template.py) -- gives the escalation
+    # WhatsApp message a real "Go to Dashboard" button instead of a raw,
+    # auto-linkified URL (which also triggers WhatsApp's link-preview
+    # card). Unset = escalate_to_host falls back to a plain-text message
+    # with the bare URL.
+    twilio_escalation_template_sid: str | None = None
+
     # Cloudinary -- re-hosts property photos scraped via Bright Data
     # (see app/integrations/cloudinary_client.py) so listing images survive
     # even if the source Airbnb listing is edited/removed, and so MIRA can

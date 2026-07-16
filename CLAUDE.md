@@ -85,6 +85,7 @@ See [docs/architecture.md](docs/architecture.md) for deployment (Render) details
 | `SEARCHAPI_API_KEY` | [SearchApi.io](https://www.searchapi.io/airbnb-api) Airbnb engine — daily comparable-pricing refresh (`smart_pricing_service.py`), one call per city. Free tier's request allowance is small; unset = the daily job no-ops. |
 | `TURN_DETECTION_STRATEGY` | `vad_fixed` (default) / `hybrid_experimental`. Local-only experiment — see [docs/agents.md](docs/agents.md). Not in `render.yaml`. |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USERNAME` / `SMTP_PASSWORD` / `SMTP_FROM_EMAIL` | Escalation email summaries. Any SMTP provider works. Unset = escalations still create the in-app notification, just skip the email. |
+| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_WHATSAPP_FROM` | Real WhatsApp send for `send_whatsapp`/`send_photos` via Twilio's Sandbox — see [docs/agents.md](docs/agents.md). Sandbox only reaches numbers that texted "join `<code>`" to the sandbox number first; unset = falls back to the in-app notification only. |
 
 ---
 

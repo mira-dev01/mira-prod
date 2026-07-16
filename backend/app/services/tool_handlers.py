@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.integrations import email_client
+from app.integrations import email_client, twilio_client
 from app.integrations.email_templates import build_escalation_email_html, build_photos_email_html
 from app.models.property import Property
 from app.models.unanswered_question import UnansweredQuestion
@@ -42,6 +42,29 @@ from app.services import (
 
 logger = logging.getLogger(__name__)
 
+# WhatsApp has no color/font-weight rendering beyond *bold*/_italic_, so
+# urgency is signaled with an emoji instead -- a host skimming a stack of
+# these needs to triage by glancing at the left edge of each message, not
+# by reading the first sentence.
+_URGENCY_EMOJI = {"emergency": "\U0001F6A8", "high": "\U0001F534", "medium": "\U0001F7E0", "low": "\U0001F7E1"}
+
+
+def _build_escalation_whatsapp_text(
+    urgency: str, property_name: str, reason: str, call_summary: str | None, guest_phone: str | None, dashboard_url: str
+) -> str:
+    emoji = _URGENCY_EMOJI.get(urgency, "⚪")
+    lines = [
+        f"{emoji} *{urgency.upper()} ESCALATION*",
+        f"*Property:* {property_name}",
+        f"*Issue:* {reason}",
+    ]
+    if call_summary:
+        lines.append(f"*Summary:* {call_summary}")
+    lines.append(f"*Guest:* {guest_phone}" if guest_phone else "*Guest:* not captured")
+    lines.append("")
+    lines.append(dashboard_url)
+    return "\n".join(lines)
+
 
 async def _send_escalation_email(to_email: str, subject: str, body: str, html_body: str) -> None:
     # Runs detached via asyncio.create_task -- never awaited by the caller,
@@ -54,6 +77,55 @@ async def _send_escalation_email(to_email: str, subject: str, body: str, html_bo
             logger.info("Escalation email to %s skipped: %s", to_email, result.get("reason"))
     except Exception:
         logger.exception("Failed to send escalation email to %s", to_email)
+
+
+async def _send_whatsapp_message(to_phone: str, body: str) -> None:
+    # Same detached/best-effort pattern as _send_escalation_email above --
+    # never blocks the tool result on a live call for a slow/failed Twilio
+    # request. "skipped" covers both Twilio not being configured and the
+    # far more common sandbox case (63015: recipient never texted "join
+    # <code>" to the sandbox number), which surfaces as a TwilioError, not
+    # a "skipped" status -- both are logged, neither raises past here.
+    try:
+        result = await twilio_client.send_whatsapp_message(to_phone, body)
+        if result.get("status") == "skipped":
+            logger.info("WhatsApp message to %s skipped: %s", to_phone, result.get("reason"))
+    except twilio_client.TwilioError:
+        logger.exception("Failed to send WhatsApp message to %s", to_phone)
+
+
+async def _send_escalation_whatsapp(
+    to_phone: str, urgency: str, property_name: str, reason: str, call_summary: str | None, guest_phone: str | None, dashboard_url: str
+) -> None:
+    # Prefers the twilio/call-to-action Content Template (real "Go to
+    # Dashboard" button, no raw URL, no link-preview card) when it's been
+    # created -- see scripts/create_escalation_template.py. Falls back to
+    # a plain-text message with a bare URL if the template hasn't been set
+    # up yet, so escalations still reach the host either way.
+    emoji = _URGENCY_EMOJI.get(urgency, "⚪")
+    try:
+        if settings.twilio_escalation_template_sid:
+            result = await twilio_client.send_whatsapp_template(
+                to_phone,
+                settings.twilio_escalation_template_sid,
+                {
+                    "1": emoji,
+                    "2": urgency.upper(),
+                    "3": property_name,
+                    "4": reason,
+                    "5": call_summary or "Not provided",
+                    "6": guest_phone or "Not captured",
+                },
+            )
+        else:
+            result = await twilio_client.send_whatsapp_message(
+                to_phone,
+                _build_escalation_whatsapp_text(urgency, property_name, reason, call_summary, guest_phone, dashboard_url),
+            )
+        if result.get("status") == "skipped":
+            logger.info("Escalation WhatsApp to %s skipped: %s", to_phone, result.get("reason"))
+    except twilio_client.TwilioError:
+        logger.exception("Failed to send escalation WhatsApp to %s", to_phone)
 
 
 async def _get_property(db: AsyncSession, property_id: str) -> Property | None:
@@ -180,6 +252,7 @@ async def handle_send_whatsapp(
         urgency="low",
         message=f"To {args.phone}: {args.message}",
     )
+    asyncio.create_task(_send_whatsapp_message(args.phone, args.message))
     return f"Got it, I've queued a WhatsApp message to {args.phone}."
 
 
@@ -207,11 +280,15 @@ async def handle_send_photos(
         message=f"To {args.guest_phone}: Here are photos of {property_.name} -- {gallery_url}",
     )
 
-    # WhatsApp Business API isn't wired up yet (see notification_service's
-    # docstring), so there's no real channel that actually reaches the
-    # guest's phone right now -- only email does. Fired the same
-    # detached/best-effort way as the escalation email, to the host's own
-    # inbox, purely so this is end-to-end testable before WhatsApp exists.
+    # Real WhatsApp send via Twilio sandbox (only reaches numbers that have
+    # joined the sandbox -- see twilio_account_sid's docstring in config.py).
+    asyncio.create_task(
+        _send_whatsapp_message(args.guest_phone, f"Here are photos of {property_.name} -- {gallery_url}")
+    )
+
+    # Email stays as a parallel channel (not a fallback) so this is testable
+    # against the host's own inbox even for guest numbers that were never
+    # added to the Twilio sandbox.
     host_user = await db.get(User, host_user_id)
     if host_user is not None:
         asyncio.create_task(
@@ -219,7 +296,7 @@ async def handle_send_photos(
                 host_user.notification_email or host_user.email,
                 subject=f"Photos requested — {property_.name}",
                 body=f"A guest ({args.guest_phone}) asked to see photos of {property_.name}.\n\n"
-                f"Gallery link (this is what send_photos would send them once WhatsApp is live): {gallery_url}",
+                f"Gallery link: {gallery_url}",
                 html_body=build_photos_email_html(
                     property_name=property_.name, guest_phone=args.guest_phone, gallery_url=gallery_url
                 ),
@@ -288,6 +365,22 @@ async def handle_escalate_to_host(
                 ),
             )
         )
+        # WhatsApp via Twilio Sandbox -- only reaches host_user.phone if
+        # that number has joined the sandbox (see twilio_client.py). Unset
+        # phone or unconfigured Twilio both no-op silently in
+        # _send_escalation_whatsapp, same as the email above.
+        if host_user.phone:
+            asyncio.create_task(
+                _send_escalation_whatsapp(
+                    host_user.phone,
+                    urgency=args.urgency,
+                    property_name=property_.name,
+                    reason=args.reason,
+                    call_summary=args.call_summary,
+                    guest_phone=args.guest_phone,
+                    dashboard_url=f"{settings.frontend_base_url}/dashboard/leads",
+                )
+            )
 
     return f"I've escalated this to the host as {args.urgency} priority. They'll follow up shortly."
 

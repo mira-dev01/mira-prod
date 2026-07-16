@@ -53,7 +53,8 @@ Each tool is a pipecat "direct function" — name/description/parameter schema a
 | `check_calendar` | Check property availability for given dates; also locks the property in Lead Agent calls. | `handle_check_calendar` |
 | `get_pricing` | Quote total price (base + weekend surge + cleaning fee + tax, optional discounts). Must be called first with `apply_discounts=false`; only re-called with `apply_discounts=true` after guest pushback. | `handle_get_pricing` (→ `pricing_engine.calculate_price`, see [research-flow.md](research-flow.md)) |
 | `dispatch_technician` | Notify a technician for a physical issue (plumbing/electrical/ac/wifi/lock/general); falls back to a host notification if none on file. | `handle_dispatch_technician` |
-| `send_whatsapp` | Queue a guest-facing WhatsApp-style confirmation (writes to `Notification`, no real WhatsApp API yet — see below). | `handle_send_whatsapp` |
+| `send_whatsapp` | Send a guest/host-facing WhatsApp message (real send via Twilio Sandbox — see below; also logged to `Notification`). | `handle_send_whatsapp` |
+| `send_photos` | Send the guest a link to a property's photo gallery (one link, not individual images) over WhatsApp + a host-inbox email fallback. | `handle_send_photos` |
 | `escalate_to_host` | Escalate to the host (in-app notification + fire-and-forget email); also upserts whatever lead data it already has. | `handle_escalate_to_host` |
 | `negotiate_rate` | Compute a floor price and accept/counter a guest's offer. | `handle_negotiate_rate` (→ `pricing_engine.negotiate_rate`) |
 | `recommend_properties` | Recommend up to 3 properties from the host's portfolio matching budget/guests/location/purpose. Guarded against redundant re-calls once a property is locked (Lead Agent only). | `handle_recommend_properties` |
@@ -62,9 +63,13 @@ Each tool is a pipecat "direct function" — name/description/parameter schema a
 
 All handlers return a natural-language string — this is fed back to the LLM as the tool result and is often read back near-verbatim to the guest, so results are phrased for speech, not JSON. `ValidationError` on tool args is caught in `app/voice/tools.py` and returns a fixed re-ask string (`INVALID_ARGS_MESSAGE`) instead of erroring the turn.
 
-### Host notifications (in-app + email; WhatsApp not real yet)
+### Host/guest notifications (in-app + email + Twilio WhatsApp sandbox)
 
-`escalate_to_host`/`send_whatsapp` both write to the `Notification` table (`app/services/notification_service.py`), which is what the dashboard's Live Requests feed polls/streams. `Notification` is also a deliberate stand-in for a real WhatsApp Business API integration — `send_whatsapp` queues there instead of calling Meta's API, since the host doesn't have WhatsApp Business approval yet, and there's no Exotel WhatsApp sandbox (unlike Twilio's instant shared demo number, Exotel's WhatsApp Business API requires Facebook Business Manager ID + Exotel KYC/Meta approval before any sending number exists). `handle_escalate_to_host` additionally fires an email to the host (`app/integrations/email_client.py`, plain SMTP, any provider) via `asyncio.create_task` — not awaited, so a slow/misconfigured SMTP server never adds latency to the live tool call. `SMTP_*` unset = skipped silently, same pattern as `BRIGHT_DATA_API_KEY`. `send_whatsapp` itself has no email fallback — that hook is specific to `escalate_to_host`'s host-facing summary.
+`escalate_to_host`/`send_whatsapp`/`send_photos` all write to the `Notification` table (`app/services/notification_service.py`), which is what the dashboard's Live Requests feed polls/streams — this is a record of what was sent, not the delivery mechanism itself.
+
+Real WhatsApp delivery goes through Twilio's Sandbox (`app/integrations/twilio_client.py`, `TWILIO_ACCOUNT_SID`/`TWILIO_AUTH_TOKEN`/`TWILIO_WHATSAPP_FROM`), not a Meta-approved WhatsApp Business number — Exotel's WhatsApp Business API requires Facebook Business Manager ID + Exotel KYC/Meta approval before any sending number exists, so Twilio's instant shared sandbox number stands in for now. The sandbox's one real constraint: it can only message numbers that have first texted "join `<code>`" to the sandbox number from WhatsApp — fine for testing against the host's own phone, not usable for arbitrary real guests until upgraded to a real WhatsApp Business number. `TWILIO_*` unset = falls back to the in-app notification only, same pattern as every other optional integration here.
+
+`handle_escalate_to_host` and `handle_send_photos` additionally fire an email (`app/integrations/email_client.py`, plain SMTP, any provider) via `asyncio.create_task` — not awaited, so a slow/misconfigured SMTP server never adds latency to the live tool call. `SMTP_*` unset = skipped silently, same pattern as `BRIGHT_DATA_API_KEY`. `send_whatsapp` itself has no email fallback — that hook is specific to `escalate_to_host`'s host-facing summary and `send_photos`'s gallery link.
 
 ## GOLDEN_RULES (`app/prompts/system_prompt.py`)
 
