@@ -18,6 +18,7 @@ from app.schemas.property import (
     AirbnbUrlImportStatus,
     AirbnbUrlImportTriggered,
     PropertyCreate,
+    PropertyGalleryOut,
     PropertyImportResult,
     PropertyOut,
     PropertyUpdate,
@@ -189,6 +190,18 @@ async def get_property(
     property_id: uuid.UUID, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ) -> Property:
     return await get_owned_property(db, property_id, current_user)
+
+
+@router.get("/{property_id}/gallery", response_model=PropertyGalleryOut)
+async def get_property_gallery(property_id: uuid.UUID, db: AsyncSession = Depends(get_db)) -> Property:
+    """No-auth public endpoint backing the guest-facing photo gallery page
+    (frontend /p/{property_id}/photos) -- the link the send_photos voice
+    tool hands a guest over WhatsApp/email. Only exposes fields declared on
+    PropertyGalleryOut; never reuse PropertyOut here."""
+    property_ = await db.get(Property, property_id)
+    if property_ is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Property not found")
+    return property_
 
 
 @router.patch("/{property_id}", response_model=PropertyOut)

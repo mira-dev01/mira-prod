@@ -26,6 +26,7 @@ from app.api.v1.webhooks import exotel
 from app.config import settings
 from app.database import AsyncSessionLocal
 from app.services.calendar_service import sync_all_properties
+from app.services.smart_pricing_service import refresh_smart_pricing
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -38,6 +39,11 @@ async def _scheduled_ical_sync() -> None:
         results = await sync_all_properties(db)
         if results:
             logger.info("iCal sync complete: %s", results)
+
+
+async def _scheduled_smart_pricing_refresh() -> None:
+    async with AsyncSessionLocal() as db:
+        await refresh_smart_pricing(db)
 
 
 # Populated by _check_llm_health, read by app/voice/pipeline.py's _build_llm()
@@ -138,6 +144,9 @@ async def lifespan(app: FastAPI):
     # extra background ping traffic for a much shorter window where a call
     # can still land on a model that's actually rate-limited.
     scheduler.add_job(_check_llm_health, "interval", seconds=60, id="llm_health_periodic")
+    # Once a day, "in the morning" -- 1:00 UTC is ~6:30am IST. Render runs in
+    # UTC; adjust the hour here if the deploy target's timezone differs.
+    scheduler.add_job(_scheduled_smart_pricing_refresh, "cron", hour=1, minute=0, id="smart_pricing_refresh")
     scheduler.start()
     asyncio.create_task(_scheduled_ical_sync())   # kick off one sync immediately, don't block startup on it
     asyncio.create_task(_check_llm_health())      # pre-warm + health-check LLM routes so first caller doesn't wait

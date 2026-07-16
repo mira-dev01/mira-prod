@@ -1,6 +1,7 @@
 import uuid
+from datetime import datetime
 
-from sqlalchemy import ForeignKey, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -64,6 +65,16 @@ class Property(UUIDPkMixin, TimestampMixin, Base):
     # own copies of their listing data shouldn't collide with each other,
     # and dev/test data under multiple accounts shouldn't either.
     airbnb_listing_id: Mapped[str | None] = mapped_column(String(64), index=True)
+
+    # Median nightly rate across comparable live Airbnb listings in this
+    # property's city, refreshed daily by app/services/smart_pricing_service.py
+    # via SearchApi.io's Airbnb engine (SEARCHAPI_API_KEY). Purely
+    # informational -- never fed automatically into pricing_engine's
+    # get_pricing/negotiate_rate math, which stays host-rule-driven.
+    # None until the first refresh has run for this property's city.
+    smart_price_estimate: Mapped[float | None] = mapped_column(Numeric(10, 2))
+    smart_price_sample_size: Mapped[int] = mapped_column(default=0, server_default="0")
+    smart_price_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     owner: Mapped["User"] = relationship(back_populates="properties")
     bookings: Mapped[list["Booking"]] = relationship(back_populates="property", cascade="all, delete-orphan")

@@ -133,3 +133,13 @@ class UpdateLeadArgs(BaseModel):
 class SearchFaqArgs(BaseModel):
     query: str
     property_id: str | None = None
+
+
+class SendPhotosArgs(BaseModel):
+    property_id: str
+    guest_phone: str
+
+    @field_validator("guest_phone")
+    @classmethod
+    def _clean_guest_phone(cls, value: str) -> str:
+        return _normalize_phone(value)

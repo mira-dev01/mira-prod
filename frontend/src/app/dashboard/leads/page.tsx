@@ -52,8 +52,6 @@ const statusTone: Record<string, StatusTone> = {
   closed: "neutral",
 };
 
-const temperatureRank: Record<string, number> = { hot: 0, warm: 1, cold: 2 };
-
 // A lead the voice agent never got anywhere with -- no name, no phone, no
 // summary. These are real rows (every escalated/qualifying call creates
 // one) but carry nothing a host can act on, so they shouldn't compete with
@@ -190,7 +188,7 @@ function LeadsKanban({
   function leadsForColumn(status: LeadStatus): LeadOut[] {
     return leads
       .filter((lead) => lead.status === status)
-      .sort((a, b) => (temperatureRank[a.lead_temperature ?? ""] ?? 3) - (temperatureRank[b.lead_temperature ?? ""] ?? 3));
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   }
 
   return (
@@ -262,11 +260,7 @@ function LeadsPageContent() {
   const statusFilteredLeads = (leads ?? []).filter((lead) => statusFilter === "all" || lead.status === statusFilter);
   const contentLeads = statusFilteredLeads
     .filter((lead) => !isEmptyLead(lead))
-    .sort((a, b) => {
-      const rankDiff = (temperatureRank[a.lead_temperature ?? ""] ?? 3) - (temperatureRank[b.lead_temperature ?? ""] ?? 3);
-      if (rankDiff !== 0) return rankDiff;
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-    });
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   const emptyLeads = statusFilteredLeads.filter(isEmptyLead);
 
   function openEdit(lead: LeadOut) {

@@ -4,13 +4,13 @@
     {
       "name": "backend",
       "runtimeExecutable": "bash",
-      "runtimeArgs": ["-c", "cd backend && source .venv/bin/activate && python -m uvicorn app.main:app --reload --port 8000"],
+      "runtimeArgs": ["-c", "cd '/Users/shagunverma/Desktop/mira /mira-prod/backend' && source .venv/bin/activate && python -m uvicorn app.main:app --reload --port 8000"],
       "port": 8000
     },
     {
       "name": "frontend",
       "runtimeExecutable": "bash",
-      "runtimeArgs": ["-c", "cd frontend && npm run dev"],
+      "runtimeArgs": ["-c", "cd '/Users/shagunverma/Desktop/mira /mira-prod/frontend' && npm run dev"],
       "port": 3000
     }
   ]

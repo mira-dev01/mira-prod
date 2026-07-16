@@ -31,6 +31,7 @@ from app.schemas.tool import (
     NegotiateRateArgs,
     RecommendPropertiesArgs,
     SearchFaqArgs,
+    SendPhotosArgs,
     SendWhatsappArgs,
     UpdateLeadArgs,
 )
@@ -157,6 +158,27 @@ def build_voice_tools(
             try:
                 args = SendWhatsappArgs(phone=phone, message=message, template_name=template_name)
                 result = await tool_handlers.handle_send_whatsapp(db, args, property_id, call_session_id)
+            except ValidationError:
+                result = INVALID_ARGS_MESSAGE
+        await params.result_callback(result)
+
+    async def send_photos(
+        params: FunctionCallParams,
+        property_id: str,
+        guest_phone: str,
+    ):
+        """Send the guest a link to photos of the property, e.g. when they
+        ask to see pictures/images of the place. Sends one gallery link
+        rather than individual photos.
+
+        Args:
+            property_id: The property's id, as given to you in your instructions.
+            guest_phone: The guest's phone number to send the link to.
+        """
+        async with AsyncSessionLocal() as db:
+            try:
+                args = SendPhotosArgs(property_id=property_id, guest_phone=guest_phone)
+                result = await tool_handlers.handle_send_photos(db, args, call_session_id, host_user_id)
             except ValidationError:
                 result = INVALID_ARGS_MESSAGE
         await params.result_callback(result)
@@ -387,6 +409,7 @@ def build_voice_tools(
         get_pricing,
         dispatch_technician,
         send_whatsapp,
+        send_photos,
         escalate_to_host,
         negotiate_rate,
         recommend_properties,

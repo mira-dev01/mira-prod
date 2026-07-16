@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.integrations import email_client
+from app.integrations.email_templates import build_escalation_email_html, build_photos_email_html
 from app.models.property import Property
 from app.models.unanswered_question import UnansweredQuestion
 from app.models.user import User
@@ -25,6 +26,7 @@ from app.schemas.tool import (
     NegotiateRateArgs,
     RecommendPropertiesArgs,
     SearchFaqArgs,
+    SendPhotosArgs,
     SendWhatsappArgs,
     UpdateLeadArgs,
 )
@@ -41,13 +43,13 @@ from app.services import (
 logger = logging.getLogger(__name__)
 
 
-async def _send_escalation_email(to_email: str, subject: str, body: str) -> None:
+async def _send_escalation_email(to_email: str, subject: str, body: str, html_body: str) -> None:
     # Runs detached via asyncio.create_task -- never awaited by the caller,
     # so exceptions here would otherwise vanish into asyncio's default
     # handler. Log instead, and never let a slow/failed SMTP send add
     # latency to the live call turn that triggered it.
     try:
-        result = await email_client.send_email(to_email, subject, body)
+        result = await email_client.send_email(to_email, subject, body, html_body=html_body)
         if result.get("status") == "skipped":
             logger.info("Escalation email to %s skipped: %s", to_email, result.get("reason"))
     except Exception:
@@ -181,6 +183,52 @@ async def handle_send_whatsapp(
     return f"Got it, I've queued a WhatsApp message to {args.phone}."
 
 
+async def handle_send_photos(
+    db: AsyncSession, args: SendPhotosArgs, call_session_id: uuid.UUID | None, host_user_id: uuid.UUID
+) -> str:
+    property_ = await _get_property(db, args.property_id)
+    if property_ is None:
+        return "I couldn't find that property to send photos for."
+    if not property_.photos:
+        return f"I don't have photos on file for {property_.name} yet -- I'll flag that to the host."
+
+    # One link, not N image attachments -- WhatsApp Business API bills per
+    # media message, so a gallery page beats sending each photo separately.
+    # Reuses the same Cloudinary URLs already on the property (populated by
+    # Airbnb/Bright Data import) rather than a host-maintained Drive folder,
+    # so this can never drift out of sync with what's actually on file.
+    gallery_url = f"{settings.frontend_base_url}/p/{property_.id}/photos"
+    await notification_service.create_notification(
+        db,
+        channel="whatsapp",
+        property_id=property_.id,
+        call_session_id=call_session_id,
+        urgency="low",
+        message=f"To {args.guest_phone}: Here are photos of {property_.name} -- {gallery_url}",
+    )
+
+    # WhatsApp Business API isn't wired up yet (see notification_service's
+    # docstring), so there's no real channel that actually reaches the
+    # guest's phone right now -- only email does. Fired the same
+    # detached/best-effort way as the escalation email, to the host's own
+    # inbox, purely so this is end-to-end testable before WhatsApp exists.
+    host_user = await db.get(User, host_user_id)
+    if host_user is not None:
+        asyncio.create_task(
+            _send_escalation_email(
+                host_user.notification_email or host_user.email,
+                subject=f"Photos requested — {property_.name}",
+                body=f"A guest ({args.guest_phone}) asked to see photos of {property_.name}.\n\n"
+                f"Gallery link (this is what send_photos would send them once WhatsApp is live): {gallery_url}",
+                html_body=build_photos_email_html(
+                    property_name=property_.name, guest_phone=args.guest_phone, gallery_url=gallery_url
+                ),
+            )
+        )
+
+    return f"Got it, I've sent a photo gallery link for {property_.name} to {args.guest_phone}."
+
+
 async def handle_escalate_to_host(
     db: AsyncSession, args: EscalateToHostArgs, call_session_id: uuid.UUID | None, host_user_id: uuid.UUID
 ) -> str:
@@ -229,8 +277,15 @@ async def handle_escalate_to_host(
         asyncio.create_task(
             _send_escalation_email(
                 host_user.notification_email or host_user.email,
-                subject=f"[Mira] {args.urgency.title()} escalation — {property_.name}",
+                subject=f"{args.urgency.title()} escalation — {property_.name}",
                 body=f"{message}\n\nView in dashboard: {settings.frontend_base_url}/dashboard/leads",
+                html_body=build_escalation_email_html(
+                    property_name=property_.name,
+                    urgency=args.urgency,
+                    reason=args.reason,
+                    call_summary=args.call_summary,
+                    guest_phone=args.guest_phone,
+                ),
             )
         )
 

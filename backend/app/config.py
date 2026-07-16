@@ -99,6 +99,15 @@ class Settings(BaseSettings):
     # link. See app/integrations/bright_data_client.py.
     bright_data_api_key: str | None = None
 
+    # SearchApi.io's Airbnb engine (https://www.searchapi.io/airbnb-api) --
+    # daily comparable-listing pricing for smart_pricing_service.py, feeding
+    # Property.smart_price_estimate. Free tier is a small one-time/monthly
+    # request allowance (SearchApi.io doesn't publish which) -- the daily
+    # refresh job makes one call per unique city, not per property, to
+    # stretch it. Unset = the refresh job no-ops (same pattern as
+    # bright_data_api_key).
+    searchapi_api_key: str | None = None
+
     # Cloudinary -- re-hosts property photos scraped via Bright Data
     # (see app/integrations/cloudinary_client.py) so listing images survive
     # even if the source Airbnb listing is edited/removed, and so MIRA can

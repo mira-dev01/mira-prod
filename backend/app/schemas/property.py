@@ -65,6 +65,18 @@ class PropertyUpdate(BaseModel):
         return value or None
 
 
+class PropertyGalleryOut(BaseModel):
+    """Unauthenticated, minimal view for the public guest-facing photo
+    gallery page -- only fields safe to expose with no login (see the
+    send_photos voice tool in app/services/tool_handlers.py, which is the
+    only thing that hands this URL out)."""
+
+    id: uuid.UUID
+    name: str
+    city: str | None
+    photos: list[str]
+
+
 class PropertyOut(BaseModel):
     id: uuid.UUID
     user_id: uuid.UUID
@@ -84,6 +96,9 @@ class PropertyOut(BaseModel):
     check_out_time: str
     max_guests: int
     airbnb_listing_id: str | None
+    smart_price_estimate: float | None
+    smart_price_sample_size: int
+    smart_price_updated_at: datetime | None
     created_at: datetime
 
     model_config = {"from_attributes": True}
