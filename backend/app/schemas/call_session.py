@@ -3,6 +3,8 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
+from app.schemas.notification import NotificationOut
+
 
 class CallSessionOut(BaseModel):
     id: uuid.UUID
@@ -28,3 +30,11 @@ class CallSessionOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class CallSessionDetailOut(CallSessionOut):
+    # Notification rows tied to this call (escalations, WhatsApp sends,
+    # etc.) -- only fetched for the single-call detail endpoint, not the
+    # list endpoint, since it's an extra join a host paging through Calls
+    # doesn't need on every row. See restructure.md Phase 1.1.
+    escalations: list[NotificationOut]

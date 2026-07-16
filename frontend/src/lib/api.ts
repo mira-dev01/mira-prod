@@ -5,6 +5,7 @@ import type {
   AnalyticsTimeseriesMetric,
   BookingCreate,
   BookingOut,
+  CallSessionDetailOut,
   CallSessionOut,
   FaqEntryCreate,
   FaqEntryOut,
@@ -201,7 +202,7 @@ export const api = {
           include_test_calls: params?.includeTestCalls ?? false,
         })}`
       ),
-    get: (id: string) => request<CallSessionOut>(`/calls/${id}`),
+    get: (id: string) => request<CallSessionDetailOut>(`/calls/${id}`),
   },
   guests: {
     list: (params?: { startDate?: string; endDate?: string }) =>

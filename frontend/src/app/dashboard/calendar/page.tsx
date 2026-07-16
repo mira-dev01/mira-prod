@@ -3,15 +3,10 @@
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { GuestCombobox } from "@/components/guest-combobox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RightPanel, RightPanelFooterButton } from "@/components/ui/right-panel";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAsync } from "@/hooks/use-async";
@@ -47,12 +42,16 @@ export default function CalendarPage() {
 
   const { data: properties, loading: loadingProperties } = useAsync(() => api.properties.list(), []);
   const { data: bookings, loading: loadingBookings, refetch } = useAsync(() => api.bookings.list(), []);
+  // Unfiltered (no date range) so any past guest can be picked regardless of
+  // when they last called -- this is a lookup list, not a report.
+  const { data: guests } = useAsync(() => api.guests.list({}), []);
 
   const [blockOpen, setBlockOpen] = useState(false);
   const [blockPropertyId, setBlockPropertyId] = useState<string>("");
   const [blockCheckIn, setBlockCheckIn] = useState("");
   const [blockCheckOut, setBlockCheckOut] = useState("");
   const [blockGuestName, setBlockGuestName] = useState("");
+  const [blockGuestPhone, setBlockGuestPhone] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const [unblockTarget, setUnblockTarget] = useState<{ booking: BookingOut; propertyName: string } | null>(null);
@@ -88,6 +87,7 @@ export default function CalendarPage() {
       setBlockCheckOut("");
     }
     setBlockGuestName("");
+    setBlockGuestPhone(null);
     setBlockOpen(true);
   }
 
@@ -101,6 +101,7 @@ export default function CalendarPage() {
         check_in: blockCheckIn,
         check_out: blockCheckOut,
         guest_name: blockGuestName || null,
+        guest_phone: blockGuestPhone,
         platform: "manual",
       });
       toast.success("Dates blocked");
@@ -169,15 +170,29 @@ export default function CalendarPage() {
       ) : !properties || properties.length === 0 ? (
         <p className="text-sm text-muted-foreground">No properties yet — add one to see its calendar here.</p>
       ) : (
-        <div className="max-h-[calc(100vh-20rem)] overflow-auto rounded-lg border">
-          <table className="border-collapse text-sm">
+        <div className="max-h-[calc(100vh-20rem)] w-full overflow-auto rounded-lg border">
+          {/* table-layout: fixed + w-full ties the table's rendered width to
+              this box explicitly -- an auto-layout table has no contract
+              with its container's width, which is what produced the
+              "squished" look as the surrounding flex box resized (see
+              restructure.md Phase 5). The property column gets a fixed
+              width; day columns split the remainder evenly via inline
+              style since their count is dynamic (28-31, can't be a static
+              Tailwind class). */}
+          <table className="w-full border-collapse text-sm" style={{ tableLayout: "fixed" }}>
+            <colgroup>
+              <col style={{ width: "140px" }} />
+              {days.map((day) => (
+                <col key={day} style={{ width: `calc((100% - 140px) / ${numDays})` }} />
+              ))}
+            </colgroup>
             <thead>
               <tr>
-                <th className="sticky top-0 left-0 z-20 min-w-[140px] border-b bg-card p-2 text-left">Property</th>
+                <th className="sticky top-0 left-0 z-20 border-b bg-card p-2 text-left">Property</th>
                 {days.map((day) => (
                   <th
                     key={day}
-                    className="sticky top-0 z-10 min-w-[28px] border-b border-l bg-card p-1 text-center text-xs font-normal text-muted-foreground"
+                    className="sticky top-0 z-10 border-b border-l bg-card p-1 text-center text-xs font-normal text-muted-foreground"
                   >
                     {day}
                   </th>
@@ -187,7 +202,7 @@ export default function CalendarPage() {
             <tbody>
               {properties.map((property: PropertyOut) => (
                 <tr key={property.id}>
-                  <td className="sticky left-0 z-10 min-w-[140px] border-b bg-card p-2 font-medium">
+                  <td className="sticky left-0 z-10 truncate border-b bg-card p-2 font-medium">
                     {property.name}
                   </td>
                   {days.map((day) => {
@@ -218,7 +233,7 @@ export default function CalendarPage() {
                         onMouseLeave={(e) => {
                           if (tone) e.currentTarget.style.background = `color-mix(in srgb, ${tone} 70%, transparent)`;
                         }}
-                        className={cn("h-7 min-w-[28px] cursor-pointer border-b border-l", !booking && "hover:bg-accent")}
+                        className={cn("h-7 cursor-pointer border-b border-l", !booking && "hover:bg-accent")}
                       />
                     );
                   })}
@@ -229,98 +244,103 @@ export default function CalendarPage() {
         </div>
       )}
 
-      <Dialog open={blockOpen} onOpenChange={setBlockOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Block dates</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleBlockDates} className="space-y-4">
+      <RightPanel
+        open={blockOpen}
+        onOpenChange={setBlockOpen}
+        title="Block dates"
+        footer={
+          <RightPanelFooterButton type="submit" form="block-dates-form" disabled={submitting}>
+            {submitting ? "Blocking…" : "Block dates"}
+          </RightPanelFooterButton>
+        }
+      >
+        <form id="block-dates-form" onSubmit={handleBlockDates} className="space-y-4">
+          <div className="space-y-2">
+            <Label>Property</Label>
+            <Select value={blockPropertyId} onValueChange={(v) => v && setBlockPropertyId(v)}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select a property">
+                  {(value: string) => properties?.find((p) => p.id === value)?.name ?? "Select a property"}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {properties?.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Property</Label>
-              <Select value={blockPropertyId} onValueChange={(v) => v && setBlockPropertyId(v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a property">
-                    {(value: string) => properties?.find((p) => p.id === value)?.name ?? "Select a property"}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {properties?.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="block-check-in">Check-in</Label>
-                <Input
-                  id="block-check-in"
-                  type="date"
-                  required
-                  value={blockCheckIn}
-                  onChange={(e) => setBlockCheckIn(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="block-check-out">Check-out</Label>
-                <Input
-                  id="block-check-out"
-                  type="date"
-                  required
-                  value={blockCheckOut}
-                  onChange={(e) => setBlockCheckOut(e.target.value)}
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="block-guest-name">Guest name (optional)</Label>
+              <Label htmlFor="block-check-in">Check-in</Label>
               <Input
-                id="block-guest-name"
-                value={blockGuestName}
-                onChange={(e) => setBlockGuestName(e.target.value)}
+                id="block-check-in"
+                type="date"
+                required
+                value={blockCheckIn}
+                onChange={(e) => setBlockCheckIn(e.target.value)}
               />
             </div>
-            <DialogFooter>
-              <Button type="submit" disabled={submitting}>
-                {submitting ? "Blocking…" : "Block dates"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={!!unblockTarget} onOpenChange={(open) => !open && setUnblockTarget(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Unblock dates</DialogTitle>
-          </DialogHeader>
-          {unblockTarget && (
-            <div className="space-y-4">
-              <div className="space-y-1 rounded-md border p-3 text-sm">
-                <p className="font-medium">{unblockTarget.propertyName}</p>
-                <p className="text-muted-foreground">
-                  {unblockTarget.booking.check_in} → {unblockTarget.booking.check_out}
-                </p>
-                <p className="text-muted-foreground capitalize">
-                  {unblockTarget.booking.platform}
-                  {unblockTarget.booking.guest_name ? ` · ${unblockTarget.booking.guest_name}` : ""}
-                </p>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Use this for a cancellation or if these dates were blocked by mistake. If this came from
-                Airbnb and is still active there, it will reappear on the next iCal sync.
-              </p>
-              <DialogFooter>
-                <Button variant="destructive" onClick={handleUnblock} disabled={unblocking}>
-                  {unblocking ? "Unblocking…" : "Unblock these dates"}
-                </Button>
-              </DialogFooter>
+            <div className="space-y-2">
+              <Label htmlFor="block-check-out">Check-out</Label>
+              <Input
+                id="block-check-out"
+                type="date"
+                required
+                value={blockCheckOut}
+                onChange={(e) => setBlockCheckOut(e.target.value)}
+              />
             </div>
-          )}
-        </DialogContent>
-      </Dialog>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="block-guest-name">Guest name (optional)</Label>
+            <GuestCombobox
+              guests={guests ?? []}
+              name={blockGuestName}
+              onNameChange={setBlockGuestName}
+              onSelectGuest={(guest) => setBlockGuestPhone(guest?.phone ?? null)}
+            />
+            {blockGuestPhone && (
+              <p className="text-xs text-muted-foreground">
+                Linked to existing guest ({blockGuestPhone}) — this stay will show up on their guest
+                profile.
+              </p>
+            )}
+          </div>
+        </form>
+      </RightPanel>
+
+      <RightPanel
+        open={!!unblockTarget}
+        onOpenChange={(open) => !open && setUnblockTarget(null)}
+        title="Unblock dates"
+        footer={
+          <RightPanelFooterButton variant="destructive" onClick={handleUnblock} disabled={unblocking}>
+            {unblocking ? "Unblocking…" : "Unblock these dates"}
+          </RightPanelFooterButton>
+        }
+      >
+        {unblockTarget && (
+          <div className="space-y-4">
+            <div className="space-y-1 rounded-md border p-3 text-sm">
+              <p className="font-medium">{unblockTarget.propertyName}</p>
+              <p className="text-muted-foreground">
+                {unblockTarget.booking.check_in} → {unblockTarget.booking.check_out}
+              </p>
+              <p className="text-muted-foreground capitalize">
+                {unblockTarget.booking.platform}
+                {unblockTarget.booking.guest_name ? ` · ${unblockTarget.booking.guest_name}` : ""}
+              </p>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Use this for a cancellation or if these dates were blocked by mistake. If this came from
+              Airbnb and is still active there, it will reappear on the next iCal sync.
+            </p>
+          </div>
+        )}
+      </RightPanel>
     </div>
   );
 }

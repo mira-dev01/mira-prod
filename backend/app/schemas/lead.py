@@ -34,6 +34,13 @@ class LeadOut(BaseModel):
     occasion: str | None
     created_at: datetime
     updated_at: datetime
+    # Not a Lead column -- read off the most recent Notification sharing this
+    # lead's call_session_id (see app/api/v1/leads.py). Notification is the
+    # only place urgency (low/medium/high/emergency) is actually captured
+    # today; surfacing it here lets the dashboard show one merged
+    # "leads + live requests" view instead of two separate concepts. None
+    # for a lead with no linked escalation.
+    urgency: str | None = None
 
     model_config = {"from_attributes": True}
 

@@ -3,15 +3,8 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { RightPanel, RightPanelFooterButton } from "@/components/ui/right-panel";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAsync } from "@/hooks/use-async";
 import { api, API_BASE_URL, getToken } from "@/lib/api";
@@ -51,40 +44,37 @@ export function TalkToMiraDialog({ open, onOpenChange }: { open: boolean; onOpen
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Talk to Mira</DialogTitle>
-          <DialogDescription>
-            Test the voice agent in your browser, as a guest calling in would hear it.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-2">
-          <Label>Property</Label>
-          <Select value={selected} onValueChange={(v) => v && setSelected(v)}>
-            <SelectTrigger disabled={loading}>
-              <SelectValue placeholder="Full portfolio (Lead Agent)">
-                {(value: string) =>
-                  value === PORTFOLIO_VALUE
-                    ? "Full portfolio (Lead Agent)"
-                    : properties?.find((p) => p.id === value)?.name ?? "Full portfolio (Lead Agent)"
-                }
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={PORTFOLIO_VALUE}>Full portfolio (Lead Agent)</SelectItem>
-              {properties?.map((p) => (
-                <SelectItem key={p.id} value={p.id}>
-                  {p.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <DialogFooter>
-          <Button onClick={handleStart}>Start test call</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <RightPanel
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Talk to Mira"
+      footer={<RightPanelFooterButton onClick={handleStart}>Start test call</RightPanelFooterButton>}
+    >
+      <p className="text-sm text-muted-foreground">
+        Test the voice agent in your browser, as a guest calling in would hear it.
+      </p>
+      <div className="space-y-2">
+        <Label>Property</Label>
+        <Select value={selected} onValueChange={(v) => v && setSelected(v)}>
+          <SelectTrigger disabled={loading} className="w-full">
+            <SelectValue placeholder="Full portfolio (Lead Agent)">
+              {(value: string) =>
+                value === PORTFOLIO_VALUE
+                  ? "Full portfolio (Lead Agent)"
+                  : properties?.find((p) => p.id === value)?.name ?? "Full portfolio (Lead Agent)"
+              }
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={PORTFOLIO_VALUE}>Full portfolio (Lead Agent)</SelectItem>
+            {properties?.map((p) => (
+              <SelectItem key={p.id} value={p.id}>
+                {p.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </RightPanel>
   );
 }

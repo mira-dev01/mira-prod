@@ -1,46 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAsync } from "@/hooks/use-async";
 import { useDateRange } from "@/hooks/use-date-range";
 import { api } from "@/lib/api";
-import { isBrowserTestIdentity } from "@/lib/utils";
 import { DateRangePicker } from "@/components/date-range-picker";
-import { StatusChip, type StatusTone } from "@/components/status-chip";
-
-const statusTone: Record<string, StatusTone> = {
-  completed: "live",
-  active: "progress",
-  in_progress: "progress",
-  escalated: "destructive",
-  failed: "destructive",
-  missed: "destructive",
-};
-
-// Same vocabulary/meaning as notifications-feed.tsx's urgencyTone (both read
-// escalate_to_host's `urgency: low|medium|high|emergency`) -- kept as its
-// own small map rather than importing that one since these are two
-// unrelated pages coincidentally sharing a domain value, not a shared
-// component that should import from each other.
-const urgencyTone: Record<string, StatusTone> = {
-  emergency: "destructive",
-  high: "destructive",
-  medium: "pending",
-  low: "neutral",
-};
-
-function formatDuration(minutes: number | null): string {
-  if (minutes === null) return "—";
-  const whole = Math.floor(minutes);
-  const seconds = Math.round((minutes - whole) * 60);
-  return `${whole}m ${seconds}s`;
-}
+import { CallsTable } from "@/components/calls-table";
 
 export default function CallsPage() {
   const [includeTestCalls, setIncludeTestCalls] = useState(false);
@@ -73,52 +41,7 @@ export default function CallsPage() {
       ) : !calls || calls.length === 0 ? (
         <p className="text-sm text-muted-foreground">No calls yet.</p>
       ) : (
-        <div className="overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Caller</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Phone</TableHead>
-              <TableHead>Duration</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Urgency</TableHead>
-              <TableHead>Started</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {calls.map((call) => (
-              <TableRow key={call.id} className="cursor-pointer">
-                <TableCell>
-                  <Link href={`/dashboard/calls/${call.id}`} className="hover:underline">
-                    {isBrowserTestIdentity(call.caller_number) ? (
-                      <Badge variant="outline">Browser test</Badge>
-                    ) : (
-                      call.caller_number ?? "Unknown"
-                    )}
-                  </Link>
-                </TableCell>
-                <TableCell>{call.guest_name ?? "—"}</TableCell>
-                <TableCell>
-                  {isBrowserTestIdentity(call.guest_phone) ? "—" : call.guest_phone ?? "—"}
-                </TableCell>
-                <TableCell>{formatDuration(call.duration_minutes)}</TableCell>
-                <TableCell>
-                  <StatusChip status={call.status} tone={statusTone[call.status] ?? "neutral"} />
-                </TableCell>
-                <TableCell>
-                  {call.urgency ? (
-                    <StatusChip status={call.urgency} tone={urgencyTone[call.urgency] ?? "neutral"} />
-                  ) : (
-                    "—"
-                  )}
-                </TableCell>
-                <TableCell>{call.started_at ? new Date(call.started_at).toLocaleString() : "—"}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-        </div>
+        <CallsTable calls={calls} />
       )}
     </div>
   );

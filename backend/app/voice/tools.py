@@ -325,7 +325,14 @@ def build_voice_tools(
         them during the conversation.
 
         Args:
-            guest_name: The guest's name, if known.
+            guest_name: The guest's name, if known. Always write this in
+                Latin/English script -- transliterate if the guest said it in
+                Hindi/Devanagari or Hinglish (e.g. "शगुन" or spoken "Shagun"
+                both become "Shagun"), even if the rest of this conversation is
+                in Hindi. This keeps one guest's name spelled the same way
+                across calls regardless of which language they called in, so
+                repeat-guest matching in the dashboard's Guests page doesn't
+                silently fail on a script mismatch.
             phone: The guest's phone number, if known.
             email: The guest's email, if known.
             check_in: Desired check-in date, ISO format (YYYY-MM-DD), if known.

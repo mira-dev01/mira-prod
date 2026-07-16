@@ -7,15 +7,9 @@ import { ArrowRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { ListRow } from "@/components/ui/list-row";
+import { RightPanel, RightPanelFooterButton } from "@/components/ui/right-panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -165,72 +159,71 @@ export function UnansweredQuestionsCard({ limit, linkToFaqPage }: { limit?: numb
         )}
       </Card>
 
-      <Dialog
+      <RightPanel
         open={!!answeringGap}
         onOpenChange={(open) => {
           if (!open) setAnsweringGap(null);
         }}
+        title={<>Answer — {answeringGap?.question}</>}
+        footer={
+          <RightPanelFooterButton
+            type="submit"
+            form="answer-gap-form"
+            disabled={answeringSubmitting || (!gapAnswerText && !recordedBlob)}
+          >
+            {answeringSubmitting ? "Saving…" : "Save as FAQ entry"}
+          </RightPanelFooterButton>
+        }
       >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Answer — {answeringGap?.question}</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleAnswerGap} className="space-y-4">
-            {answeringGap?.suggested_answer && (
+        <form id="answer-gap-form" onSubmit={handleAnswerGap} className="space-y-4">
+          {answeringGap?.suggested_answer && (
+            <p className="text-xs text-muted-foreground">
+              This looks similar to a question you already answered — pre-filled below, edit or clear it if it
+              doesn&apos;t fit.
+            </p>
+          )}
+          <div className="space-y-2">
+            <Label htmlFor="gap-answer">Type an answer</Label>
+            <Textarea
+              id="gap-answer"
+              value={gapAnswerText}
+              onChange={(e) => setGapAnswerText(e.target.value)}
+              disabled={!!recordedBlob}
+              placeholder="e.g. Yes, the pool is heated and open from 7am to 9pm."
+            />
+          </div>
+
+          <div className="space-y-2 rounded-md border p-3">
+            <Label>Or record a voice answer</Label>
+            <div className="flex items-center gap-3">
+              {!isRecording ? (
+                <Button type="button" variant="outline" size="sm" onClick={startRecording} className="shrink-0">
+                  {recordedBlob ? "Re-record" : "Start recording"}
+                </Button>
+              ) : (
+                <Button type="button" variant="destructive" size="sm" onClick={stopRecording} className="shrink-0">
+                  Stop recording
+                </Button>
+              )}
+              {recordedUrl && <audio controls src={recordedUrl} className="h-8 min-w-0 flex-1" />}
+            </div>
+            {recordedBlob && (
               <p className="text-xs text-muted-foreground">
-                This looks similar to a question you already answered — pre-filled below, edit or clear it if it
-                doesn&apos;t fit.
+                Voice answer recorded -- it will be transcribed and used instead of the typed answer above.
               </p>
             )}
-            <div className="space-y-2">
-              <Label htmlFor="gap-answer">Type an answer</Label>
-              <Textarea
-                id="gap-answer"
-                value={gapAnswerText}
-                onChange={(e) => setGapAnswerText(e.target.value)}
-                disabled={!!recordedBlob}
-                placeholder="e.g. Yes, the pool is heated and open from 7am to 9pm."
-              />
+          </div>
+
+          {answeringGap?.property_id && (
+            <div className="flex items-center gap-2">
+              <Switch id="apply-to-property" checked={applyToProperty} onCheckedChange={setApplyToProperty} />
+              <Label htmlFor="apply-to-property" className="text-sm text-muted-foreground">
+                Apply only to {propertyName(answeringGap.property_id)} (otherwise applies portfolio-wide)
+              </Label>
             </div>
-
-            <div className="space-y-2 rounded-md border p-3">
-              <Label>Or record a voice answer</Label>
-              <div className="flex items-center gap-3">
-                {!isRecording ? (
-                  <Button type="button" variant="outline" size="sm" onClick={startRecording} className="shrink-0">
-                    {recordedBlob ? "Re-record" : "Start recording"}
-                  </Button>
-                ) : (
-                  <Button type="button" variant="destructive" size="sm" onClick={stopRecording} className="shrink-0">
-                    Stop recording
-                  </Button>
-                )}
-                {recordedUrl && <audio controls src={recordedUrl} className="h-8 min-w-0 flex-1" />}
-              </div>
-              {recordedBlob && (
-                <p className="text-xs text-muted-foreground">
-                  Voice answer recorded -- it will be transcribed and used instead of the typed answer above.
-                </p>
-              )}
-            </div>
-
-            {answeringGap?.property_id && (
-              <div className="flex items-center gap-2">
-                <Switch id="apply-to-property" checked={applyToProperty} onCheckedChange={setApplyToProperty} />
-                <Label htmlFor="apply-to-property" className="text-sm text-muted-foreground">
-                  Apply only to {propertyName(answeringGap.property_id)} (otherwise applies portfolio-wide)
-                </Label>
-              </div>
-            )}
-
-            <DialogFooter>
-              <Button type="submit" disabled={answeringSubmitting || (!gapAnswerText && !recordedBlob)}>
-                Save as FAQ entry
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+          )}
+        </form>
+      </RightPanel>
     </>
   );
 }
