@@ -76,6 +76,15 @@ class Property(UUIDPkMixin, TimestampMixin, Base):
     smart_price_sample_size: Mapped[int] = mapped_column(default=0, server_default="0")
     smart_price_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    # When true, pricing_engine.calculate_price quotes base_price as-is for
+    # every night (no WEEKEND_SURGE_MULTIPLIER) and charges no cleaning fee
+    # or tax on top -- for hosts whose Airbnb listing price is already
+    # all-inclusive/final and who want Mira to match it exactly rather than
+    # layer its own markup on top. Defaults false: every other property
+    # keeps today's behavior unchanged. Length-of-stay discounts still apply
+    # either way -- those are a host-configured discount, not a markup.
+    exact_airbnb_pricing: Mapped[bool] = mapped_column(default=False, server_default="false")
+
     owner: Mapped["User"] = relationship(back_populates="properties")
     bookings: Mapped[list["Booking"]] = relationship(back_populates="property", cascade="all, delete-orphan")
     call_sessions: Mapped[list["CallSession"]] = relationship(

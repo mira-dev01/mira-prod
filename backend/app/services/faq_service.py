@@ -80,6 +80,52 @@ async def search_legacy_property_faq(db: AsyncSession, property_id: uuid.UUID, q
     ][:3]
 
 
+def full_property_context(property_: Property) -> str:
+    """Final search_faq fallback -- every fact on file for this property, in
+    one block, handed to the model to pick the actual answer out of.
+
+    Deliberately NOT keyword-matched against the query (an earlier version of
+    this had separate search_neighborhood_info/search_amenities helpers doing
+    sentence/keyword overlap, tuned per field). That approach quietly missed
+    real, on-file answers twice in testing -- once for a neighborhood
+    question, once for an amenity -- because keyword overlap is inherently
+    guessable-around: any phrasing that doesn't share a token with the source
+    text falls through to an unnecessary escalation. The host's own
+    requirement is stronger than "usually finds it": anything on file must
+    resolve, every time, and escalation is reserved for what's genuinely not
+    there. Handing over everything and letting the model itself read for the
+    answer is what actually guarantees that.
+
+    Covers exactly what Guest Support's system prompt gets for free (see
+    build_system_prompt) -- this is what gives a Lead Agent (portfolio-wide)
+    call the same knowledge once a specific property is being discussed,
+    without paying to repeat it for all 15 properties on every turn (see
+    build_lead_system_prompt's comment on why it's omitted there upfront).
+    """
+    # Imported here, not at module level -- avoids a system_prompt <-> faq_service
+    # import cycle (system_prompt.py doesn't import faq_service, so this
+    # direction is safe, but keeping the import local makes that non-obvious
+    # safety explicit rather than accidental).
+    from app.prompts.system_prompt import _active_seasonal_notes
+
+    parts = [
+        f"Check-in time: {property_.check_in_time}. Check-out time: {property_.check_out_time}. "
+        f"Max guests: {property_.max_guests}."
+    ]
+    if property_.usp:
+        parts.append(f"Description: {property_.usp}")
+    if property_.house_rules:
+        parts.append(f"House rules: {property_.house_rules}")
+    if property_.neighborhood_info:
+        parts.append(f"Neighborhood info: {property_.neighborhood_info}")
+    if property_.amenities:
+        parts.append(f"Amenities: {', '.join(property_.amenities)}")
+    active_notes = _active_seasonal_notes(property_.seasonal_notes)
+    if active_notes:
+        parts.append(f"Currently in effect: {'; '.join(active_notes)}")
+    return " | ".join(parts)
+
+
 async def list_faq_entries(db: AsyncSession, user_id: uuid.UUID) -> list[FaqEntry]:
     return list(
         (

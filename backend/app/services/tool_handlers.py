@@ -504,6 +504,13 @@ async def handle_search_faq(
         if legacy:
             return " | ".join(f"{item['question']}: {item['answer']}" for item in legacy)
 
+        property_ = await _get_property(db, str(property_id))
+        if property_ is not None:
+            # Every fact on file for this property, handed to the model to
+            # read the actual answer out of -- see full_property_context's
+            # docstring for why this replaced per-field keyword matching.
+            return f"{property_.name}: {faq_service.full_property_context(property_)}"
+
     # No verified answer anywhere -- log the gap for the FAQ Learning Engine
     # (app/api/v1/faq.py's /faq/gaps endpoints) so hosts can see frequently
     # unanswered questions and convert them into real FaqEntry rows. Never

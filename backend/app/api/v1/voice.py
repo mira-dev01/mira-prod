@@ -3,8 +3,15 @@ client (WebRTC) so the agent can be tried out from the dashboard without a
 real phone call.
 
 Configure the Exotel Voicebot Applet in the host's call flow with a static
-URL: wss://<backend_base_url>/api/v1/voice/exotel/ws?token=<EXOTEL_WEBHOOK_TOKEN>
+URL: wss://<backend_base_url>/api/v1/voice/exotel/ws/<EXOTEL_WEBHOOK_TOKEN>
 (no extra HTTP round-trip endpoint needed -- Exotel connects directly).
+
+The token is a PATH segment, not a `?token=` query param -- confirmed live
+that Exotel's Voicebot Applet strips query strings from the configured WSS
+URL before connecting (every real Exotel connection arrived at plain
+`/exotel/ws` with no query string at all, while the same URL worked fine
+tested directly with curl), so a query param can never reach us from Exotel
+even though it's otherwise the more conventional place for a bearer token.
 """
 
 import asyncio
@@ -12,7 +19,7 @@ import json
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, Query, WebSocket
+from fastapi import APIRouter, Depends, WebSocket
 from fastapi.responses import HTMLResponse
 from pipecat.runner.utils import parse_telephony_websocket
 from pipecat.transports.smallwebrtc.connection import IceServer, SmallWebRTCConnection
@@ -71,8 +78,8 @@ def _ice_servers() -> list[IceServer]:
     return servers
 
 
-@router.websocket("/exotel/ws")
-async def exotel_voice_ws(websocket: WebSocket, token: str | None = Query(default=None)) -> None:
+@router.websocket("/exotel/ws/{token}")
+async def exotel_voice_ws(websocket: WebSocket, token: str) -> None:
     if not verify_webhook_token(token):
         logger.warning("Rejected Exotel voice websocket with invalid/missing token")
         await websocket.close(code=4401)
