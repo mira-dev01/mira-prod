@@ -119,6 +119,10 @@ export type PropertyOut = {
   check_out_time: string;
   max_guests: number;
   airbnb_listing_id: string | null;
+  smart_price_estimate: number | null;
+  smart_price_sample_size: number;
+  smart_price_updated_at: string | null;
+  exact_airbnb_pricing: boolean;
   created_at: string;
 };
 
@@ -152,6 +156,7 @@ export type PropertyCreate = {
   check_in_time?: string;
   check_out_time?: string;
   max_guests?: number;
+  exact_airbnb_pricing?: boolean;
 };
 
 export type PropertyUpdate = Partial<PropertyCreate>;

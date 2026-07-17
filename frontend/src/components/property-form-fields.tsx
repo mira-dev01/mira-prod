@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import type { FAQItem, PropertyCreate, SeasonalNote } from "@/lib/types";
 
@@ -79,6 +80,21 @@ export function PropertyFormFields({
             required
             value={form.base_price}
             onChange={(e) => onChange({ ...form, base_price: Number(e.target.value) })}
+          />
+        </div>
+        <div className="col-span-2 flex items-center justify-between rounded-lg border p-3">
+          <div className="space-y-0.5">
+            <Label htmlFor="exact_airbnb_pricing">Quote exact Airbnb price</Label>
+            <p className="text-micro text-muted-foreground">
+              Off: Mira adds its own weekend surge, cleaning fee, and tax on top of the base price above. On: Mira
+              quotes the base price as-is, with no markup — use this if your base price already matches your final
+              Airbnb rate for every date.
+            </p>
+          </div>
+          <Switch
+            id="exact_airbnb_pricing"
+            checked={form.exact_airbnb_pricing ?? false}
+            onCheckedChange={(checked) => onChange({ ...form, exact_airbnb_pricing: checked })}
           />
         </div>
         <div className="space-y-2">
