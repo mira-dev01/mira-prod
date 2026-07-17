@@ -39,6 +39,7 @@ const emptyForm: PropertyCreate = {
   check_in_time: "14:00",
   check_out_time: "11:00",
   max_guests: 4,
+  exact_airbnb_pricing: false,
 };
 
 function normalizeForSubmit(form: PropertyCreate): PropertyCreate {
@@ -73,6 +74,7 @@ function propertyToForm(property: PropertyOut): PropertyCreate {
     check_in_time: property.check_in_time,
     check_out_time: property.check_out_time,
     max_guests: property.max_guests,
+    exact_airbnb_pricing: property.exact_airbnb_pricing,
   };
 }
 

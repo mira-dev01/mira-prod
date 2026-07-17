@@ -124,7 +124,7 @@ See [agents.md](agents.md) for how `search_faq` logs gaps during a live call.
 
 | Method & path | Purpose | Auth |
 |---|---|---|
-| `WS /voice/exotel/ws` | Real Exotel call websocket (raw-PCM media protocol). Configured directly in the Exotel Voicebot Applet as `wss://<backend>/api/v1/voice/exotel/ws?token=<EXOTEL_WEBHOOK_TOKEN>` | `token` query param (`EXOTEL_WEBHOOK_TOKEN`), not JWT |
+| `WS /voice/exotel/ws/{token}` | Real Exotel call websocket (raw-PCM media protocol). Configured directly in the Exotel Voicebot Applet as `wss://<backend>/api/v1/voice/exotel/ws/<EXOTEL_WEBHOOK_TOKEN>` -- token is a PATH segment, not a query param: Exotel's Voicebot Applet strips query strings from the configured WSS URL before connecting (confirmed live) | `token` path segment (`EXOTEL_WEBHOOK_TOKEN`), not JWT |
 | `POST /voice/test/offer` | WebRTC offer/answer signaling for the in-dashboard "talk to Mira" test. Omit `property_id` for the portfolio-wide Lead Agent; include it for Guest Support on one property | required |
 | `GET /voice/test` | Standalone browser test page (mic in/speaker out), opened with `?token=<JWT>&property_id=<optional>` | `token` query param (JWT), not a bearer header |
 

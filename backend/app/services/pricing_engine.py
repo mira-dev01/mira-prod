@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.integrations.searchapi_client import fetch_listing_total_price
 from app.models.guest_profile import GuestProfile
 from app.models.host_discount_rule import HostDiscountRule
 from app.models.pricing_rule import PricingRule
@@ -38,8 +39,8 @@ class PriceBreakdown:
     per_night_avg: float
 
 
-def _nightly_rate(base_price: float, day: date) -> float:
-    if day.weekday() in WEEKEND_WEEKDAYS:
+def _nightly_rate(base_price: float, day: date, apply_surge: bool) -> float:
+    if apply_surge and day.weekday() in WEEKEND_WEEKDAYS:
         return round(base_price * settings.weekend_surge_multiplier, 2)
     return base_price
 
@@ -72,19 +73,38 @@ async def calculate_price(
 ) -> PriceBreakdown:
     nights = (check_out - check_in).days
     base_price = float(property_.base_price)
+    apply_markup = not property_.exact_airbnb_pricing
 
-    nightly_rates = [_nightly_rate(base_price, check_in + timedelta(days=i)) for i in range(nights)]
-    base_total = round(sum(nightly_rates), 2)
-    weekend_nights = sum(1 for d in nightly_rates if d != base_price)
+    live_total: float | None = None
+    if property_.exact_airbnb_pricing and property_.airbnb_listing_id and property_.city:
+        # Airbnb Smart Pricing changes the listing's rate daily/per-date --
+        # no static base_price can stay accurate for a host on it (confirmed
+        # live: Property.base_price was already stale again days after being
+        # manually corrected). Fetch this exact listing's current price for
+        # these exact dates instead of trusting the stored number. Falls
+        # back to the static base_price/night math below on any failure
+        # (rate-limited, listing not in this page of results, API down) --
+        # never blocks a live pricing quote on this call succeeding.
+        live_total = await fetch_listing_total_price(
+            property_.city, property_.airbnb_listing_id, check_in, check_out
+        )
+
+    if live_total is not None:
+        base_total = round(live_total, 2)
+        weekend_nights = sum(1 for i in range(nights) if (check_in + timedelta(days=i)).weekday() in WEEKEND_WEEKDAYS)
+    else:
+        nightly_rates = [_nightly_rate(base_price, check_in + timedelta(days=i), apply_markup) for i in range(nights)]
+        base_total = round(sum(nightly_rates), 2)
+        weekend_nights = sum(1 for d in nightly_rates if d != base_price)
 
     discount_percent = 0.0
     if apply_discounts:
         discount_percent = await _length_of_stay_discount_percent(db, property_.id, nights)
     discount_amount = round(base_total * discount_percent / 100, 2)
 
-    cleaning_fee = float(settings.default_cleaning_fee_inr)
+    cleaning_fee = float(settings.default_cleaning_fee_inr) if apply_markup else 0.0
     taxable_amount = base_total - discount_amount + cleaning_fee
-    tax_amount = round(taxable_amount * settings.default_tax_percent / 100, 2)
+    tax_amount = round(taxable_amount * settings.default_tax_percent / 100, 2) if apply_markup else 0.0
 
     total = round(base_total - discount_amount + cleaning_fee + tax_amount, 2)
 

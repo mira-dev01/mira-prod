@@ -67,8 +67,10 @@ def test_today_anchor_precomputes_correct_weekend_dates(monkeypatch):
     # Tuesday, 2026-06-30, so the upcoming weekend is July 4-5.
     monkeypatch.setattr(system_prompt, "datetime", _FixedDatetime)
     prompt = build_system_prompt(_property(), None, _user())
-    assert "2026-07-04 (Saturday) to 2026-07-05 (Sunday)" in prompt
-    assert "2026-07-11 to 2026-07-12" in prompt
+    # Regression: "this weekend" and "next weekend" were previously (wrongly)
+    # documented as the same dates -- they must resolve to different weekends.
+    assert "\"This weekend\" means the upcoming 2026-07-04 (Saturday) to 2026-07-05 (Sunday)" in prompt
+    assert "\"Next weekend\" means the weekend AFTER that: 2026-07-11 (Saturday) to 2026-07-12 (Sunday)" in prompt
     assert "Tomorrow is 2026-07-01" in prompt
 
 

@@ -123,6 +123,44 @@ function PricingPageContent() {
         </p>
       </div>
 
+      {(() => {
+        const withSmartPrice = (properties ?? []).filter((p) => p.smart_price_estimate != null);
+        if (withSmartPrice.length === 0) return null;
+        return (
+          <Card className="max-w-3xl">
+            <CardHeader>
+              <CardTitle>Smart pricing</CardTitle>
+              <CardDescription>
+                Median nightly rate across comparable live Airbnb listings in the same city, refreshed daily.
+                Informational only — never applied automatically to quoted prices.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Property</TableHead>
+                    <TableHead>Your price</TableHead>
+                    <TableHead>Market price (Airbnb)</TableHead>
+                    <TableHead>Comparables</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {withSmartPrice.map((p) => (
+                    <TableRow key={p.id}>
+                      <TableCell>{p.name}</TableCell>
+                      <TableCell>₹{p.base_price.toLocaleString("en-IN")}/night</TableCell>
+                      <TableCell>₹{p.smart_price_estimate!.toLocaleString("en-IN")}/night</TableCell>
+                      <TableCell className="text-muted-foreground">{p.smart_price_sample_size} listings in {p.city}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        );
+      })()}
+
       {approvedDiscountRulesCount > 0 && (
         <Card className="max-w-2xl border-primary/30">
           <CardHeader>

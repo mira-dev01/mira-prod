@@ -392,6 +392,8 @@ async def _run_pipeline(
 
             asyncio.create_task(_update_guest_memory())
 
+        greeting_sent = False
+
         @transport.event_handler("on_client_connected")
         async def _on_connected_greeting(transport, client):
             # worker.queue_frame() injects the frame at the true SOURCE of the
@@ -403,6 +405,14 @@ async def _run_pipeline(
             # and is the only mechanism that reliably reached TTS in testing --
             # pushing directly into llm.push_frame() or tts.push_frame() either
             # skipped TTS synthesis entirely or hit WebSocket lifecycle issues.
+            #
+            # SmallWebRTC can fire on_client_connected more than once per call
+            # (ICE renegotiation) -- without this guard the greeting gets
+            # queued again on the second firing and the guest hears it twice.
+            nonlocal greeting_sent
+            if greeting_sent:
+                return
+            greeting_sent = True
             try:
                 await worker.queue_frame(TTSSpeakFrame(first_message))
             except Exception:
