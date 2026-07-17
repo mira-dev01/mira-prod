@@ -58,6 +58,7 @@ class PropertyUpdate(BaseModel):
     check_in_time: str | None = None
     check_out_time: str | None = None
     max_guests: int | None = None
+    exact_airbnb_pricing: bool | None = None
 
     @field_validator("exophone")
     @classmethod
@@ -99,6 +100,7 @@ class PropertyOut(BaseModel):
     smart_price_estimate: float | None
     smart_price_sample_size: int
     smart_price_updated_at: datetime | None
+    exact_airbnb_pricing: bool
     created_at: datetime
 
     model_config = {"from_attributes": True}

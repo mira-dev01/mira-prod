@@ -41,6 +41,11 @@ async def fetch_comparable_nightly_rates(
                 "check_in_date": check_in.isoformat(),
                 "check_out_date": check_out.isoformat(),
                 "adults": adults,
+                # Defaults to USD otherwise -- confirmed live (a Goa search
+                # came back as "$155", silently treated as a rupee figure
+                # until this was added, producing nonsense ~₹50-100/night
+                # "smart prices"). MIRA is India-only, so always request INR.
+                "currency": "INR",
                 "api_key": settings.searchapi_api_key,
             },
         )
@@ -66,3 +71,46 @@ async def fetch_comparable_nightly_rates(
             nightly_rates.append(round(per_night, 2))
 
     return nightly_rates
+
+
+async def fetch_listing_total_price(
+    city: str, listing_id: str, check_in: date, check_out: date, adults: int = 2, timeout: float = 15.0
+) -> float | None:
+    """Live total price for ONE specific Airbnb listing over [check_in,
+    check_out), for hosts on Airbnb's own Smart Pricing (rate changes daily/
+    per-date, so no static Property.base_price can stay accurate -- see
+    pricing_engine.calculate_price's exact_airbnb_pricing branch). There's no
+    per-listing pricing endpoint, so this runs the same city search as
+    fetch_comparable_nightly_rates and picks out the one listing matching
+    `listing_id` (Property.airbnb_listing_id, captured at Bright Data import
+    time). Returns None (never raises) if the listing isn't found in that
+    page of results or on any request failure -- callers fall back to
+    Property.base_price rather than blocking a live pricing quote on this."""
+    if not settings.searchapi_api_key:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.get(
+                _BASE_URL,
+                params={
+                    "engine": "airbnb",
+                    "q": city,
+                    "check_in_date": check_in.isoformat(),
+                    "check_out_date": check_out.isoformat(),
+                    "adults": adults,
+                    "currency": "INR",
+                    "api_key": settings.searchapi_api_key,
+                },
+            )
+            if response.status_code >= 400:
+                return None
+            data = response.json()
+    except httpx.HTTPError:
+        return None
+
+    listings = data.get("properties") or data.get("listings") or []
+    match = next((listing for listing in listings if str(listing.get("id")) == str(listing_id)), None)
+    if match is None:
+        return None
+    total = (match.get("price") or {}).get("extracted_total_price")
+    return float(total) if isinstance(total, (int, float)) and total > 0 else None
