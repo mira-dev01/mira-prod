@@ -6,7 +6,7 @@ PostgreSQL via SQLAlchemy async (asyncpg driver). All models live in `backend/ap
 
 Migrations live in `backend/alembic/versions/`. Apply with `alembic upgrade head` (run from `backend/`, needs `DATABASE_URL` resolvable).
 
-Current head (confirmed via `alembic heads` against this repo): **`f3a8c1d7e4b6` — add seasonal_notes to properties**.
+Current head: **`8818413a6d0a` — add exact_airbnb_pricing to properties**.
 
 Full history, oldest to newest:
 
@@ -27,7 +27,9 @@ a1b2c3d4e5f6 -> b7d4e6f2a913   add photos to properties
 b7d4e6f2a913 -> c8e1f4a02b7d   add host memory discount policy fields and host_discount_rules table
 c8e1f4a02b7d -> d4f7a91c3e5b   add guest memory fields to guest_profiles and lead.guest_profile_id
 d4f7a91c3e5b -> e91a3f5c8d2b   add question_embedding to faq_entries and unanswered_questions
-e91a3f5c8d2b -> f3a8c1d7e4b6   add seasonal_notes to properties (HEAD)
+e91a3f5c8d2b -> f3a8c1d7e4b6   add seasonal_notes to properties
+f3a8c1d7e4b6 -> baf955ef4370   add smart pricing fields to properties
+baf955ef4370 -> 8818413a6d0a   add exact_airbnb_pricing to properties (HEAD)
 ```
 
 If a session ever fails with demo-login 500s or a missing-column error, check `alembic heads` against the running DB first — a DB left behind on an old revision is a common cause (see `project_state.md` at the repo root for the 2026-07-15 incident).
@@ -77,7 +79,9 @@ Unique on `(user_id, airbnb_listing_id)`.
 | `check_in_time`, `check_out_time` | String(8), defaults `14:00`/`11:00` | |
 | `max_guests` | Integer, default 4 | |
 | `seasonal_notes` | JSONB list, default `[]` | `{note, start_month, end_month}` entries; surfaced in the prompt only when the current month falls in range (wraparound ranges like Nov–Feb are valid — `start_month > end_month`) |
-| `airbnb_listing_id` | String(64), indexed | unique per-user, not globally |
+| `airbnb_listing_id` | String(64), indexed | unique per-user, not globally; captured at Bright Data import time, also the key used to fetch this listing's live price (see below) |
+| `smart_price_estimate`, `smart_price_sample_size`, `smart_price_updated_at` | Numeric/Integer/DateTime, all nullable | daily comparable-listing median for this property's city, refreshed by `smart_pricing_service.py` — informational only, shown on the Pricing dashboard page, never fed into `calculate_price` |
+| `exact_airbnb_pricing` | Boolean, default `false` | when true, `pricing_engine.calculate_price` fetches this exact listing's live price for the exact requested dates (via `airbnb_listing_id` + SearchApi.io) instead of `base_price` math, and skips weekend-surge/cleaning-fee/tax markup entirely — for hosts on Airbnb Smart Pricing whose listed price is already final. See [research-flow.md](research-flow.md) |
 
 Relationships: `owner` (User), `bookings`, `call_sessions`, `technicians`, `pricing_rules`, `notifications` — all cascade delete-orphan on the property.
 
@@ -195,7 +199,9 @@ Verified, host-authored FAQ knowledge base (distinct from `Property.faq`, the le
 
 ### `unanswered_questions` (`UnansweredQuestion`, `app/models/unanswered_question.py`)
 
-Logged by `handle_search_faq` whenever `search_faq` finds no verified answer — powers the FAQ Learning Engine (`GET /faq/gaps`). One row per occurrence; frequency is computed at query time via `GROUP BY normalized_question`, not an incrementing counter.
+Logged by `handle_search_faq` only when the property (or the question, portfolio-wide) resolves to nothing at all — no `FaqEntry`, no legacy `Property.faq`, and no known `property_id` to fall back to `faq_service.full_property_context()` for. Powers the FAQ Learning Engine (`GET /faq/gaps`). One row per occurrence; frequency is computed at query time via `GROUP BY normalized_question`, not an incrementing counter.
+
+**Known gap**: once a `property_id` is known, `search_faq` always returns `full_property_context()` as a last resort (every on-file fact for that property — see [agents.md](agents.md)), so this table no longer captures "guest asked something the property's raw fields didn't actually answer" — only "this property was completely unknown to the system." A host's FAQ Learning Engine page will under-report gaps for known properties as a result; not revisited as of 2026-07-17.
 
 Indexes: `(user_id, normalized_question, status)` and `(user_id, property_id)`.
 
