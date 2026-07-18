@@ -9,8 +9,10 @@ from app.api.v1.common import DateRange, date_range_query
 from app.auth.dependencies import get_current_user
 from app.database import get_db
 from app.models.call_session import CallSession
+from app.models.notification import Notification
 from app.models.user import User
-from app.schemas.call_session import CallSessionOut
+from app.schemas.call_session import CallSessionDetailOut, CallSessionOut
+from app.schemas.notification import NotificationOut
 from app.services.call_service import BROWSER_TEST_CALLER_NUMBER
 
 router = APIRouter(prefix="/calls", tags=["calls"])
@@ -51,15 +53,25 @@ async def list_calls(
     return list((await db.scalars(stmt)).all())
 
 
-@router.get("/{call_id}", response_model=CallSessionOut)
+@router.get("/{call_id}", response_model=CallSessionDetailOut)
 async def get_call(
     call_id: uuid.UUID, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ) -> CallSession:
+    # notifications eager-loaded (with .property for NotificationOut's
+    # computed property_name) since escalations is read off this object
+    # after the session closes -- same pattern as lead/guest_profile above.
     call = await db.scalar(
         select(CallSession)
-        .options(selectinload(CallSession.lead), selectinload(CallSession.guest_profile))
+        .options(
+            selectinload(CallSession.lead),
+            selectinload(CallSession.guest_profile),
+            selectinload(CallSession.notifications).selectinload(Notification.property),
+        )
         .where(CallSession.id == call_id)
     )
     if call is None or call.user_id != current_user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Call session not found")
-    return call
+    return CallSessionDetailOut(
+        **CallSessionOut.model_validate(call).model_dump(),
+        escalations=[NotificationOut.model_validate(n) for n in call.notifications],
+    )

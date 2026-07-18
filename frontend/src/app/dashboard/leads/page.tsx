@@ -6,30 +6,22 @@ import { ChevronRight, LayoutGrid, Table2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Textarea } from "@/components/ui/textarea";
 import { StatusChip, type StatusTone } from "@/components/status-chip";
 import { DateRangePicker } from "@/components/date-range-picker";
+import { LeadDetailPanel, LEAD_STATUSES, leadUrgencyTone } from "@/components/lead-detail-panel";
 import { useAsync } from "@/hooks/use-async";
 import { useDateRange } from "@/hooks/use-date-range";
 import { api, ApiError } from "@/lib/api";
 import { cn, isBrowserTestIdentity } from "@/lib/utils";
 import type { LeadOut, LeadStatus } from "@/lib/types";
 
-const TEMPERATURES = ["hot", "warm", "cold"] as const;
-const STATUSES: LeadStatus[] = ["open", "contacted", "booked", "closed"];
+const STATUSES = LEAD_STATUSES;
+const urgencyTone = leadUrgencyTone;
 
 // hot/warm/cold is a literal temperature metaphor -- red (urgent/act-now),
 // amber (warming up), neutral gray (not yet) -- reusing the same tones the
@@ -117,9 +109,13 @@ function LeadsTable({
                 )}
               </TableCell>
               <TableCell>
-                <div className="flex items-center gap-1.5">
+                <div className="flex flex-wrap items-center gap-1.5">
                   <StatusChip status={lead.status} tone={statusTone[lead.status] ?? "neutral"} />
-                  {lead.escalated && <StatusChip status="escalated" tone="destructive" />}
+                  {lead.urgency ? (
+                    <StatusChip status={lead.urgency} tone={urgencyTone[lead.urgency] ?? "neutral"} />
+                  ) : (
+                    lead.escalated && <StatusChip status="escalated" tone="destructive" />
+                  )}
                 </div>
               </TableCell>
               <TableCell>{leadPhoneLabel(lead)}</TableCell>
@@ -168,7 +164,11 @@ function LeadCard({
           {lead.properties_discussed.length > 0 ? lead.properties_discussed.join(", ") : "No property discussed"}
         </p>
         <p className="text-xs text-muted-foreground">{leadDatesLabel(lead)}</p>
-        {lead.escalated && <StatusChip status="escalated" tone="destructive" />}
+        {lead.urgency ? (
+          <StatusChip status={lead.urgency} tone={urgencyTone[lead.urgency] ?? "neutral"} />
+        ) : (
+          lead.escalated && <StatusChip status="escalated" tone="destructive" />
+        )}
       </CardContent>
     </Card>
   );
@@ -250,12 +250,7 @@ function LeadsPageContent() {
   const [statusFilter, setStatusFilter] = useState<string>(initialStatus);
   const [showEmpty, setShowEmpty] = useState(false);
   const [editing, setEditing] = useState<LeadOut | null>(null);
-  const [temperature, setTemperature] = useState<string>("warm");
-  const [status, setStatus] = useState<LeadStatus>("open");
-  const [nextFollowUp, setNextFollowUp] = useState("");
-  const [summary, setSummary] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [view, setView] = useState<"table" | "board">("table");
+  const [view, setView] = useState<"table" | "board">("board");
 
   const statusFilteredLeads = (leads ?? []).filter((lead) => statusFilter === "all" || lead.status === statusFilter);
   const contentLeads = statusFilteredLeads
@@ -263,45 +258,12 @@ function LeadsPageContent() {
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   const emptyLeads = statusFilteredLeads.filter(isEmptyLead);
 
-  function openEdit(lead: LeadOut) {
-    setEditing(lead);
-    setTemperature(lead.lead_temperature ?? "warm");
-    setStatus((lead.status as LeadStatus) ?? "open");
-    setNextFollowUp(lead.next_follow_up ?? "");
-    setSummary(lead.conversation_summary ?? "");
-  }
-
-  async function handleSave(e: React.FormEvent) {
-    e.preventDefault();
-    if (!editing) return;
-    setSubmitting(true);
-    try {
-      await api.leads.update(editing.id, {
-        lead_temperature: temperature as "hot" | "warm" | "cold",
-        status,
-        next_follow_up: nextFollowUp,
-        conversation_summary: summary,
-      });
-      toast.success("Lead updated");
-      setEditing(null);
-      refetch();
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to update lead");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  // Deliberately a separate function from handleSave, not a shared helper
-  // that both call into -- a drag-drop should only ever be able to send
-  // {status}, and keeping this code path structurally independent of the
-  // edit-dialog's temperature+status bundle makes it impossible for a
-  // future edit here to accidentally start sending lead_temperature too.
-  // The backend's PATCH /leads/{id} uses exclude_unset (see
-  // backend/app/api/v1/leads.py), so omitting lead_temperature from this
-  // payload leaves it completely untouched server-side -- this is not a
-  // partial/best-effort safety measure, it's the same mechanism the
-  // existing edit-dialog's update already relies on.
+  // Drag-drop on the Kanban board should only ever send {status} -- kept
+  // structurally independent of LeadDetailPanel's edit form (temperature +
+  // status + follow-up + summary) so a future edit there can't accidentally
+  // start sending extra fields from a drag. Backend's PATCH /leads/{id}
+  // uses exclude_unset, so omitting lead_temperature here leaves it
+  // completely untouched server-side.
   async function handleStatusDrop(leadId: string, newStatus: LeadStatus) {
     const lead = leads?.find((l) => l.id === leadId);
     if (!lead || lead.status === newStatus) return;
@@ -367,7 +329,7 @@ function LeadsPageContent() {
             No leads yet — they appear here once your portfolio's lead intake number starts receiving calls.
           </p>
         ) : (
-          <LeadsKanban leads={leads ?? []} onCardClick={openEdit} onDropStatus={handleStatusDrop} />
+          <LeadsKanban leads={leads ?? []} onCardClick={setEditing} onDropStatus={handleStatusDrop} />
         )
       ) : statusFilteredLeads.length === 0 ? (
         <p className="text-sm text-muted-foreground">
@@ -378,7 +340,7 @@ function LeadsPageContent() {
       ) : (
         <div className="space-y-4">
           {contentLeads.length > 0 ? (
-            <LeadsTable leads={contentLeads} onRowClick={openEdit} />
+            <LeadsTable leads={contentLeads} onRowClick={setEditing} />
           ) : (
             <p className="text-sm text-muted-foreground">No leads with captured info yet for this filter.</p>
           )}
@@ -391,69 +353,17 @@ function LeadsPageContent() {
                   Show {emptyLeads.length} lead{emptyLeads.length === 1 ? "" : "s"} with no captured info
                 </Label>
               </div>
-              {showEmpty && <LeadsTable leads={emptyLeads} muted onRowClick={openEdit} />}
+              {showEmpty && <LeadsTable leads={emptyLeads} muted onRowClick={setEditing} />}
             </div>
           )}
         </div>
       )}
 
-      <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              Edit lead —{" "}
-              {editing && isBrowserTestIdentity(editing.phone)
-                ? "Browser test"
-                : editing?.guest_name ?? editing?.phone}
-            </DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleSave} className="space-y-4">
-            <div className="space-y-2">
-              <Label>Temperature</Label>
-              <Select value={temperature} onValueChange={(v) => v && setTemperature(v)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {TEMPERATURES.map((t) => (
-                    <SelectItem key={t} value={t}>
-                      {t}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Status</Label>
-              <Select value={status} onValueChange={(v) => v && setStatus(v as LeadStatus)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {STATUSES.map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {s}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="next-follow-up">Next follow-up</Label>
-              <Input id="next-follow-up" value={nextFollowUp} onChange={(e) => setNextFollowUp(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="summary">Conversation summary</Label>
-              <Textarea id="summary" value={summary} onChange={(e) => setSummary(e.target.value)} />
-            </div>
-            <DialogFooter>
-              <Button type="submit" disabled={submitting}>
-                Save
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <LeadDetailPanel
+        lead={editing}
+        onOpenChange={(open) => !open && setEditing(null)}
+        onSaved={refetch}
+      />
     </div>
   );
 }

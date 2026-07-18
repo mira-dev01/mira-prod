@@ -8,19 +8,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ListRow } from "@/components/ui/list-row";
 import { StatusChip } from "@/components/status-chip";
 import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { RightPanel, RightPanelFooterButton } from "@/components/ui/right-panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { PropertyFormFields } from "@/components/property-form-fields";
@@ -292,96 +285,94 @@ export default function PropertiesPage() {
           <Button variant="ghost" disabled={importing} onClick={() => importInputRef.current?.click()}>
             {importing ? "Importing…" : "Import from file (advanced)"}
           </Button>
-          <Dialog
+          <RightPanel
             open={airbnbUrlDialogOpen}
             onOpenChange={(next) => (next ? setAirbnbUrlDialogOpen(true) : resetAirbnbImportDialog())}
+            title="Import from Airbnb"
+            size="lg"
+            footer={
+              airbnbImportState === "idle" || airbnbImportState === "triggering" ? (
+                <RightPanelFooterButton
+                  onClick={handleImportAirbnbUrls}
+                  disabled={airbnbImportState === "triggering" || !airbnbUrlsText.trim()}
+                >
+                  {airbnbImportState === "triggering" ? "Starting import…" : "Import"}
+                </RightPanelFooterButton>
+              ) : airbnbImportState === "polling" ? undefined : (
+                <RightPanelFooterButton onClick={resetAirbnbImportDialog}>Done</RightPanelFooterButton>
+              )
+            }
           >
-            <DialogContent className="max-h-[85vh] w-full overflow-y-auto sm:max-w-lg">
-              <DialogHeader>
-                <DialogTitle>Import from Airbnb</DialogTitle>
-              </DialogHeader>
-              {airbnbImportState === "idle" || airbnbImportState === "triggering" ? (
-                <div className="space-y-4">
-                  <p className="text-sm text-muted-foreground">
-                    Paste your Airbnb listing links below, one per line. We&apos;ll pull each listing&apos;s
-                    details, amenities, house rules, and neighborhood info automatically.
-                  </p>
-                  <Textarea
-                    rows={6}
-                    placeholder={"https://www.airbnb.com/rooms/12345678\nhttps://www.airbnb.com/rooms/87654321"}
-                    value={airbnbUrlsText}
-                    onChange={(e) => setAirbnbUrlsText(e.target.value)}
-                    disabled={airbnbImportState === "triggering"}
-                  />
-                  <DialogFooter>
-                    <Button
-                      onClick={handleImportAirbnbUrls}
-                      disabled={airbnbImportState === "triggering" || !airbnbUrlsText.trim()}
-                    >
-                      {airbnbImportState === "triggering" ? "Starting import…" : "Import"}
-                    </Button>
-                  </DialogFooter>
-                </div>
-              ) : airbnbImportState === "polling" ? (
-                <div className="space-y-3 py-6 text-center">
-                  <Skeleton className="mx-auto h-6 w-48" />
-                  <p className="text-sm text-muted-foreground">
-                    Importing {airbnbUrlCount} {airbnbUrlCount === 1 ? "listing" : "listings"} from Airbnb — this
-                    can take a minute or two.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {airbnbImportResult?.results.length ? (
-                    <div className="space-y-0">
-                      {airbnbImportResult.results.map((r, i) => (
-                        <ListRow key={i}>
-                          <div className="flex min-w-0 items-center justify-between gap-3">
-                            <span className="min-w-0 flex-1 truncate text-sm">{r.property?.name ?? r.filename}</span>
-                            {r.status === "error" ? (
-                              <StatusChip status="error" tone="destructive" />
-                            ) : (
-                              <StatusChip status={r.status} tone={r.status === "created" ? "live" : "progress"} />
-                            )}
-                          </div>
-                          {r.status === "error" && r.error && (
-                            <p className="text-xs break-words text-muted-foreground">{r.error}</p>
+            {airbnbImportState === "idle" || airbnbImportState === "triggering" ? (
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Paste your Airbnb listing links below, one per line. We&apos;ll pull each listing&apos;s
+                  details, amenities, house rules, and neighborhood info automatically.
+                </p>
+                <Textarea
+                  rows={6}
+                  placeholder={"https://www.airbnb.com/rooms/12345678\nhttps://www.airbnb.com/rooms/87654321"}
+                  value={airbnbUrlsText}
+                  onChange={(e) => setAirbnbUrlsText(e.target.value)}
+                  disabled={airbnbImportState === "triggering"}
+                />
+              </div>
+            ) : airbnbImportState === "polling" ? (
+              <div className="space-y-3 py-6 text-center">
+                <Skeleton className="mx-auto h-6 w-48" />
+                <p className="text-sm text-muted-foreground">
+                  Importing {airbnbUrlCount} {airbnbUrlCount === 1 ? "listing" : "listings"} from Airbnb — this
+                  can take a minute or two.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {airbnbImportResult?.results.length ? (
+                  <div className="space-y-0">
+                    {airbnbImportResult.results.map((r, i) => (
+                      <ListRow key={i}>
+                        <div className="flex min-w-0 items-center justify-between gap-3">
+                          <span className="min-w-0 flex-1 truncate text-sm">{r.property?.name ?? r.filename}</span>
+                          {r.status === "error" ? (
+                            <StatusChip status="error" tone="destructive" />
+                          ) : (
+                            <StatusChip status={r.status} tone={r.status === "created" ? "live" : "progress"} />
                           )}
-                        </ListRow>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      {airbnbImportResult?.error ?? "The import didn't return any listings — check the URLs and try again."}
-                    </p>
-                  )}
-                  <DialogFooter>
-                    <Button onClick={resetAirbnbImportDialog}>Done</Button>
-                  </DialogFooter>
-                </div>
-              )}
-            </DialogContent>
-          </Dialog>
+                        </div>
+                        {r.status === "error" && r.error && (
+                          <p className="text-xs break-words text-muted-foreground">{r.error}</p>
+                        )}
+                      </ListRow>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    {airbnbImportResult?.error ?? "The import didn't return any listings — check the URLs and try again."}
+                  </p>
+                )}
+              </div>
+            )}
+          </RightPanel>
           <Button variant="secondary" onClick={() => setTalkOpen(true)}>
             Test full portfolio in browser
           </Button>
           <TalkToMiraDialog open={talkOpen} onOpenChange={setTalkOpen} />
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger render={<Button>Add property</Button>} />
-            <DialogContent className="max-h-[85vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>New property</DialogTitle>
-              </DialogHeader>
-              <form onSubmit={handleCreate} className="space-y-4">
-                <PropertyFormFields form={form} onChange={setForm} />
-                <DialogFooter>
-                  <Button type="submit" disabled={submitting}>
-                    Create
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
+          <Button onClick={() => setOpen(true)}>Add property</Button>
+          <RightPanel
+            open={open}
+            onOpenChange={setOpen}
+            title="New property"
+            size="xl"
+            footer={
+              <RightPanelFooterButton type="submit" form="create-property-form" disabled={submitting}>
+                {submitting ? "Creating…" : "Create"}
+              </RightPanelFooterButton>
+            }
+          >
+            <form id="create-property-form" onSubmit={handleCreate} className="space-y-4">
+              <PropertyFormFields form={form} onChange={setForm} />
+            </form>
+          </RightPanel>
         </div>
       </div>
 
@@ -471,32 +462,32 @@ export default function PropertiesPage() {
         </div>
       )}
 
-      <Dialog open={!!editing} onOpenChange={(isOpen) => !isOpen && setEditing(null)}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Edit {editing?.name}</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleSaveEdit} className="space-y-4">
-            {editing && (
-              <div className="space-y-2">
-                <p className="text-micro pt-2 text-muted-foreground">Photos</p>
-                <PropertyPhotosManager
-                  propertyId={editing.id}
-                  photos={editForm.photos ?? []}
-                  onChange={(photos) => setEditForm((f) => ({ ...f, photos }))}
-                  propertyName={editing.name}
-                />
-              </div>
-            )}
-            <PropertyFormFields form={editForm} onChange={setEditForm} />
-            <DialogFooter>
-              <Button type="submit" disabled={savingEdit}>
-                Save changes
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <RightPanel
+        open={!!editing}
+        onOpenChange={(isOpen) => !isOpen && setEditing(null)}
+        title={`Edit ${editing?.name ?? ""}`}
+        size="xl"
+        footer={
+          <RightPanelFooterButton type="submit" form="edit-property-form" disabled={savingEdit}>
+            {savingEdit ? "Saving…" : "Save changes"}
+          </RightPanelFooterButton>
+        }
+      >
+        <form id="edit-property-form" onSubmit={handleSaveEdit} className="space-y-4">
+          {editing && (
+            <div className="space-y-2">
+              <p className="text-micro pt-2 text-muted-foreground">Photos</p>
+              <PropertyPhotosManager
+                propertyId={editing.id}
+                photos={editForm.photos ?? []}
+                onChange={(photos) => setEditForm((f) => ({ ...f, photos }))}
+                propertyName={editing.name}
+              />
+            </div>
+          )}
+          <PropertyFormFields form={editForm} onChange={setEditForm} />
+        </form>
+      </RightPanel>
     </div>
   );
 }

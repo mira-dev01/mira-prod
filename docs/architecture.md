@@ -69,6 +69,23 @@ Defined in `render.yaml` at the repo root, two services:
 3. Run `alembic upgrade head` (or let the startup hook do it).
 4. Set `TURN_URL`/`TURN_URL_TLS`/`TURN_USERNAME`/`TURN_CREDENTIAL` if browser voice tests need to work in production.
 
+## Deployment (Railway — backend only, optional)
+
+Render remains the primary/canonical deploy target (`render.yaml` above). Railway is set up as an alternate host for **`mira-backend` only** — same Docker image, no frontend service — via `backend/railway.json` (builder `DOCKERFILE`, `dockerfilePath: Dockerfile`, `healthcheckPath: /health`, restart-on-failure). It intentionally omits `deploy.startCommand` so it inherits `backend/Dockerfile`'s `CMD` (`alembic upgrade head && uvicorn ... --port ${PORT}`) rather than duplicating it and risking drift.
+
+Because this is a monorepo, the Railway service's **Root Directory must be set to `backend`** (dashboard: Service Settings → Root Directory) so it picks up `backend/railway.json` and builds with `backend/` as the Docker context — otherwise the Dockerfile's `COPY . .` would copy the wrong tree. The CLI does this automatically since `railway up`/`railway link` use the current working directory.
+
+Setup (one-time, requires an interactive login — run these yourself, not from an agent session):
+```bash
+npm install -g @railway/cli   # or: brew install railway
+railway login                 # opens a browser OAuth flow
+cd backend
+railway init                  # or `railway link` to attach to an existing project
+railway up                    # first deploy
+```
+
+Env vars — same set as the Render `mira-backend` service above (`DATABASE_URL`, `FRONTEND_BASE_URL`, `BACKEND_BASE_URL`, `JWT_SECRET_KEY`, `LLM_PROVIDER`, `GROQ_API_KEY`, `GROQ_MODEL`, `GROQ_MODELS`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `SARVAM_API_KEY`, `EXOTEL_*`, etc. — see [config.py](../backend/app/config.py)) must be set manually via `railway variables --set KEY=VALUE` or the dashboard; none are checked into `railway.json`. `PORT` is injected automatically by Railway, matching the Dockerfile's `${PORT:-8000}`. After first deploy, set `BACKEND_BASE_URL` to the generated `*.up.railway.app` domain (or a custom domain) and update `NEXT_PUBLIC_API_BASE_URL` on whichever frontend deploy points at it.
+
 ## End-to-end data flow: a guest phone call
 
 1. **Telephony ingress**: Exotel's Voicebot Applet is configured with a static websocket URL, `wss://<backend_base_url>/api/v1/voice/exotel/ws/<EXOTEL_WEBHOOK_TOKEN>` (`app/api/v1/voice.py`, route `exotel_voice_ws`) — token is a path segment, not a `?token=` query param, since Exotel's Voicebot Applet strips query strings from the configured WSS URL before connecting (confirmed live: every real Exotel connection arrived at the bare path with no query string, while the same URL worked fine tested directly). Exotel connects directly — no separate HTTP handshake round-trip.

@@ -181,6 +181,10 @@ export type CallSessionOut = {
   created_at: string;
 };
 
+export type CallSessionDetailOut = CallSessionOut & {
+  escalations: NotificationOut[];
+};
+
 export type ConversationSummaryEntry = {
   call_session_id: string;
   property_id: string | null;
@@ -363,6 +367,10 @@ export type LeadOut = {
   occasion: string | null;
   created_at: string;
   updated_at: string;
+  // Not a Lead column -- backfilled from the most recent linked Notification
+  // (see backend/app/api/v1/leads.py::_with_urgency). null for a lead with
+  // no escalation.
+  urgency: string | null;
 };
 
 export type LeadStatus = "open" | "contacted" | "booked" | "closed";

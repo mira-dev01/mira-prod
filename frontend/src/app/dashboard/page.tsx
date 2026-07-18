@@ -1,31 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowRight, ChevronRight, Phone, PhoneCall, AlertTriangle, Percent, Wallet, Users } from "lucide-react";
+import { ArrowRight, Phone, PhoneCall, AlertTriangle, Percent, Wallet, Users } from "lucide-react";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAsync } from "@/hooks/use-async";
 import { useDateRange } from "@/hooks/use-date-range";
 import { api } from "@/lib/api";
-import { NotificationsFeed } from "@/components/notifications-feed";
+import { CallsTable } from "@/components/calls-table";
+import { LeadDetailPanel } from "@/components/lead-detail-panel";
+import { LiveRequestsCard } from "@/components/live-requests-card";
 import { StatCard } from "@/components/stat-card";
-import { StatusChip, type StatusTone } from "@/components/status-chip";
 import { DateRangePicker } from "@/components/date-range-picker";
 import { UnansweredQuestionsCard } from "@/components/unanswered-questions-card";
-
-const statusTone: Record<string, StatusTone> = {
-  completed: "live",
-  in_progress: "progress",
-  active: "progress",
-  escalated: "destructive",
-  failed: "destructive",
-  missed: "destructive",
-  pending: "pending",
-};
+import type { LeadOut } from "@/lib/types";
 
 export default function OverviewPage() {
   const [includeTestCalls, setIncludeTestCalls] = useState(false);
@@ -36,13 +27,16 @@ export default function OverviewPage() {
     [startDateISO, endDateISO, includeTestCalls]
   );
   const { data: calls, loading: callsLoading } = useAsync(
-    () => api.calls.list({ startDate: startDateISO, endDate: endDateISO, limit: 8, includeTestCalls }),
+    () => api.calls.list({ startDate: startDateISO, endDate: endDateISO, limit: 5, includeTestCalls }),
     [startDateISO, endDateISO, includeTestCalls]
   );
-  const { data: notifications, loading: notificationsLoading } = useAsync(() => api.notifications.list(), []);
+  // Unfiltered by date range -- Live requests is "what's open right now,"
+  // not a report scoped to the header's date picker (matches the old
+  // NotificationsFeed's behavior, which also ignored the date range).
+  const { data: leads, loading: leadsLoading, refetch: refetchLeads } = useAsync(() => api.leads.list({}), []);
+  const [editingLead, setEditingLead] = useState<LeadOut | null>(null);
 
   const recentCalls = calls ?? [];
-  const activeNotifications = (notifications ?? []).filter((n) => n.status === "new");
 
   return (
     <div className="space-y-6">
@@ -95,11 +89,17 @@ export default function OverviewPage() {
         </Link>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      {/* Live requests and unanswered FAQs both need to be visible at first
+          glance without scrolling -- xl:grid-cols-3 pulls Unanswered
+          Questions into the same row on wide screens; on narrower laptop
+          widths (1366x768/1440x900) it wraps to a second row but stays
+          right below the fold rather than pushed down by an 8-row calls
+          table (cut to 5 here, full list stays one click away). */}
+      <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
         <Card>
           <CardHeader>
             <CardTitle>Recent calls</CardTitle>
-            <CardDescription>Latest 8 call sessions across your properties</CardDescription>
+            <CardDescription>Latest 5 call sessions across your properties</CardDescription>
           </CardHeader>
           <CardContent>
             {callsLoading ? (
@@ -107,32 +107,7 @@ export default function OverviewPage() {
             ) : recentCalls.length === 0 ? (
               <p className="text-sm text-muted-foreground">No calls yet.</p>
             ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Caller</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Started</TableHead>
-                      <TableHead />
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {recentCalls.map((call) => (
-                      <TableRow key={call.id}>
-                        <TableCell>{call.caller_number ?? "Unknown"}</TableCell>
-                        <TableCell>
-                          <StatusChip status={call.status} tone={statusTone[call.status] ?? "neutral"} />
-                        </TableCell>
-                        <TableCell>{call.started_at ? new Date(call.started_at).toLocaleString() : "—"}</TableCell>
-                        <TableCell>
-                          <ChevronRight className="size-4 text-muted-foreground" />
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+              <CallsTable calls={recentCalls} compact />
             )}
           </CardContent>
           <div className="border-t px-4 py-3">
@@ -146,14 +121,27 @@ export default function OverviewPage() {
           </div>
         </Card>
 
-        {notificationsLoading ? (
+        {leadsLoading ? (
           <Skeleton className="h-40 w-full" />
         ) : (
-          <NotificationsFeed initial={notifications ?? []} activeCount={activeNotifications.length} />
+          <LiveRequestsCard
+            leads={leads ?? []}
+            onRefetch={refetchLeads}
+            onCardClick={setEditingLead}
+            limit={3}
+          />
         )}
+
+        <div className="lg:col-span-2 xl:col-span-1">
+          <UnansweredQuestionsCard limit={2} linkToFaqPage />
+        </div>
       </div>
 
-      <UnansweredQuestionsCard limit={2} linkToFaqPage />
+      <LeadDetailPanel
+        lead={editingLead}
+        onOpenChange={(open) => !open && setEditingLead(null)}
+        onSaved={refetchLeads}
+      />
     </div>
   );
 }

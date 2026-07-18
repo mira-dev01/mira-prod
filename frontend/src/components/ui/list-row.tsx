@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
  *  - "divider" (default): rows separated by a bottom border, last row flush
  *    (ActionableCard, UnansweredQuestionsCard).
  *  - "boxed": each row is its own bordered/rounded box, for content dense
- *    enough to want visual separation beyond a hairline (NotificationsFeed).
+ *    enough to want visual separation beyond a hairline (LiveRequestsCard).
  */
 function ListRow({
   className,
