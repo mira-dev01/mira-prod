@@ -86,6 +86,7 @@ See [docs/architecture.md](docs/architecture.md) for deployment (Render) details
 | `TURN_DETECTION_STRATEGY` | `vad_fixed` (default) / `hybrid_experimental`. Local-only experiment — see [docs/agents.md](docs/agents.md). Not in `render.yaml`. |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USERNAME` / `SMTP_PASSWORD` / `SMTP_FROM_EMAIL` | Escalation email summaries. Any SMTP provider works. Unset = escalations still create the in-app notification, just skip the email. |
 | `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_WHATSAPP_FROM` | Real WhatsApp send for `send_whatsapp`/`send_photos` via Twilio's Sandbox — see [docs/agents.md](docs/agents.md). Sandbox only reaches numbers that texted "join `<code>`" to the sandbox number first; unset = falls back to the in-app notification only. |
+| `TWILIO_ESCALATION_TEMPLATE_SID` | ContentSid of the `mira_escalation` WhatsApp template (`scripts/create_escalation_template.py`) — gives escalations a real "Go to Dashboard" button. Unset = falls back to a plain-text message with a bare URL. |
 
 ---
 

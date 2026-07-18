@@ -1,16 +1,34 @@
 # Pricing, Negotiation, Lead Qualification & Airbnb Import
 
-Covers `backend/app/services/pricing_engine.py`, `discount_policy_service.py`, `lead_service.py`, `airbnb_import.py`, and `app/integrations/bright_data_client.py`. See [database.md](database.md) for the underlying tables (`pricing_rules`, `host_discount_rules`, `leads`) and [agents.md](agents.md) for how the voice agent's `get_pricing`/`negotiate_rate`/`update_lead` tools call into this.
+Covers `backend/app/services/pricing_engine.py`, `discount_policy_service.py`, `lead_service.py`, `airbnb_import.py`, `smart_pricing_service.py`, and `app/integrations/bright_data_client.py`/`searchapi_client.py`. See [database.md](database.md) for the underlying tables (`pricing_rules`, `host_discount_rules`, `leads`, `properties`' smart-pricing columns) and [agents.md](agents.md) for how the voice agent's `get_pricing`/`negotiate_rate`/`update_lead` tools call into this.
 
 ## Price calculation (`pricing_engine.calculate_price`)
 
 Entry point for the `get_pricing` tool. Returns a `PriceBreakdown` dataclass (`nights`, `base_total`, `weekend_nights`, `cleaning_fee`, `tax_amount`, `discount_percent`, `discount_amount`, `total`, `per_night_avg`).
 
-1. **Nightly rate**: `_nightly_rate(base_price, day)` — `Property.base_price × WEEKEND_SURGE_MULTIPLIER` (config `weekend_surge_multiplier`, default `1.2`) for Friday/Saturday/Sunday nights (`WEEKEND_WEEKDAYS = {4, 5, 6}`), otherwise the plain base price. Summed per night across the stay → `base_total`.
-2. **Length-of-stay discount** (only if `apply_discounts=True`): `_length_of_stay_discount_percent` queries active `PricingRule` rows for the property with `rule_type="length_of_stay"`, taking the max `discount_percent` among rules whose `condition["min_nights"] <= nights`.
-3. **Cleaning fee**: flat `settings.default_cleaning_fee_inr` (default ₹800), added after the discount.
-4. **Tax**: `settings.default_tax_percent` (default 12%) applied to `(base_total - discount_amount + cleaning_fee)`.
+0. **Live exact-price fetch** (only if `Property.exact_airbnb_pricing` is true and `airbnb_listing_id`/`city` are set): before any of the math below, calls `searchapi_client.fetch_listing_total_price(city, airbnb_listing_id, check_in, check_out)` — searches Airbnb for that city/date range and picks out the one listing matching `airbnb_listing_id` from the results, returning its live total price for the exact requested dates. **Real limitation, not just theoretical**: the listing has to actually appear in that page-1 city search for the fetch to succeed — confirmed live that it doesn't always (two properties in the same dense market, same host, same day: one found and exact, one not found at all, even after checking 3 pages of results deep). No pagination retry is currently attempted (tried, didn't help — see below). On any failure (not found, no API key, request error), falls straight through to steps 1-5 using `Property.base_price` as normal — never blocks a quote on this succeeding. If the live fetch *does* succeed, its total is used as `base_total` directly and steps 1, 3, 4 are skipped entirely (see step "markup" below).
+1. **Nightly rate** (skipped if step 0 succeeded): `_nightly_rate(base_price, day, apply_surge)` — `Property.base_price × WEEKEND_SURGE_MULTIPLIER` (config `weekend_surge_multiplier`, default `1.2`) for Friday/Saturday/Sunday nights (`WEEKEND_WEEKDAYS = {4, 5, 6}`), otherwise the plain base price. `apply_surge` is `not Property.exact_airbnb_pricing` — surge never applies when that flag is set, live-fetch success or not. Summed per night across the stay → `base_total`.
+2. **Length-of-stay discount** (only if `apply_discounts=True`): `_length_of_stay_discount_percent` queries active `PricingRule` rows for the property with `rule_type="length_of_stay"`, taking the max `discount_percent` among rules whose `condition["min_nights"] <= nights`. Applies regardless of `exact_airbnb_pricing`/live-fetch — this is a host-configured negotiation lever, not "markup" in the sense the flag is meant to suppress.
+3. **Cleaning fee**: flat `settings.default_cleaning_fee_inr` (default ₹800) — `₹0` if `Property.exact_airbnb_pricing` is true.
+4. **Tax**: `settings.default_tax_percent` (default 12%) applied to `(base_total - discount_amount + cleaning_fee)` — `₹0` if `Property.exact_airbnb_pricing` is true.
 5. **Total**: `base_total - discount_amount + cleaning_fee + tax_amount`.
+
+`negotiate_rate` calls `calculate_price` for its `asking_price` baseline, so it inherits the live-fetch behavior automatically — no separate wiring needed there.
+
+### `exact_airbnb_pricing` — why it exists
+
+Added after two real pricing mismatches on a pilot host's live Airbnb-Smart-Pricing properties (`Property.base_price` is a static number; a host whose actual Airbnb rate changes daily can't be represented by one). The flag does two independent things when set: (a) fetches this exact listing's live price per-date instead of trusting `base_price`, and (b) unconditionally suppresses weekend-surge/cleaning-fee/tax stacking, on the reasoning that a host whose Airbnb price is already final doesn't want MIRA adding its own markup on top. `base_price` is kept as the same-call fallback value, not deleted — it's what gets quoted on any live-fetch failure, so it should still be kept roughly current, just not treated as authoritative.
+
+Toggle lives in the property edit dialog ("Quote exact Airbnb price") and in `PropertyUpdate.exact_airbnb_pricing` — per-property, not global, so enabling it for one host/property never changes anything for another.
+
+## Smart pricing (comparable market reference, `smart_pricing_service.py`)
+
+Separate from `exact_airbnb_pricing` above — this is a **daily, city-wide, informational** number, not a live per-call fetch, and never feeds into `calculate_price`.
+
+- `refresh_smart_pricing(db)`, scheduled via APScheduler in `app/main.py` (`smart_pricing_refresh`, cron `hour=1, minute=0` UTC ≈ 6:30am IST): one `searchapi_client.fetch_comparable_nightly_rates(city, check_in, check_out)` call per **distinct city** across all properties (not per property, to stay frugal against SearchApi.io's request allowance), for a fixed `today + 14 days`, 2-night window re-queried daily so the comparison stays apples-to-apples day over day.
+- Result: `median(nightly_rates)` for that city written to every property in that city — `Property.smart_price_estimate`, `smart_price_sample_size`, `smart_price_updated_at`.
+- Surfaced on the Pricing dashboard page as a "Your price vs. Market price (Airbnb)" table — reference only, host decides what to do with it.
+- `SearchApi.io` requests **must** pass `currency=INR` explicitly — confirmed live that it defaults to USD otherwise, which silently produced nonsense ~₹50-150/night "smart prices" (a $150 listing read as ₹150) until this was added to both `fetch_comparable_nightly_rates` and `fetch_listing_total_price`.
 
 `apply_discounts` defaults to `True` in the function signature, but the voice tool (`app/voice/tools.py`) always passes it explicitly, and the prompt (`GOLDEN_RULES`) mandates calling with `apply_discounts=false` first — never leading with a discounted quote.
 
