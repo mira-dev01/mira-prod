@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from app.api.v1 import (
     analytics,
@@ -26,7 +27,7 @@ from app.api.v1.webhooks import exotel
 from app.config import settings
 from app.database import AsyncSessionLocal
 from app.services.calendar_service import sync_all_properties
-from app.services.smart_pricing_service import refresh_smart_pricing
+from app.services.smart_pricing_service import refresh_live_pricing_cache, refresh_smart_pricing
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -44,6 +45,29 @@ async def _scheduled_ical_sync() -> None:
 async def _scheduled_smart_pricing_refresh() -> None:
     async with AsyncSessionLocal() as db:
         await refresh_smart_pricing(db)
+
+
+async def _scheduled_live_pricing_cache_refresh() -> None:
+    async with AsyncSessionLocal() as db:
+        await refresh_live_pricing_cache(db)
+
+
+async def _check_db_health() -> None:
+    # Neon (like most serverless Postgres) suspends its compute after a few
+    # minutes of inactivity -- the first query after that wakes it back up,
+    # which costs multiple seconds. That wake-up was landing squarely on the
+    # first DB query of a voice pipeline (run_browser_lead_pipeline /
+    # run_voice_pipeline's guest/session lookups), showing up as an
+    # unexplained multi-second gap before the greeting with nothing logged
+    # in between. A trivial periodic ping, well under Neon's autosuspend
+    # window, keeps the connection warm so a real call never pays that cost.
+    # Same rationale as _check_llm_health above, applied to the DB instead
+    # of the LLM route. Failures are logged only -- never fatal.
+    try:
+        async with AsyncSessionLocal() as db:
+            await db.execute(text("SELECT 1"))
+    except Exception as e:
+        logger.warning("DB keep-alive ping failed: %s", e)
 
 
 # Populated by _check_llm_health, read by app/voice/pipeline.py's _build_llm()
@@ -144,12 +168,25 @@ async def lifespan(app: FastAPI):
     # extra background ping traffic for a much shorter window where a call
     # can still land on a model that's actually rate-limited.
     scheduler.add_job(_check_llm_health, "interval", seconds=60, id="llm_health_periodic")
+    # Neon's default autosuspend is a few minutes of inactivity -- ping well
+    # inside that window so the connection is always warm by the time a real
+    # call needs it (see _check_db_health above).
+    scheduler.add_job(_check_db_health, "interval", minutes=3, id="db_keepalive")
     # Once a day, "in the morning" -- 1:00 UTC is ~6:30am IST. Render runs in
     # UTC; adjust the hour here if the deploy target's timezone differs.
     scheduler.add_job(_scheduled_smart_pricing_refresh, "cron", hour=1, minute=0, id="smart_pricing_refresh")
+    # Staggered 15 minutes after the job above -- separate concern (the
+    # actual per-listing cache get_pricing/negotiate_rate consult, not the
+    # city-wide reference number), kept as its own job rather than folded
+    # into _scheduled_smart_pricing_refresh so a failure/slowdown in one
+    # never affects the other.
+    scheduler.add_job(
+        _scheduled_live_pricing_cache_refresh, "cron", hour=1, minute=15, id="live_pricing_cache_refresh"
+    )
     scheduler.start()
     asyncio.create_task(_scheduled_ical_sync())   # kick off one sync immediately, don't block startup on it
     asyncio.create_task(_check_llm_health())      # pre-warm + health-check LLM routes so first caller doesn't wait
+    asyncio.create_task(_check_db_health())       # pre-warm the DB connection so the first caller doesn't wait
     logger.info("MIRA backend started (env=%s)", settings.environment)
     yield
     scheduler.shutdown(wait=False)

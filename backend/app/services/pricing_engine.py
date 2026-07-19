@@ -12,8 +12,12 @@ from datetime import date, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
-from app.integrations.searchapi_client import fetch_listing_total_price
+from app.integrations import redis_client
+from app.integrations.searchapi_client import (
+    fetch_listing_total_price,
+    fetch_property_coordinates,
+    nightly_rate_cache_key,
+)
 from app.models.guest_profile import GuestProfile
 from app.models.host_discount_rule import HostDiscountRule
 from app.models.pricing_rule import PricingRule
@@ -22,7 +26,6 @@ from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
-WEEKEND_WEEKDAYS = {4, 5, 6}  # Friday, Saturday, Sunday
 MAX_NEGOTIATION_DISCOUNT_PERCENT = 15.0
 
 
@@ -30,19 +33,10 @@ MAX_NEGOTIATION_DISCOUNT_PERCENT = 15.0
 class PriceBreakdown:
     nights: int
     base_total: float
-    weekend_nights: int
-    cleaning_fee: float
-    tax_amount: float
     discount_percent: float
     discount_amount: float
     total: float
     per_night_avg: float
-
-
-def _nightly_rate(base_price: float, day: date, apply_surge: bool) -> float:
-    if apply_surge and day.weekday() in WEEKEND_WEEKDAYS:
-        return round(base_price * settings.weekend_surge_multiplier, 2)
-    return base_price
 
 
 async def _length_of_stay_discount_percent(db: AsyncSession, property_id: uuid.UUID, nights: int) -> float:
@@ -64,6 +58,26 @@ async def _length_of_stay_discount_percent(db: AsyncSession, property_id: uuid.U
     return best
 
 
+async def _sum_cached_nightly_rates(listing_id: str, check_in: date, check_out: date) -> float | None:
+    """Tries the daily cache-warm job's rolling near-term window first (see
+    smart_pricing_service.refresh_live_pricing_cache) -- if every night in
+    [check_in, check_out) has a cached rate, sums them for an instant
+    answer with zero live API calls and none of the latency a mid-call
+    fetch adds. Returns None the moment any single night is missing from
+    cache (a request outside the cached window, or a night that failed to
+    resolve when the job ran), so calculate_price knows to fall through to
+    a live fetch for the full range rather than quoting a partial total."""
+    nights = (check_out - check_in).days
+    total = 0.0
+    for i in range(nights):
+        night = check_in + timedelta(days=i)
+        cached = await redis_client.cache_get_json(nightly_rate_cache_key(listing_id, night))
+        if cached is None:
+            return None
+        total += cached
+    return round(total, 2)
+
+
 async def calculate_price(
     db: AsyncSession,
     property_: Property,
@@ -73,47 +87,62 @@ async def calculate_price(
 ) -> PriceBreakdown:
     nights = (check_out - check_in).days
     base_price = float(property_.base_price)
-    apply_markup = not property_.exact_airbnb_pricing
 
     live_total: float | None = None
-    if property_.exact_airbnb_pricing and property_.airbnb_listing_id and property_.city:
+    if property_.exact_airbnb_pricing and property_.airbnb_listing_id:
         # Airbnb Smart Pricing changes the listing's rate daily/per-date --
         # no static base_price can stay accurate for a host on it (confirmed
         # live: Property.base_price was already stale again days after being
         # manually corrected). Fetch this exact listing's current price for
-        # these exact dates instead of trusting the stored number. Falls
-        # back to the static base_price/night math below on any failure
-        # (rate-limited, listing not in this page of results, API down) --
-        # never blocks a live pricing quote on this call succeeding.
-        live_total = await fetch_listing_total_price(
-            property_.city, property_.airbnb_listing_id, check_in, check_out
-        )
+        # these exact dates instead of trusting the stored number.
+        #
+        # Try the daily cache-warm job's near-term window first (see
+        # smart_pricing_service.refresh_live_pricing_cache) -- if it fully
+        # covers these dates, this is instant with zero live API calls, no
+        # mid-call latency. Only falls through to a live fetch (below) for
+        # dates outside that cached window.
+        live_total = await _sum_cached_nightly_rates(property_.airbnb_listing_id, check_in, check_out)
 
-    if live_total is not None:
-        base_total = round(live_total, 2)
-        weekend_nights = sum(1 for i in range(nights) if (check_in + timedelta(days=i)).weekday() in WEEKEND_WEEKDAYS)
-    else:
-        nightly_rates = [_nightly_rate(base_price, check_in + timedelta(days=i), apply_markup) for i in range(nights)]
-        base_total = round(sum(nightly_rates), 2)
-        weekend_nights = sum(1 for d in nightly_rates if d != base_price)
+        if live_total is None:
+            # Coordinates are cached permanently once resolved (a listing's
+            # location doesn't change) -- otherwise this is a single live
+            # API call per pricing question, scoped to a tight bounding_box
+            # around the listing's own coordinates. A plain city-wide search
+            # does NOT reliably include this specific listing (confirmed
+            # live: a real 20-listing city search for a real listing never
+            # included it) -- see searchapi_client.fetch_listing_total_price.
+            #
+            # Falls back to the static base_price/night math below on any
+            # failure (coordinates unresolvable, listing not bookable for
+            # these exact dates, API down) -- never blocks a live pricing
+            # quote on this call succeeding.
+            if property_.airbnb_latitude is None or property_.airbnb_longitude is None:
+                coords = await fetch_property_coordinates(property_.airbnb_listing_id)
+                if coords is not None:
+                    property_.airbnb_latitude, property_.airbnb_longitude = coords
+                    await db.commit()
+
+            if property_.airbnb_latitude is not None and property_.airbnb_longitude is not None:
+                live_total = await fetch_listing_total_price(
+                    float(property_.airbnb_latitude),
+                    float(property_.airbnb_longitude),
+                    property_.airbnb_listing_id,
+                    check_in,
+                    check_out,
+                )
+
+    base_total = round(live_total, 2) if live_total is not None else round(base_price * nights, 2)
 
     discount_percent = 0.0
     if apply_discounts:
         discount_percent = await _length_of_stay_discount_percent(db, property_.id, nights)
     discount_amount = round(base_total * discount_percent / 100, 2)
 
-    cleaning_fee = float(settings.default_cleaning_fee_inr) if apply_markup else 0.0
-    taxable_amount = base_total - discount_amount + cleaning_fee
-    tax_amount = round(taxable_amount * settings.default_tax_percent / 100, 2) if apply_markup else 0.0
-
-    total = round(base_total - discount_amount + cleaning_fee + tax_amount, 2)
+    total = round(base_total - discount_amount, 2)
 
     return PriceBreakdown(
         nights=nights,
         base_total=base_total,
-        weekend_nights=weekend_nights,
-        cleaning_fee=cleaning_fee,
-        tax_amount=tax_amount,
         discount_percent=discount_percent,
         discount_amount=discount_amount,
         total=total,

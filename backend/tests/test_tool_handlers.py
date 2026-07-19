@@ -4,12 +4,14 @@ from sqlalchemy import select
 
 from app.models.technician import Technician
 from app.models.unanswered_question import UnansweredQuestion
+from app.models.property import Property
 from app.schemas.tool import (
     CheckCalendarArgs,
     DispatchTechnicianArgs,
     EscalateToHostArgs,
     GetPricingArgs,
     NegotiateRateArgs,
+    RecommendPropertiesArgs,
     SearchFaqArgs,
     SendWhatsappArgs,
     UpdateLeadArgs,
@@ -54,6 +56,68 @@ async def test_get_pricing_includes_total(test_property, db_session):
     result = await tool_handlers.handle_get_pricing(db_session, args)
     assert "total" in result.lower()
     assert test_property.name in result
+
+
+async def test_get_pricing_backfills_lead_even_if_update_lead_never_called(test_property, test_call_session, db_session):
+    # Regression: real calls were going through a full get_pricing/negotiate_rate
+    # negotiation and ending with zero Lead row, because the model said its
+    # escalation/booking phrases without reliably calling update_lead itself.
+    # get_pricing/negotiate_rate/check_calendar now backfill a Lead as a side
+    # effect, independent of the model ever calling update_lead.
+    today = date.today()
+    check_in, check_out = today + timedelta(days=1), today + timedelta(days=3)
+    args = GetPricingArgs(
+        property_id=str(test_property.id), check_in=check_in, check_out=check_out, num_guests=2
+    )
+    await tool_handlers.handle_get_pricing(
+        db_session, args, host_user_id=test_property.user_id, call_session_id=test_call_session.id
+    )
+
+    leads = await lead_service.list_leads(db_session, test_property.user_id)
+    assert len(leads) == 1
+    assert leads[0].properties_discussed == [test_property.name]
+    assert leads[0].check_in == check_in
+    assert leads[0].check_out == check_out
+    assert leads[0].num_guests == 2
+
+
+async def test_get_pricing_backfill_never_overwrites_guest_stated_dates(test_property, test_call_session, db_session):
+    # update_lead's explicit dates (what the guest actually said) must win
+    # over the backfill's blank-only semantics -- never silently overwritten
+    # by a later get_pricing call for different dates the LLM is just checking.
+    real_check_in, real_check_out = date.today() + timedelta(days=30), date.today() + timedelta(days=32)
+    await lead_service.upsert_lead(
+        db_session, test_property.user_id, test_call_session.id, check_in=real_check_in, check_out=real_check_out
+    )
+
+    other_check_in = date.today() + timedelta(days=5)
+    args = GetPricingArgs(
+        property_id=str(test_property.id),
+        check_in=other_check_in,
+        check_out=other_check_in + timedelta(days=1),
+        num_guests=2,
+    )
+    await tool_handlers.handle_get_pricing(
+        db_session, args, host_user_id=test_property.user_id, call_session_id=test_call_session.id
+    )
+
+    leads = await lead_service.list_leads(db_session, test_property.user_id)
+    assert len(leads) == 1
+    assert leads[0].check_in == real_check_in
+    assert leads[0].check_out == real_check_out
+
+
+async def test_get_pricing_without_call_session_id_never_creates_a_lead(test_property, db_session):
+    # No call_session_id (e.g. a unit test, or a future non-voice caller) --
+    # never create a lead with nothing to dedupe it against.
+    today = date.today()
+    args = GetPricingArgs(
+        property_id=str(test_property.id), check_in=today + timedelta(days=1), check_out=today + timedelta(days=3), num_guests=2
+    )
+    await tool_handlers.handle_get_pricing(db_session, args, host_user_id=test_property.user_id, call_session_id=None)
+
+    leads = await lead_service.list_leads(db_session, test_property.user_id)
+    assert len(leads) == 0
 
 
 async def test_dispatch_technician_finds_specialist(test_property, db_session):
@@ -191,3 +255,108 @@ async def test_update_lead_persists_occasion(test_property, test_call_session, d
     leads = await lead_service.list_leads(db_session, test_property.user_id)
     assert len(leads) == 1
     assert leads[0].occasion == "Guest said it's their honeymoon, wants a room with a view"
+
+
+async def test_update_lead_flags_incomplete_phone(test_property, test_call_session, db_session):
+    # Regression: STT dropping a digit produced a 9-digit number that was
+    # silently saved with no signal anywhere that it was wrong -- the guest
+    # never got a WhatsApp message and no one found out until much later.
+    args = UpdateLeadArgs(phone="932635908")
+    result = await tool_handlers.handle_update_lead(db_session, args, test_property.user_id, test_call_session.id)
+    assert "Saved." in result
+    assert "9 digits, not 10" in result
+    assert "repeat their full 10-digit number" in result
+
+
+async def test_update_lead_no_warning_for_full_phone(test_property, test_call_session, db_session):
+    args = UpdateLeadArgs(phone="9326359081")
+    result = await tool_handlers.handle_update_lead(db_session, args, test_property.user_id, test_call_session.id)
+    assert result == "Saved."
+
+
+async def test_send_whatsapp_flags_incomplete_phone(test_property, db_session):
+    args = SendWhatsappArgs(phone="932635908", message="Hello!")
+    result = await tool_handlers.handle_send_whatsapp(db_session, args, test_property.id, None)
+    assert "9 digits, not 10" in result
+
+
+async def test_recommend_properties_matches_south_goa_locality_without_literal_text(test_user, db_session):
+    # Regression: Azure's real city is "Colva" and its neighborhood_info
+    # never contains the literal words "South Goa" -- an ILIKE match on
+    # those exact words silently excluded it from a "South Goa" query even
+    # though Colva unambiguously is South Goa.
+    azure = Property(
+        user_id=test_user.id,
+        name="Azure 1bhk",
+        city="Colva",
+        exophone="+918011112222",
+        base_price=3500,
+        max_guests=2,
+        neighborhood_info="2 min walk to Colva Beach.",
+    )
+    north_property = Property(
+        user_id=test_user.id,
+        name="Limón",
+        city="Siolim",
+        exophone="+918033334444",
+        base_price=3000,
+        max_guests=3,
+        neighborhood_info="Centrally located in North Goa.",
+    )
+    db_session.add_all([azure, north_property])
+    await db_session.commit()
+
+    args = RecommendPropertiesArgs(preferred_location="South Goa")
+    result = await tool_handlers.handle_recommend_properties(db_session, args, test_user.id)
+    assert "Azure" in result
+    assert "Limón" not in result
+
+
+async def test_recommend_properties_matches_north_goa_locality(test_user, db_session):
+    north_property = Property(
+        user_id=test_user.id,
+        name="Limón",
+        city="Siolim",
+        exophone="+918033335555",
+        base_price=3000,
+        max_guests=3,
+        neighborhood_info="Centrally located in North Goa.",
+    )
+    south_property = Property(
+        user_id=test_user.id,
+        name="Azure 1bhk",
+        city="Colva",
+        exophone="+918011113333",
+        base_price=3500,
+        max_guests=2,
+        neighborhood_info="2 min walk to Colva Beach.",
+    )
+    db_session.add_all([north_property, south_property])
+    await db_session.commit()
+
+    args = RecommendPropertiesArgs(preferred_location="North Goa")
+    result = await tool_handlers.handle_recommend_properties(db_session, args, test_user.id)
+    assert "Limón" in result
+    assert "Azure" not in result
+
+
+async def test_recommend_properties_suggests_combining_units_for_large_group(test_user, db_session):
+    # No single property in the portfolio sleeps 6 -- rather than a flat
+    # "couldn't find", the tool should surface the smaller units and let the
+    # model suggest booking two of them together.
+    unit_a = Property(
+        user_id=test_user.id, name="Unit A", city="Siolim", exophone="+918011114444",
+        base_price=3000, max_guests=3,
+    )
+    unit_b = Property(
+        user_id=test_user.id, name="Unit B", city="Siolim", exophone="+918011115555",
+        base_price=3200, max_guests=3,
+    )
+    db_session.add_all([unit_a, unit_b])
+    await db_session.commit()
+
+    args = RecommendPropertiesArgs(num_guests=6, preferred_location="Siolim")
+    result = await tool_handlers.handle_recommend_properties(db_session, args, test_user.id)
+    assert "Unit A" in result
+    assert "Unit B" in result
+    assert "book two of them together" in result
