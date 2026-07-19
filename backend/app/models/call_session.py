@@ -35,6 +35,14 @@ class CallSession(UUIDPkMixin, TimestampMixin, Base):
     ai_summary: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(32), default="in_progress", server_default="in_progress")
     urgency: Mapped[str | None] = mapped_column(String(16))
+    # Populated by call_classification_service via on_pipeline_finished, once
+    # the call ends -- see app/services/call_classification_service.py for
+    # the full taxonomy. "UNKNOWN" until classified (or if classification
+    # fails), never null, so every historical/in-flight row degrades
+    # gracefully with no backfill needed.
+    call_type: Mapped[str] = mapped_column(String(32), default="UNKNOWN", server_default="UNKNOWN", index=True)
+    classification_confidence: Mapped[float | None] = mapped_column(Numeric(4, 3))
+    classification_reason: Mapped[str | None] = mapped_column(Text)
     revenue_attributed: Mapped[float] = mapped_column(Numeric(10, 2), default=0, server_default="0")
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

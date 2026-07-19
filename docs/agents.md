@@ -26,14 +26,15 @@ Guest Support calls never touch this — `property_id` is already fixed before t
 `_run_pipeline` (`app/voice/pipeline.py`) builds a pipecat `Pipeline`:
 
 ```
-transport.input() → SarvamSTTService → user_aggregator → LLM → SarvamTTSService → transport.output() → assistant_aggregator
+transport.input() → SarvamSTTService → LanguageSyncProcessor → user_aggregator → LLM → SarvamTTSService → transport.output() → assistant_aggregator
 ```
 
-- **STT**: `SarvamSTTService`, `mode="codemix"` — transcribes Hindi/English/Hinglish as spoken, no translation.
+- **STT**: `SarvamSTTService`, `mode="codemix"` — transcribes Hindi/English/Hinglish as spoken, no translation. Sarvam auto-detects the spoken language per utterance and attaches it to each `TranscriptionFrame`.
+- **Language sync** (`app/voice/language_sync.py`): `LanguageSyncProcessor` watches that detected language and, on a change, pushes a `TTSUpdateSettingsFrame` (delta-only, so voice/model/pace are untouched) that Sarvam TTS applies live to its websocket — so a guest who switches to Hindi/Hinglish mid-call gets a Hindi TTS voice instead of always being answered in English. The LLM already mirrors the guest's language in its reply text (`GOLDEN_RULES` in `system_prompt.py`); this is what makes the *audio* match too.
 - **LLM**: built by `_build_llm()` — see Groq fallback section below. Function-calling into the 9 tools in `app/voice/tools.py`.
-- **TTS**: `SarvamTTSService`, `pace=1.15` (slightly faster than the 1.0 default, tuned for phone-call cadence).
+- **TTS**: `SarvamTTSService`, `pace=1.15` (slightly faster than the 1.0 default, tuned for phone-call cadence), starting `language=Language.EN_IN` and switched to `Language.HI_IN` at runtime by `LanguageSyncProcessor`.
 - **Turn strategy**: `SpeechTimeoutUserTurnStopStrategy(user_speech_timeout=0.9)` by default, or `HybridCompletenessUserTurnStopStrategy` if `TURN_DETECTION_STRATEGY=hybrid_experimental` — see Turn detection below. Deliberately not pipecat's default `LocalSmartTurnAnalyzerV3` (local ONNX inference), which competes for CPU with the real-time audio loop on a dev box.
-- **VAD**: `SileroVADAnalyzer(params=VADParams(confidence=0.85, min_volume=0.7))` — raised from pipecat defaults (0.7/0.6) so background noise or a second nearby voice doesn't trigger a false interruption that cuts off in-progress TTS (~1.3s dead air per Sarvam TTS reconnect, confirmed via call logs).
+- **VAD**: `create_vad_analyzer(VADParams(confidence=0.85, min_volume=0.7))` (`app/voice/vad.py`) — raised from pipecat defaults (0.7/0.6) so background noise or a second nearby voice doesn't trigger a false interruption that cuts off in-progress TTS (~1.3s dead air per Sarvam TTS reconnect, confirmed via call logs). `create_vad_analyzer` exists because `SileroVADAnalyzer.__init__` synchronously builds an `onnxruntime.InferenceSession` from the packaged model file — ~2s, confirmed via call logs, and `_run_pipeline` builds a fresh analyzer per call (its VAD state can't be shared across concurrent calls). `app/voice/vad.py` loads that session once at process/import startup and hands each call a lightweight analyzer wrapping the shared, already-compiled session — only the per-call state arrays are fresh, the expensive part isn't repeated.
 - **Metrics**: `PipelineParams(enable_metrics=True, enable_usage_metrics=True)` — per-stage TTFB and exact prompt/completion token counts logged per call, the basis for real $ cost tracking.
 
 ### Bot speaks first
@@ -112,7 +113,7 @@ Config: `TURN_DETECTION_STRATEGY` (`vad_fixed` default / `hybrid_experimental`) 
 
 | Constant | Value | Where |
 |---|---|---|
-| VAD confidence / min_volume | 0.85 / 0.7 | `_VAD_PARAMS` in `pipeline.py` |
+| VAD confidence / min_volume | 0.85 / 0.7 | `_VAD_PARAMS` in `pipeline.py`, passed to `create_vad_analyzer` (`app/voice/vad.py`) |
 | Turn-stop timeout (vad_fixed) | 0.9s | `SpeechTimeoutUserTurnStopStrategy(user_speech_timeout=0.9)` |
 | Turn-stop base/extension/cap (hybrid) | 0.9s / 0.7s / 2.8s | `HybridCompletenessUserTurnStopStrategy` |
 | TTS pace | 1.15 | `SarvamTTSService.Settings(pace=1.15)` |

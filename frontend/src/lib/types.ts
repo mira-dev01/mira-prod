@@ -87,6 +87,7 @@ export type HostRegistration = {
   property_count_estimate?: number | null;
   airbnb_url: string;
   ical_url?: string | null;
+  agent_first_message?: string | null;
 };
 
 export type HostRegistrationResponse = {
@@ -161,6 +162,19 @@ export type PropertyCreate = {
 
 export type PropertyUpdate = Partial<PropertyCreate>;
 
+// Set by call_classification_service (backend) via on_pipeline_finished once
+// the call ends. "Qualified" is never itself a value here -- it's the
+// grouping of BOOKING_LEAD/GUEST_SUPPORT/EXISTING_BOOKING/GENERAL_QUERY,
+// computed wherever needed (see QUALIFIED_CALL_TYPES usage in calls page).
+export type CallType =
+  | "BOOKING_LEAD"
+  | "GUEST_SUPPORT"
+  | "EXISTING_BOOKING"
+  | "GENERAL_QUERY"
+  | "JUNK"
+  | "INCOMPLETE"
+  | "UNKNOWN";
+
 export type CallSessionOut = {
   id: string;
   exotel_call_id: string | null;
@@ -175,6 +189,9 @@ export type CallSessionOut = {
   ai_summary: string | null;
   status: string;
   urgency: string | null;
+  call_type: CallType;
+  classification_confidence: number | null;
+  classification_reason: string | null;
   revenue_attributed: number;
   started_at: string | null;
   ended_at: string | null;

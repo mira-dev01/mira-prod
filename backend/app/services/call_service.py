@@ -8,6 +8,7 @@ from app.models.call_session import CallSession
 from app.models.guest_profile import GuestProfile
 from app.models.property import Property
 from app.models.user import User
+from app.schemas.call_classification import ClassificationResult
 
 # Placeholder caller identity for the dashboard's "test in browser" feature
 # (no real phone number exists for a WebRTC test call). The frontend renders
@@ -126,6 +127,25 @@ async def attach_exotel_call(
     await db.commit()
     await db.refresh(session)
     return session
+
+
+async def set_call_classification(
+    db: AsyncSession, call_session_id: uuid.UUID | None, classification: ClassificationResult
+) -> None:
+    """Persists the end-of-call classification (app/services/
+    call_classification_service.py), called from on_pipeline_finished right
+    after finalize_call_session. No-op if the call session can't be
+    resolved -- mirrors finalize_call_session's own None-tolerant shape."""
+    if call_session_id is None:
+        return
+    session = await db.get(CallSession, call_session_id)
+    if session is None:
+        return
+
+    session.call_type = classification.call_type
+    session.classification_confidence = classification.confidence
+    session.classification_reason = classification.reason
+    await db.commit()
 
 
 def _map_exotel_status(exotel_status: str) -> str:

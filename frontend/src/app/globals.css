@@ -108,6 +108,10 @@
   --status-pending-bg: rgba(232, 168, 56, 0.12);
   --status-progress: #6b8fd4;
   --status-progress-bg: rgba(107, 143, 212, 0.12);
+  --status-purple: #9b7ec8;
+  --status-purple-bg: rgba(155, 126, 200, 0.12);
+  --status-orange: #d97a3d;
+  --status-orange-bg: rgba(217, 122, 61, 0.12);
   --accent-warm: #c9a882;
   --accent-warm-bg: rgba(201, 168, 130, 0.12);
 
@@ -228,6 +232,16 @@
   .badge-status-progress {
     background: var(--status-progress-bg);
     color: var(--status-progress);
+    border-color: transparent;
+  }
+  .badge-status-purple {
+    background: var(--status-purple-bg);
+    color: var(--status-purple);
+    border-color: transparent;
+  }
+  .badge-status-orange {
+    background: var(--status-orange-bg);
+    color: var(--status-orange);
     border-color: transparent;
   }
   .badge-priority-low {

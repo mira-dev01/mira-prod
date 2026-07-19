@@ -81,6 +81,26 @@ async def delete_if_empty(db: AsyncSession, call_session_id: uuid.UUID | None) -
         await db.commit()
 
 
+async def delete_for_unqualified_call(db: AsyncSession, call_session_id: uuid.UUID | None) -> None:
+    """Called from on_pipeline_finished after end-of-call classification
+    (app/services/call_classification_service.py), for any call_type NOT in
+    QUALIFIED_CALL_TYPES (JUNK/INCOMPLETE/UNKNOWN). Deletes the Lead row if
+    one exists, regardless of how much data it has or whether
+    escalate_to_host/update_lead ran mid-call -- unlike delete_if_empty
+    (which only clears near-empty phantom rows), a junk/incomplete
+    classification overrides whatever the live tool calls captured, since
+    the full-transcript end-of-call review is necessarily more informed
+    than the LLM's real-time in-call judgment. No-op if no Lead exists.
+    """
+    if call_session_id is None:
+        return
+    lead = await db.scalar(select(Lead).where(Lead.call_session_id == call_session_id))
+    if lead is None:
+        return
+    await db.delete(lead)
+    await db.commit()
+
+
 async def list_leads(db: AsyncSession, user_id: uuid.UUID, date_range: DateRange | None = None) -> list[Lead]:
     stmt = select(Lead).where(Lead.user_id == user_id).order_by(Lead.created_at.desc())
     if date_range is not None:

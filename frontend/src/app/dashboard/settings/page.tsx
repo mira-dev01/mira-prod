@@ -39,7 +39,6 @@ export default function SettingsPage() {
   const [notificationEmail, setNotificationEmail] = useState(user?.notification_email ?? "");
   const [savingNotificationEmail, setSavingNotificationEmail] = useState(false);
 
-  const [firstMessage, setFirstMessage] = useState(user?.agent_first_message ?? "");
   const [persona, setPersona] = useState(user?.agent_persona ?? "");
   const [escalationPhrase, setEscalationPhrase] = useState(user?.agent_escalation_phrase ?? "");
   const [savingPersonalization, setSavingPersonalization] = useState(false);
@@ -77,7 +76,6 @@ export default function SettingsPage() {
     setSavingPersonalization(true);
     try {
       await api.auth.updateMe({
-        agent_first_message: firstMessage || null,
         agent_persona: persona || null,
         agent_escalation_phrase: escalationPhrase || null,
       });
@@ -223,23 +221,9 @@ export default function SettingsPage() {
               <p className="mb-3 text-sm text-muted-foreground">
                 Leave any field blank to use MIRA&apos;s default. The golden rules (never hallucinate
                 pricing, always escalate when unsure, etc.) stay fixed regardless — these only change
-                tone and wording.
+                tone and wording. Your voice agent&apos;s opening greeting was set during registration.
               </p>
               <form onSubmit={handleSavePersonalization} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="agent_first_message">First message</Label>
-                  <Textarea
-                    id="agent_first_message"
-                    placeholder="Namaste {guest_name}! I'm Mira, calling on behalf of {host_name} about {property_name}."
-                    value={firstMessage}
-                    onChange={(e) => setFirstMessage(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Placeholders: {"{host_name}"}, {"{property_name}"}, {"{city}"}, {"{guest_name}"} —
-                    any that don&apos;t apply to a given call (e.g. {"{property_name}"} on the Lead
-                    Agent line) are left blank automatically.
-                  </p>
-                </div>
                 <div className="space-y-2">
                   <Label htmlFor="agent_persona">Personality note</Label>
                   <Textarea

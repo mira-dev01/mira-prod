@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatusChip, type StatusTone } from "@/components/status-chip";
 import { cn, isBrowserTestIdentity } from "@/lib/utils";
-import type { CallSessionOut } from "@/lib/types";
+import type { CallSessionOut, CallType } from "@/lib/types";
 
 export const callStatusTone: Record<string, StatusTone> = {
   completed: "live",
@@ -26,6 +26,29 @@ export const callUrgencyTone: Record<string, StatusTone> = {
   high: "destructive",
   medium: "pending",
   low: "neutral",
+};
+
+// call_type badge colors -- BOOKING_LEAD and GENERAL_QUERY share the same
+// green "qualified" look (distinguished only by label text), matching the
+// 6-color legend the host-facing spec gives for a 7-value taxonomy.
+export const callTypeTone: Record<CallType, StatusTone> = {
+  BOOKING_LEAD: "live",
+  GENERAL_QUERY: "live",
+  GUEST_SUPPORT: "progress",
+  EXISTING_BOOKING: "purple",
+  INCOMPLETE: "orange",
+  UNKNOWN: "neutral",
+  JUNK: "destructive",
+};
+
+export const callTypeLabel: Record<CallType, string> = {
+  BOOKING_LEAD: "Booking Lead",
+  GENERAL_QUERY: "Qualified",
+  GUEST_SUPPORT: "Guest Support",
+  EXISTING_BOOKING: "Existing Guest",
+  INCOMPLETE: "Incomplete",
+  UNKNOWN: "Unknown",
+  JUNK: "Junk",
 };
 
 // Left-border color per row, reusing the exact same StatusTone CSS vars as
@@ -70,7 +93,12 @@ export function CallsTable({ calls, compact = false }: { calls: CallSessionOut[]
               </>
             )}
             <TableHead>Status</TableHead>
-            {!compact && <TableHead>Urgency</TableHead>}
+            {!compact && (
+              <>
+                <TableHead>Urgency</TableHead>
+                <TableHead>Type</TableHead>
+              </>
+            )}
             <TableHead>Started</TableHead>
             <TableHead className="w-8" />
           </TableRow>
@@ -103,13 +131,18 @@ export function CallsTable({ calls, compact = false }: { calls: CallSessionOut[]
                 <StatusChip status={call.status} tone={callStatusTone[call.status] ?? "neutral"} />
               </TableCell>
               {!compact && (
-                <TableCell>
-                  {call.urgency ? (
-                    <StatusChip status={call.urgency} tone={callUrgencyTone[call.urgency] ?? "neutral"} />
-                  ) : (
-                    "—"
-                  )}
-                </TableCell>
+                <>
+                  <TableCell>
+                    {call.urgency ? (
+                      <StatusChip status={call.urgency} tone={callUrgencyTone[call.urgency] ?? "neutral"} />
+                    ) : (
+                      "—"
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <StatusChip status={callTypeLabel[call.call_type]} tone={callTypeTone[call.call_type]} />
+                  </TableCell>
+                </>
               )}
               <TableCell>{call.started_at ? new Date(call.started_at).toLocaleString() : "—"}</TableCell>
               <TableCell>
