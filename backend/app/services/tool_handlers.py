@@ -49,6 +49,27 @@ logger = logging.getLogger(__name__)
 _URGENCY_EMOJI = {"emergency": "\U0001F6A8", "high": "\U0001F534", "medium": "\U0001F7E0", "low": "\U0001F7E1"}
 
 
+def _phone_confirmation_warning(phone: str | None) -> str:
+    """SendWhatsappArgs/SendPhotosArgs/UpdateLeadArgs all normalize phone
+    digits via _normalize_phone (app/schemas/tool.py), which is left
+    deliberately permissive -- it never rejects a number, since a guest can
+    legitimately still be mid-dictation when it runs. That means an STT
+    mis-hearing that drops or garbles a digit (confirmed live: a WhatsApp
+    send silently going nowhere because the captured number was 9 digits,
+    not 10) sails through with no signal anywhere that anything was wrong.
+    Every handler that saves or messages a phone number appends this to its
+    tool result when the digit count is off, so the model finds out in the
+    same turn and can ask the guest to repeat it -- instead of confidently
+    confirming success on a number that was never going to work.
+    """
+    if not phone or len(phone) == 10:
+        return ""
+    return (
+        f" Note: that phone number has {len(phone)} digits, not 10, so it's likely incomplete or "
+        "misheard -- ask the guest to repeat their full 10-digit number to confirm before relying on it."
+    )
+
+
 def _build_escalation_whatsapp_text(
     urgency: str, property_name: str, reason: str, call_summary: str | None, guest_phone: str | None, dashboard_url: str
 ) -> str:
@@ -136,7 +157,12 @@ async def _get_property(db: AsyncSession, property_id: str) -> Property | None:
     return await db.get(Property, pid)
 
 
-async def handle_check_calendar(db: AsyncSession, args: CheckCalendarArgs) -> str:
+async def handle_check_calendar(
+    db: AsyncSession,
+    args: CheckCalendarArgs,
+    host_user_id: uuid.UUID | None = None,
+    call_session_id: uuid.UUID | None = None,
+) -> str:
     property_ = await _get_property(db, args.property_id)
     if property_ is None:
         return "I couldn't find that property. Could you confirm which listing you're asking about?"
@@ -146,6 +172,11 @@ async def handle_check_calendar(db: AsyncSession, args: CheckCalendarArgs) -> st
 
     if args.num_guests is not None and args.num_guests > property_.max_guests:
         return f"{property_.name} sleeps up to {property_.max_guests} guests, which is fewer than {args.num_guests}."
+
+    if host_user_id is not None:
+        await lead_service.backfill_lead_from_engagement(
+            db, host_user_id, call_session_id, property_.name, args.check_in, args.check_out, args.num_guests
+        )
 
     available = await calendar_service.is_available(db, property_.id, args.check_in, args.check_out)
     nights = (args.check_out - args.check_in).days
@@ -165,7 +196,12 @@ async def handle_check_calendar(db: AsyncSession, args: CheckCalendarArgs) -> st
     return f"{property_.name} is NOT available for those dates, and no similar-length window opens up in the next 90 days."
 
 
-async def handle_get_pricing(db: AsyncSession, args: GetPricingArgs) -> str:
+async def handle_get_pricing(
+    db: AsyncSession,
+    args: GetPricingArgs,
+    host_user_id: uuid.UUID | None = None,
+    call_session_id: uuid.UUID | None = None,
+) -> str:
     property_ = await _get_property(db, args.property_id)
     if property_ is None:
         return "I couldn't find that property to price. Could you confirm which listing you're asking about?"
@@ -173,29 +209,31 @@ async def handle_get_pricing(db: AsyncSession, args: GetPricingArgs) -> str:
     if args.check_out <= args.check_in:
         return "The check-out date needs to be after check-in. Could you confirm the dates?"
 
+    if host_user_id is not None:
+        await lead_service.backfill_lead_from_engagement(
+            db, host_user_id, call_session_id, property_.name, args.check_in, args.check_out, args.num_guests
+        )
+
     breakdown = await pricing_engine.calculate_price(
         db, property_, args.check_in, args.check_out, apply_discounts=args.apply_discounts
     )
 
     # Lead with the total as one natural spoken sentence -- this string is
-    # what the LLM tends to read back almost verbatim, so an itemized,
-    # comma-joined ledger (base rate X, cleaning fee Y, taxes Z, ...) comes
-    # out sounding like the agent is reciting a spreadsheet row instead of
-    # talking to the guest. Fee components are appended only as a secondary,
-    # clearly-labeled "if asked" breakdown the model can draw on without it
-    # being the primary thing it parrots.
+    # what the LLM tends to read back almost verbatim. No cleaning fee/tax
+    # markup to itemize (see pricing_engine.calculate_price) -- base_total
+    # only differs from total when a length-of-stay discount applies, so
+    # that's the only case worth spelling out separately.
     summary = (
         f"For {property_.name}, {breakdown.nights} night(s) comes to ₹{breakdown.total:,.0f} total "
         f"(about ₹{breakdown.per_night_avg:,.0f} per night)"
     )
     if breakdown.discount_amount:
-        summary += f", including a {breakdown.discount_percent:.0f}% discount of ₹{breakdown.discount_amount:,.0f}"
+        summary += (
+            f", including a {breakdown.discount_percent:.0f}% discount of ₹{breakdown.discount_amount:,.0f} "
+            f"off the base rate of ₹{breakdown.base_total:,.0f}"
+        )
     summary += "."
-    breakdown_detail = (
-        f" Breakdown if the guest asks: base rate ₹{breakdown.base_total:,.0f}, "
-        f"cleaning fee ₹{breakdown.cleaning_fee:,.0f}, taxes ₹{breakdown.tax_amount:,.0f}."
-    )
-    return summary + breakdown_detail
+    return summary
 
 
 async def handle_dispatch_technician(
@@ -204,6 +242,14 @@ async def handle_dispatch_technician(
     property_ = await _get_property(db, args.property_id)
     if property_ is None:
         return "I couldn't find that property to dispatch a technician for."
+
+    # "general" covers non-maintenance in-stay asks (towels, housekeeping,
+    # amenity requests) routed here instead of escalate_to_host -- "our
+    # general technician" reads oddly for a towel request, so use "caretaker"
+    # in the guest-facing copy for that category specifically. Internal
+    # notification text keeps saying "technician" either way, since that's
+    # accurate for the host-facing record regardless of phrasing to the guest.
+    role_label = "caretaker" if args.issue_type == "general" else f"{args.issue_type} technician"
 
     technician = await technician_service.find_technician(db, property_.id, args.issue_type)
 
@@ -220,7 +266,7 @@ async def handle_dispatch_technician(
             ),
         )
         return (
-            f"I don't have a {args.issue_type} technician on file for {property_.name} yet, "
+            f"I don't have a {role_label} on file for {property_.name} yet, "
             f"so I've flagged this for the host to arrange directly."
         )
 
@@ -236,8 +282,13 @@ async def handle_dispatch_technician(
         ),
     )
     return (
-        f"I've notified {technician.name}, our {args.issue_type} technician for {property_.name}, "
-        f"and flagged this to the host as {args.urgency} priority."
+        f"I've let {technician.name}, our {role_label} for {property_.name}, know -- "
+        f"they'll take care of it shortly."
+        if args.issue_type == "general"
+        else (
+            f"I've notified {technician.name}, our {role_label} for {property_.name}, "
+            f"and flagged this to the host as {args.urgency} priority."
+        )
     )
 
 
@@ -253,7 +304,7 @@ async def handle_send_whatsapp(
         message=f"To {args.phone}: {args.message}",
     )
     asyncio.create_task(_send_whatsapp_message(args.phone, args.message))
-    return f"Got it, I've queued a WhatsApp message to {args.phone}."
+    return f"Got it, I've queued a WhatsApp message to {args.phone}." + _phone_confirmation_warning(args.phone)
 
 
 async def handle_send_photos(
@@ -303,7 +354,10 @@ async def handle_send_photos(
             )
         )
 
-    return f"Got it, I've sent a photo gallery link for {property_.name} to {args.guest_phone}."
+    return (
+        f"Got it, I've sent a photo gallery link for {property_.name} to {args.guest_phone}."
+        + _phone_confirmation_warning(args.guest_phone)
+    )
 
 
 async def handle_escalate_to_host(
@@ -390,6 +444,7 @@ async def handle_negotiate_rate(
     args: NegotiateRateArgs,
     host_user_id: uuid.UUID | None = None,
     guest_profile_id: uuid.UUID | None = None,
+    call_session_id: uuid.UUID | None = None,
 ) -> str:
     property_ = await _get_property(db, args.property_id)
     if property_ is None:
@@ -397,6 +452,11 @@ async def handle_negotiate_rate(
 
     if args.check_out <= args.check_in:
         return "The check-out date needs to be after check-in. Could you confirm the dates?"
+
+    if host_user_id is not None:
+        await lead_service.backfill_lead_from_engagement(
+            db, host_user_id, call_session_id, property_.name, args.check_in, args.check_out, args.num_guests
+        )
 
     result = await pricing_engine.negotiate_rate(
         db,
@@ -411,28 +471,82 @@ async def handle_negotiate_rate(
     return result.message
 
 
+# Property.city/neighborhood_info are free text -- most properties only ever
+# say "Goa" or one specific locality ("Colva", "Siolim"), never the literal
+# words "North Goa"/"South Goa" (confirmed live: Azure's city is "Colva" and
+# its neighborhood_info never mentions "South Goa" either, so an ILIKE match
+# on those exact words silently excluded it from a "South Goa" query even
+# though Colva unambiguously is South Goa). This maps the common named
+# localities to their region so a region query matches on where a property
+# actually is, not on whether that exact phrase happens to appear in its text.
+_GOA_NORTH_LOCALITIES = [
+    "siolim", "anjuna", "vagator", "chapora", "morjim", "ashwem", "mandrem",
+    "calangute", "candolim", "baga", "arpora", "assagao", "mapusa",
+    "sinquerim", "arambol", "querim", "reis magos",
+]
+_GOA_SOUTH_LOCALITIES = [
+    "colva", "margao", "madgaon", "benaulim", "varca", "cavelossim", "mobor",
+    "palolem", "agonda", "majorda", "cansaulim", "betalbatim", "velsao",
+    "vasco", "bogmalo", "canacona",
+]
+
+
+def _goa_region_localities(preferred_location: str) -> list[str] | None:
+    normalized = preferred_location.strip().lower()
+    if "north goa" in normalized:
+        return _GOA_NORTH_LOCALITIES
+    if "south goa" in normalized:
+        return _GOA_SOUTH_LOCALITIES
+    return None
+
+
 async def handle_recommend_properties(db: AsyncSession, args: RecommendPropertiesArgs, host_user_id: uuid.UUID) -> str:
     from sqlalchemy import or_
 
-    stmt = select(Property).where(Property.user_id == host_user_id)
-    if args.num_guests is not None:
-        stmt = stmt.where(Property.max_guests >= args.num_guests)
+    base_stmt = select(Property).where(Property.user_id == host_user_id)
     if args.budget is not None:
-        stmt = stmt.where(Property.base_price <= args.budget * 1.15)
+        base_stmt = base_stmt.where(Property.base_price <= args.budget * 1.15)
     if args.preferred_location:
         # Match against city name OR neighborhood_info so state-level queries
         # ("Kerala", "Himachal") find properties whose city is e.g. "Alleppey"
-        # but whose neighborhood text mentions the broader region.
+        # but whose neighborhood text mentions the broader region. For Goa
+        # specifically, also expand "north/south goa" into the actual
+        # localities in that region (see _goa_region_localities above).
         loc = f"%{args.preferred_location}%"
-        stmt = stmt.where(
-            or_(
-                Property.city.ilike(loc),
-                Property.neighborhood_info.ilike(loc),
+        location_filter = or_(Property.city.ilike(loc), Property.neighborhood_info.ilike(loc))
+        localities = _goa_region_localities(args.preferred_location)
+        if localities:
+            location_filter = or_(
+                location_filter,
+                *[
+                    or_(Property.city.ilike(f"%{locality}%"), Property.neighborhood_info.ilike(f"%{locality}%"))
+                    for locality in localities
+                ],
             )
-        )
-    stmt = stmt.order_by(Property.base_price.asc()).limit(3)
+        base_stmt = base_stmt.where(location_filter)
 
+    stmt = base_stmt
+    if args.num_guests is not None:
+        stmt = stmt.where(Property.max_guests >= args.num_guests)
+    stmt = stmt.order_by(Property.base_price.asc()).limit(3)
     properties = list((await db.scalars(stmt)).all())
+
+    combo_note = ""
+    if not properties and args.num_guests is not None:
+        # No single property sleeps the whole group -- fall back to smaller
+        # units (same location/budget filters, just without the guest-count
+        # cutoff) instead of a flat "nothing found", so the model can suggest
+        # booking two units together to cover the group. Hosts with several
+        # small 1BHKs at the same property (e.g. the Pause Project in Siolim)
+        # routinely accommodate larger groups exactly this way.
+        fallback_stmt = base_stmt.order_by(Property.base_price.asc()).limit(4)
+        properties = list((await db.scalars(fallback_stmt)).all())
+        if properties:
+            combo_note = (
+                f" None of these sleep all {args.num_guests} guests alone -- since they're separate units, "
+                "suggest the guest book two of them together to cover the group."
+            )
+
     if not properties:
         return "I couldn't find a property in our portfolio matching that -- let me connect you with the host directly."
 
@@ -444,7 +558,7 @@ async def handle_recommend_properties(db: AsyncSession, args: RecommendPropertie
             f"{property_.name} in {property_.city or 'unlisted city'}: ₹{float(property_.base_price):,.0f}/night, "
             f"sleeps {property_.max_guests}, {amenities}{usp_part} (property_id: {property_.id})"
         )
-    return "Here are some options: " + " | ".join(lines)
+    return "Here are some options: " + " | ".join(lines) + combo_note
 
 
 async def _resolve_property_names(db: AsyncSession, values: list[str]) -> list[str]:
@@ -477,7 +591,7 @@ async def handle_update_lead(
     if updates.get("properties_discussed"):
         updates["properties_discussed"] = await _resolve_property_names(db, updates["properties_discussed"])
     await lead_service.upsert_lead(db, host_user_id, call_session_id, **updates)
-    return "Saved."
+    return "Saved." + _phone_confirmation_warning(updates.get("phone"))
 
 
 async def handle_search_faq(

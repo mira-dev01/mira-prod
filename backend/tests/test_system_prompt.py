@@ -2,11 +2,13 @@ import uuid
 from datetime import date, datetime
 
 from app.models.guest_profile import GuestProfile
+from app.models.lead import Lead
 from app.models.property import Property
 from app.models.user import User
 from app.prompts import system_prompt
 from app.prompts.system_prompt import (
     DEFAULT_ESCALATION_PHRASE,
+    _active_booking_section,
     _active_seasonal_notes,
     build_lead_system_prompt,
     build_system_prompt,
@@ -49,6 +51,20 @@ def _guest(**overrides) -> GuestProfile:
     defaults = dict(id=uuid.uuid4(), phone="+919999999999", total_stays=0)
     defaults.update(overrides)
     return GuestProfile(**defaults)
+
+
+def _booking(**overrides) -> Lead:
+    defaults = dict(
+        id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+        status="booked",
+        guest_name="Priya",
+        properties_discussed=["Alpine Ridge Chalet"],
+        check_in=date(2026, 8, 1),
+        check_out=date(2026, 8, 3),
+    )
+    defaults.update(overrides)
+    return Lead(**defaults)
 
 
 def test_first_message_default_has_no_placeholders_left_unresolved():
@@ -361,6 +377,57 @@ def test_build_system_prompt_omits_inactive_seasonal_note(monkeypatch):
     prompt = build_system_prompt(prop, None, _user())
     assert "Extra heater provided." not in prompt
     assert "Seasonal notes currently in effect" not in prompt
+
+
+# --- Active booking recognition (Lead.status == "booked") ---
+
+
+def test_active_booking_section_empty_when_no_booking():
+    assert _active_booking_section(None) == ""
+
+
+def test_active_booking_section_includes_property_dates_and_name():
+    booking = _booking()
+    section = _active_booking_section(booking)
+    assert "Alpine Ridge Chalet" in section
+    assert "2026-08-01 to 2026-08-03" in section
+    assert "Priya" in section
+    assert "confirmed booking" in section
+
+
+def test_active_booking_section_handles_missing_dates():
+    booking = _booking(check_in=None, check_out=None)
+    section = _active_booking_section(booking)
+    assert "dates not yet on file" in section
+
+
+def test_active_booking_section_handles_missing_guest_name():
+    booking = _booking(guest_name=None)
+    section = _active_booking_section(booking)
+    assert "name not on file" in section
+
+
+def test_active_booking_section_uses_last_discussed_property():
+    booking = _booking(properties_discussed=["Sea View Villa", "Alpine Ridge Chalet"])
+    section = _active_booking_section(booking)
+    assert "Alpine Ridge Chalet" in section
+
+
+def test_build_system_prompt_includes_active_booking_when_present():
+    prompt = build_system_prompt(_property(), None, _user(), active_booking=_booking())
+    assert "confirmed booking" in prompt
+    assert "Alpine Ridge Chalet" in prompt
+
+
+def test_build_system_prompt_omits_booking_section_when_none():
+    prompt = build_system_prompt(_property(), None, _user())
+    assert "confirmed booking" not in prompt
+
+
+def test_build_lead_system_prompt_includes_active_booking_when_present():
+    prompt = build_lead_system_prompt(_user(), [], active_booking=_booking())
+    assert "confirmed booking" in prompt
+    assert "Alpine Ridge Chalet" in prompt
 
 
 def test_build_system_prompt_handles_no_seasonal_notes():

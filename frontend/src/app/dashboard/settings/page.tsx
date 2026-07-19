@@ -36,9 +36,13 @@ export default function SettingsPage() {
   const [leadExophone, setLeadExophone] = useState(user?.lead_exophone ?? "");
   const [submitting, setSubmitting] = useState(false);
 
+  const [phone, setPhone] = useState(user?.phone ?? "");
+  const [savingPhone, setSavingPhone] = useState(false);
+
   const [notificationEmail, setNotificationEmail] = useState(user?.notification_email ?? "");
   const [savingNotificationEmail, setSavingNotificationEmail] = useState(false);
 
+  const [firstMessage, setFirstMessage] = useState(user?.agent_first_message ?? "");
   const [persona, setPersona] = useState(user?.agent_persona ?? "");
   const [escalationPhrase, setEscalationPhrase] = useState(user?.agent_escalation_phrase ?? "");
   const [savingPersonalization, setSavingPersonalization] = useState(false);
@@ -54,6 +58,20 @@ export default function SettingsPage() {
       toast.error(err instanceof ApiError ? err.message : "Failed to save lead intake number");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleSavePhone(e: React.FormEvent) {
+    e.preventDefault();
+    setSavingPhone(true);
+    try {
+      await api.auth.updateMe({ phone: phone || null });
+      await refreshUser();
+      toast.success("Phone number saved");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Failed to save phone number");
+    } finally {
+      setSavingPhone(false);
     }
   }
 
@@ -76,6 +94,7 @@ export default function SettingsPage() {
     setSavingPersonalization(true);
     try {
       await api.auth.updateMe({
+        agent_first_message: firstMessage || null,
         agent_persona: persona || null,
         agent_escalation_phrase: escalationPhrase || null,
       });
@@ -164,6 +183,29 @@ export default function SettingsPage() {
 
           <Card className="max-w-md">
             <CardHeader>
+              <CardTitle>WhatsApp escalations</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="mb-3 text-sm text-muted-foreground">
+                Your phone number for escalation WhatsApp messages, in addition to email. After saving,
+                text &quot;join &lt;code&gt;&quot; to the Twilio Sandbox number from this phone — the
+                sandbox only delivers to numbers that have opted in.
+              </p>
+              <form onSubmit={handleSavePhone} className="flex gap-2">
+                <Input
+                  placeholder="+9198XXXXXXXX"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                />
+                <Button type="submit" disabled={savingPhone}>
+                  Save
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+
+          <Card className="max-w-md">
+            <CardHeader>
               <CardTitle>Escalation notifications</CardTitle>
             </CardHeader>
             <CardContent>
@@ -221,9 +263,23 @@ export default function SettingsPage() {
               <p className="mb-3 text-sm text-muted-foreground">
                 Leave any field blank to use MIRA&apos;s default. The golden rules (never hallucinate
                 pricing, always escalate when unsure, etc.) stay fixed regardless — these only change
-                tone and wording. Your voice agent&apos;s opening greeting was set during registration.
+                tone and wording.
               </p>
               <form onSubmit={handleSavePersonalization} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="agent_first_message">Opening greeting</Label>
+                  <Textarea
+                    id="agent_first_message"
+                    placeholder="Namaste {guest_name}! I'm Mira, calling on behalf of {host_name} about {property_name}."
+                    value={firstMessage}
+                    onChange={(e) => setFirstMessage(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Placeholders: {"{host_name}"}, {"{property_name}"}, {"{city}"}, {"{guest_name}"} — any that
+                    don&apos;t apply to a given call are left blank automatically. Set during registration; edit
+                    it here any time.
+                  </p>
+                </div>
                 <div className="space-y-2">
                   <Label htmlFor="agent_persona">Personality note</Label>
                   <Textarea

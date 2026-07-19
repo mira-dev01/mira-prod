@@ -76,14 +76,31 @@ class Property(UUIDPkMixin, TimestampMixin, Base):
     smart_price_sample_size: Mapped[int] = mapped_column(default=0, server_default="0")
     smart_price_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    # When true, pricing_engine.calculate_price quotes base_price as-is for
-    # every night (no WEEKEND_SURGE_MULTIPLIER) and charges no cleaning fee
-    # or tax on top -- for hosts whose Airbnb listing price is already
-    # all-inclusive/final and who want Mira to match it exactly rather than
-    # layer its own markup on top. Defaults false: every other property
-    # keeps today's behavior unchanged. Length-of-stay discounts still apply
-    # either way -- those are a host-configured discount, not a markup.
+    # Whether Mira quotes this property's live Airbnb Smart Pricing (fetched
+    # per pricing question via SearchApi, see pricing_engine.calculate_price
+    # and airbnb_latitude/longitude below) instead of the host-set
+    # base_price. Also gates whether SearchApi is used for this property at
+    # all -- both this live per-listing lookup and the city-comparable daily
+    # refresh (app/services/smart_pricing_service.py) are scoped to
+    # properties with this on, since not every host is on Airbnb Smart
+    # Pricing. Defaults false: quotes base_price as-is, no markup either
+    # way (pricing_engine.calculate_price applies none, on or off). Length-
+    # of-stay discounts still apply either way -- those are a host-
+    # configured discount, not a markup.
     exact_airbnb_pricing: Mapped[bool] = mapped_column(default=False, server_default="false")
+
+    # GPS coordinates for this exact Airbnb listing, fetched once via
+    # SearchApi's airbnb_property engine and cached here permanently (a
+    # listing's location doesn't change) -- pricing_engine.calculate_price
+    # uses these to scope a tight bounding_box search on the airbnb search
+    # engine for a live, date-scoped price for THIS listing specifically.
+    # A plain city-only search returns a generic, unfiltered page of
+    # listings for that city and this exact listing is often not even on
+    # it (confirmed live -- a 20-listing city search for a real Colva
+    # listing never included it); a tight bounding_box around its own
+    # coordinates does. None until the first successful lookup.
+    airbnb_latitude: Mapped[float | None] = mapped_column(Numeric(9, 6))
+    airbnb_longitude: Mapped[float | None] = mapped_column(Numeric(9, 6))
 
     owner: Mapped["User"] = relationship(back_populates="properties")
     bookings: Mapped[list["Booking"]] = relationship(back_populates="property", cascade="all, delete-orphan")

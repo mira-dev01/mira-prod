@@ -84,11 +84,11 @@ export function PropertyFormFields({
         </div>
         <div className="col-span-2 flex items-center justify-between rounded-lg border p-3">
           <div className="space-y-0.5">
-            <Label htmlFor="exact_airbnb_pricing">Quote exact Airbnb price</Label>
+            <Label htmlFor="exact_airbnb_pricing">Quote live Airbnb Smart Pricing</Label>
             <p className="text-micro text-muted-foreground">
-              Off: Mira adds its own weekend surge, cleaning fee, and tax on top of the base price above. On: Mira
-              quotes the base price as-is, with no markup — use this if your base price already matches your final
-              Airbnb rate for every date.
+              Off: Mira quotes the base price above as-is (no markup either way). On: Mira looks up this listing's
+              live price on Airbnb for the guest's actual dates instead — turn this on if you use Airbnb Smart
+              Pricing and want Mira to always match today's real rate. Requires an Airbnb listing to be linked.
             </p>
           </div>
           <Switch

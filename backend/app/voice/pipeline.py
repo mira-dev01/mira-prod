@@ -503,6 +503,7 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
         else:
             host_user_id = lead_user.id
         guest = await call_service.get_or_create_guest_profile(db, caller_number, host_user_id)
+        active_booking = await lead_service.get_active_booking(db, guest.id if guest else None, host_user_id)
 
         if property_ is not None:
             host = await db.get(User, property_.user_id)
@@ -514,7 +515,7 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
                 caller_number=caller_number,
                 user_id=property_.user_id,
             )
-            system_prompt = build_system_prompt(property_, guest, host)
+            system_prompt = build_system_prompt(property_, guest, host, active_booking)
             first_message = first_message_for(property_, guest, host)
             property_id = property_.id
             property_name = property_.name
@@ -530,7 +531,7 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
                 caller_number=caller_number,
                 user_id=lead_user.id,
             )
-            system_prompt = build_lead_system_prompt(lead_user, properties, guest)
+            system_prompt = build_lead_system_prompt(lead_user, properties, guest, active_booking)
             first_message = lead_first_message_for(lead_user)
             property_id = None
             property_name = None
@@ -618,6 +619,7 @@ async def run_browser_lead_pipeline(connection: SmallWebRTCConnection, user: Use
         guest = await call_service.get_or_create_guest_profile(
             db, call_service.BROWSER_TEST_CALLER_NUMBER, user.id, name="Browser test guest"
         )
+        active_booking = await lead_service.get_active_booking(db, guest.id if guest else None, user.id)
         session = await call_service.get_or_create_call_session(
             db,
             exotel_call_id=None,
@@ -626,7 +628,7 @@ async def run_browser_lead_pipeline(connection: SmallWebRTCConnection, user: Use
             caller_number=call_service.BROWSER_TEST_CALLER_NUMBER,
             user_id=user.id,
         )
-        system_prompt = build_lead_system_prompt(user, properties, guest)
+        system_prompt = build_lead_system_prompt(user, properties, guest, active_booking)
         first_message = lead_first_message_for(user)
         call_session_id = session.id
         guest_profile_id = guest.id if guest else None

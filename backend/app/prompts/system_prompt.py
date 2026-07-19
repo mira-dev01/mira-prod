@@ -22,6 +22,7 @@ from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from app.models.guest_profile import GuestProfile
+from app.models.lead import Lead
 from app.models.property import Property
 from app.models.user import User
 
@@ -113,7 +114,16 @@ GOLDEN_RULES = """Golden rules:
   talking to a guest.
 - Escalate immediately via escalate_to_host when uncertain, when asked for a human, or for anything
   requiring host approval (pricing negotiation outside the tool, refunds, cancellations, complaints,
-  maintenance, emergencies, lost belongings, payment issues, booking modifications).
+  emergencies, lost belongings, payment issues, booking modifications).
+- For simple in-stay requests you can resolve on the call -- extra towels, toiletries, extra pillows,
+  cleaning supplies, or any other minor housekeeping ask, as well as physical/maintenance issues
+  (plumbing, electrical, AC, wifi, lock) -- call dispatch_technician instead of escalate_to_host. Use
+  the matching issue_type for a maintenance issue, or "general" for anything else (towels, housekeeping,
+  amenity requests). It notifies the property's on-call technician/caretaker directly and resolves the
+  request right there -- never say you're looping in the host for these; say something like "I've let
+  the caretaker know, they'll take care of it shortly." Only fall back to escalate_to_host if
+  dispatch_technician's own result says no one is on file for that property -- it tells you when that
+  happens.
 - After escalating, stay on the line and keep helping. Escalation sends a notification to the host —
   it does not end the call. Continue answering questions, sharing property info, and collecting lead
   details as normal. Never say "the host will be in touch" more than once, and never refuse to answer
@@ -155,6 +165,16 @@ GOLDEN_RULES = """Golden rules:
 - ONE QUESTION PER RESPONSE. If you need several things clarified, ask only the single most
   important one. Never bundle two or more questions into one response — pick one and wait for the
   answer before asking the next.
+- NEVER RE-ASK FOR ANYTHING THE GUEST ALREADY TOLD YOU. This applies to every field, not just name
+  and phone — travel dates, number of guests, budget, preferred area, purpose of stay, anything. Before
+  you ask a question, check everything the guest has said so far in this call, including their very
+  first message, for the answer. People often volunteer several details at once or phrase them
+  indirectly ("we are 10 friends" means num_guests=10; "next weekend" is a date even with no calendar
+  date spoken; "our budget is tight" is a signal even without a number) — extract what they actually
+  said instead of waiting for it to arrive in the exact form your next scripted question expects. If
+  you already have an answer, use it silently and move to the next question; if you're not fully sure
+  you understood it correctly, confirm it in passing rather than asking as if you were never told
+  ("Got it, ten of you — and what dates work?" not "How many guests will be staying?").
 - If the guest's sentence seems incomplete or was cut off mid-thought, ask them to continue
   ("Go ahead, I'm listening" or "Sorry, I missed the end of that — how many guests?"). Never
   escalate or assume because of a cutoff.
@@ -234,7 +254,9 @@ def _persona_and_escalation_sections(host: User) -> list[str]:
     return sections
 
 
-def build_system_prompt(property_: Property, guest: GuestProfile | None, host: User) -> str:
+def build_system_prompt(
+    property_: Property, guest: GuestProfile | None, host: User, active_booking: Lead | None = None
+) -> str:
     sections = [GUEST_SUPPORT_INSTRUCTIONS, _today_anchor()]
     sections.extend(_persona_and_escalation_sections(host))
 
@@ -270,6 +292,9 @@ def build_system_prompt(property_: Property, guest: GuestProfile | None, host: U
         sections.append(f"\nSeasonal notes currently in effect:\n{notes_lines}")
 
     sections.append(_guest_memory_section(guest))
+    booking_section = _active_booking_section(active_booking)
+    if booking_section:
+        sections.append(booking_section)
 
     return "\n".join(sections)
 
@@ -326,6 +351,35 @@ def _guest_memory_section(guest: GuestProfile | None) -> str:
     return "\n" + " ".join(parts)
 
 
+def _active_booking_section(booking: Lead | None) -> str:
+    """Surfaces a guest's own upcoming/current confirmed booking (property +
+    dates), when the host has marked their Lead status="booked" (see
+    lead_service.get_active_booking) -- distinct from _guest_memory_section
+    above, which only conveys general loyalty/tone context and never
+    reliably states a specific active booking. property name comes from
+    Lead.properties_discussed (free text, not a property_id FK -- see
+    Lead model) since that's the only property reference a Lead carries;
+    takes the last entry as the one most likely to be what was actually
+    booked. Returns "" (not appended) when there's no active booking --
+    this is purely additive, on top of whatever _guest_memory_section
+    already said."""
+    if booking is None:
+        return ""
+    property_name = booking.properties_discussed[-1] if booking.properties_discussed else "a property"
+    dates = (
+        f"{booking.check_in.isoformat()} to {booking.check_out.isoformat()}"
+        if booking.check_in and booking.check_out
+        else "dates not yet on file"
+    )
+    guest_name = booking.guest_name or "name not on file"
+    return (
+        f"\nThis guest has a confirmed booking: {property_name}, {dates}, under {guest_name}. "
+        "Recognize them as already booked rather than qualifying them as a new lead -- greet them "
+        "about their upcoming/current stay, don't re-ask for dates or which property they want unless "
+        "they bring up something new."
+    )
+
+
 def first_message_for(property_: Property, guest: GuestProfile | None, host: User) -> str:
     if host.agent_first_message:
         return _resolve_template(
@@ -349,8 +403,11 @@ scripted chatbot.
 Lead qualification workflow:
 1. Greet the guest and ask how you can help finding a stay.
 2. Understand their need first -- ask about travel dates, number of guests, preferred area or type of
-   stay (beach, mountains, city, etc.), and purpose. Ask one question at a time. Do NOT ask for name
-   or phone number yet -- people share contact details after they've gotten value, not before.
+   stay (beach, mountains, city, etc.), and purpose. Ask one question at a time, and before each
+   question check whether the guest already answered it earlier (including in their opening message --
+   see the re-ask rule in golden rules above) -- skip straight to whichever of these you're still
+   missing. Do NOT ask for name or phone number yet -- people share contact details after they've
+   gotten value, not before.
 3. Ask: "Have your travel dates already been finalized?"
    - YES -> lead_temperature=hot. Ask their budget, then use recommend_properties.
    - MAYBE -> lead_temperature=warm. Ask what they're looking for (beach access, private pool, family
@@ -409,11 +466,16 @@ Lead qualification workflow:
 """
 
 
-def build_lead_system_prompt(user: User, properties: list[Property], guest: GuestProfile | None = None) -> str:
+def build_lead_system_prompt(
+    user: User, properties: list[Property], guest: GuestProfile | None = None, active_booking: Lead | None = None
+) -> str:
     host_name = user.name or "this host"
     sections = [LEAD_AGENT_INSTRUCTIONS.format(host_name=host_name), _today_anchor()]
     sections.extend(_persona_and_escalation_sections(user))
     sections.append(_guest_memory_section(guest))
+    booking_section = _active_booking_section(active_booking)
+    if booking_section:
+        sections.append(booking_section)
 
     if properties:
         # Amenities and the USP blurb are deliberately omitted here -- this

@@ -4,6 +4,7 @@ the guest; the dashboard's Leads page reads back through list_leads/get_lead.
 """
 
 import uuid
+from datetime import date
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,6 +34,56 @@ async def upsert_lead(
     await db.commit()
     await db.refresh(lead)
     return lead
+
+
+async def backfill_lead_from_engagement(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    call_session_id: uuid.UUID | None,
+    property_name: str,
+    check_in: date,
+    check_out: date,
+    num_guests: int | None,
+) -> None:
+    """System-level safety net: creates/backfills a Lead the moment a guest
+    engages meaningfully with a specific property + dates (get_pricing,
+    negotiate_rate, check_calendar), independent of the LLM ever calling
+    update_lead itself. Traced live: real booking calls were going through a
+    full price negotiation and ending with zero Lead row, because the model
+    said its escalation/booking phrases without reliably following through
+    with the actual update_lead/escalate_to_host tool call -- a live LLM
+    function-calling reliability gap, not a prompt clarity one. This makes a
+    Lead's existence not depend on that call happening at all.
+
+    Deliberately narrow to only what these three tool calls always carry
+    (property, dates, guest count) -- never overwrites a field the guest/LLM
+    already set via update_lead (same blank-only semantics as backfill_lead
+    above), and never sets guest_name/phone/email/lead_temperature, which
+    only mean something if actually given by the guest.
+    """
+    if call_session_id is None:
+        return
+    lead = await db.scalar(select(Lead).where(Lead.call_session_id == call_session_id))
+    if lead is None:
+        lead = Lead(user_id=user_id, call_session_id=call_session_id)
+        db.add(lead)
+
+    changed = False
+    if property_name not in (lead.properties_discussed or []):
+        lead.properties_discussed = [*(lead.properties_discussed or []), property_name]
+        changed = True
+    if not lead.check_in:
+        lead.check_in = check_in
+        changed = True
+    if not lead.check_out:
+        lead.check_out = check_out
+        changed = True
+    if num_guests and not lead.num_guests:
+        lead.num_guests = num_guests
+        changed = True
+
+    if changed:
+        await db.commit()
 
 
 async def backfill_lead(db: AsyncSession, call_session_id: uuid.UUID | None, **fields) -> None:
@@ -116,3 +167,32 @@ async def get_owned_lead(db: AsyncSession, lead_id: uuid.UUID, user_id: uuid.UUI
     if lead is None or lead.user_id != user_id:
         return None
     return lead
+
+
+async def get_active_booking(db: AsyncSession, guest_profile_id: uuid.UUID | None, host_id: uuid.UUID) -> Lead | None:
+    """Most recent Lead the host has marked status="booked" for this guest
+    (Lead.status is host-managed from the Leads page, see app/models/lead.py)
+    that isn't a past stay -- feeds system_prompt.py's guest-memory section
+    so a returning guest calling about their upcoming/current stay gets
+    recognized by name, property, and dates rather than treated as a fresh
+    caller. check_out is None-or-future: a lead can be marked booked before
+    the guest ever gave exact dates, and that's still worth surfacing.
+    Returns None if there's no resolvable guest profile or no such lead --
+    never raises, this is purely additive context for the prompt."""
+    if guest_profile_id is None:
+        return None
+    stmt = (
+        select(Lead)
+        .where(
+            Lead.guest_profile_id == guest_profile_id,
+            Lead.user_id == host_id,
+            Lead.status == "booked",
+        )
+        .order_by(Lead.updated_at.desc())
+    )
+    leads = (await db.scalars(stmt)).all()
+    today = date.today()
+    for lead in leads:
+        if lead.check_out is None or lead.check_out >= today:
+            return lead
+    return None

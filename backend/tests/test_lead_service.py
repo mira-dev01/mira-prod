@@ -1,3 +1,6 @@
+from datetime import date, timedelta
+
+from app.models.guest_profile import GuestProfile
 from app.services import lead_service
 
 
@@ -50,3 +53,73 @@ async def test_backfill_lead_never_overwrites_status(test_user, test_call_sessio
 
     await db_session.refresh(lead)
     assert lead.status == "booked"
+
+
+async def _guest_profile(db_session, host_id, phone="+919999911111"):
+    guest = GuestProfile(host_id=host_id, phone=phone, total_stays=1)
+    db_session.add(guest)
+    await db_session.commit()
+    await db_session.refresh(guest)
+    return guest
+
+
+async def test_get_active_booking_finds_booked_lead_with_future_checkout(test_user, db_session):
+    guest = await _guest_profile(db_session, test_user.id)
+    lead = await lead_service.upsert_lead(
+        db_session,
+        test_user.id,
+        None,
+        guest_profile_id=guest.id,
+        status="booked",
+        check_in=date.today() + timedelta(days=5),
+        check_out=date.today() + timedelta(days=7),
+        properties_discussed=["Alpine Ridge Chalet"],
+    )
+
+    booking = await lead_service.get_active_booking(db_session, guest.id, test_user.id)
+    assert booking is not None
+    assert booking.id == lead.id
+
+
+async def test_get_active_booking_ignores_past_stays(test_user, db_session):
+    guest = await _guest_profile(db_session, test_user.id)
+    await lead_service.upsert_lead(
+        db_session,
+        test_user.id,
+        None,
+        guest_profile_id=guest.id,
+        status="booked",
+        check_in=date.today() - timedelta(days=10),
+        check_out=date.today() - timedelta(days=8),
+    )
+
+    booking = await lead_service.get_active_booking(db_session, guest.id, test_user.id)
+    assert booking is None
+
+
+async def test_get_active_booking_ignores_non_booked_status(test_user, db_session):
+    guest = await _guest_profile(db_session, test_user.id)
+    await lead_service.upsert_lead(
+        db_session, test_user.id, None, guest_profile_id=guest.id, status="open"
+    )
+
+    booking = await lead_service.get_active_booking(db_session, guest.id, test_user.id)
+    assert booking is None
+
+
+async def test_get_active_booking_includes_booking_with_no_dates_yet(test_user, db_session):
+    # A lead can be marked "booked" by the host before exact dates are on
+    # file -- still worth surfacing rather than requiring both.
+    guest = await _guest_profile(db_session, test_user.id)
+    lead = await lead_service.upsert_lead(
+        db_session, test_user.id, None, guest_profile_id=guest.id, status="booked"
+    )
+
+    booking = await lead_service.get_active_booking(db_session, guest.id, test_user.id)
+    assert booking is not None
+    assert booking.id == lead.id
+
+
+async def test_get_active_booking_none_without_guest_profile_id(test_user, db_session):
+    booking = await lead_service.get_active_booking(db_session, None, test_user.id)
+    assert booking is None

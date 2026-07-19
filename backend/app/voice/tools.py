@@ -75,7 +75,7 @@ def build_voice_tools(
                 args = CheckCalendarArgs(
                     property_id=property_id, check_in=check_in, check_out=check_out, num_guests=num_guests
                 )
-                result = await tool_handlers.handle_check_calendar(db, args)
+                result = await tool_handlers.handle_check_calendar(db, args, host_user_id, call_session_id)
                 state.lock_property(args.property_id)
             except ValidationError:
                 result = INVALID_ARGS_MESSAGE
@@ -110,7 +110,7 @@ def build_voice_tools(
                     num_guests=num_guests,
                     apply_discounts=apply_discounts,
                 )
-                result = await tool_handlers.handle_get_pricing(db, args)
+                result = await tool_handlers.handle_get_pricing(db, args, host_user_id, call_session_id)
                 state.lock_property(args.property_id)
             except ValidationError:
                 result = INVALID_ARGS_MESSAGE
@@ -245,7 +245,9 @@ def build_voice_tools(
                     num_guests=num_guests,
                     guest_loyalty=guest_loyalty,
                 )
-                result = await tool_handlers.handle_negotiate_rate(db, args, host_user_id, guest_profile_id)
+                result = await tool_handlers.handle_negotiate_rate(
+                    db, args, host_user_id, guest_profile_id, call_session_id
+                )
                 state.lock_property(args.property_id)
             except ValidationError:
                 result = INVALID_ARGS_MESSAGE

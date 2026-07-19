@@ -99,14 +99,26 @@ class Settings(BaseSettings):
     # link. See app/integrations/bright_data_client.py.
     bright_data_api_key: str | None = None
 
-    # SearchApi.io's Airbnb engine (https://www.searchapi.io/airbnb-api) --
-    # daily comparable-listing pricing for smart_pricing_service.py, feeding
-    # Property.smart_price_estimate. Free tier is a small one-time/monthly
-    # request allowance (SearchApi.io doesn't publish which) -- the daily
-    # refresh job makes one call per unique city, not per property, to
-    # stretch it. Unset = the refresh job no-ops (same pattern as
-    # bright_data_api_key).
+    # SearchApi.io's Airbnb engines (https://www.searchapi.io/airbnb-api) --
+    # two uses, see app/integrations/searchapi_client.py: (1) daily
+    # comparable-listing pricing for smart_pricing_service.py, feeding
+    # Property.smart_price_estimate, one call per unique city; (2) live
+    # per-listing price fetch for exact_airbnb_pricing properties during
+    # get_pricing/negotiate_rate/check_calendar. Free tier is a small
+    # one-time/monthly request allowance (SearchApi.io doesn't publish
+    # which) -- redis_url below caches both to stretch it further. Unset =
+    # both no-op/fall back cleanly (same pattern as bright_data_api_key).
     searchapi_api_key: str | None = None
+
+    # Optional TTL cache for SearchApi responses (app/integrations/
+    # redis_client.py), keyed off the same small free-tier allowance as
+    # searchapi_api_key above -- repeat pricing questions for the same
+    # property/dates within the TTL window are served from cache instead of
+    # spending another request. Unset = every call hits SearchApi live,
+    # same as before this existed; never blocks or errors a pricing quote
+    # on Redis being unreachable, same "don't crash, don't block" pattern
+    # as everything else optional in this file.
+    redis_url: str | None = None
 
     # Twilio WhatsApp Sandbox (https://www.twilio.com/docs/whatsapp/sandbox)
     # -- no Meta Business verification needed, unlike a real WhatsApp
@@ -213,10 +225,6 @@ class Settings(BaseSettings):
     # render.yaml or CLAUDE.md's env var table, since those are shared
     # production config.
     turn_detection_strategy: Literal["vad_fixed", "hybrid_experimental"] = "vad_fixed"
-
-    default_cleaning_fee_inr: int = 800
-    default_tax_percent: float = 12.0
-    weekend_surge_multiplier: float = 1.2
 
     @property
     def is_production(self) -> bool:
