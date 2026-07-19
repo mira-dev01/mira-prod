@@ -1,6 +1,6 @@
 from datetime import datetime, timezone as dt_timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,6 +11,7 @@ from app.integrations import bright_data_client
 from app.integrations.bright_data_client import BrightDataError
 from app.models.user import User
 from app.schemas.user import HostRegistration, HostRegistrationResponse, Token, UserCreate, UserLogin, UserOut, UserUpdate
+from app.services import faq_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -31,6 +32,20 @@ async def register(payload: UserCreate, db: AsyncSession = Depends(get_db)) -> T
     await db.commit()
     await db.refresh(user)
     return Token(access_token=create_access_token(user.id))
+
+
+@router.post("/register-host/transcribe-intro")
+async def transcribe_registration_intro(audio: UploadFile = File(...)) -> dict:
+    """Transcribes a prospective host's recorded voice agent intro (the
+    "Add your voice agent's intro" registration step) to text, before an
+    account exists -- deliberately unauthenticated, unlike
+    /faq/gaps/{gap_id}/answer-voice which reuses the same
+    transcribe_gap_answer_audio helper for an already-logged-in host.
+    """
+    text = await faq_service.transcribe_gap_answer_audio(audio)
+    if not text:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Could not transcribe audio -- please try again or type it instead")
+    return {"text": text}
 
 
 @router.post("/register-host", response_model=HostRegistrationResponse, status_code=status.HTTP_201_CREATED)
@@ -65,6 +80,7 @@ async def register_host(payload: HostRegistration, db: AsyncSession = Depends(ge
         lead_exophone=payload.business_phone,
         airbnb_host_status=payload.airbnb_host_status,
         property_count_estimate=payload.property_count_estimate,
+        agent_first_message=payload.agent_first_message,
         terms_accepted_at=datetime.now(dt_timezone.utc),
     )
     db.add(user)

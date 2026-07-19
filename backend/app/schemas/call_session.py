@@ -24,6 +24,11 @@ class CallSessionOut(BaseModel):
     ai_summary: str | None
     status: str
     urgency: str | None
+    # Set by call_classification_service via on_pipeline_finished once the
+    # call ends -- see schemas/call_classification.py for the taxonomy.
+    call_type: str
+    classification_confidence: float | None
+    classification_reason: str | None
     revenue_attributed: float
     started_at: datetime | None
     ended_at: datetime | None

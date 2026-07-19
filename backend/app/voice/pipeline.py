@@ -6,8 +6,9 @@ Two entry points share the same pipeline-building logic (`_run_pipeline`):
 - run_browser_voice_pipeline: the in-dashboard "test in browser" feature,
   over WebRTC, for testing without a real phone call.
 
-Both feed into Sarvam STT -> Groq/Anthropic LLM (function-calling into
-app/voice/tools.py, which wraps the unchanged business logic in
+Both feed into Sarvam STT -> app/voice/language_sync.py (mirrors the guest's
+detected speech language onto TTS) -> Groq/Anthropic LLM (function-calling
+into app/voice/tools.py, which wraps the unchanged business logic in
 app/services/tool_handlers.py) -> Sarvam TTS.
 """
 
@@ -19,7 +20,6 @@ from datetime import datetime, timezone
 import aiohttp
 from fastapi import WebSocket
 from openai import RateLimitError
-from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.frames.frames import TTSSpeakFrame
 from pipecat.pipeline.pipeline import Pipeline
@@ -53,10 +53,13 @@ from app.prompts.system_prompt import (
     first_message_for,
     lead_first_message_for,
 )
-from app.services import call_service, guest_memory_service, lead_service
+from app.schemas.call_classification import QUALIFIED_CALL_TYPES
+from app.services import call_classification_service, call_service, guest_memory_service, lead_service
 from app.voice.conversation_state import ConversationState
+from app.voice.language_sync import DEFAULT_TTS_LANGUAGE, LanguageSyncProcessor
 from app.voice.tools import build_voice_tools
 from app.voice.turn_strategies import HybridCompletenessUserTurnStopStrategy
+from app.voice.vad import create_vad_analyzer
 
 logger = logging.getLogger(__name__)
 
@@ -256,6 +259,7 @@ async def _run_pipeline(
         model=settings.sarvam_stt_model,
         mode="codemix",  # transcribe Hindi/English/Hinglish as spoken, no translation
     )
+    language_sync = LanguageSyncProcessor()
 
     async with aiohttp.ClientSession() as http_session:
         tts = SarvamTTSService(
@@ -265,6 +269,9 @@ async def _run_pipeline(
                 model=settings.sarvam_tts_model,
                 voice=settings.sarvam_tts_speaker,
                 pace=1.15,  # slightly faster than 1.0 default for phone call cadence
+                # Starting language; language_sync (below) switches this live
+                # once the guest is heard speaking Hindi/Hinglish.
+                language=DEFAULT_TTS_LANGUAGE,
             ),
         )
         llm = _build_llm()
@@ -330,6 +337,7 @@ async def _run_pipeline(
             [
                 transport.input(),
                 stt,
+                language_sync,
                 user_aggregator,
                 llm,
                 tts,
@@ -354,7 +362,22 @@ async def _run_pipeline(
                 and message.get("content") is not None  # skip tool-call turns (content=null)
             )
             async with AsyncSessionLocal() as finalize_db:
-                await call_service.finalize_call_session(finalize_db, call_session_id, transcript, None)
+                finalized_session = await call_service.finalize_call_session(
+                    finalize_db, call_session_id, transcript, None
+                )
+
+                duration_seconds = None
+                if finalized_session is not None and finalized_session.started_at and finalized_session.ended_at:
+                    duration_seconds = (finalized_session.ended_at - finalized_session.started_at).total_seconds()
+
+                # Awaited inline (not fire-and-forget like guest memory below)
+                # because lead suppression a few lines down is gated on this
+                # result -- the guest has already disconnected by the time
+                # on_pipeline_finished fires, so this latency is invisible to
+                # them, it only delays how quickly the row settles.
+                classification = await call_classification_service.classify_call(transcript, duration_seconds)
+                await call_service.set_call_classification(finalize_db, call_session_id, classification)
+
                 if any(m.get("role") == "user" for m in context.messages):
                     # Backfill the real caller's phone (from Exotel) and the
                     # property this call was about onto the lead the agent
@@ -374,6 +397,16 @@ async def _run_pipeline(
                     # A connection blip that never became a conversation --
                     # drop any near-empty lead a stray tool call may have made.
                     await lead_service.delete_if_empty(finalize_db, call_session_id)
+
+                # Classification overrides whatever the live tool calls did --
+                # a JUNK/INCOMPLETE/UNKNOWN call must never surface as a Lead,
+                # even if update_lead/escalate_to_host captured real-looking
+                # data mid-call (the full-transcript review is more informed
+                # than in-call judgment). Runs regardless of which branch
+                # above fired, since escalate_to_host can create a Lead
+                # directly, independent of the backfill/delete_if_empty path.
+                if classification.call_type not in QUALIFIED_CALL_TYPES:
+                    await lead_service.delete_for_unqualified_call(finalize_db, call_session_id)
 
             # Guest Memory (memory-architecture-plan.md section 1) -- fire
             # detached in its own session, after the lead backfill/cleanup
@@ -414,7 +447,16 @@ async def _run_pipeline(
                 return
             greeting_sent = True
             try:
-                await worker.queue_frame(TTSSpeakFrame(first_message))
+                # append_to_context=False: first_message is already seeded into
+                # context.messages above (as an assistant turn, so the LLM knows
+                # it was said). TTSSpeakFrame defaults append_to_context=True,
+                # and pipecat's assistant aggregator commits any TTS-driven
+                # utterance to context on its own (_handle_tts_started /
+                # _handle_push_aggregation in llm_response_universal.py) --
+                # left at the default, the greeting was being written into
+                # context.messages a second time on every call, appearing
+                # twice in a row in the transcript even with no reconnect.
+                await worker.queue_frame(TTSSpeakFrame(first_message, append_to_context=False))
             except Exception:
                 logger.warning("Initial greeting could not be sent; pipeline continues normally.")
 
@@ -503,7 +545,7 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
             audio_out_enabled=True,
             add_wav_header=False,
             serializer=serializer,
-            vad_analyzer=SileroVADAnalyzer(params=_VAD_PARAMS),
+            vad_analyzer=create_vad_analyzer(_VAD_PARAMS),
         ),
     )
 
@@ -552,7 +594,7 @@ async def run_browser_voice_pipeline(connection: SmallWebRTCConnection, property
         params=TransportParams(
             audio_in_enabled=True,
             audio_out_enabled=True,
-            vad_analyzer=SileroVADAnalyzer(params=_VAD_PARAMS),
+            vad_analyzer=create_vad_analyzer(_VAD_PARAMS),
         ),
     )
 
@@ -594,7 +636,7 @@ async def run_browser_lead_pipeline(connection: SmallWebRTCConnection, user: Use
         params=TransportParams(
             audio_in_enabled=True,
             audio_out_enabled=True,
-            vad_analyzer=SileroVADAnalyzer(params=_VAD_PARAMS),
+            vad_analyzer=create_vad_analyzer(_VAD_PARAMS),
         ),
     )
 

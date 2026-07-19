@@ -161,6 +161,10 @@ export const api = {
         method: "POST",
         body: JSON.stringify(data),
       }),
+    // Unauthenticated -- used by the "Add your voice agent's intro"
+    // registration step, before an account (and token) exists.
+    transcribeRegistrationIntro: (audio: Blob) =>
+      uploadAudio<{ text: string }>("/auth/register-host/transcribe-intro", audio, "intro.webm"),
     me: () => request<UserOut>("/auth/me"),
     updateMe: (data: UserUpdate) => request<UserOut>("/auth/me", { method: "PATCH", body: JSON.stringify(data) }),
   },
@@ -187,6 +191,7 @@ export const api = {
     list: (params?: {
       status?: string;
       urgency?: string;
+      callType?: string;
       limit?: number;
       startDate?: string;
       endDate?: string;
@@ -196,6 +201,7 @@ export const api = {
         `/calls${buildQuery({
           status: params?.status,
           urgency: params?.urgency,
+          call_type: params?.callType,
           limit: params?.limit,
           start_date: params?.startDate,
           end_date: params?.endDate,

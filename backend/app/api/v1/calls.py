@@ -22,6 +22,7 @@ router = APIRouter(prefix="/calls", tags=["calls"])
 async def list_calls(
     status_filter: str | None = Query(default=None, alias="status"),
     urgency: str | None = Query(default=None),
+    call_type: str | None = Query(default=None, description="Comma-separated call_type values, e.g. 'JUNK' or 'BOOKING_LEAD,GENERAL_QUERY'"),
     limit: int = Query(default=100, le=500),
     include_test_calls: bool = Query(default=False),
     date_range: DateRange = Depends(date_range_query),
@@ -44,6 +45,13 @@ async def list_calls(
         stmt = stmt.where(CallSession.status == status_filter)
     if urgency:
         stmt = stmt.where(CallSession.urgency == urgency)
+    if call_type:
+        # Comma-separated so "Qualified Calls" (a grouping of several
+        # call_type values, not a stored value itself) uses the exact same
+        # filter path as every single-value tab -- no special-casing.
+        types = [t.strip() for t in call_type.split(",") if t.strip()]
+        if types:
+            stmt = stmt.where(CallSession.call_type.in_(types))
     if not include_test_calls:
         stmt = stmt.where(CallSession.caller_number != BROWSER_TEST_CALLER_NUMBER)
     if date_range.since is not None:

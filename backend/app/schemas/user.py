@@ -41,6 +41,7 @@ class HostRegistration(BaseModel):
     property_count_estimate: int | None = Field(default=None, ge=1)
     airbnb_url: str = Field(min_length=1)
     ical_url: str | None = None
+    agent_first_message: str | None = None
 
 
 class UserLogin(BaseModel):

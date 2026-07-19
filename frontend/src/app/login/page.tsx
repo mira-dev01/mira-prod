@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,8 +9,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/lib/auth-context";
-import { ApiError } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import type { AirbnbHostStatus } from "@/lib/types";
 
 const HOST_STATUS_OPTIONS: { value: AirbnbHostStatus; label: string }[] = [
@@ -21,10 +23,12 @@ const HOST_STATUS_OPTIONS: { value: AirbnbHostStatus; label: string }[] = [
   { value: "prefer_not_to_say", label: "Prefer not to say" },
 ];
 
-const HOST_REG_STEPS = ["Your details", "Hosting profile", "First property"] as const;
+const HOST_REG_STEPS = ["Your details", "Hosting profile", "Voice agent intro", "First property"] as const;
 
-export default function LoginPage() {
+function LoginPageInner() {
   const { login, registerHost } = useAuth();
+  const searchParams = useSearchParams();
+  const initialTab = searchParams.get("tab") === "register" ? "register" : "login";
   const [submitting, setSubmitting] = useState(false);
 
   // Pre-filled with the public demo account so anyone opening this URL for a
@@ -46,7 +50,15 @@ export default function LoginPage() {
   const [regHostStatus, setRegHostStatus] = useState<AirbnbHostStatus | "">("");
   const [regPropertyCount, setRegPropertyCount] = useState("");
 
-  // Step 3 -- first property
+  // Step 3 -- voice agent intro
+  const [regFirstMessage, setRegFirstMessage] = useState("");
+  const [isRecordingIntro, setIsRecordingIntro] = useState(false);
+  const [introRecordedUrl, setIntroRecordedUrl] = useState<string | null>(null);
+  const [transcribingIntro, setTranscribingIntro] = useState(false);
+  const introMediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const introChunksRef = useRef<Blob[]>([]);
+
+  // Step 4 -- first property
   const [regAirbnbUrl, setRegAirbnbUrl] = useState("");
   const [regIcalUrl, setRegIcalUrl] = useState("");
 
@@ -71,6 +83,41 @@ export default function LoginPage() {
     setRegStep((s) => Math.max(s - 1, 0));
   }
 
+  async function startIntroRecording() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      introChunksRef.current = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) introChunksRef.current.push(e.data);
+      };
+      recorder.onstop = async () => {
+        const blob = new Blob(introChunksRef.current, { type: "audio/webm" });
+        setIntroRecordedUrl(URL.createObjectURL(blob));
+        stream.getTracks().forEach((track) => track.stop());
+        setTranscribingIntro(true);
+        try {
+          const { text } = await api.auth.transcribeRegistrationIntro(blob);
+          setRegFirstMessage(text);
+        } catch (err) {
+          toast.error(err instanceof ApiError ? err.message : "Could not transcribe recording -- type it instead");
+        } finally {
+          setTranscribingIntro(false);
+        }
+      };
+      recorder.start();
+      introMediaRecorderRef.current = recorder;
+      setIsRecordingIntro(true);
+    } catch {
+      toast.error("Could not access the microphone -- check browser permissions");
+    }
+  }
+
+  function stopIntroRecording() {
+    introMediaRecorderRef.current?.stop();
+    setIsRecordingIntro(false);
+  }
+
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
@@ -84,6 +131,7 @@ export default function LoginPage() {
         business_phone: regBusinessPhone,
         airbnb_host_status: regHostStatus || undefined,
         property_count_estimate: regPropertyCount ? Number(regPropertyCount) : undefined,
+        agent_first_message: regFirstMessage || undefined,
         airbnb_url: regAirbnbUrl,
         ical_url: regIcalUrl || undefined,
       });
@@ -102,7 +150,7 @@ export default function LoginPage() {
           <CardDescription>Sign in to manage your properties and live calls</CardDescription>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="login" onValueChange={() => setRegStep(0)}>
+          <Tabs defaultValue={initialTab} onValueChange={() => setRegStep(0)}>
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="login">Log in</TabsTrigger>
               <TabsTrigger value="register">Register</TabsTrigger>
@@ -258,6 +306,71 @@ export default function LoginPage() {
               )}
 
               {regStep === 2 && (
+                <form onSubmit={goToNextStep} className="space-y-4 pt-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="reg-first-message">Add your voice agent&apos;s intro</Label>
+                    <Textarea
+                      id="reg-first-message"
+                      placeholder="Namaste {guest_name}! I'm Mira, calling on behalf of {host_name} about {property_name}."
+                      value={regFirstMessage}
+                      onChange={(e) => setRegFirstMessage(e.target.value)}
+                      disabled={transcribingIntro}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Optional — leave blank to use MIRA&apos;s default greeting. Placeholders:{" "}
+                      {"{host_name}"}, {"{property_name}"}, {"{city}"}, {"{guest_name}"} — any that
+                      don&apos;t apply to a given call are left blank automatically.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2 rounded-md border p-3">
+                    <Label>Or record it instead</Label>
+                    <div className="flex items-center gap-3">
+                      {!isRecordingIntro ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="shrink-0"
+                          disabled={transcribingIntro}
+                          onClick={startIntroRecording}
+                        >
+                          {introRecordedUrl ? "Re-record" : "Start recording"}
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="sm"
+                          className="shrink-0"
+                          onClick={stopIntroRecording}
+                        >
+                          Stop recording
+                        </Button>
+                      )}
+                      {introRecordedUrl && <audio controls src={introRecordedUrl} className="h-8 min-w-0 flex-1" />}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {transcribingIntro
+                        ? "Transcribing your recording…"
+                        : introRecordedUrl
+                          ? "Transcribed below — edit the text above if needed."
+                          : "Speak your greeting and it'll be transcribed into the field above."}
+                    </p>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Button type="button" variant="outline" className="min-w-0 flex-1" onClick={goToPreviousStep}>
+                      Back
+                    </Button>
+                    <Button type="submit" className="min-w-0 flex-1" disabled={transcribingIntro}>
+                      Continue
+                    </Button>
+                  </div>
+                </form>
+              )}
+
+              {regStep === 3 && (
                 <form onSubmit={handleRegister} className="space-y-4 pt-2">
                   <div className="space-y-2">
                     <Label htmlFor="reg-airbnb-url">Airbnb listing URL</Label>
@@ -295,5 +408,15 @@ export default function LoginPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  // useSearchParams requires a Suspense boundary -- see Next.js docs (this
+  // route is otherwise fully client-rendered, so the fallback is instant).
+  return (
+    <Suspense fallback={null}>
+      <LoginPageInner />
+    </Suspense>
   );
 }

@@ -6,7 +6,7 @@
  * consumer picks it up.
  */
 
-export type StatusTone = "live" | "pending" | "progress" | "destructive" | "low" | "neutral";
+export type StatusTone = "live" | "pending" | "progress" | "destructive" | "low" | "neutral" | "purple" | "orange";
 
 /** Badge className override (pairs with variant="outline" from toneBadgeVariant). */
 export const toneClassName: Record<StatusTone, string> = {
@@ -16,6 +16,8 @@ export const toneClassName: Record<StatusTone, string> = {
   destructive: "",
   low: "badge-priority-low",
   neutral: "",
+  purple: "badge-status-purple",
+  orange: "badge-status-orange",
 };
 
 /** Small leading dot glyph color (StatusChip). */
@@ -26,6 +28,8 @@ export const toneDotClassName: Record<StatusTone, string> = {
   destructive: "bg-destructive",
   low: "bg-(--priority-low)",
   neutral: "bg-muted-foreground",
+  purple: "bg-(--status-purple)",
+  orange: "bg-(--status-orange)",
 };
 
 /** Underlying shadcn Badge variant -- only "destructive" needs its own variant, everything else rides the outline variant + a className override. */
@@ -36,6 +40,8 @@ export const toneBadgeVariant: Record<StatusTone, "outline" | "destructive"> = {
   destructive: "destructive",
   low: "outline",
   neutral: "outline",
+  purple: "outline",
+  orange: "outline",
 };
 
 /** Raw CSS custom property for a tone's foreground color -- for non-Badge
@@ -49,4 +55,6 @@ export const toneCssVar: Record<StatusTone, string> = {
   destructive: "var(--destructive)",
   low: "var(--priority-low)",
   neutral: "var(--muted-foreground)",
+  purple: "var(--status-purple)",
+  orange: "var(--status-orange)",
 };

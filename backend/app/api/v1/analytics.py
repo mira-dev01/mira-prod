@@ -12,6 +12,7 @@ from app.models.call_session import CallSession
 from app.models.lead import Lead
 from app.models.notification import Notification
 from app.models.user import User
+from app.schemas.call_classification import QUALIFIED_CALL_TYPES
 from app.services.call_service import BROWSER_TEST_CALLER_NUMBER
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
@@ -60,6 +61,14 @@ async def analytics_summary(
     total_calls = await db.scalar(select(func.count()).select_from(base.subquery()))
     completed_calls = await db.scalar(
         select(func.count()).select_from(base.where(CallSession.status == "completed").subquery())
+    )
+    # "Qualified" (BOOKING_LEAD/GUEST_SUPPORT/EXISTING_BOOKING/GENERAL_QUERY)
+    # is never itself a stored call_type value -- see schemas/
+    # call_classification.py -- just this derived grouping, computed here
+    # the same way escalated_calls is derived from Notification.channel
+    # rather than a stored boolean.
+    qualified_calls = await db.scalar(
+        select(func.count()).select_from(base.where(CallSession.call_type.in_(QUALIFIED_CALL_TYPES)).subquery())
     )
     # CallSession.urgency is never written anywhere in the app (escalations
     # are recorded as Notification rows, not on the CallSession itself) --
@@ -122,6 +131,7 @@ async def analytics_summary(
         "end_date": date_range.end_date.isoformat() if date_range.end_date else None,
         "total_calls": total_calls or 0,
         "completed_calls": completed_calls or 0,
+        "qualified_calls": qualified_calls or 0,
         "escalated_calls": escalated_calls or 0,
         "open_notifications": open_notifications or 0,
         "pipeline_value": float(pipeline_value or 0),
