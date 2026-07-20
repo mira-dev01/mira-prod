@@ -82,7 +82,22 @@ export function PropertyFormFields({
             onChange={(e) => onChange({ ...form, base_price: Number(e.target.value) })}
           />
         </div>
-        <div className="col-span-2 flex items-center justify-between rounded-lg border p-3">
+        <div
+          className="col-span-2 flex items-center justify-between rounded-lg border p-3"
+          onClick={(e) => {
+            // Fallback for a confirmed-live bug: a real click directly on the
+            // switch pill sometimes never reaches its own click handler (a
+            // synthetic .click() on the same element always works, so this
+            // isn't a logic bug in the switch itself -- more likely a
+            // hit-testing/positioning quirk). Base-ui's Switch calls
+            // preventDefault() the instant its own onClick runs, and a native
+            // <label for> click already toggles the input directly -- skip
+            // this fallback in both of those cases so a click that already
+            // worked never gets double-toggled back to its original state.
+            if (e.defaultPrevented || (e.target as HTMLElement).closest("label")) return;
+            onChange({ ...form, exact_airbnb_pricing: !(form.exact_airbnb_pricing ?? false) });
+          }}
+        >
           <div className="space-y-0.5">
             <Label htmlFor="exact_airbnb_pricing">Quote live Airbnb Smart Pricing</Label>
             <p className="text-micro text-muted-foreground">
