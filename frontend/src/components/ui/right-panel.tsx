@@ -68,7 +68,7 @@ function RightPanel({
           <Drawer.Popup
             data-slot="right-panel"
             className={cn(
-              "flex h-full w-full flex-col overflow-y-auto bg-card outline-none",
+              "flex h-full w-full flex-col overflow-hidden bg-card outline-none",
               "transition-transform duration-200 [transform:translateX(var(--drawer-swipe-movement-x))]",
               "data-starting-style:translate-x-full data-ending-style:translate-x-full",
               sizeClassName[size],
@@ -87,7 +87,7 @@ function RightPanel({
               </Drawer.Close>
             </div>
 
-            <div className="flex-1 space-y-4 p-6">{children}</div>
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-6">{children}</div>
 
             {footer && <div className="flex flex-col-reverse gap-2 border-t bg-muted/50 p-4 sm:flex-row sm:justify-end">{footer}</div>}
           </Drawer.Popup>
