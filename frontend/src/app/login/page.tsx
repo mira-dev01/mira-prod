@@ -165,6 +165,7 @@ function LoginPageInner() {
                     required
                     value={loginEmail}
                     onChange={(e) => setLoginEmail(e.target.value)}
+                    onFocus={(e) => e.target.select()}
                   />
                 </div>
                 <div className="space-y-2">
@@ -175,6 +176,7 @@ function LoginPageInner() {
                     required
                     value={loginPassword}
                     onChange={(e) => setLoginPassword(e.target.value)}
+                    onFocus={(e) => e.target.select()}
                   />
                 </div>
                 <Button type="submit" className="w-full" disabled={submitting}>
