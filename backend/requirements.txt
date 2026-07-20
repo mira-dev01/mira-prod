@@ -15,7 +15,14 @@ python-multipart>=0.0.12
 python-dotenv>=1.0
 aiosmtplib>=3.0,<4.0
 cloudinary>=1.41,<2.0
-pipecat-ai[websocket,webrtc,anthropic,groq,sarvam]>=0.0.60
+pipecat-ai[websocket,webrtc,anthropic,groq,sarvam]>=1.5.0,<2.0
+# Pinned to a floor + capped major (was unbounded >=0.0.60) after Railway
+# silently rebuilt onto 1.5.0 while local dev was still on 1.4.0 -- an
+# unpinned range like that means every fresh `pip install` (i.e. every
+# Railway deploy) can land on a different pipecat-ai release than whatever
+# was last actually tested, with no record of which version any given
+# deploy is running. Bump the floor deliberately when there's a reason to
+# upgrade, rather than getting a new version for free on the next push.
 # pipecat's SmallWebRTCTransport (browser test feature) hard-imports cv2 at
 # module load time but doesn't declare it as a dependency of the [webrtc]
 # extra -- without this, a fresh install crashes on import.

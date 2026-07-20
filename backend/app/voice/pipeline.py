@@ -21,7 +21,7 @@ import aiohttp
 from fastapi import WebSocket
 from openai import RateLimitError
 from pipecat.audio.vad.vad_analyzer import VADParams
-from pipecat.frames.frames import TTSSpeakFrame
+from pipecat.frames.frames import ErrorFrame, TTSSpeakFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.worker import PipelineParams, PipelineWorker
 from pipecat.processors.aggregators.llm_context import LLMContext
@@ -168,6 +168,57 @@ class _FallbackGroqLLMService(GroqLLMService):
         raise last_error
 
 
+class _ReconnectingSarvamSTTService(SarvamSTTService):
+    """SarvamSTTService.run_stt has no reconnect-on-failure logic at all --
+    confirmed live on 2026-07-20: Sarvam closed the STT websocket
+    server-side mid-call (close code 1000, reason "ASR model call failed",
+    a transient failure on Sarvam's own backend), and every subsequent
+    audio chunk immediately re-raised the same error against the now-dead
+    socket, forever -- 500+ identical ErrorFrames logged within 4 seconds,
+    with the guest's audio silently dropped and Mira never responding again
+    for the rest of the call. _connect/_disconnect are already pipecat's own
+    sanctioned reconnect pair (SarvamSTTService calls them itself when
+    settings or the prompt change mid-call -- see _update_settings/
+    _set_prompt), so reusing them here for a dead-connection error follows
+    the same pattern rather than inventing a new one.
+    """
+
+    _RECONNECT_COOLDOWN_SECONDS = 3.0
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._stt_reconnecting = False
+        self._stt_last_reconnect_attempt = 0.0
+
+    async def run_stt(self, audio: bytes):
+        import time
+
+        async for frame in super().run_stt(audio):
+            if isinstance(frame, ErrorFrame) and "Error sending audio to Sarvam" in (frame.error or ""):
+                now = time.monotonic()
+                if (
+                    not self._stt_reconnecting
+                    and (now - self._stt_last_reconnect_attempt) > self._RECONNECT_COOLDOWN_SECONDS
+                ):
+                    self._stt_reconnecting = True
+                    self._stt_last_reconnect_attempt = now
+                    logger.warning("Sarvam STT connection appears dead -- reconnecting: %s", frame.error)
+                    try:
+                        await self._disconnect()
+                        await self._connect()
+                        logger.info("Sarvam STT reconnected successfully")
+                    except Exception:
+                        logger.exception("Failed to reconnect Sarvam STT")
+                    finally:
+                        self._stt_reconnecting = False
+                # Swallow this specific error frame instead of forwarding it --
+                # on a genuinely dead connection it would otherwise repeat for
+                # every single audio chunk (confirmed live: every ~100ms) and
+                # drown out every other log line for the rest of the call.
+                continue
+            yield frame
+
+
 def _build_llm():
     if settings.llm_provider == "anthropic":
         return AnthropicLLMService(
@@ -254,7 +305,7 @@ async def _run_pipeline(
     # exactly one row per session), and the caller's phone / the property
     # discussed are backfilled onto it at call end (see on_pipeline_finished).
     # A call where the agent captured nothing simply leaves no lead behind.
-    stt = SarvamSTTService(
+    stt = _ReconnectingSarvamSTTService(
         api_key=settings.sarvam_api_key,
         model=settings.sarvam_stt_model,
         mode="codemix",  # transcribe Hindi/English/Hinglish as spoken, no translation
