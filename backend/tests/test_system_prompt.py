@@ -470,9 +470,20 @@ def test_golden_rules_forbid_loop_in_the_host_phrasing_on_booking_accept():
     # next step (WhatsApp + payment details), not a vague "I'll loop in the
     # host" -- requested 2026-07-21.
     prompt = build_system_prompt(_property(), None, _user())
-    assert 'phrases like "I\'ll loop in the host"' in prompt
+    assert 'Never say "let me loop in the host"' in prompt
     assert "follow up with you on WhatsApp shortly with" in prompt
     assert "the payment details to confirm your booking" in prompt
+
+
+def test_golden_rules_forbid_loop_in_the_host_for_any_escalation_reason():
+    # Regression, confirmed live 2026-07-21: the original fix only covered
+    # the booking-accept moment, but Mira said "One sec, let me loop in the
+    # host directly!" right after an escalate_to_host call for a routine
+    # support question (an early-check-in ask), not a booking. The rule must
+    # ban the phrase for escalate_to_host generally, not just booking.
+    prompt = build_system_prompt(_property(), None, _user())
+    assert "for ANY reason, not just booking" in prompt
+    assert "every time you call escalate_to_host" in prompt
 
 
 def test_caller_phone_is_exposed_so_the_model_never_needs_it_recited():
@@ -509,3 +520,22 @@ def test_guest_memory_omits_reask_line_when_name_unknown():
     guest = _guest(name=None, total_stays=2)
     prompt = build_system_prompt(_property(), guest, _user())
     assert "never ask for it again" not in prompt
+
+
+def test_golden_rules_save_unprompted_name_via_update_lead_in_guest_support():
+    # Regression, confirmed live 2026-07-21: a guest said "Hi, my name is
+    # Deepika" as the very first thing in a Guest Support call (property
+    # already known, no lead-qualification workflow), and Mira never called
+    # update_lead with it at all -- GUEST_SUPPORT_INSTRUCTIONS had no
+    # equivalent of LEAD_AGENT_INSTRUCTIONS' "save name/phone the moment you
+    # learn it" step. The dashboard/Guest Memory then had nothing to sync
+    # and fell back to a stale name from a much earlier call.
+    prompt = build_system_prompt(_property(), None, _user())
+    assert "call update_lead immediately with that field" in prompt
+    assert "whether you asked for it or they" in prompt
+    assert "volunteered it completely unprompted" in prompt
+
+
+def test_golden_rules_save_unprompted_name_also_present_in_lead_agent_prompt():
+    prompt = build_lead_system_prompt(_user(), [_property()])
+    assert "call update_lead immediately with that field" in prompt
