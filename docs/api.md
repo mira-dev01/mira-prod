@@ -42,7 +42,7 @@ See [research-flow.md](research-flow.md) for the two import paths' internals.
 
 | Method & path | Purpose | Auth |
 |---|---|---|
-| `GET /calls` | List call sessions; filters: `status`, `urgency`, `limit`, `start_date`, `end_date`, `include_test_calls` (default excludes browser-test calls) | required |
+| `GET /calls` | List call sessions; filters: `status`, `urgency`, `call_type` (comma-separated, e.g. `BOOKING_LEAD,GUEST_SUPPORT` — maps 1:1 to the dashboard Calls page's dropdown, undefined = no filter at all, every call including JUNK/INCOMPLETE/UNKNOWN), `limit`, `start_date`, `end_date`, `include_test_calls` (default excludes browser-test calls) | required |
 | `GET /calls/{id}` | Get one call session (transcript, summary, etc.) | required |
 
 ## `guests.py` — `/guests`
@@ -142,5 +142,5 @@ Not domain-grouped — defined directly in `app/main.py`.
 
 | Method & path | Purpose | Auth |
 |---|---|---|
-| `GET /health` | Plain liveness check (Render's `healthCheckPath`) | none |
+| `GET /health` | Plain liveness check (`healthCheckPath` on both Railway and Render) | none |
 | `GET /api/v1/health/llm` | Per-Groq-model health/latency snapshot from the last periodic check (see [agents.md](agents.md)) | none |

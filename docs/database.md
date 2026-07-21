@@ -6,7 +6,7 @@ PostgreSQL via SQLAlchemy async (asyncpg driver). All models live in `backend/ap
 
 Migrations live in `backend/alembic/versions/`. Apply with `alembic upgrade head` (run from `backend/`, needs `DATABASE_URL` resolvable).
 
-Current head: **`8818413a6d0a` — add exact_airbnb_pricing to properties**.
+Current head: **`6aa03c77c36f` — add airbnb_latitude/longitude to properties**.
 
 Full history, oldest to newest:
 
@@ -29,7 +29,8 @@ c8e1f4a02b7d -> d4f7a91c3e5b   add guest memory fields to guest_profiles and lea
 d4f7a91c3e5b -> e91a3f5c8d2b   add question_embedding to faq_entries and unanswered_questions
 e91a3f5c8d2b -> f3a8c1d7e4b6   add seasonal_notes to properties
 f3a8c1d7e4b6 -> baf955ef4370   add smart pricing fields to properties
-baf955ef4370 -> 8818413a6d0a   add exact_airbnb_pricing to properties (HEAD)
+baf955ef4370 -> 8818413a6d0a   add exact_airbnb_pricing to properties
+8818413a6d0a -> 6aa03c77c36f   add airbnb_latitude/longitude to properties (HEAD)
 ```
 
 If a session ever fails with demo-login 500s or a missing-column error, check `alembic heads` against the running DB first — a DB left behind on an old revision is a common cause (see `project_state.md` at the repo root for the 2026-07-15 incident).
@@ -82,6 +83,7 @@ Unique on `(user_id, airbnb_listing_id)`.
 | `airbnb_listing_id` | String(64), indexed | unique per-user, not globally; captured at Bright Data import time, also the key used to fetch this listing's live price (see below) |
 | `smart_price_estimate`, `smart_price_sample_size`, `smart_price_updated_at` | Numeric/Integer/DateTime, all nullable | daily comparable-listing median for this property's city, refreshed by `smart_pricing_service.py` — informational only, shown on the Pricing dashboard page, never fed into `calculate_price` |
 | `exact_airbnb_pricing` | Boolean, default `false` | when true, `pricing_engine.calculate_price` fetches this exact listing's live price for the exact requested dates (via `airbnb_listing_id` + SearchApi.io) instead of `base_price` math, and skips weekend-surge/cleaning-fee/tax markup entirely — for hosts on Airbnb Smart Pricing whose listed price is already final. See [research-flow.md](research-flow.md) |
+| `airbnb_latitude`, `airbnb_longitude` | Numeric(9,6), nullable | this listing's GPS coordinates, resolved once via SearchApi's `airbnb_property` engine and cached here permanently (a listing's location doesn't change) — used to build the tight `bounding_box` search that reliably finds this exact listing for a live price fetch. `NULL` until the first `exact_airbnb_pricing` live fetch for this property succeeds |
 
 Relationships: `owner` (User), `bookings`, `call_sessions`, `technicians`, `pricing_rules`, `notifications` — all cascade delete-orphan on the property.
 
