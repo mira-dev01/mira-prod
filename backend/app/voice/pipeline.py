@@ -294,6 +294,7 @@ async def _run_pipeline(
     caller_number: str | None = None,
     property_name: str | None = None,
     guest_profile_id: uuid.UUID | None = None,
+    guest_known_name: str | None = None,
 ) -> None:
     # NOTE: we deliberately do NOT create a Lead row up front. Doing so gave
     # every connection attempt its own empty lead, and a browser/ICE
@@ -335,7 +336,20 @@ async def _run_pipeline(
             selected_property_id=str(property_id) if property_id else None,
             selected_property_name=property_name,
         )
-        tools = build_voice_tools(call_session_id, property_id, host_user_id, conversation_state, guest_profile_id)
+        # Browser test calls use a fixed placeholder identity (no real phone
+        # number exists) -- never let that string flow through to tools as
+        # if it were a real number to message/save.
+        real_caller_number = (
+            caller_number if caller_number and caller_number != call_service.BROWSER_TEST_CALLER_NUMBER else None
+        )
+        tools = build_voice_tools(
+            call_session_id,
+            property_id,
+            host_user_id,
+            conversation_state,
+            guest_profile_id,
+            caller_number=real_caller_number,
+        )
         # first_message is pre-seeded as an assistant turn so the LLM knows
         # it was already said (the "don't repeat greeting" rule relies on
         # this being in context) -- it is spoken directly via TTSSpeakFrame
@@ -442,6 +456,18 @@ async def _run_pipeline(
                         backfill["phone"] = caller_number
                     if property_name:
                         backfill["properties_discussed"] = [property_name]
+                    # Guest Memory's on-file name (kept fresh across calls by
+                    # guest_memory_service.update_guest_memory_from_call) for
+                    # a returning guest who didn't restate their name this
+                    # call -- backfill_lead only fills a still-blank field,
+                    # so this never overwrites a name the guest actually gave
+                    # during THIS call. Without this, a call with no spoken
+                    # name left Lead.guest_name blank, and the dashboard's
+                    # Calls page fell back to CallSession's own computed
+                    # guest_name property instead -- same profile name, but
+                    # only the Calls page read it that way, not Leads.
+                    if guest_known_name:
+                        backfill["guest_name"] = guest_known_name
                     if backfill:
                         await lead_service.backfill_lead(finalize_db, call_session_id, **backfill)
                 else:
@@ -566,7 +592,7 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
                 caller_number=caller_number,
                 user_id=property_.user_id,
             )
-            system_prompt = build_system_prompt(property_, guest, host, active_booking)
+            system_prompt = build_system_prompt(property_, guest, host, active_booking, caller_phone=caller_number)
             first_message = first_message_for(property_, guest, host)
             property_id = property_.id
             property_name = property_.name
@@ -582,7 +608,9 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
                 caller_number=caller_number,
                 user_id=lead_user.id,
             )
-            system_prompt = build_lead_system_prompt(lead_user, properties, guest, active_booking)
+            system_prompt = build_lead_system_prompt(
+                lead_user, properties, guest, active_booking, caller_phone=caller_number
+            )
             first_message = lead_first_message_for(lead_user)
             property_id = None
             property_name = None
@@ -611,6 +639,7 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
         caller_number=caller_number,
         property_name=property_name,
         guest_profile_id=guest.id if guest else None,
+        guest_known_name=guest.name if guest else None,
     )
 
 

@@ -111,6 +111,11 @@ GOLDEN_RULES = """Golden rules:
   their plans, requests, or preferences, faithfully and only what was stated. Never invent or suggest
   host-facing actions the guest didn't ask for (e.g. never say "consider offering a cake" or "you
   could arrange decorations") -- record facts for the host, don't generate ideas for them.
+- The moment a guest verbally accepts a price and wants to proceed with booking, never say vague
+  phrases like "I'll loop in the host" or "let me loop the host in" -- say something concrete instead,
+  e.g. "Wonderful, I've noted that down -- the host will follow up with you on WhatsApp shortly with
+  the payment details to confirm your booking." Always name WhatsApp as the follow-up channel and
+  payment/confirmation as the reason, never a vague "someone will be in touch."
 - Never share internal information (other guests' details, internal notes, host's personal info).
 - Always be concise -- this is a phone call, not a chat. Ask one question at a time. Most replies
   should be one to two short sentences; only go longer when actually reciting a list the guest asked
@@ -278,10 +283,17 @@ def _persona_and_escalation_sections(host: User) -> list[str]:
 
 
 def build_system_prompt(
-    property_: Property, guest: GuestProfile | None, host: User, active_booking: Lead | None = None
+    property_: Property,
+    guest: GuestProfile | None,
+    host: User,
+    active_booking: Lead | None = None,
+    caller_phone: str | None = None,
 ) -> str:
     sections = [GUEST_SUPPORT_INSTRUCTIONS, _today_anchor()]
     sections.extend(_persona_and_escalation_sections(host))
+    caller_phone_section = _caller_phone_section(caller_phone)
+    if caller_phone_section:
+        sections.append(caller_phone_section)
 
     sections.append(
         f"\nCurrent property:\n"
@@ -364,6 +376,15 @@ def _guest_memory_section(guest: GuestProfile | None) -> str:
         return "\nThis caller is not in our guest records -- treat them as a new guest."
 
     parts = [f"This caller is a returning guest: {guest.name or 'name unknown'}, {guest.total_stays} past stay(s)."]
+    if guest.name:
+        # Confirmed live (2026-07-21): a returning guest whose booking/dates
+        # were correctly recognized from history was still asked for their
+        # phone number again mid-call -- the model had no explicit signal
+        # that a KNOWN guest's identifying info doesn't need re-collecting.
+        # Phone itself is covered separately by _caller_phone_section (real
+        # telephony-level info, not tied to whether this guest has called
+        # before); this covers the name half of the same problem.
+        parts.append(f"You already know their name is {guest.name} -- use it naturally, never ask for it again.")
     if guest.preferred_language:
         parts.append(f"Prefers {guest.preferred_language}.")
     if guest.last_outcome:
@@ -372,6 +393,33 @@ def _guest_memory_section(guest: GuestProfile | None) -> str:
         parts.append(f"Last time: {guest.conversation_summaries[-1].get('summary', '')}")
     parts.append("Greet them personally and use this history to inform your tone (e.g. loyalty tier for negotiate_rate).")
     return "\n" + " ".join(parts)
+
+
+def _caller_phone_section(caller_phone: str | None) -> str:
+    """Exposes the caller's own signaling-level phone number (Exotel caller
+    ID -- CallSession.caller_number, see app/voice/pipeline.py) as a known
+    fact, the same way property_id is handed over directly instead of asked
+    for. This is real telephony-level information already available before
+    the call even starts, not something extracted from speech -- so a guest
+    who says "send it to the number I'm calling from" should never be asked
+    to recite digits for that. `app/voice/tools.py`'s build_voice_tools also
+    falls back to this same number in code for send_whatsapp/send_photos/
+    escalate_to_host/dispatch_technician/update_lead if the model doesn't
+    pass a phone explicitly -- this prompt section is what lets the model
+    *say* something coherent about it (e.g. "I'll send those to the number
+    you're calling from") rather than silently using it. Returns "" for a
+    browser test call (no real phone number exists), not a fabricated one.
+    """
+    if not caller_phone:
+        return ""
+    return (
+        f"\nThe caller's own phone number is already known from the call itself: {caller_phone}. Use this "
+        "directly as the phone/guest_phone value for update_lead/send_whatsapp/send_photos/escalate_to_host/"
+        "dispatch_technician whenever the guest wants something sent or saved to \"this number\" or \"the "
+        "number I'm calling from\" -- never ask them to say or repeat their number aloud for that. Only ask "
+        "for a phone number if the guest explicitly wants a DIFFERENT number used (e.g. booking on behalf of "
+        "someone else)."
+    )
 
 
 def _active_booking_section(booking: Lead | None) -> str:
@@ -490,11 +538,18 @@ Lead qualification workflow:
 
 
 def build_lead_system_prompt(
-    user: User, properties: list[Property], guest: GuestProfile | None = None, active_booking: Lead | None = None
+    user: User,
+    properties: list[Property],
+    guest: GuestProfile | None = None,
+    active_booking: Lead | None = None,
+    caller_phone: str | None = None,
 ) -> str:
     host_name = user.name or "this host"
     sections = [LEAD_AGENT_INSTRUCTIONS.format(host_name=host_name), _today_anchor()]
     sections.extend(_persona_and_escalation_sections(user))
+    caller_phone_section = _caller_phone_section(caller_phone)
+    if caller_phone_section:
+        sections.append(caller_phone_section)
     sections.append(_guest_memory_section(guest))
     booking_section = _active_booking_section(active_booking)
     if booking_section:

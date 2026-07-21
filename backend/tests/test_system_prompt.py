@@ -463,3 +463,49 @@ def test_golden_rules_hello_mid_call_never_repeats_last_answer():
     # brief "I'm here" (confirmed live, 2026-07-21).
     prompt = build_system_prompt(_property(), None, _user())
     assert "not a request to hear your last answer again" in prompt
+
+
+def test_golden_rules_forbid_loop_in_the_host_phrasing_on_booking_accept():
+    # A guest accepting a price and wanting to book should hear a concrete
+    # next step (WhatsApp + payment details), not a vague "I'll loop in the
+    # host" -- requested 2026-07-21.
+    prompt = build_system_prompt(_property(), None, _user())
+    assert 'phrases like "I\'ll loop in the host"' in prompt
+    assert "follow up with you on WhatsApp shortly with" in prompt
+    assert "the payment details to confirm your booking" in prompt
+
+
+def test_caller_phone_is_exposed_so_the_model_never_needs_it_recited():
+    # Feature request 2026-07-21: "just send me the photos on the number I'm
+    # calling from" should work without asking the guest to say their
+    # number aloud -- the telephony layer already knows it.
+    prompt = build_system_prompt(_property(), None, _user(), caller_phone="+919876543210")
+    assert "already known from the call itself: +919876543210" in prompt
+    assert "never ask them to say or repeat their number aloud" in prompt
+
+
+def test_caller_phone_section_omitted_when_not_available():
+    # Browser test calls have no real caller number -- must not fabricate one.
+    prompt = build_system_prompt(_property(), None, _user(), caller_phone=None)
+    assert "already known from the call itself" not in prompt
+
+
+def test_lead_caller_phone_is_exposed_too():
+    prompt = build_lead_system_prompt(_user(), [_property()], caller_phone="+919876543210")
+    assert "already known from the call itself: +919876543210" in prompt
+
+
+def test_guest_memory_says_not_to_reask_a_known_returning_guests_name():
+    # Regression 2026-07-21: a returning guest whose booking/dates were
+    # correctly recalled from Guest Memory was still asked for their phone
+    # number again mid-call -- extend the same "don't re-ask" guarantee
+    # explicitly to a known name, not just implied by stating it once.
+    guest = _guest(name="Deepika", total_stays=2)
+    prompt = build_system_prompt(_property(), guest, _user())
+    assert "You already know their name is Deepika -- use it naturally, never ask for it again." in prompt
+
+
+def test_guest_memory_omits_reask_line_when_name_unknown():
+    guest = _guest(name=None, total_stays=2)
+    prompt = build_system_prompt(_property(), guest, _user())
+    assert "never ask for it again" not in prompt

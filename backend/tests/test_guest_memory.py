@@ -136,3 +136,54 @@ async def test_update_guest_memory_without_conversation_summary_still_bumps_stay
     await db_session.refresh(guest)
     assert guest.total_stays == 1
     assert guest.conversation_summaries == []
+    assert guest.name == "Priya"
+
+
+async def test_update_guest_memory_overwrites_stale_name_with_latest_call(
+    db_session, test_user, test_call_session
+):
+    # Regression: GuestProfile.name was never synced from a call's own
+    # Lead.guest_name, so a name set once (e.g. very first test call, or a
+    # manual dashboard edit) stayed stale forever. A guest who gave a
+    # different name on this call ("Deepika") must overwrite whatever the
+    # profile said before ("Shagun Verma") -- confirmed live, 2026-07-21.
+    guest = await call_service.get_or_create_guest_profile(db_session, "+919999999999", test_user.id, name="Shagun Verma")
+    lead = Lead(user_id=test_user.id, call_session_id=test_call_session.id, guest_name="Deepika")
+    db_session.add(lead)
+    await db_session.commit()
+
+    await guest_memory_service.update_guest_memory_from_call(
+        db_session,
+        call_session_id=test_call_session.id,
+        guest_profile_id=guest.id,
+        property_id=None,
+        property_name=None,
+    )
+
+    await db_session.refresh(guest)
+    assert guest.name == "Deepika"
+
+
+async def test_update_guest_memory_keeps_existing_name_when_guest_doesnt_restate_it(
+    db_session, test_user, test_call_session
+):
+    # A returning guest who doesn't restate their name this call (Guest
+    # Memory already knows it, so the agent isn't expected to ask again --
+    # see system_prompt.py's _guest_memory_section) must not have their
+    # correct on-file name blanked out or overwritten by a call with no
+    # guest_name captured.
+    guest = await call_service.get_or_create_guest_profile(db_session, "+919999999999", test_user.id, name="Deepika")
+    lead = Lead(user_id=test_user.id, call_session_id=test_call_session.id, conversation_summary="Asked about check-in.")
+    db_session.add(lead)
+    await db_session.commit()
+
+    await guest_memory_service.update_guest_memory_from_call(
+        db_session,
+        call_session_id=test_call_session.id,
+        guest_profile_id=guest.id,
+        property_id=None,
+        property_name=None,
+    )
+
+    await db_session.refresh(guest)
+    assert guest.name == "Deepika"

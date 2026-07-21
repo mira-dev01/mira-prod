@@ -51,8 +51,21 @@ def build_voice_tools(
     host_user_id: uuid.UUID,
     conversation_state: ConversationState | None = None,
     guest_profile_id: uuid.UUID | None = None,
+    caller_number: str | None = None,
 ) -> list:
-    """Build the tool functions for one call, bound to its call_session_id/property_id/host_user_id."""
+    """Build the tool functions for one call, bound to its call_session_id/property_id/host_user_id.
+
+    caller_number is the real, signaling-level phone number the guest is
+    calling from (None for a browser test call, which has no real number --
+    see app/voice/pipeline.py's real_caller_number guard). It's a
+    code-level safety net, not the primary mechanism: system_prompt.py's
+    _caller_phone_section already hands this same number to the model as a
+    known fact so it can use/mention it directly. This closure-level
+    fallback means a phone/guest_phone arg the model leaves unset (e.g. the
+    guest said "send it to the number I'm calling from" and the model
+    correctly didn't ask for digits) still resolves to the right number
+    even if the model doesn't parrot it back explicitly.
+    """
     state = conversation_state or ConversationState()
 
     async def check_calendar(
@@ -129,12 +142,16 @@ def build_voice_tools(
             property_id: The property's id, as given to you in your instructions.
             issue_type: One of plumbing, electrical, ac, wifi, lock, general.
             urgency: One of low, medium, high, emergency.
-            guest_phone: The guest's phone number, if known.
+            guest_phone: The guest's phone number, if known. Leave unset to use the
+                caller's own number automatically (see your instructions).
         """
         async with AsyncSessionLocal() as db:
             try:
                 args = DispatchTechnicianArgs(
-                    property_id=property_id, issue_type=issue_type, urgency=urgency, guest_phone=guest_phone
+                    property_id=property_id,
+                    issue_type=issue_type,
+                    urgency=urgency,
+                    guest_phone=guest_phone or caller_number,
                 )
                 result = await tool_handlers.handle_dispatch_technician(db, args, call_session_id)
             except ValidationError:
@@ -143,20 +160,26 @@ def build_voice_tools(
 
     async def send_whatsapp(
         params: FunctionCallParams,
-        phone: str,
         message: str,
+        phone: str | None = None,
         template_name: str | None = None,
     ):
         """Send WhatsApp message to guest or host.
 
         Args:
-            phone: Phone number to message.
             message: Message body.
+            phone: Phone number to message. Leave unset if the guest wants it sent
+                to the number they're calling from -- the system already knows
+                that number and will use it automatically.
             template_name: Optional WhatsApp template name.
         """
+        resolved_phone = phone or caller_number
+        if not resolved_phone:
+            await params.result_callback("I don't have a phone number for that yet -- could you share one?")
+            return
         async with AsyncSessionLocal() as db:
             try:
-                args = SendWhatsappArgs(phone=phone, message=message, template_name=template_name)
+                args = SendWhatsappArgs(phone=resolved_phone, message=message, template_name=template_name)
                 result = await tool_handlers.handle_send_whatsapp(db, args, property_id, call_session_id)
             except ValidationError:
                 result = INVALID_ARGS_MESSAGE
@@ -165,7 +188,7 @@ def build_voice_tools(
     async def send_photos(
         params: FunctionCallParams,
         property_id: str,
-        guest_phone: str,
+        guest_phone: str | None = None,
     ):
         """Send the guest a link to photos of the property, e.g. when they
         ask to see pictures/images of the place. Sends one gallery link
@@ -173,11 +196,17 @@ def build_voice_tools(
 
         Args:
             property_id: The property's id, as given to you in your instructions.
-            guest_phone: The guest's phone number to send the link to.
+            guest_phone: The guest's phone number to send the link to. Leave unset
+                if the guest wants it sent to the number they're calling from --
+                the system already knows that number and will use it automatically.
         """
+        resolved_phone = guest_phone or caller_number
+        if not resolved_phone:
+            await params.result_callback("I don't have a phone number for that yet -- could you share one?")
+            return
         async with AsyncSessionLocal() as db:
             try:
-                args = SendPhotosArgs(property_id=property_id, guest_phone=guest_phone)
+                args = SendPhotosArgs(property_id=property_id, guest_phone=resolved_phone)
                 result = await tool_handlers.handle_send_photos(db, args, call_session_id, host_user_id)
             except ValidationError:
                 result = INVALID_ARGS_MESSAGE
@@ -197,7 +226,8 @@ def build_voice_tools(
             property_id: The property's id, as given to you in your instructions.
             reason: Why this needs the host's attention.
             urgency: One of low, medium, high, emergency.
-            guest_phone: The guest's phone number, if known.
+            guest_phone: The guest's phone number, if known. Leave unset to use the
+                caller's own number automatically (see your instructions).
             call_summary: A short summary of the call so far.
         """
         async with AsyncSessionLocal() as db:
@@ -206,7 +236,7 @@ def build_voice_tools(
                     property_id=property_id,
                     reason=reason,
                     urgency=urgency,
-                    guest_phone=guest_phone,
+                    guest_phone=guest_phone or caller_number,
                     call_summary=call_summary,
                 )
                 result = await tool_handlers.handle_escalate_to_host(db, args, call_session_id, host_user_id)
@@ -335,7 +365,9 @@ def build_voice_tools(
                 across calls regardless of which language they called in, so
                 repeat-guest matching in the dashboard's Guests page doesn't
                 silently fail on a script mismatch.
-            phone: The guest's phone number, if known.
+            phone: The guest's phone number, if known. Leave unset to use the
+                caller's own number automatically (see your instructions) --
+                only pass a different value if the guest gives one explicitly.
             email: The guest's email, if known.
             check_in: Desired check-in date, ISO format (YYYY-MM-DD), if known.
             check_out: Desired check-out date, ISO format (YYYY-MM-DD), if known.
@@ -360,7 +392,7 @@ def build_voice_tools(
             try:
                 args = UpdateLeadArgs(
                     guest_name=guest_name,
-                    phone=phone,
+                    phone=phone or caller_number,
                     email=email,
                     check_in=check_in,
                     check_out=check_out,

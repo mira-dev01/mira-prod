@@ -55,6 +55,33 @@ async def test_backfill_lead_never_overwrites_status(test_user, test_call_sessio
     assert lead.status == "booked"
 
 
+async def test_backfill_lead_fills_blank_guest_name_from_guest_memory(test_user, test_call_session, db_session):
+    # A returning guest who doesn't restate their name mid-call (Guest Memory
+    # already knows it -- see system_prompt.py's _guest_memory_section)
+    # should still show the correct name on the Lead itself, not just via
+    # CallSession's computed guest_name fallback. Mirrors the existing
+    # caller_number -> phone backfill in app/voice/pipeline.py.
+    lead = await lead_service.upsert_lead(db_session, test_user.id, test_call_session.id, budget=5000)
+    assert lead.guest_name is None
+
+    await lead_service.backfill_lead(db_session, test_call_session.id, guest_name="Deepika")
+
+    await db_session.refresh(lead)
+    assert lead.guest_name == "Deepika"
+
+
+async def test_backfill_lead_never_overwrites_guest_stated_name(test_user, test_call_session, db_session):
+    # If the guest DID give a name this call (via update_lead), that's
+    # authoritative -- backfill must never replace it with the Guest Memory
+    # profile's on-file name (e.g. from an earlier call).
+    lead = await lead_service.upsert_lead(db_session, test_user.id, test_call_session.id, guest_name="Deepika")
+
+    await lead_service.backfill_lead(db_session, test_call_session.id, guest_name="Shagun Verma")
+
+    await db_session.refresh(lead)
+    assert lead.guest_name == "Deepika"
+
+
 async def _guest_profile(db_session, host_id, phone="+919999911111"):
     guest = GuestProfile(host_id=host_id, phone=phone, total_stays=1)
     db_session.add(guest)

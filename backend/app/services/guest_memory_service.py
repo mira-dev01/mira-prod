@@ -58,6 +58,20 @@ async def update_guest_memory_from_call(
     if lead.guest_profile_id is None:
         lead.guest_profile_id = guest.id
 
+    # Sync the profile's name to whatever the guest stated THIS call, when
+    # they stated one. Confirmed live (2026-07-21): a guest gave a name on
+    # call 1 (only ever written to that call's own Lead.guest_name, never
+    # back onto GuestProfile.name), then called again and didn't restate it
+    # -- the dashboard showed a much older, stale GuestProfile.name (from
+    # however this profile's name was first set) instead of what the guest
+    # actually said last time. The most recently stated name is the best
+    # available signal for who's actually on the phone; deliberately always
+    # overwrites (not just fills a blank) so a name correction/change is
+    # picked up too. A call where the guest didn't restate their name
+    # (lead.guest_name is blank) leaves the existing profile name untouched.
+    if lead.guest_name:
+        guest.name = lead.guest_name
+
     guest.total_stays = (guest.total_stays or 0) + 1
     guest.last_call_at = lead.updated_at
     if property_id is not None:

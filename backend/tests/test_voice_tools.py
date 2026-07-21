@@ -93,6 +93,98 @@ async def test_send_whatsapp_uses_bound_property_id(test_property, db_session, t
     assert matching[0].property_id == test_property.id
 
 
+async def test_send_whatsapp_falls_back_to_caller_number_when_phone_omitted(test_property, db_session, test_user):
+    # Feature request 2026-07-21: "send it to the number I'm calling from"
+    # should work without the guest reciting digits -- the model can leave
+    # phone unset and the caller's own signaling-level number is used.
+    tools = build_voice_tools(
+        call_session_id=None,
+        property_id=test_property.id,
+        host_user_id=test_user.id,
+        caller_number="+919876543210",
+    )
+    send_whatsapp = next(t for t in tools if t.__name__ == "send_whatsapp")
+
+    params = _FakeFunctionCallParams()
+    await send_whatsapp(params, message="Here are the details")
+    assert "queued" in params.result.lower()
+
+    notifications = await list_notifications(db_session)
+    matching = [n for n in notifications if n.channel == "whatsapp" and "9876543210" in n.message]
+    assert matching
+
+
+async def test_send_whatsapp_explicit_phone_wins_over_caller_number(test_property, db_session, test_user):
+    # A guest booking on behalf of someone else can still name a different number.
+    tools = build_voice_tools(
+        call_session_id=None,
+        property_id=test_property.id,
+        host_user_id=test_user.id,
+        caller_number="+919876543210",
+    )
+    send_whatsapp = next(t for t in tools if t.__name__ == "send_whatsapp")
+
+    params = _FakeFunctionCallParams()
+    await send_whatsapp(params, message="Hi", phone="+911111111111")
+
+    notifications = await list_notifications(db_session)
+    matching = [n for n in notifications if n.channel == "whatsapp" and "1111111111" in n.message]
+    assert matching
+
+
+async def test_send_whatsapp_no_phone_and_no_caller_number_asks_instead_of_erroring(
+    test_property, db_session, test_user
+):
+    tools = build_voice_tools(call_session_id=None, property_id=test_property.id, host_user_id=test_user.id)
+    send_whatsapp = next(t for t in tools if t.__name__ == "send_whatsapp")
+
+    params = _FakeFunctionCallParams()
+    await send_whatsapp(params, message="Hi")
+    assert "could you share one" in params.result.lower()
+
+
+async def test_send_photos_falls_back_to_caller_number(test_property, db_session, test_user):
+    test_property.photos = ["https://res.cloudinary.com/demo/image/upload/v1/photo.jpg"]
+    await db_session.commit()
+
+    tools = build_voice_tools(
+        call_session_id=None,
+        property_id=test_property.id,
+        host_user_id=test_user.id,
+        caller_number="+919876543210",
+    )
+    send_photos = next(t for t in tools if t.__name__ == "send_photos")
+
+    params = _FakeFunctionCallParams()
+    await send_photos(params, property_id=str(test_property.id))
+    assert "flag" not in params.result.lower()  # didn't hit the "no photos on file" branch
+
+    notifications = await list_notifications(db_session)
+    matching = [n for n in notifications if "9876543210" in n.message]
+    assert matching
+
+
+async def test_update_lead_falls_back_to_caller_number_for_phone(test_call_session, db_session, test_user):
+    # Mirrors send_whatsapp/send_photos: a guest who never recites their
+    # number should still have it captured on the Lead from caller ID.
+    tools = build_voice_tools(
+        call_session_id=test_call_session.id,
+        property_id=None,
+        host_user_id=test_user.id,
+        caller_number="+919876543210",
+    )
+    update_lead = next(t for t in tools if t.__name__ == "update_lead")
+
+    params = _FakeFunctionCallParams()
+    await update_lead(params, guest_name="Asha")
+
+    from app.models.lead import Lead
+    from sqlalchemy import select
+
+    lead = await db_session.scalar(select(Lead).where(Lead.call_session_id == test_call_session.id))
+    assert lead.phone == "9876543210"
+
+
 async def test_recommend_properties_filters_by_host_and_guests(test_property, db_session, test_user):
     tools = build_voice_tools(call_session_id=None, property_id=None, host_user_id=test_user.id)
     recommend_properties = next(t for t in tools if t.__name__ == "recommend_properties")
