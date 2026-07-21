@@ -439,3 +439,27 @@ def test_build_system_prompt_handles_no_seasonal_notes():
     assert prop.seasonal_notes is None
     prompt = build_system_prompt(prop, None, _user())
     assert "Seasonal notes currently in effect" not in prompt
+
+
+def test_golden_rules_forbid_inventing_tool_call_arguments():
+    # Regression: Mira called check_calendar with a check_in/check_out/
+    # num_guests the guest never gave (confirmed live, 2026-07-21), then
+    # told the guest the property was "available" for those invented dates.
+    prompt = build_system_prompt(_property(), None, _user())
+    assert "never invent a plausible-sounding placeholder date or number" in prompt
+
+
+def test_golden_rules_forbid_narrator_meta_text():
+    # Regression: "---This is the end.---" got spoken directly to a guest,
+    # appended after a real sentence (confirmed live, 2026-07-21).
+    prompt = build_system_prompt(_property(), None, _user())
+    assert "This is the end." in prompt
+    assert "stage direction" in prompt
+
+
+def test_golden_rules_hello_mid_call_never_repeats_last_answer():
+    # Regression: a guest said "Hello" mid-call and got a near-verbatim
+    # repeat of the full attractions list Mira had just given, instead of a
+    # brief "I'm here" (confirmed live, 2026-07-21).
+    prompt = build_system_prompt(_property(), None, _user())
+    assert "not a request to hear your last answer again" in prompt
