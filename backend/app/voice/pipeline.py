@@ -190,21 +190,6 @@ class _ReconnectingSarvamSTTService(SarvamSTTService):
         self._stt_reconnecting = False
         self._stt_last_reconnect_attempt = 0.0
 
-    async def _connect(self):
-        # SarvamSTTService's own _connect() has no idempotency guard -- it
-        # unconditionally opens a new websocket and a new _receive_task even
-        # if one is already running, silently duplicating every transcript.
-        # We pre-connect STT and TTS concurrently in _run_pipeline (to avoid
-        # the ~1s-each sequential handshake confirmed live, see git history)
-        # before the pipeline's own StartFrame-driven startup reaches this
-        # stage and calls _connect() again on its own -- this guard makes
-        # that second call a safe no-op. _disconnect() resets
-        # self._socket_client to None, so a genuine reconnect (e.g. the
-        # dead-connection recovery in run_stt above) still works normally.
-        if self._socket_client is not None:
-            return
-        await super()._connect()
-
     async def run_stt(self, audio: bytes):
         import time
 
@@ -340,20 +325,6 @@ async def _run_pipeline(
                 language=DEFAULT_TTS_LANGUAGE,
             ),
         )
-
-        # Confirmed live (2026-07-21 Exotel call log): the pipeline's own
-        # StartFrame-driven startup connects STT and TTS to Sarvam
-        # sequentially -- STT's websocket handshake (~1.3s) fully completes
-        # before TTS's (~1.0s) even starts, since frame processors start in
-        # pipeline order. Connecting them concurrently here instead cuts
-        # that ~2.3s of sequential handshake down to ~1.3s (whichever is
-        # slower), shaving a real chunk off the call-connect-to-greeting
-        # delay. Safe to call _connect() again later when the pipeline
-        # actually starts -- TTS's _connect_websocket already no-ops if the
-        # socket is open, and _ReconnectingSarvamSTTService above adds the
-        # same guard for STT (which otherwise has none).
-        await asyncio.gather(stt._connect(), tts._connect())
-
         llm = _build_llm()
 
         # Tracks which property is "locked" for the rest of a Lead Agent
