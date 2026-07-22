@@ -73,7 +73,9 @@ class Settings(BaseSettings):
     # (above) stays as the configured default/first choice -- this list is
     # what _build_llm() in app/voice/pipeline.py actually walks, skipping any
     # model app/main.py's periodic health check has marked down (e.g. from a
-    # 429 rate limit on gpt-oss-120b's free-tier TPM cap). All three IDs
+    # 429 rate limit on gpt-oss-120b -- account is on a paid Groq plan as of
+    # 2026-07-07, not free tier, but per-model limits still apply under
+    # bursty call load). All three IDs
     # confirmed live via client.models.list() against this account -- Groq
     # renames/deprecates model ids periodically (see the groq_model comment
     # above re: llama-3.3-70b-versatile), so re-check before editing this

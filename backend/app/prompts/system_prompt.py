@@ -572,8 +572,8 @@ def build_lead_system_prompt(
         # Amenities and the USP blurb are deliberately omitted here -- this
         # listing is resent in full on every single turn of the call, and for
         # a 15-property portfolio that adds up to a lot of tokens repeated
-        # every request, a real contributor to hitting Groq's free-tier
-        # tokens-per-minute limit. recommend_properties
+        # every request -- real $ cost on a paid Groq plan even before
+        # considering rate limits. recommend_properties
         # (app/services/tool_handlers.py) already returns amenities and USP
         # for the up-to-3 properties it actually recommends, so nothing is
         # lost for the booking flow -- just not paid for upfront on every

@@ -78,7 +78,8 @@ _VAD_PARAMS = VADParams(confidence=0.85, min_volume=0.7)
 def _pick_groq_model() -> str:
     """First model in settings.groq_models that app.main's periodic
     _check_llm_health hasn't marked down (e.g. via a 429 from hitting a
-    model's free-tier rate limit). Falls back to the first model in the list
+    model's per-account rate limit -- paid Groq plan as of 2026-07-07, not
+    free tier, but not unlimited). Falls back to the first model in the list
     if health data isn't populated yet (cold start, before the first check
     has run) -- same as the pre-fallback-chain default behavior."""
     from app.main import llm_health

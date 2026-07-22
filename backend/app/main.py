@@ -83,7 +83,9 @@ async def _check_llm_health() -> None:
     # the first request after idle -- on Render this adds 5-8s to the first
     # real call. Firing a 1-token ping keeps the route warm and, for Groq,
     # doubles as a per-model health/rate-limit check: a 429 (e.g. gpt-oss-120b
-    # hitting its free-tier TPM cap under call load) marks that model down in
+    # hitting its per-model rate limit under call load -- account is on a
+    # paid Groq plan as of 2026-07-07, not free tier, but the limit isn't
+    # unlimited) marks that model down in
     # llm_health so _build_llm() skips it and falls through to the next model
     # in settings.groq_models, instead of every call re-discovering the same
     # 429 via multi-second retry/backoff. Failures are non-fatal; the app
