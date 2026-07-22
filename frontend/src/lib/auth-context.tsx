@@ -42,7 +42,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { access_token } = await api.auth.login(email, password);
       setToken(access_token);
       setUser(await api.auth.me());
-      router.push("/");
+      router.push("/dashboard");
     },
     [router]
   );
@@ -52,7 +52,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { access_token } = await api.auth.register(email, password, name, phone);
       setToken(access_token);
       setUser(await api.auth.me());
-      router.push("/");
+      router.push("/dashboard");
     },
     [router]
   );
@@ -70,7 +70,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else if (import_error) {
         window.sessionStorage.setItem(PENDING_IMPORT_KEY, JSON.stringify({ error: import_error }));
       }
-      router.push("/");
+      router.push("/dashboard");
     },
     [router]
   );
