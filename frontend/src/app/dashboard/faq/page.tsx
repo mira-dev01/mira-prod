@@ -4,6 +4,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { DictationTextarea } from "@/components/ui/dictation-textarea";
 import { ExpandableText } from "@/components/expandable-text";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,7 +12,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusChip } from "@/components/status-chip";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Textarea } from "@/components/ui/textarea";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError } from "@/lib/api";
 import { UnansweredQuestionsCard } from "@/components/unanswered-questions-card";
@@ -114,7 +114,7 @@ export default function FaqPage() {
             </div>
             <div className="min-w-0 space-y-2 sm:col-span-2">
               <Label htmlFor="answer">Answer</Label>
-              <Textarea id="answer" required value={answer} onChange={(e) => setAnswer(e.target.value)} />
+              <DictationTextarea id="answer" required value={answer} onValueChange={setAnswer} />
             </div>
             <Button type="submit" className="sm:col-span-2" disabled={submitting}>
               Add (verified)

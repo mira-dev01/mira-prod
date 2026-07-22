@@ -12,6 +12,8 @@ it's how the call programmatically remembers which property the guest has
 locked onto in a Lead Agent (portfolio-wide) call, instead of relying solely
 on the LLM re-supplying a property_id on every tool call (see
 app/voice/conversation_state.py and memory-architecture-plan.md section 2).
+`silence_watchdog` is threaded through the same way, purely so the end_call
+tool can arm it -- see app/voice/silence_watchdog.py.
 """
 
 import uuid
@@ -37,6 +39,7 @@ from app.schemas.tool import (
 )
 from app.services import tool_handlers
 from app.voice.conversation_state import ConversationState
+from app.voice.silence_watchdog import SilenceWatchdogProcessor
 
 Urgency = Literal["low", "medium", "high", "emergency"]
 IssueType = Literal["plumbing", "electrical", "ac", "wifi", "lock", "general"]
@@ -51,7 +54,11 @@ def build_voice_tools(
     host_user_id: uuid.UUID,
     conversation_state: ConversationState | None = None,
     guest_profile_id: uuid.UUID | None = None,
+<<<<<<< Updated upstream
     caller_number: str | None = None,
+=======
+    silence_watchdog: SilenceWatchdogProcessor | None = None,
+>>>>>>> Stashed changes
 ) -> list:
     """Build the tool functions for one call, bound to its call_session_id/property_id/host_user_id.
 
@@ -445,6 +452,19 @@ def build_voice_tools(
             result = await tool_handlers.handle_search_faq(db, args, host_user_id, default_property_id, call_session_id)
         await params.result_callback(result)
 
+    async def end_call(params: FunctionCallParams):
+        """Call this the moment the guest has confirmed they have nothing
+        further and the conversation has reached a natural close. Always say
+        your closing/thank-you line as your own spoken reply in this same
+        turn BEFORE calling this tool (same pattern as escalate_to_host's
+        escalation phrase) -- this tool itself is silent and only arms the
+        hangup for right after that line finishes playing; it never
+        interrupts you mid-sentence.
+        """
+        if silence_watchdog is not None:
+            await silence_watchdog.request_end_after_current_turn()
+        await params.result_callback("Call will end after this turn.")
+
     return [
         check_calendar,
         get_pricing,
@@ -456,4 +476,5 @@ def build_voice_tools(
         recommend_properties,
         update_lead,
         search_faq,
+        end_call,
     ]

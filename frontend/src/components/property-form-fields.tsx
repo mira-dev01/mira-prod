@@ -1,10 +1,11 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { DictationInput } from "@/components/ui/dictation-input";
+import { DictationTextarea } from "@/components/ui/dictation-textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
 import type { FAQItem, PropertyCreate, SeasonalNote } from "@/lib/types";
 
 type PropertyFormValue = PropertyCreate;
@@ -153,12 +154,12 @@ export function PropertyFormFields({
       <SectionLabel>Description (USP)</SectionLabel>
       <div className="space-y-2">
         <Label htmlFor="usp">One-line description</Label>
-        <Input
+        <DictationInput
           id="usp"
           placeholder="e.g. Glass house, 1BHK with a private jacuzzi"
           maxLength={280}
           value={form.usp ?? ""}
-          onChange={(e) => onChange({ ...form, usp: e.target.value })}
+          onValueChange={(value) => onChange({ ...form, usp: value })}
         />
         <p className="text-xs text-muted-foreground">
           MIRA leads with this whenever a guest asks generally about the property, and uses it when
@@ -169,14 +170,14 @@ export function PropertyFormFields({
       <SectionLabel>Amenities</SectionLabel>
       <div className="space-y-2">
         <Label htmlFor="amenities">Amenities (comma-separated)</Label>
-        <Textarea
+        <DictationTextarea
           id="amenities"
           placeholder="WiFi, AC, Pool, Free parking"
           value={amenitiesText}
-          onChange={(e) =>
+          onValueChange={(value) =>
             onChange({
               ...form,
-              amenities: e.target.value
+              amenities: value
                 .split(",")
                 .map((item) => item.trim())
                 .filter(Boolean),
@@ -188,18 +189,18 @@ export function PropertyFormFields({
       <SectionLabel>House rules</SectionLabel>
       <div className="space-y-2">
         <Label htmlFor="house_rules">House rules</Label>
-        <Textarea
+        <DictationTextarea
           id="house_rules"
           placeholder="Check-in process, smoking/pets policy, quiet hours, ID requirements..."
           value={form.house_rules ?? ""}
-          onChange={(e) => onChange({ ...form, house_rules: e.target.value })}
+          onValueChange={(value) => onChange({ ...form, house_rules: value })}
         />
       </div>
 
       <SectionLabel>Neighborhood &amp; local area</SectionLabel>
       <div className="space-y-2">
         <Label htmlFor="neighborhood_info">Neighborhood info</Label>
-        <Textarea
+        <DictationTextarea
           id="neighborhood_info"
           placeholder={
             "e.g. 10 min walk to Baga beach. Scooter rentals right outside the gate, ~₹400/day. " +
@@ -207,7 +208,7 @@ export function PropertyFormFields({
             "airport (40 min), ~₹300 to Thivim railway station (15 min)."
           }
           value={form.neighborhood_info ?? ""}
-          onChange={(e) => onChange({ ...form, neighborhood_info: e.target.value })}
+          onValueChange={(value) => onChange({ ...form, neighborhood_info: value })}
         />
         <p className="text-xs text-muted-foreground">
           MIRA answers local-area questions directly from this -- nearby cafes, rentals, distance to
@@ -234,10 +235,10 @@ export function PropertyFormFields({
                   value={item.question}
                   onChange={(e) => updateFaqItem(index, { question: e.target.value })}
                 />
-                <Textarea
+                <DictationTextarea
                   placeholder="Answer"
                   value={item.answer}
-                  onChange={(e) => updateFaqItem(index, { answer: e.target.value })}
+                  onValueChange={(value) => updateFaqItem(index, { answer: value })}
                 />
                 <Button type="button" variant="ghost" size="sm" onClick={() => removeFaqItem(index)}>
                   Remove
@@ -266,10 +267,10 @@ export function PropertyFormFields({
           <div className="space-y-3">
             {seasonalNotes.map((item, index) => (
               <div key={index} className="space-y-2 rounded-md border p-3">
-                <Textarea
+                <DictationTextarea
                   placeholder="e.g. Pool closed for monsoon cleaning."
                   value={item.note}
-                  onChange={(e) => updateSeasonalNote(index, { note: e.target.value })}
+                  onValueChange={(value) => updateSeasonalNote(index, { note: value })}
                 />
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">

@@ -322,6 +322,12 @@ export const api = {
         "answer.webm"
       ),
   },
+  voice: {
+    // Generic "dictate into this field" transcription -- see
+    // src/hooks/use-dictation.ts, the shared hook every dictation mic
+    // button in the dashboard goes through.
+    transcribe: (audio: Blob) => uploadAudio<{ text: string }>("/voice/transcribe", audio, "dictation.webm"),
+  },
 };
 
 export { API_BASE_URL };

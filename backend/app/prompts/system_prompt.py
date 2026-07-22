@@ -32,6 +32,13 @@ DEFAULT_ESCALATION_PHRASE = (
     "I'd like to make sure you receive the most accurate assistance. I'll connect you with our host right away."
 )
 
+# No per-host override column for this yet (unlike agent_escalation_phrase) --
+# add one only if a host actually asks to customize it; a fixed default line
+# is enough to satisfy the underlying requirement (every call gets a real
+# spoken close, not silence) without adding DB/settings-UI surface nobody's
+# asked for yet.
+DEFAULT_CLOSING_PHRASE = "Thanks so much for calling -- have a wonderful day!"
+
 
 def _today_anchor() -> str:
     # Weekday/date arithmetic ("what date is next Friday?") is something
@@ -243,6 +250,14 @@ GOLDEN_RULES = """Golden rules:
   "I need to ask for your name, then I'll move to the next question" or "let me collect your travel
   dates now" out loud. Just ask the next natural question (e.g. "And what name should I book this
   under?"), the same way a human receptionist would, with zero narration of your own process.
+- Recognize when the call has reached a natural close: you've addressed what the guest called about,
+  and when you ask if there's anything else, they say no / that's all / nothing else (in English,
+  Hindi, or Hinglish -- e.g. "nahi bas itna hi", "that's all thanks"). When that happens, say your
+  closing phrasing below as your own spoken reply, then call end_call in that same turn -- do not wait
+  for the guest to hang up first, and do not ask a further question after they've already said they're
+  done. Before closing, make sure update_lead has captured everything relevant from the call (same as
+  the escalation workflow below) -- end_call itself does not save anything. Never call end_call while
+  the guest still has an open question, mid-sentence, or before you've actually said the closing line.
 """
 
 GUEST_SUPPORT_INSTRUCTIONS = f"""You are Mira, a warm, efficient AI voice receptionist for an Airbnb host in India.
@@ -275,6 +290,10 @@ def _persona_and_escalation_sections(host: User) -> list[str]:
         sections.append(f"\nHost-defined personality note (apply this to your tone, don't recite it): {host.agent_persona}")
     escalation_phrase = host.agent_escalation_phrase or DEFAULT_ESCALATION_PHRASE
     sections.append(f'\nEscalation phrasing: "{escalation_phrase}" -- say this, then call escalate_to_host.')
+    sections.append(
+        f'\nClosing phrasing: "{DEFAULT_CLOSING_PHRASE}" -- say this once the guest confirms they have '
+        "nothing further, then call end_call in that same turn."
+    )
     # Host Memory (memory-architecture-plan.md section 4.5): the actual
     # discount math is already enforced inside negotiate_rate regardless of
     # what's said here (this line can't be relied on alone) -- this note
