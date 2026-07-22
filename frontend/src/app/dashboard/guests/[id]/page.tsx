@@ -9,12 +9,12 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DictationTextarea } from "@/components/ui/dictation-textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ListRow, ListRowHeader } from "@/components/ui/list-row";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusChip, type StatusTone } from "@/components/status-chip";
-import { Textarea } from "@/components/ui/textarea";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError } from "@/lib/api";
 import { isBrowserTestIdentity } from "@/lib/utils";
@@ -295,7 +295,7 @@ export default function GuestProfilePage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="guest-notes">Notes</Label>
-                  <Textarea id="guest-notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
+                  <DictationTextarea id="guest-notes" value={notes} onValueChange={setNotes} />
                 </div>
                 <Button type="submit" disabled={submitting} className="w-full">
                   {submitting ? "Saving…" : "Save"}

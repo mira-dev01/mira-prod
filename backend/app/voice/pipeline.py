@@ -56,7 +56,9 @@ from app.prompts.system_prompt import (
 from app.schemas.call_classification import QUALIFIED_CALL_TYPES
 from app.services import call_classification_service, call_service, guest_memory_service, lead_service
 from app.voice.conversation_state import ConversationState
+from app.voice.holding_audio import play_holding_message
 from app.voice.language_sync import DEFAULT_TTS_LANGUAGE, LanguageSyncProcessor
+from app.voice.silence_watchdog import SilenceWatchdogProcessor
 from app.voice.tools import build_voice_tools
 from app.voice.turn_strategies import HybridCompletenessUserTurnStopStrategy
 from app.voice.vad import create_vad_analyzer
@@ -307,12 +309,58 @@ async def _run_pipeline(
     # exactly one row per session), and the caller's phone / the property
     # discussed are backfilled onto it at call end (see on_pipeline_finished).
     # A call where the agent captured nothing simply leaves no lead behind.
+    try:
+        await _run_pipeline_inner(
+            transport,
+            property_id,
+            call_session_id,
+            host_user_id,
+            system_prompt,
+            first_message,
+            caller_number=caller_number,
+            property_name=property_name,
+            guest_profile_id=guest_profile_id,
+            holding_audio_task=holding_audio_task,
+        )
+    finally:
+        # Guarantees the holding-message task (see app/voice/holding_audio.py)
+        # is always stopped, even if _run_pipeline_inner raises before
+        # reaching its own cancel point (e.g. SarvamTTSService/_build_llm
+        # construction failing) -- without this, a build-time failure would
+        # leave the task running orphaned, writing to a websocket whose fate
+        # is no longer being managed by anything.
+        if holding_audio_task is not None and not holding_audio_task.done():
+            holding_audio_task.cancel()
+            try:
+                await holding_audio_task
+            except asyncio.CancelledError:
+                pass
+
+
+async def _run_pipeline_inner(
+    transport: BaseTransport,
+    property_id: uuid.UUID | None,
+    call_session_id: uuid.UUID,
+    host_user_id: uuid.UUID,
+    system_prompt: str,
+    first_message: str,
+    caller_number: str | None = None,
+    property_name: str | None = None,
+    guest_profile_id: uuid.UUID | None = None,
+    holding_audio_task: asyncio.Task | None = None,
+) -> None:
     stt = _ReconnectingSarvamSTTService(
         api_key=settings.sarvam_api_key,
         model=settings.sarvam_stt_model,
         mode="codemix",  # transcribe Hindi/English/Hinglish as spoken, no translation
     )
     language_sync = LanguageSyncProcessor()
+    # Auto-cuts a call where the guest has gone silent/unresponsive: nudges
+    # ("Hello? Are you still there?") after each ~5s of silence, hangs up
+    # after the second nudge goes unanswered. See app/voice/silence_watchdog.py
+    # for why this has to live as its own processor rather than piggybacking
+    # on the turn-stop strategy.
+    silence_watchdog = SilenceWatchdogProcessor()
 
     async with aiohttp.ClientSession() as http_session:
         tts = SarvamTTSService(
@@ -350,6 +398,7 @@ async def _run_pipeline(
             conversation_state,
             guest_profile_id,
             caller_number=real_caller_number,
+            silence_watchdog=silence_watchdog,
         )
         # first_message is pre-seeded as an assistant turn so the LLM knows
         # it was already said (the "don't repeat greeting" rule relies on
@@ -403,6 +452,7 @@ async def _run_pipeline(
             [
                 transport.input(),
                 stt,
+                silence_watchdog,
                 language_sync,
                 user_aggregator,
                 llm,
@@ -550,6 +600,22 @@ async def _run_pipeline(
         async def _on_client_disconnected(transport, client):
             await worker.cancel()
 
+        # The holding-message task (see app/voice/holding_audio.py) writes
+        # directly to the same raw websocket this transport wraps -- it must
+        # be fully stopped before runner.run() below, which is what starts
+        # the transport's own writes (StartFrame -> transport.start() ->
+        # first real audio out), or the two would race on the same socket.
+        # Cancelling this late (right before handing the socket to the real
+        # pipeline, not any earlier) is what lets the holding message cover
+        # as much of the setup above -- STT/TTS build, LLM build, tool
+        # wiring -- as it can.
+        if holding_audio_task is not None:
+            holding_audio_task.cancel()
+            try:
+                await holding_audio_task
+            except asyncio.CancelledError:
+                pass
+
         runner = WorkerRunner()
         await runner.add_workers(worker)
         await runner.run()
@@ -559,6 +625,17 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
     exotel_call_id = call_data.call_id
     dialed_number = call_data.to_number
     caller_number = call_data.from_number
+
+    # Plays a short "connecting you now" message directly on the raw
+    # websocket (see app/voice/holding_audio.py) while everything below --
+    # DB lookups, then the real pipeline build and Sarvam STT/TTS connect
+    # inside _run_pipeline -- is still in progress. Confirmed via call logs
+    # this setup takes ~4-5s total, which the guest otherwise hears as dead
+    # air before Mira's first word. Cancelled just before _run_pipeline hands
+    # the socket to the real transport (see the comment at that call site).
+    holding_audio_task = (
+        asyncio.create_task(play_holding_message(websocket, call_data.stream_id)) if call_data.stream_id else None
+    )
 
     async with AsyncSessionLocal() as db:
         property_ = await call_service.get_property_by_number(db, dialed_number)
@@ -570,6 +647,12 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
                 dialed_number,
                 exotel_call_id,
             )
+            if holding_audio_task is not None:
+                holding_audio_task.cancel()
+                try:
+                    await holding_audio_task
+                except asyncio.CancelledError:
+                    pass
             try:
                 await websocket.close()
             except RuntimeError:

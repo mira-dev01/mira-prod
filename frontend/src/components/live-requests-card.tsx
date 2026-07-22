@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { toast } from "sonner";
 import { ArrowRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ListRow, ListRowFooter, ListRowHeader } from "@/components/ui/list-row";
 import { StatusChip } from "@/components/status-chip";
 import { leadUrgencyTone } from "@/components/lead-detail-panel";
-import { API_BASE_URL, getToken } from "@/lib/api";
+import { API_BASE_URL, ApiError, api, getToken } from "@/lib/api";
 import { isBrowserTestIdentity } from "@/lib/utils";
 import type { LeadOut, NotificationOut } from "@/lib/types";
 
@@ -42,6 +44,22 @@ export function LiveRequestsCard({
   limit?: number;
 }) {
   const seenNotificationIds = useRef(new Set<string>());
+  const [handlingIds, setHandlingIds] = useState<Set<string>>(new Set());
+
+  async function markHandled(lead: LeadOut) {
+    setHandlingIds((prev) => new Set(prev).add(lead.id));
+    try {
+      await api.leads.update(lead.id, { status: "closed" });
+      onRefetch();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Failed to update request");
+      setHandlingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(lead.id);
+        return next;
+      });
+    }
+  }
 
   useEffect(() => {
     const controller = new AbortController();
@@ -107,7 +125,21 @@ export function LiveRequestsCard({
         {visibleLeads.map((lead) => (
           <ListRow key={lead.id} variant="boxed" interactive onClick={() => onCardClick(lead)}>
             <ListRowHeader>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <span
+                  className="flex items-center"
+                  onClick={(e) => e.stopPropagation()}
+                  title="Mark as handled"
+                >
+                  <Checkbox
+                    checked={handlingIds.has(lead.id)}
+                    disabled={handlingIds.has(lead.id)}
+                    onCheckedChange={(checked) => {
+                      if (checked) markHandled(lead);
+                    }}
+                    aria-label="Mark request as handled"
+                  />
+                </span>
                 {lead.urgency && <StatusChip status={lead.urgency} tone={leadUrgencyTone[lead.urgency] ?? "neutral"} />}
                 <span className="text-sm font-medium">
                   {lead.properties_discussed[0] ?? leadGuestLabel(lead)}

@@ -19,7 +19,7 @@ import json
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, WebSocket
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, WebSocket, status
 from fastapi.responses import HTMLResponse
 from pipecat.runner.utils import parse_telephony_websocket
 from pipecat.transports.smallwebrtc.connection import IceServer, SmallWebRTCConnection
@@ -32,10 +32,34 @@ from app.config import settings
 from app.database import get_db
 from app.integrations.exotel_client import verify_webhook_token
 from app.models.user import User
+from app.services import faq_service
 from app.voice.pipeline import run_browser_lead_pipeline, run_browser_voice_pipeline, run_voice_pipeline
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/voice", tags=["voice"])
+
+
+@router.post("/transcribe")
+async def transcribe_dictation(
+    audio: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """General-purpose "dictate into this field" transcription -- the mic
+    button on dashboard text fields (see frontend's use-dictation.ts hook)
+    records a clip and posts it here instead of typing. Reuses the same
+    Sarvam batch transcription helper as the FAQ-gap voice-answer flow
+    (app/api/v1/faq.py's /faq/gaps/{id}/answer-voice) and the pre-login
+    voice-intro flow (app/api/v1/auth.py's /register-host/transcribe-intro)
+    -- this is the same operation, just without either of those two flows'
+    domain-specific follow-up (saving a FaqEntry / continuing registration),
+    so it lives here as its own endpoint rather than bolting onto either.
+    """
+    text = await faq_service.transcribe_gap_answer_audio(audio)
+    if not text:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "Could not transcribe audio -- please try again or type it instead"
+        )
+    return {"text": text}
 
 
 def _ice_servers() -> list[IceServer]:
