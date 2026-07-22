@@ -14,7 +14,11 @@ import { api, ApiError } from "@/lib/api";
 
 const SPECIALTIES = ["plumbing", "electrical", "ac", "wifi", "lock", "general"];
 
-export default function TechniciansPage() {
+// Moved out of its own /dashboard/technicians page into a Settings tab --
+// same host-configuration category as the rest of Settings, not something
+// checked day-to-day. Content unchanged from the original page, minus the
+// page-level <h1> header (Settings' TabsTrigger label covers that now).
+export function TechniciansSection() {
   const { data: properties, loading: propertiesLoading } = useAsync(() => api.properties.list(), []);
   const { data: technicians, loading, refetch } = useAsync(() => api.technicians.list(), []);
 
@@ -58,10 +62,9 @@ export default function TechniciansPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="page-title">Technicians</h1>
-        <p className="text-sm text-muted-foreground">Local service providers MIRA can dispatch for physical issues</p>
-      </div>
+      <p className="text-sm text-muted-foreground">
+        Local service providers MIRA can dispatch for physical issues (plumbing, electrical, AC, wifi, lock).
+      </p>
 
       <Card>
         <CardHeader>

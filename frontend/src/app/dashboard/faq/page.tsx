@@ -2,12 +2,14 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
+import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { DictationTextarea } from "@/components/ui/dictation-textarea";
 import { ExpandableText } from "@/components/expandable-text";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RightPanel, RightPanelFooterButton } from "@/components/ui/right-panel";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusChip } from "@/components/status-chip";
@@ -20,6 +22,7 @@ export default function FaqPage() {
   const { data: properties } = useAsync(() => api.properties.list(), []);
   const { data: entries, loading, refetch } = useAsync(() => api.faq.list(), []);
 
+  const [addOpen, setAddOpen] = useState(false);
   const [propertyId, setPropertyId] = useState<string>("all");
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
@@ -45,6 +48,8 @@ export default function FaqPage() {
       setQuestion("");
       setAnswer("");
       setCategory("");
+      setPropertyId("all");
+      setAddOpen(false);
       refetch();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Failed to add FAQ entry");
@@ -82,108 +87,111 @@ export default function FaqPage() {
         </p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Add FAQ entry</CardTitle>
+      <UnansweredQuestionsCard collapsible />
+
+      <Card className="min-w-0">
+        <CardHeader className="flex items-center justify-between gap-3 space-y-0">
+          <div className="min-w-0">
+            <CardTitle>Verified FAQ entries</CardTitle>
+            <CardDescription>Answers already in the knowledge base, added by you or resolved from a gap.</CardDescription>
+          </div>
+          <Button size="sm" className="shrink-0" onClick={() => setAddOpen(true)}>
+            <Plus className="size-4" />
+            Add new
+          </Button>
         </CardHeader>
-        <CardContent>
-          <form onSubmit={handleCreate} className="grid gap-4 sm:grid-cols-2">
-            <div className="min-w-0 space-y-2 sm:col-span-2">
-              <Label>Applies to</Label>
-              <Select value={propertyId} onValueChange={(v) => v && setPropertyId(v)}>
-                <SelectTrigger className="w-full">
-                  <SelectValue>{(value: string) => propertyName(value === "all" ? null : value)}</SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All properties</SelectItem>
-                  {properties?.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name}
-                    </SelectItem>
+        <CardContent className="min-w-0">
+          {loading ? (
+            <Skeleton className="h-64 w-full" />
+          ) : !entries || entries.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No FAQ entries yet.</p>
+          ) : (
+            <div className="min-w-0 max-h-[32rem] overflow-y-auto overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Question</TableHead>
+                    <TableHead>Answer</TableHead>
+                    <TableHead>Applies to</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="w-40" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {entries.map((entry) => (
+                    <TableRow key={entry.id} className="align-top">
+                      <TableCell className="w-[180px] max-w-[180px] py-3">
+                        <ExpandableText text={entry.question} maxLength={60} />
+                      </TableCell>
+                      <TableCell className="w-[220px] max-w-[220px] py-3 text-muted-foreground">
+                        <ExpandableText text={entry.answer} maxLength={90} />
+                      </TableCell>
+                      <TableCell className="whitespace-normal break-words py-3">{propertyName(entry.property_id)}</TableCell>
+                      <TableCell className="py-3 capitalize">{entry.category ?? "—"}</TableCell>
+                      <TableCell className="py-3">
+                        <StatusChip status={entry.status} tone={entry.status === "verified" ? "live" : "pending"} />
+                      </TableCell>
+                      <TableCell className="py-3">
+                        <div className="flex flex-wrap gap-2">
+                          <Button variant="outline" size="sm" onClick={() => handleToggleVerified(entry.id, entry.status)}>
+                            {entry.status === "verified" ? "Unverify" : "Verify"}
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => handleDelete(entry.id)}>
+                            Remove
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </SelectContent>
-              </Select>
+                </TableBody>
+              </Table>
             </div>
-            <div className="min-w-0 space-y-2">
-              <Label htmlFor="category">Category</Label>
-              <Input id="category" placeholder="e.g. wifi, parking" value={category} onChange={(e) => setCategory(e.target.value)} />
-            </div>
-            <div className="min-w-0 space-y-2 sm:col-span-2">
-              <Label htmlFor="question">Question</Label>
-              <Input id="question" required value={question} onChange={(e) => setQuestion(e.target.value)} />
-            </div>
-            <div className="min-w-0 space-y-2 sm:col-span-2">
-              <Label htmlFor="answer">Answer</Label>
-              <DictationTextarea id="answer" required value={answer} onValueChange={setAnswer} />
-            </div>
-            <Button type="submit" className="sm:col-span-2" disabled={submitting}>
-              Add (verified)
-            </Button>
-          </form>
+          )}
         </CardContent>
       </Card>
 
-      <div className="grid min-w-0 gap-6 lg:grid-cols-2">
-        <div className="min-w-0">
-          <UnansweredQuestionsCard />
-        </div>
-
-        <Card className="min-w-0">
-          <CardHeader>
-            <CardTitle>Verified FAQ entries</CardTitle>
-            <CardDescription>Answers already in the knowledge base, added by you or resolved from a gap.</CardDescription>
-          </CardHeader>
-          <CardContent className="min-w-0">
-            {loading ? (
-              <Skeleton className="h-64 w-full" />
-            ) : !entries || entries.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No FAQ entries yet.</p>
-            ) : (
-              <div className="min-w-0 overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Question</TableHead>
-                      <TableHead>Answer</TableHead>
-                      <TableHead>Applies to</TableHead>
-                      <TableHead>Category</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="w-40" />
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {entries.map((entry) => (
-                      <TableRow key={entry.id} className="align-top">
-                        <TableCell className="w-[180px] max-w-[180px] py-3">
-                          <ExpandableText text={entry.question} maxLength={60} />
-                        </TableCell>
-                        <TableCell className="w-[220px] max-w-[220px] py-3 text-muted-foreground">
-                          <ExpandableText text={entry.answer} maxLength={90} />
-                        </TableCell>
-                        <TableCell className="whitespace-normal break-words py-3">{propertyName(entry.property_id)}</TableCell>
-                        <TableCell className="py-3 capitalize">{entry.category ?? "—"}</TableCell>
-                        <TableCell className="py-3">
-                          <StatusChip status={entry.status} tone={entry.status === "verified" ? "live" : "pending"} />
-                        </TableCell>
-                        <TableCell className="py-3">
-                          <div className="flex flex-wrap gap-2">
-                            <Button variant="outline" size="sm" onClick={() => handleToggleVerified(entry.id, entry.status)}>
-                              {entry.status === "verified" ? "Unverify" : "Verify"}
-                            </Button>
-                            <Button variant="ghost" size="sm" onClick={() => handleDelete(entry.id)}>
-                              Remove
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+      <RightPanel
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        title="Add FAQ entry"
+        footer={
+          <RightPanelFooterButton type="submit" form="add-faq-form" disabled={submitting}>
+            {submitting ? "Adding…" : "Add (verified)"}
+          </RightPanelFooterButton>
+        }
+      >
+        <form id="add-faq-form" onSubmit={handleCreate} className="space-y-4">
+          <div className="min-w-0 space-y-2">
+            <Label>Applies to</Label>
+            <Select value={propertyId} onValueChange={(v) => v && setPropertyId(v)}>
+              <SelectTrigger className="w-full">
+                <SelectValue>{(value: string) => propertyName(value === "all" ? null : value)}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All properties</SelectItem>
+                {properties?.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="min-w-0 space-y-2">
+            <Label htmlFor="category">Category</Label>
+            <Input id="category" placeholder="e.g. wifi, parking" value={category} onChange={(e) => setCategory(e.target.value)} />
+          </div>
+          <div className="min-w-0 space-y-2">
+            <Label htmlFor="question">Question</Label>
+            <Input id="question" required value={question} onChange={(e) => setQuestion(e.target.value)} />
+          </div>
+          <div className="min-w-0 space-y-2">
+            <Label htmlFor="answer">Answer</Label>
+            <DictationTextarea id="answer" required value={answer} onValueChange={setAnswer} />
+          </div>
+        </form>
+      </RightPanel>
     </div>
   );
 }

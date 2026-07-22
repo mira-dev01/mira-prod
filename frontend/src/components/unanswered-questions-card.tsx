@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, ChevronDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -13,6 +13,7 @@ import { RightPanel, RightPanelFooterButton } from "@/components/ui/right-panel"
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError } from "@/lib/api";
 import type { FaqGapOut } from "@/lib/types";
@@ -20,13 +21,21 @@ import type { FaqGapOut } from "@/lib/types";
 // Shared by two call sites:
 //  - Overview page: compact preview (limit=2), links out to the FAQ page
 //    so a host sees the headline the moment they open the dashboard.
-//  - FAQ page: full list (no limit), as the left half of the
-//    unanswered/verified split view.
-export function UnansweredQuestionsCard({ limit, linkToFaqPage }: { limit?: number; linkToFaqPage?: boolean } = {}) {
+//  - FAQ page: full list (no limit, collapsible), stacked above the
+//    verified FAQ entries list rather than side-by-side with it -- a
+//    returning host mostly cares about the verified list below, so this
+//    starts collapsed to a slim summary bar instead of taking half the page.
+export function UnansweredQuestionsCard({
+  limit,
+  linkToFaqPage,
+  collapsible,
+}: { limit?: number; linkToFaqPage?: boolean; collapsible?: boolean } = {}) {
   const { data: properties } = useAsync(() => api.properties.list(), []);
   const { data: allGaps, loading: gapsLoading, refetch: refetchGaps } = useAsync(() => api.faqGaps.list(), []);
   const gaps = limit ? allGaps?.slice(0, limit) : allGaps;
   const totalCount = allGaps?.length ?? 0;
+
+  const [expanded, setExpanded] = useState(!collapsible);
 
   const propertyName = (id: string | null) =>
     id ? properties?.find((p) => p.id === id)?.name ?? id : "All properties";
@@ -104,14 +113,41 @@ export function UnansweredQuestionsCard({ limit, linkToFaqPage }: { limit?: numb
   return (
     <>
       <Card className="min-w-0">
-        <CardHeader>
-          <CardTitle>Questions Mira couldn&apos;t answer</CardTitle>
-          <CardDescription>
-            Guests asked these and Mira had no verified answer, so she couldn&apos;t help — answer one below and
-            Mira will use it automatically next time.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="min-w-0">
+        {collapsible ? (
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            aria-expanded={expanded}
+            className="flex w-full items-center justify-between gap-3 p-6 text-left"
+          >
+            <div className="min-w-0">
+              <CardTitle>Questions Mira couldn&apos;t answer</CardTitle>
+              {expanded && (
+                <CardDescription className="mt-1.5">
+                  Guests asked these and Mira had no verified answer, so she couldn&apos;t help — answer one below
+                  and Mira will use it automatically next time.
+                </CardDescription>
+              )}
+            </div>
+            <div className="flex shrink-0 items-center gap-3">
+              {!gapsLoading && totalCount > 0 && (
+                <Badge variant="destructive">
+                  {totalCount} unanswered
+                </Badge>
+              )}
+              <ChevronDown className={cn("size-4 text-muted-foreground transition-transform", expanded && "rotate-180")} />
+            </div>
+          </button>
+        ) : (
+          <CardHeader>
+            <CardTitle>Questions Mira couldn&apos;t answer</CardTitle>
+            <CardDescription>
+              Guests asked these and Mira had no verified answer, so she couldn&apos;t help — answer one below and
+              Mira will use it automatically next time.
+            </CardDescription>
+          </CardHeader>
+        )}
+        {expanded && <CardContent className="min-w-0">
           {gapsLoading ? (
             <Skeleton className="h-32 w-full" />
           ) : !gaps || gaps.length === 0 ? (
@@ -145,7 +181,7 @@ export function UnansweredQuestionsCard({ limit, linkToFaqPage }: { limit?: numb
               ))}
             </div>
           )}
-        </CardContent>
+        </CardContent>}
         {linkToFaqPage && totalCount > 0 && (
           <div className="border-t px-4 py-3">
             <Link

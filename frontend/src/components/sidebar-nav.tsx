@@ -12,9 +12,7 @@ import {
   Users,
   UserRound,
   HelpCircle,
-  Wrench,
   Settings,
-  Sparkles,
   Menu,
   X,
   type LucideIcon,
@@ -24,6 +22,10 @@ import { Button } from "@/components/ui/button";
 import { TalkToMiraDialog } from "@/components/talk-to-mira-dialog";
 import { useAuth } from "@/lib/auth-context";
 
+// Technicians and AI Training moved into Settings as tabs (see
+// app/dashboard/settings/page.tsx) rather than their own top-level nav
+// entries -- both are host configuration, same category as the rest of
+// what lives in Settings, not something checked day-to-day like Calls/Leads.
 const links: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/dashboard", label: "Overview", icon: Home },
   { href: "/dashboard/properties", label: "Properties", icon: Building2 },
@@ -32,8 +34,6 @@ const links: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/dashboard/leads", label: "Leads", icon: Users },
   { href: "/dashboard/guests", label: "Guests", icon: UserRound },
   { href: "/dashboard/faq", label: "FAQ", icon: HelpCircle },
-  { href: "/dashboard/technicians", label: "Technicians", icon: Wrench },
-  { href: "/dashboard/ai-training", label: "AI Training", icon: Sparkles },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 
@@ -117,8 +117,11 @@ export function SidebarNav() {
       {/* ── Desktop sidebar (md+): a permanently visible rail, not a
           dismissible overlay, so it stays plain markup rather than a Drawer
           instance (Drawer's backdrop/focus-trap/scroll-lock machinery is for
-          the mobile overlay case below). ── */}
-      <aside className="hidden md:flex h-screen w-56 shrink-0 flex-col border-r bg-card p-4">
+          the mobile overlay case below). sticky top-0 (on top of h-screen)
+          anchors it to the viewport rather than the document flow, so it
+          can never scroll out of view even if some page's content pushes
+          the surrounding layout taller than the viewport. ── */}
+      <aside className="sticky top-0 hidden h-screen w-56 shrink-0 flex-col border-r bg-card p-4 md:flex">
         <div className="mb-6 px-2">
           <MiraLogo />
           <p className="mt-0.5 text-xs text-muted-foreground">Host dashboard</p>
