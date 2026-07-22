@@ -162,6 +162,7 @@ async def handle_check_calendar(
     args: CheckCalendarArgs,
     host_user_id: uuid.UUID | None = None,
     call_session_id: uuid.UUID | None = None,
+    guest_profile_id: uuid.UUID | None = None,
 ) -> str:
     property_ = await _get_property(db, args.property_id)
     if property_ is None:
@@ -175,7 +176,14 @@ async def handle_check_calendar(
 
     if host_user_id is not None:
         await lead_service.backfill_lead_from_engagement(
-            db, host_user_id, call_session_id, property_.name, args.check_in, args.check_out, args.num_guests
+            db,
+            host_user_id,
+            call_session_id,
+            property_.name,
+            args.check_in,
+            args.check_out,
+            args.num_guests,
+            guest_profile_id=guest_profile_id,
         )
 
     available = await calendar_service.is_available(db, property_.id, args.check_in, args.check_out)
@@ -201,6 +209,7 @@ async def handle_get_pricing(
     args: GetPricingArgs,
     host_user_id: uuid.UUID | None = None,
     call_session_id: uuid.UUID | None = None,
+    guest_profile_id: uuid.UUID | None = None,
 ) -> str:
     property_ = await _get_property(db, args.property_id)
     if property_ is None:
@@ -211,7 +220,14 @@ async def handle_get_pricing(
 
     if host_user_id is not None:
         await lead_service.backfill_lead_from_engagement(
-            db, host_user_id, call_session_id, property_.name, args.check_in, args.check_out, args.num_guests
+            db,
+            host_user_id,
+            call_session_id,
+            property_.name,
+            args.check_in,
+            args.check_out,
+            args.num_guests,
+            guest_profile_id=guest_profile_id,
         )
 
     breakdown = await pricing_engine.calculate_price(
@@ -361,7 +377,11 @@ async def handle_send_photos(
 
 
 async def handle_escalate_to_host(
-    db: AsyncSession, args: EscalateToHostArgs, call_session_id: uuid.UUID | None, host_user_id: uuid.UUID
+    db: AsyncSession,
+    args: EscalateToHostArgs,
+    call_session_id: uuid.UUID | None,
+    host_user_id: uuid.UUID,
+    guest_profile_id: uuid.UUID | None = None,
 ) -> str:
     property_ = await _get_property(db, args.property_id)
     if property_ is None:
@@ -390,6 +410,7 @@ async def handle_escalate_to_host(
         db,
         host_user_id,
         call_session_id,
+        guest_profile_id=guest_profile_id,
         phone=args.guest_phone,
         conversation_summary=args.call_summary,
         properties_discussed=[property_.name],
@@ -455,7 +476,14 @@ async def handle_negotiate_rate(
 
     if host_user_id is not None:
         await lead_service.backfill_lead_from_engagement(
-            db, host_user_id, call_session_id, property_.name, args.check_in, args.check_out, args.num_guests
+            db,
+            host_user_id,
+            call_session_id,
+            property_.name,
+            args.check_in,
+            args.check_out,
+            args.num_guests,
+            guest_profile_id=guest_profile_id,
         )
 
     result = await pricing_engine.negotiate_rate(
@@ -585,12 +613,16 @@ async def _resolve_property_names(db: AsyncSession, values: list[str]) -> list[s
 
 
 async def handle_update_lead(
-    db: AsyncSession, args: UpdateLeadArgs, host_user_id: uuid.UUID, call_session_id: uuid.UUID | None
+    db: AsyncSession,
+    args: UpdateLeadArgs,
+    host_user_id: uuid.UUID,
+    call_session_id: uuid.UUID | None,
+    guest_profile_id: uuid.UUID | None = None,
 ) -> str:
     updates = args.model_dump(exclude_unset=True)
     if updates.get("properties_discussed"):
         updates["properties_discussed"] = await _resolve_property_names(db, updates["properties_discussed"])
-    await lead_service.upsert_lead(db, host_user_id, call_session_id, **updates)
+    await lead_service.upsert_lead(db, host_user_id, call_session_id, guest_profile_id=guest_profile_id, **updates)
     return "Saved." + _phone_confirmation_warning(updates.get("phone"))
 
 

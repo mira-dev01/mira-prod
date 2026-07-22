@@ -10,22 +10,112 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.common import DateRange
+from app.models.call_session import CallSession
 from app.models.lead import Lead
+
+# A returning guest's follow-up call reuses their existing Lead only while
+# it's still an unresolved, in-progress inquiry. Once the host marks it
+# "booked" or "closed", that inquiry is done -- the next call starts a fresh
+# Lead (a new booking cycle), rather than mutating a resolved record.
+_REUSABLE_LEAD_STATUSES = ("open", "contacted")
+
+
+async def _get_or_create_lead_for_call(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    call_session_id: uuid.UUID | None,
+    guest_profile_id: uuid.UUID | None,
+    guest_name_hint: str | None,
+) -> Lead | None:
+    """Resolves the Lead this call's tool calls should read/write, creating
+    one only if nothing already applies. Confirmed live 2026-07-21: a
+    returning guest's follow-up calls about the same still-open inquiry each
+    created their own separate Lead row, fragmenting one guest's engagement
+    across multiple dashboard cards instead of one.
+
+    Lookup order:
+    1. This call_session already resolved/created a lead earlier THIS same
+       call (CallSession.lead_id set by an earlier tool call this session) --
+       reuse it directly, no further lookup.
+    2. Otherwise, look for the guest's most recent still-open/contacted Lead
+       for this host (matched via guest_profile_id, itself scoped by
+       phone+host -- see GuestProfile) and reuse that instead of creating a
+       new one.
+    3. Otherwise, create a brand new Lead, exactly as before.
+
+    Safety guard on step 2: a shared/family phone reused for a genuinely
+    different person must never silently overwrite the existing lead's
+    identity -- only reused if that lead has no name yet, or its name
+    matches (case-insensitively) what this call has already stated. This
+    only guards the FIRST tool call of a session that resolves a lead; a
+    name given later in the same call that conflicts with an
+    already-resolved reused lead isn't re-checked -- in practice the guest's
+    name is captured immediately when volunteered (see GOLDEN_RULES), so
+    this is decided correctly before any other tool call needs a lead.
+
+    Returns None only when call_session_id itself is None (no session to
+    attach anything to -- matches the pre-existing behavior of every caller
+    here, which never created an orphan lead in that case either).
+    """
+    if call_session_id is None:
+        return None
+
+    call_session = await db.get(CallSession, call_session_id)
+    if call_session is not None and call_session.lead_id is not None:
+        existing = await db.get(Lead, call_session.lead_id)
+        if existing is not None:
+            return existing
+
+    lead = None
+    if guest_profile_id is not None:
+        stmt = (
+            select(Lead)
+            .where(
+                Lead.guest_profile_id == guest_profile_id,
+                Lead.user_id == user_id,
+                Lead.status.in_(_REUSABLE_LEAD_STATUSES),
+            )
+            .order_by(Lead.updated_at.desc())
+        )
+        for candidate in (await db.scalars(stmt)).all():
+            if (
+                not candidate.guest_name
+                or not guest_name_hint
+                or candidate.guest_name.strip().lower() == guest_name_hint.strip().lower()
+            ):
+                lead = candidate
+                break
+
+    if lead is None:
+        lead = Lead(user_id=user_id, call_session_id=call_session_id)
+        db.add(lead)
+        await db.flush()  # assign lead.id without committing the whole unit of work yet
+
+    if call_session is not None and call_session.lead_id != lead.id:
+        call_session.lead_id = lead.id
+
+    return lead
 
 
 async def upsert_lead(
     db: AsyncSession,
     user_id: uuid.UUID,
     call_session_id: uuid.UUID | None,
+    guest_profile_id: uuid.UUID | None = None,
     **fields,
 ) -> Lead:
-    lead = None
-    if call_session_id is not None:
-        lead = await db.scalar(select(Lead).where(Lead.call_session_id == call_session_id))
-
+    lead = await _get_or_create_lead_for_call(
+        db, user_id, call_session_id, guest_profile_id, guest_name_hint=fields.get("guest_name")
+    )
     if lead is None:
         lead = Lead(user_id=user_id, call_session_id=call_session_id)
         db.add(lead)
+
+    # guest_profile_id is consumed above for the reuse lookup, not passed
+    # through **fields -- still needs applying to the lead itself, same
+    # "only set if actually given" semantics as every other field below.
+    if guest_profile_id is not None:
+        lead.guest_profile_id = guest_profile_id
 
     for key, value in fields.items():
         if value is not None:
@@ -44,6 +134,7 @@ async def backfill_lead_from_engagement(
     check_in: date,
     check_out: date,
     num_guests: int | None,
+    guest_profile_id: uuid.UUID | None = None,
 ) -> None:
     """System-level safety net: creates/backfills a Lead the moment a guest
     engages meaningfully with a specific property + dates (get_pricing,
@@ -63,10 +154,9 @@ async def backfill_lead_from_engagement(
     """
     if call_session_id is None:
         return
-    lead = await db.scalar(select(Lead).where(Lead.call_session_id == call_session_id))
+    lead = await _get_or_create_lead_for_call(db, user_id, call_session_id, guest_profile_id, guest_name_hint=None)
     if lead is None:
-        lead = Lead(user_id=user_id, call_session_id=call_session_id)
-        db.add(lead)
+        return
 
     changed = False
     if property_name not in (lead.properties_discussed or []):
@@ -82,21 +172,32 @@ async def backfill_lead_from_engagement(
         lead.num_guests = num_guests
         changed = True
 
-    if changed:
-        await db.commit()
+    # Commit unconditionally, not just `if changed` -- _get_or_create_lead_for_call
+    # may have just created a new lead or linked this call_session.lead_id for
+    # the first time, which needs persisting even if none of the fields above
+    # happened to change (e.g. reusing an existing lead that already has this
+    # exact property/dates on file).
+    await db.commit()
 
 
 async def backfill_lead(db: AsyncSession, call_session_id: uuid.UUID | None, **fields) -> None:
-    """Fill only currently-blank fields on an EXISTING lead at call end
-    (e.g. the caller's phone from Exotel, or the property a Guest Support
-    call was about). Never creates a lead: a call where the agent captured
-    nothing must leave no row rather than an empty 'unknown guest' phantom,
-    and anything the guest actually stated during the call (via update_lead)
-    is authoritative and must not be overwritten here.
+    """Fill only currently-blank fields on the lead THIS call is associated
+    with (e.g. the caller's phone from Exotel, or the property a Guest
+    Support call was about) at call end. Never creates a lead: a call where
+    the agent captured nothing must leave no row rather than an empty
+    'unknown guest' phantom, and anything the guest actually stated during
+    the call (via update_lead) is authoritative and must not be overwritten
+    here. Looked up via CallSession.lead_id rather than Lead.call_session_id
+    directly, so this also correctly reaches a lead REUSED from an earlier
+    call (see _get_or_create_lead_for_call), not just one this exact call
+    originally created.
     """
     if call_session_id is None:
         return
-    lead = await db.scalar(select(Lead).where(Lead.call_session_id == call_session_id))
+    call_session = await db.get(CallSession, call_session_id)
+    if call_session is None or call_session.lead_id is None:
+        return
+    lead = await db.get(Lead, call_session.lead_id)
     if lead is None:
         return
     changed = False
@@ -117,11 +218,17 @@ async def delete_if_empty(db: AsyncSession, call_session_id: uuid.UUID | None) -
     on a connection that dropped instantly). Leads are no longer created up
     front (see app/voice/pipeline.py), so in the normal case there's nothing
     to clean; this just guards against a near-empty row slipping through and
-    looking like a phantom entry on the Leads page.
+    looking like a phantom entry on the Leads page. Naturally safe for a
+    REUSED lead too -- one with any real history already has at least one of
+    the checked fields set, so it's never considered "empty" here regardless
+    of whether this particular call added anything new.
     """
     if call_session_id is None:
         return
-    lead = await db.scalar(select(Lead).where(Lead.call_session_id == call_session_id))
+    call_session = await db.get(CallSession, call_session_id)
+    if call_session is None or call_session.lead_id is None:
+        return
+    lead = await db.get(Lead, call_session.lead_id)
     if lead is None:
         return
     has_data = any(
@@ -135,18 +242,30 @@ async def delete_if_empty(db: AsyncSession, call_session_id: uuid.UUID | None) -
 async def delete_for_unqualified_call(db: AsyncSession, call_session_id: uuid.UUID | None) -> None:
     """Called from on_pipeline_finished after end-of-call classification
     (app/services/call_classification_service.py), for any call_type NOT in
-    QUALIFIED_CALL_TYPES (JUNK/INCOMPLETE/UNKNOWN). Deletes the Lead row if
-    one exists, regardless of how much data it has or whether
-    escalate_to_host/update_lead ran mid-call -- unlike delete_if_empty
-    (which only clears near-empty phantom rows), a junk/incomplete
-    classification overrides whatever the live tool calls captured, since
-    the full-transcript end-of-call review is necessarily more informed
-    than the LLM's real-time in-call judgment. No-op if no Lead exists.
+    QUALIFIED_CALL_TYPES (JUNK/INCOMPLETE/UNKNOWN). Deletes the Lead row --
+    unlike delete_if_empty (which only clears near-empty phantom rows), a
+    junk/incomplete classification overrides whatever the live tool calls
+    captured, since the full-transcript end-of-call review is necessarily
+    more informed than the LLM's real-time in-call judgment.
+
+    EXCEPT when this call's lead was REUSED from an earlier, legitimate call
+    (lead.call_session_id != this call_session_id) -- a bad/junk
+    classification on one follow-up call must never delete a returning
+    guest's whole prior history. In that case, just detach this call from
+    the lead (clear this call's own lead_id) and leave the shared lead
+    itself untouched. No-op if this call has no associated lead at all.
     """
     if call_session_id is None:
         return
-    lead = await db.scalar(select(Lead).where(Lead.call_session_id == call_session_id))
+    call_session = await db.get(CallSession, call_session_id)
+    if call_session is None or call_session.lead_id is None:
+        return
+    lead = await db.get(Lead, call_session.lead_id)
     if lead is None:
+        return
+    if lead.call_session_id != call_session_id:
+        call_session.lead_id = None
+        await db.commit()
         return
     await db.delete(lead)
     await db.commit()

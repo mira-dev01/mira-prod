@@ -13,6 +13,14 @@ class Lead(UUIDPkMixin, TimestampMixin, Base):
     __tablename__ = "leads"
 
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"))
+    # The call that ORIGINALLY created this lead -- stays 1:1/unique, never
+    # repointed. A later call from the same returning guest may reuse this
+    # same Lead instead of creating a new one (see lead_service.py's reuse
+    # logic) via CallSession.lead_id, so this column no longer means "the
+    # only call this lead is associated with" -- just "where it was born."
+    # No relationship object here since nothing in the app reads
+    # lead.call_session; CallSession.lead is the one direction actually
+    # used, navigated via lead_id instead.
     call_session_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("call_sessions.id", ondelete="SET NULL"), unique=True
     )
@@ -58,4 +66,3 @@ class Lead(UUIDPkMixin, TimestampMixin, Base):
     occasion: Mapped[str | None] = mapped_column(String(255))
 
     owner: Mapped["User"] = relationship(back_populates="leads")
-    call_session: Mapped["CallSession"] = relationship(back_populates="lead")

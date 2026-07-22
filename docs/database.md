@@ -108,6 +108,7 @@ Unique on `(property_id, source_uid)`. iCal-synced calendar data — **no price 
 | `user_id` | UUID FK → users, `SET NULL` | always set when the host is known — Lead Agent calls have `property_id=NULL` but still belong to a host; **dashboard queries must scope by `user_id`, not property ownership**, or Lead Agent calls become invisible |
 | `property_id` | UUID FK → properties, `SET NULL`, nullable | `NULL` for Lead Agent calls |
 | `guest_profile_id` | UUID FK → guest_profiles, `SET NULL` | |
+| `lead_id` | UUID FK → leads, `SET NULL`, nullable, `use_alter` | the `Lead` this call reads/writes to — may be a lead this call created, or one **reused** from an earlier call by the same returning guest (see `lead_service._get_or_create_lead_for_call`). Deliberately a separate FK from `Lead.call_session_id` (see below) — many `call_sessions` can share one `lead_id`. `use_alter=True` because this and `Lead.call_session_id` form a circular FK between the two tables |
 | `caller_number` | String(32), nullable | raw signaling-level number, or `browser-test` placeholder |
 | `recording_url` | String(1024), nullable | |
 | `transcript`, `ai_summary` | Text, nullable | |
@@ -120,12 +121,12 @@ Computed properties (not columns): `duration_minutes`, `guest_name` (prefers `Le
 
 ### `leads` (`Lead`, `app/models/lead.py`)
 
-`call_session_id` is unique — at most one lead per call session.
+`call_session_id` is unique — at most one lead was ever *created by* a given call session. This no longer means "the only call associated with this lead", though: a returning guest's follow-up call, while this lead is still `status` `open`/`contacted`, reuses this same row via `CallSession.lead_id` (see above) instead of creating a new one — `call_session_id` just records where it was born. Once the host marks a lead `booked`/`closed`, it's no longer reusable; the next call from that guest starts a fresh `Lead`. See `lead_service._get_or_create_lead_for_call` for the full lookup/reuse/safety-guard logic (including the name-conflict guard for a shared/family phone).
 
 | Column | Type | Notes |
 |---|---|---|
 | `user_id` | UUID FK → users, cascade delete | |
-| `call_session_id` | UUID FK → call_sessions, `SET NULL`, unique, nullable | |
+| `call_session_id` | UUID FK → call_sessions, `SET NULL`, unique, nullable | the call that **originally created** this lead — never repointed afterward |
 | `guest_profile_id` | UUID FK → guest_profiles, `SET NULL`, nullable | not every lead resolves to a guest profile |
 | `guest_name`, `phone`, `email` | String, nullable | |
 | `check_in`, `check_out` | Date, nullable | |
@@ -248,3 +249,5 @@ Computed property `property_name` (not a column) — requires eager-loading the 
 - `CallSession.urgency` and `CallSession.revenue_attributed` are dead columns — nothing writes them. Don't build a new feature assuming they're populated; use `Notification` (urgency) or `Lead.budget` (pipeline value) instead.
 - Dashboard queries involving Lead Agent calls must filter by `CallSession.user_id`, not by joining through `property_id` — Lead Agent calls have `property_id IS NULL`.
 - `Lead.status` and `Lead.lead_temperature` are two independent fields with different owners (dashboard vs. voice agent) — never conflate them.
+- A `Lead` can now span multiple `CallSession`s (a returning guest's follow-up calls while still `open`/`contacted` reuse the same lead) — any code reading `Lead.call_session_id` to mean "the one call this lead is about" is now wrong; use `CallSession.lead_id` to find which lead a given call is currently linked to, and never assume a 1:1.
+- `lead_service.delete_for_unqualified_call`/`delete_if_empty` must never delete a *reused* lead just because the one follow-up call that triggered them classified poorly or added nothing — they check `Lead.call_session_id == call_session_id` (this call originated it) before deleting; a reused lead is only ever detached (`CallSession.lead_id = None`), never removed.

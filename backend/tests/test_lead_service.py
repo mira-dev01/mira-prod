@@ -1,5 +1,7 @@
+import uuid
 from datetime import date, timedelta
 
+from app.models.call_session import CallSession
 from app.models.guest_profile import GuestProfile
 from app.services import lead_service
 
@@ -88,6 +90,167 @@ async def _guest_profile(db_session, host_id, phone="+919999911111"):
     await db_session.commit()
     await db_session.refresh(guest)
     return guest
+
+
+async def _call_session(db_session, host_id, property_id=None):
+    session = CallSession(
+        exotel_call_id=f"call-{uuid.uuid4().hex[:8]}",
+        user_id=host_id,
+        property_id=property_id,
+        caller_number="+919999911111",
+        status="in_progress",
+    )
+    db_session.add(session)
+    await db_session.commit()
+    await db_session.refresh(session)
+    return session
+
+
+async def test_upsert_lead_reuses_open_lead_for_returning_guest_new_call(test_user, db_session):
+    # The actual feature requested 2026-07-21: a returning guest's next
+    # call/follow-up should land on the SAME Lead entry, not a new one.
+    guest = await _guest_profile(db_session, test_user.id)
+    call_1 = await _call_session(db_session, test_user.id)
+    lead_1 = await lead_service.upsert_lead(
+        db_session, test_user.id, call_1.id, guest_profile_id=guest.id, guest_name="Deepika", budget=8000
+    )
+    assert lead_1.status == "open"
+
+    call_2 = await _call_session(db_session, test_user.id)
+    lead_2 = await lead_service.upsert_lead(
+        db_session, test_user.id, call_2.id, guest_profile_id=guest.id, num_guests=2
+    )
+
+    assert lead_2.id == lead_1.id
+    assert lead_2.guest_name == "Deepika"  # from call 1, never lost
+    assert lead_2.num_guests == 2  # from call 2, merged onto the same row
+
+    leads = await lead_service.list_leads(db_session, test_user.id)
+    assert len([l for l in leads if l.guest_profile_id == guest.id]) == 1
+
+
+async def test_upsert_lead_does_not_reuse_booked_lead(test_user, db_session):
+    # Once the host marks a lead "booked", that inquiry is resolved -- the
+    # next call is a new booking cycle, not a continuation.
+    guest = await _guest_profile(db_session, test_user.id)
+    call_1 = await _call_session(db_session, test_user.id)
+    booked_lead = await lead_service.upsert_lead(
+        db_session, test_user.id, call_1.id, guest_profile_id=guest.id, guest_name="Deepika", status="booked"
+    )
+
+    call_2 = await _call_session(db_session, test_user.id)
+    new_lead = await lead_service.upsert_lead(
+        db_session, test_user.id, call_2.id, guest_profile_id=guest.id, guest_name="Deepika"
+    )
+
+    assert new_lead.id != booked_lead.id
+    assert new_lead.status == "open"
+
+
+async def test_upsert_lead_does_not_reuse_closed_lead(test_user, db_session):
+    guest = await _guest_profile(db_session, test_user.id)
+    call_1 = await _call_session(db_session, test_user.id)
+    closed_lead = await lead_service.upsert_lead(
+        db_session, test_user.id, call_1.id, guest_profile_id=guest.id, status="closed"
+    )
+
+    call_2 = await _call_session(db_session, test_user.id)
+    new_lead = await lead_service.upsert_lead(db_session, test_user.id, call_2.id, guest_profile_id=guest.id)
+
+    assert new_lead.id != closed_lead.id
+
+
+async def test_upsert_lead_does_not_reuse_when_stated_name_conflicts(test_user, db_session):
+    # A shared/family phone used by a genuinely different person must never
+    # silently overwrite the existing lead's identity.
+    guest = await _guest_profile(db_session, test_user.id)
+    call_1 = await _call_session(db_session, test_user.id)
+    deepika_lead = await lead_service.upsert_lead(
+        db_session, test_user.id, call_1.id, guest_profile_id=guest.id, guest_name="Deepika"
+    )
+
+    call_2 = await _call_session(db_session, test_user.id)
+    priya_lead = await lead_service.upsert_lead(
+        db_session, test_user.id, call_2.id, guest_profile_id=guest.id, guest_name="Priya"
+    )
+
+    assert priya_lead.id != deepika_lead.id
+    await db_session.refresh(deepika_lead)
+    assert deepika_lead.guest_name == "Deepika"  # untouched
+
+
+async def test_upsert_lead_reuses_when_name_matches_case_insensitively(test_user, db_session):
+    guest = await _guest_profile(db_session, test_user.id)
+    call_1 = await _call_session(db_session, test_user.id)
+    lead_1 = await lead_service.upsert_lead(
+        db_session, test_user.id, call_1.id, guest_profile_id=guest.id, guest_name="Deepika"
+    )
+
+    call_2 = await _call_session(db_session, test_user.id)
+    lead_2 = await lead_service.upsert_lead(
+        db_session, test_user.id, call_2.id, guest_profile_id=guest.id, guest_name="deepika"
+    )
+
+    assert lead_2.id == lead_1.id
+
+
+async def test_upsert_lead_within_same_call_still_reuses_via_call_session(test_user, test_call_session, db_session):
+    # Regression guard: the ordinary case (several tool calls within ONE
+    # call) must keep landing on the same lead, same as before this change.
+    lead_1 = await lead_service.upsert_lead(db_session, test_user.id, test_call_session.id, guest_name="Asha")
+    lead_2 = await lead_service.upsert_lead(db_session, test_user.id, test_call_session.id, budget=6000)
+
+    assert lead_1.id == lead_2.id
+
+
+async def test_delete_for_unqualified_call_deletes_lead_it_originated(test_user, test_call_session, db_session):
+    lead = await lead_service.upsert_lead(db_session, test_user.id, test_call_session.id, guest_name="Rohan")
+
+    await lead_service.delete_for_unqualified_call(db_session, test_call_session.id)
+
+    from app.models.lead import Lead
+
+    assert await db_session.get(Lead, lead.id) is None
+
+
+async def test_delete_for_unqualified_call_never_deletes_a_reused_lead(test_user, db_session):
+    # Regression: a bad/junk follow-up call must never delete a returning
+    # guest's whole prior history just because THIS call classified poorly.
+    guest = await _guest_profile(db_session, test_user.id)
+    call_1 = await _call_session(db_session, test_user.id)
+    lead = await lead_service.upsert_lead(
+        db_session, test_user.id, call_1.id, guest_profile_id=guest.id, guest_name="Deepika", budget=8000
+    )
+
+    call_2 = await _call_session(db_session, test_user.id)
+    await lead_service.upsert_lead(db_session, test_user.id, call_2.id, guest_profile_id=guest.id)
+
+    await lead_service.delete_for_unqualified_call(db_session, call_2.id)
+
+    from app.models.lead import Lead
+
+    surviving = await db_session.get(Lead, lead.id)
+    assert surviving is not None
+    assert surviving.guest_name == "Deepika"
+
+    await db_session.refresh(call_2)
+    assert call_2.lead_id is None  # this call is detached, but the lead itself survives
+
+
+async def test_backfill_lead_reaches_a_reused_lead(test_user, db_session):
+    guest = await _guest_profile(db_session, test_user.id)
+    call_1 = await _call_session(db_session, test_user.id)
+    lead = await lead_service.upsert_lead(
+        db_session, test_user.id, call_1.id, guest_profile_id=guest.id, guest_name="Deepika"
+    )
+
+    call_2 = await _call_session(db_session, test_user.id)
+    await lead_service.upsert_lead(db_session, test_user.id, call_2.id, guest_profile_id=guest.id)
+
+    await lead_service.backfill_lead(db_session, call_2.id, phone="9876543210")
+
+    await db_session.refresh(lead)
+    assert lead.phone == "9876543210"
 
 
 async def test_get_active_booking_finds_booked_lead_with_future_checkout(test_user, db_session):

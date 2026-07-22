@@ -29,6 +29,25 @@ class CallSession(UUIDPkMixin, TimestampMixin, Base):
     guest_profile_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("guest_profiles.id", ondelete="SET NULL")
     )
+    # The Lead this call is currently associated with -- may be a lead
+    # created BY this call (the common case) or one reused from an earlier
+    # call by the same returning guest, still open/contacted (see
+    # lead_service.py's reuse logic). Deliberately a separate FK from
+    # Lead.call_session_id (which stays 1:1, meaning "the call that
+    # originally created this lead") -- many call_sessions can share one
+    # lead_id, so a guest's whole in-progress inquiry stays on one Lead row
+    # across follow-up calls instead of fragmenting into one per call.
+    # use_alter=True: leads.call_session_id -> call_sessions.id and this
+    # column form a circular FK dependency between the two tables --
+    # without it, SQLAlchemy can't order CREATE/DROP TABLE (or the test
+    # suite's per-test cleanup, which deletes in dependency order) and
+    # raises CircularDependencyError. use_alter defers this one constraint
+    # to a separate ALTER TABLE after both tables already exist.
+    lead_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("leads.id", ondelete="SET NULL", use_alter=True, name="fk_call_sessions_lead_id_leads"),
+        index=True,
+    )
     caller_number: Mapped[str | None] = mapped_column(String(32))
     recording_url: Mapped[str | None] = mapped_column(String(1024))
     transcript: Mapped[str | None] = mapped_column(Text)
@@ -50,7 +69,11 @@ class CallSession(UUIDPkMixin, TimestampMixin, Base):
     property: Mapped["Property"] = relationship(back_populates="call_sessions")
     guest_profile: Mapped["GuestProfile"] = relationship(back_populates="call_sessions")
     notifications: Mapped[list["Notification"]] = relationship(back_populates="call_session")
-    lead: Mapped["Lead"] = relationship(back_populates="call_session")
+    # Navigates via lead_id above, not Lead.call_session_id -- explicit
+    # foreign_keys needed since there are now two independent FK paths
+    # between these two tables (this one, and Lead.call_session_id, which
+    # has no relationship object of its own since nothing reads it).
+    lead: Mapped["Lead"] = relationship(foreign_keys=[lead_id])
 
     # Plain @property breaks here -- the `property` relationship column
     # above shadows the builtin `property` decorator for the rest of this
