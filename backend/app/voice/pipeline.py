@@ -296,11 +296,7 @@ async def _run_pipeline(
     caller_number: str | None = None,
     property_name: str | None = None,
     guest_profile_id: uuid.UUID | None = None,
-<<<<<<< Updated upstream
     guest_known_name: str | None = None,
-=======
-    holding_audio_task: asyncio.Task | None = None,
->>>>>>> Stashed changes
 ) -> None:
     # NOTE: we deliberately do NOT create a Lead row up front. Doing so gave
     # every connection attempt its own empty lead, and a browser/ICE
@@ -388,7 +384,6 @@ async def _run_pipeline_inner(
             selected_property_id=str(property_id) if property_id else None,
             selected_property_name=property_name,
         )
-<<<<<<< Updated upstream
         # Browser test calls use a fixed placeholder identity (no real phone
         # number exists) -- never let that string flow through to tools as
         # if it were a real number to message/save.
@@ -402,10 +397,7 @@ async def _run_pipeline_inner(
             conversation_state,
             guest_profile_id,
             caller_number=real_caller_number,
-=======
-        tools = build_voice_tools(
-            call_session_id, property_id, host_user_id, conversation_state, guest_profile_id, silence_watchdog
->>>>>>> Stashed changes
+            silence_watchdog=silence_watchdog,
         )
         # first_message is pre-seeded as an assistant turn so the LLM knows
         # it was already said (the "don't repeat greeting" rule relies on
@@ -730,11 +722,7 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
         caller_number=caller_number,
         property_name=property_name,
         guest_profile_id=guest.id if guest else None,
-<<<<<<< Updated upstream
         guest_known_name=guest.name if guest else None,
-=======
-        holding_audio_task=holding_audio_task,
->>>>>>> Stashed changes
     )
 
 

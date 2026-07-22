@@ -54,11 +54,8 @@ def build_voice_tools(
     host_user_id: uuid.UUID,
     conversation_state: ConversationState | None = None,
     guest_profile_id: uuid.UUID | None = None,
-<<<<<<< Updated upstream
     caller_number: str | None = None,
-=======
     silence_watchdog: SilenceWatchdogProcessor | None = None,
->>>>>>> Stashed changes
 ) -> list:
     """Build the tool functions for one call, bound to its call_session_id/property_id/host_user_id.
 
