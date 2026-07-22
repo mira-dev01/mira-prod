@@ -298,6 +298,7 @@ async def _run_pipeline(
     property_name: str | None = None,
     guest_profile_id: uuid.UUID | None = None,
     guest_known_name: str | None = None,
+    holding_audio_task: asyncio.Task | None = None,
 ) -> None:
     # NOTE: we deliberately do NOT create a Lead row up front. Doing so gave
     # every connection attempt its own empty lead, and a browser/ICE
@@ -724,6 +725,7 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
         property_name=property_name,
         guest_profile_id=guest.id if guest else None,
         guest_known_name=guest.name if guest else None,
+        holding_audio_task=holding_audio_task,
     )
 
 
