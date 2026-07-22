@@ -20,24 +20,6 @@ const EASE = [0.4, 0, 0.2, 1] as const;
 export function LandingHero({ user }: { user: UserOut | null }) {
   return (
     <section className="relative isolate flex min-h-screen flex-col overflow-hidden">
-      {/* Very subtle warm glow + faint grid, dominant ivory background stays untouched. */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 -z-10"
-        style={{
-          background: "radial-gradient(65% 55% at 85% 8%, rgba(201,168,130,0.13), transparent 70%)",
-        }}
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 -z-10 opacity-[0.25]"
-        style={{
-          backgroundImage:
-            "linear-gradient(to right, rgba(26,23,20,0.04) 1px, transparent 1px), linear-gradient(to bottom, rgba(26,23,20,0.04) 1px, transparent 1px)",
-          backgroundSize: "56px 56px",
-          maskImage: "radial-gradient(ellipse 70% 60% at 50% 0%, black 0%, transparent 70%)",
-        }}
-      />
 
       <div className="mx-auto grid w-full max-w-[1440px] flex-1 grid-cols-1 items-center gap-16 px-6 py-20 md:px-12 lg:grid-cols-[45fr_55fr] lg:gap-8 lg:py-24">
         <motion.div

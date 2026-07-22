@@ -4,11 +4,11 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { DictationTextarea } from "@/components/ui/dictation-textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RightPanel, RightPanelFooterButton } from "@/components/ui/right-panel";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { StatusChip, type StatusTone } from "@/components/status-chip";
 import { api, ApiError } from "@/lib/api";
 import { cn, isBrowserTestIdentity } from "@/lib/utils";
@@ -176,7 +176,7 @@ export function LeadDetailPanel({
         </div>
         <div className="space-y-2">
           <Label htmlFor="summary">Conversation summary</Label>
-          <Textarea id="summary" value={summary} onChange={(e) => setSummary(e.target.value)} />
+          <DictationTextarea id="summary" value={summary} onValueChange={setSummary} />
         </div>
       </form>
     </RightPanel>

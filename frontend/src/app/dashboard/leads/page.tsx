@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { ChevronRight, LayoutGrid, Table2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -146,14 +146,15 @@ function LeadCard({
   onClick: () => void;
   onDragStart: (e: React.DragEvent) => void;
 }) {
+  const closed = lead.status === "closed";
   return (
     <Card
       draggable
       onDragStart={onDragStart}
       onClick={onClick}
-      className="surface-interactive cursor-grab active:cursor-grabbing"
+      className={cn("surface-interactive cursor-grab active:cursor-grabbing", closed && "opacity-60")}
     >
-      <CardContent className="space-y-2 text-sm">
+      <CardContent className={cn("space-y-2 text-sm", closed && "line-through decoration-muted-foreground")}>
         <div className="flex items-center justify-between gap-2">
           <span className="min-w-0 truncate font-medium">{leadGuestLabel(lead)}</span>
           {lead.lead_temperature && (
@@ -187,7 +188,7 @@ function LeadsKanban({
 
   function leadsForColumn(status: LeadStatus): LeadOut[] {
     return leads
-      .filter((lead) => lead.status === status)
+      .filter((lead) => lead.status === status && !isEmptyLead(lead))
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   }
 
@@ -243,7 +244,7 @@ function LeadsPageContent() {
   const initialStatus = searchParams.get("status") ?? "all";
 
   const { startDateISO, endDateISO } = useDateRange();
-  const { data: leads, loading, refetch } = useAsync(
+  const { data: leads, loading, refetch, setData: setLeads } = useAsync(
     () => api.leads.list({ startDate: startDateISO, endDate: endDateISO }),
     [startDateISO, endDateISO]
   );
@@ -267,11 +268,23 @@ function LeadsPageContent() {
   async function handleStatusDrop(leadId: string, newStatus: LeadStatus) {
     const lead = leads?.find((l) => l.id === leadId);
     if (!lead || lead.status === newStatus) return;
+    const previousStatus = lead.status;
+
+    // Optimistic update: move the card immediately instead of waiting on
+    // the PATCH round-trip + refetch, which is what caused the visible
+    // snap-back delay. Revert locally (no refetch needed) if the request
+    // fails -- the server was never touched, so local state is still truth.
+    setLeads((current) =>
+      current?.map((l) => (l.id === leadId ? { ...l, status: newStatus } : l)) ?? current
+    );
+
     try {
       await api.leads.update(leadId, { status: newStatus });
       toast.success(`Moved to ${newStatus}`);
-      refetch();
     } catch (err) {
+      setLeads((current) =>
+        current?.map((l) => (l.id === leadId ? { ...l, status: previousStatus } : l)) ?? current
+      );
       toast.error(err instanceof ApiError ? err.message : "Failed to update lead status");
     }
   }
@@ -326,7 +339,7 @@ function LeadsPageContent() {
       ) : view === "board" ? (
         (leads ?? []).length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No leads yet — they appear here once your portfolio's lead intake number starts receiving calls.
+            No leads yet — they appear here once your portfolio&rsquo;s lead intake number starts receiving calls.
           </p>
         ) : (
           <LeadsKanban leads={leads ?? []} onCardClick={setEditing} onDropStatus={handleStatusDrop} />

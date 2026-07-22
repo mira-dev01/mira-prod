@@ -118,7 +118,7 @@ export function SidebarNav() {
           dismissible overlay, so it stays plain markup rather than a Drawer
           instance (Drawer's backdrop/focus-trap/scroll-lock machinery is for
           the mobile overlay case below). ── */}
-      <aside className="hidden md:flex h-screen w-56 shrink-0 flex-col overflow-y-auto border-r bg-card p-4">
+      <aside className="hidden md:flex h-screen w-56 shrink-0 flex-col border-r bg-card p-4">
         <div className="mb-6 px-2">
           <MiraLogo />
           <p className="mt-0.5 text-xs text-muted-foreground">Host dashboard</p>

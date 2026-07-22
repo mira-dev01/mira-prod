@@ -7,11 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CreditCard, KeyRound, Users } from "lucide-react";
 import { DefinitionRow } from "@/components/ui/definition-row";
+import { DictationTextarea } from "@/components/ui/dictation-textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
 import { API_BASE_URL, ApiError, api, getToken } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 
@@ -268,11 +268,11 @@ export default function SettingsPage() {
               <form onSubmit={handleSavePersonalization} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="agent_first_message">Opening greeting</Label>
-                  <Textarea
+                  <DictationTextarea
                     id="agent_first_message"
                     placeholder="Namaste {guest_name}! I'm Mira, calling on behalf of {host_name} about {property_name}."
                     value={firstMessage}
-                    onChange={(e) => setFirstMessage(e.target.value)}
+                    onValueChange={setFirstMessage}
                   />
                   <p className="text-xs text-muted-foreground">
                     Placeholders: {"{host_name}"}, {"{property_name}"}, {"{city}"}, {"{guest_name}"} — any that
@@ -282,20 +282,20 @@ export default function SettingsPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="agent_persona">Personality note</Label>
-                  <Textarea
+                  <DictationTextarea
                     id="agent_persona"
                     placeholder="e.g. Sound like a warm, chatty local host -- informal, never corporate."
                     value={persona}
-                    onChange={(e) => setPersona(e.target.value)}
+                    onValueChange={setPersona}
                   />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="agent_escalation_phrase">Escalation phrase</Label>
-                  <Textarea
+                  <DictationTextarea
                     id="agent_escalation_phrase"
                     placeholder="e.g. One moment, let me get my colleague on the line for you."
                     value={escalationPhrase}
-                    onChange={(e) => setEscalationPhrase(e.target.value)}
+                    onValueChange={setEscalationPhrase}
                   />
                   <p className="text-xs text-muted-foreground">Said right before MIRA hands off to you.</p>
                 </div>

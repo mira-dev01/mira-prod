@@ -4,12 +4,12 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { DictationTextarea } from "@/components/ui/dictation-textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ListRow, ListRowBody, ListRowFooter, ListRowHeader } from "@/components/ui/list-row";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusChip } from "@/components/status-chip";
-import { Textarea } from "@/components/ui/textarea";
 import { useAsync } from "@/hooks/use-async";
 import { ApiError, api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -133,7 +133,7 @@ export default function AiTrainingPage() {
 
       <Card className="max-w-2xl">
         <CardHeader>
-          <CardTitle>Discount policy</CardTitle>
+          <CardTitle>Negotiation policy</CardTitle>
           <CardDescription>
             Describe how you usually handle discounts, in your own words -- e.g. &quot;If a guest doesn&apos;t
             ask, I keep the price as offered. If they ask for a discount, I offer 5%. Repeat guests across my
@@ -143,10 +143,10 @@ export default function AiTrainingPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleParsePolicy} className="space-y-3">
-            <Textarea
+            <DictationTextarea
               placeholder="e.g. If a guest doesn't ask for a discount, I keep my price as offered. If they push back, I can go down to 5%. Guests who've stayed at more than one of my properties get 8% off."
               value={policyText}
-              onChange={(e) => setPolicyText(e.target.value)}
+              onValueChange={setPolicyText}
               className="min-h-32"
             />
             <Button type="submit" disabled={parsing || !policyText.trim()}>

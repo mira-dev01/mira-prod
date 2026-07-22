@@ -2,6 +2,7 @@ from datetime import date, timedelta
 
 from app.models.technician import Technician
 from app.services.notification_service import list_notifications
+from app.voice.silence_watchdog import SilenceWatchdogProcessor
 from app.voice.tools import build_voice_tools
 
 
@@ -252,3 +253,32 @@ async def test_search_faq_no_match_signals_escalation(db_session, test_user):
     params = _FakeFunctionCallParams()
     await search_faq(params, query="something nobody answered")
     assert "verified information" in params.result.lower()
+
+
+async def test_end_call_arms_the_silence_watchdog(db_session, test_user):
+    watchdog = SilenceWatchdogProcessor()
+    tools = build_voice_tools(
+        call_session_id=None, property_id=None, host_user_id=test_user.id, silence_watchdog=watchdog
+    )
+    end_call = next(t for t in tools if t.__name__ == "end_call")
+
+    params = _FakeFunctionCallParams()
+    await end_call(params)
+
+    # The tool itself never ends the call directly (see silence_watchdog.py --
+    # only the next BotStoppedSpeakingFrame, once the agent's closing line has
+    # actually finished playing, does that) -- it just arms the flag.
+    assert watchdog._end_requested is True
+    assert params.result is not None
+
+
+async def test_end_call_without_a_watchdog_still_returns_a_result(db_session, test_user):
+    # Guards against a caller (e.g. a future test or entry point) building
+    # tools without threading a watchdog through -- end_call should degrade
+    # to a no-op rather than raising.
+    tools = build_voice_tools(call_session_id=None, property_id=None, host_user_id=test_user.id)
+    end_call = next(t for t in tools if t.__name__ == "end_call")
+
+    params = _FakeFunctionCallParams()
+    await end_call(params)
+    assert params.result is not None
