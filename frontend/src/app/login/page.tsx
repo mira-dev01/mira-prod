@@ -146,7 +146,7 @@ function LoginPageInner() {
     <div className="flex flex-1 items-center justify-center p-4">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle className="text-2xl">MIRA</CardTitle>
+          <CardTitle className="brand-logo text-3xl">mira</CardTitle>
           <CardDescription>Sign in to manage your properties and live calls</CardDescription>
         </CardHeader>
         <CardContent>

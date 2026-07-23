@@ -39,10 +39,12 @@ const links: { href: string; label: string; icon: LucideIcon }[] = [
 
 function MiraLogo() {
   return (
-    <span className="font-display text-2xl italic text-foreground">
-      {/* ︎ forces text (not emoji) rendering of ✳ on mobile */}
+    <span className="text-2xl text-foreground">
+      {/* ︎ forces text (not emoji) rendering of ✳ on mobile -- kept in the
+          default body font, not brand-logo: Alex Brush (script/handwriting)
+          doesn't carry a good "✳" glyph. */}
       <span className="mr-1 text-[var(--accent-warm)]">{"✳︎"}</span>
-      Mira
+      <span className="brand-logo">mira</span>
     </span>
   );
 }

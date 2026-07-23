@@ -31,7 +31,9 @@ export function LandingHero({ user }: { user: UserOut | null }) {
 
           <h1
             className="mt-6 text-[2.75rem] leading-[1.05] font-normal text-balance sm:text-6xl lg:text-[4.75rem]"
-            style={{ fontFamily: "var(--font-display)", fontStyle: "italic", letterSpacing: "-1px" }}
+            // Clash Display (--font-display) has no italic cut, unlike Boska
+            // before it -- left upright rather than a synthesized fake-oblique.
+            style={{ fontFamily: "var(--font-display)", letterSpacing: "-1px" }}
           >
             Stop answering calls.
             <br />

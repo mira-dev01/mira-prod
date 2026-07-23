@@ -7,10 +7,12 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-pilcrow-rounded);
+  --font-sans: var(--font-amulya);
   --font-mono: ui-monospace, "DM Mono", "SFMono-Regular", Menlo, monospace;
-  --font-display: var(--font-boska);
+  --font-display: var(--font-clash-display);
   --font-heading: var(--font-display);
+  --font-subheading: var(--font-new-title);
+  --font-brand: var(--font-alex-brush);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -197,18 +199,28 @@
 }
 
 @layer components {
-  /* Page titles use the brand's italic serif display face, per the Mira
-     Design System (see ui_kits/dashboard "page-title" class). Boska is a
-     variable font with a much wider weight range than Instrument Serif's
-     single static 400 -- 500 reads with more presence at this size than
-     the old weight did on Boska specifically (400 looked thin). */
+  /* Page titles use the brand's display face, per the Mira Design System
+     (see ui_kits/dashboard "page-title" class). Clash Display has no
+     italic cut (unlike Boska before it) -- left upright rather than
+     letting the browser synthesize a faux-oblique, which looks poor on
+     geometric sans display faces. */
   .page-title {
     font-family: var(--font-display);
-    font-style: italic;
     font-weight: 500;
     font-size: 1.625rem;
     letter-spacing: -0.4px;
     line-height: 1.2;
+  }
+
+  /* Brand wordmark only ("mira" in the sidebar, login card, and public
+     gallery header) -- Alex Brush is a script/handwriting face, always set
+     in lowercase, never italic (it's already slanted by design) or bold
+     (no weight axis, single static cut). Never use this for body/heading
+     text generally. */
+  .brand-logo {
+    font-family: var(--font-brand);
+    font-weight: 400;
+    font-style: normal;
   }
 
   /* Micro section labels, e.g. sidebar nav group headers. */
@@ -218,6 +230,15 @@
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: var(--muted-foreground);
+  }
+
+  /* Table column headers (Caller, Status, Started, ...) use the
+     subheading face throughout the app -- keeps a third, distinct type
+     voice between page titles (--font-display) and body copy
+     (--font-sans), consistent everywhere TableHead is used rather than
+     each page restyling its own tables. */
+  [data-slot="table-head"] {
+    font-family: var(--font-subheading);
   }
 
   /* Status badge colors -- pair with <Badge variant="outline" className="badge-status-*">

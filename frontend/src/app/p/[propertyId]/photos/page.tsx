@@ -31,7 +31,7 @@ export default async function PropertyPhotosPage({
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border px-6 py-5">
-        <span className="page-title text-2xl text-primary">Mira</span>
+        <span className="brand-logo text-3xl text-primary">mira</span>
       </header>
 
       <main className="mx-auto max-w-3xl px-6 py-10">

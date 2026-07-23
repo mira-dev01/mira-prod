@@ -33,6 +33,34 @@ const melodrama = localFont({
   src: "./fonts/melodrama/Melodrama-Variable.woff2",
 });
 
+// Active theme (see globals.css): Clash Display for headings, Amulya for
+// body, New Title for subheadings/table headers, Alex Brush for the "mira"
+// wordmark only (sidebar logo, login card, public gallery header).
+const clashDisplay = localFont({
+  variable: "--font-clash-display",
+  src: "./fonts/clash-display/ClashDisplay-Variable.woff2",
+});
+
+const amulya = localFont({
+  variable: "--font-amulya",
+  src: [
+    { path: "./fonts/amulya/Amulya-Variable.woff2", style: "normal" },
+    { path: "./fonts/amulya/Amulya-VariableItalic.woff2", style: "italic" },
+  ],
+});
+
+const newTitle = localFont({
+  variable: "--font-new-title",
+  src: "./fonts/new-title/NewTitle-Variable.woff2",
+});
+
+// Single static weight (script/handwriting face, no variable axis) -- used
+// only for the brand wordmark itself, never for general body/heading text.
+const alexBrush = localFont({
+  variable: "--font-alex-brush",
+  src: "./fonts/alex-brush/AlexBrush-Regular.ttf",
+});
+
 export const metadata: Metadata = {
   title: "MIRA — Host Dashboard",
   description: "AI voice receptionist for Airbnb hosts",
@@ -51,7 +79,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${boska.variable} ${pilcrowRounded.variable} ${nunito.variable} ${melodrama.variable} h-full antialiased`}
+      className={`${boska.variable} ${pilcrowRounded.variable} ${nunito.variable} ${melodrama.variable} ${clashDisplay.variable} ${amulya.variable} ${newTitle.variable} ${alexBrush.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-background">
         <AuthProvider>{children}</AuthProvider>
