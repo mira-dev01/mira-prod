@@ -38,19 +38,25 @@ import type {
 } from "@/lib/types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
-const TOKEN_KEY = "mira_token";
+
+// Access token lives in memory only (module-level, not React state, so
+// plain functions below can read it without a hook) -- never localStorage,
+// so an XSS bug elsewhere in the app can't exfiltrate it via storage
+// access. It's intentionally lost on a full page reload; auth-context.tsx
+// recovers it on mount via POST /auth/refresh, which reads the HttpOnly
+// refresh-token cookie the browser sends automatically.
+let accessToken: string | null = null;
 
 export function getToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(TOKEN_KEY);
+  return accessToken;
 }
 
 export function setToken(token: string): void {
-  window.localStorage.setItem(TOKEN_KEY, token);
+  accessToken = token;
 }
 
 export function clearToken(): void {
-  window.localStorage.removeItem(TOKEN_KEY);
+  accessToken = null;
 }
 
 export class ApiError extends Error {
@@ -67,7 +73,11 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   headers.set("Content-Type", "application/json");
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
-  const res = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
+  // credentials: "include" -- the HttpOnly refresh-token cookie (set by
+  // /auth/login etc.) is scoped to path=/api/v1/auth, so it's only ever
+  // actually sent on the /auth/refresh and /auth/logout calls below, but
+  // this is safe to set on every request to the same API origin.
+  const res = await fetch(`${API_BASE_URL}${path}`, { ...options, headers, credentials: "include" });
 
   if (!res.ok) {
     let detail = res.statusText;
@@ -104,7 +114,7 @@ async function uploadFiles<T>(path: string, files: File[], fieldName: string = "
   // No Content-Type set here -- the browser fills in multipart/form-data
   // with the correct boundary itself, which it can only do if we don't
   // set the header manually.
-  const res = await fetch(`${API_BASE_URL}${path}`, { method: "POST", headers, body: formData });
+  const res = await fetch(`${API_BASE_URL}${path}`, { method: "POST", headers, body: formData, credentials: "include" });
 
   if (!res.ok) {
     let detail = res.statusText;
@@ -128,7 +138,7 @@ async function uploadAudio<T>(path: string, audio: Blob, filename: string): Prom
   const formData = new FormData();
   formData.append("audio", audio, filename);
 
-  const res = await fetch(`${API_BASE_URL}${path}`, { method: "POST", headers, body: formData });
+  const res = await fetch(`${API_BASE_URL}${path}`, { method: "POST", headers, body: formData, credentials: "include" });
 
   if (!res.ok) {
     let detail = res.statusText;
@@ -167,6 +177,11 @@ export const api = {
       uploadAudio<{ text: string }>("/auth/register-host/transcribe-intro", audio, "intro.webm"),
     me: () => request<UserOut>("/auth/me"),
     updateMe: (data: UserUpdate) => request<UserOut>("/auth/me", { method: "PATCH", body: JSON.stringify(data) }),
+    // Reads the HttpOnly refresh-token cookie (sent automatically via
+    // credentials: "include" in request() above) and returns a fresh access
+    // token, rotating the refresh cookie in the same response.
+    refresh: () => request<{ access_token: string; token_type: string }>("/auth/refresh", { method: "POST" }),
+    logout: () => request<void>("/auth/logout", { method: "POST" }),
   },
   properties: {
     list: () => request<PropertyOut[]>("/properties"),

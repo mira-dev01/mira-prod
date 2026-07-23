@@ -62,7 +62,18 @@ class Settings(BaseSettings):
 
     jwt_secret_key: str = "dev-secret-change-me"
     jwt_algorithm: str = "HS256"
-    jwt_expire_minutes: int = 1440
+    # Short-lived access token -- silently renewed via POST /auth/refresh
+    # roughly every jwt_expire_minutes - 1 (see frontend/src/lib/auth-context.tsx),
+    # so a host working continuously never notices it expiring.
+    jwt_expire_minutes: int = 20
+    # Refresh token lifetime -- the outer bound on how long a session can be
+    # silently renewed without the host re-entering credentials. Rotated on
+    # every use (see auth/security.generate_refresh_token +
+    # api/v1/auth.refresh); the 60min *idle* timeout that actually logs a
+    # host out during a single sitting is enforced client-side
+    # (auth-context.tsx's activity-tracked timer clears the refresh cookie
+    # via POST /auth/logout), independent of this longer absolute cap.
+    refresh_token_expire_days: int = 30
 
     llm_provider: Literal["groq", "anthropic", "openrouter"] = "groq"
     groq_api_key: str | None = None

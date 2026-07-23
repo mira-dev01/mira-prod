@@ -126,6 +126,22 @@ def full_property_context(property_: Property) -> str:
     return " | ".join(parts)
 
 
+async def list_verified_property_faq(db: AsyncSession, property_id: uuid.UUID) -> list[FaqEntry]:
+    """Verified, property-scoped FaqEntry rows for build_system_prompt to
+    inline upfront -- keeps behavior consistent with the legacy Property.faq
+    column it replaces (always in context, not just reactively searched via
+    the search_faq tool). Portfolio-wide entries (property_id IS NULL) are
+    intentionally excluded here; those stay tool-only so a single-property
+    call's prompt doesn't balloon with every other property's FAQ.
+    """
+    stmt = (
+        select(FaqEntry)
+        .where(FaqEntry.property_id == property_id, FaqEntry.status == "verified")
+        .order_by(FaqEntry.created_at)
+    )
+    return list((await db.scalars(stmt)).all())
+
+
 async def list_faq_entries(db: AsyncSession, user_id: uuid.UUID) -> list[FaqEntry]:
     return list(
         (

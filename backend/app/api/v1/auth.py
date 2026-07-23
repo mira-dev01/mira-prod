@@ -1,23 +1,50 @@
 from datetime import datetime, timezone as dt_timezone
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
 from app.auth.security import create_access_token, hash_password, verify_password
+from app.config import settings
 from app.database import get_db
 from app.integrations import bright_data_client
 from app.integrations.bright_data_client import BrightDataError
 from app.models.user import User
 from app.schemas.user import HostRegistration, HostRegistrationResponse, Token, UserCreate, UserLogin, UserOut, UserUpdate
 from app.services import faq_service
+from app.services.refresh_token_service import issue_refresh_token, revoke_refresh_token, rotate_refresh_token
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+REFRESH_COOKIE_NAME = "mira_refresh_token"
+REFRESH_COOKIE_PATH = "/api/v1/auth"
+
+
+def _set_refresh_cookie(response: Response, raw_token: str) -> None:
+    response.set_cookie(
+        key=REFRESH_COOKIE_NAME,
+        value=raw_token,
+        max_age=settings.refresh_token_expire_days * 24 * 60 * 60,
+        path=REFRESH_COOKIE_PATH,
+        httponly=True,
+        secure=settings.is_production,
+        samesite="none" if settings.is_production else "lax",
+    )
+
+
+def _clear_refresh_cookie(response: Response) -> None:
+    response.delete_cookie(
+        key=REFRESH_COOKIE_NAME,
+        path=REFRESH_COOKIE_PATH,
+        httponly=True,
+        secure=settings.is_production,
+        samesite="none" if settings.is_production else "lax",
+    )
+
 
 @router.post("/register", response_model=Token, status_code=status.HTTP_201_CREATED)
-async def register(payload: UserCreate, db: AsyncSession = Depends(get_db)) -> Token:
+async def register(payload: UserCreate, response: Response, db: AsyncSession = Depends(get_db)) -> Token:
     existing = await db.scalar(select(User).where(User.email == payload.email))
     if existing is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, "Email already registered")
@@ -31,6 +58,7 @@ async def register(payload: UserCreate, db: AsyncSession = Depends(get_db)) -> T
     db.add(user)
     await db.commit()
     await db.refresh(user)
+    _set_refresh_cookie(response, await issue_refresh_token(db, user.id))
     return Token(access_token=create_access_token(user.id))
 
 
@@ -49,7 +77,9 @@ async def transcribe_registration_intro(audio: UploadFile = File(...)) -> dict:
 
 
 @router.post("/register-host", response_model=HostRegistrationResponse, status_code=status.HTTP_201_CREATED)
-async def register_host(payload: HostRegistration, db: AsyncSession = Depends(get_db)) -> HostRegistrationResponse:
+async def register_host(
+    payload: HostRegistration, response: Response, db: AsyncSession = Depends(get_db)
+) -> HostRegistrationResponse:
     """Fuller host onboarding: creates the account plus kicks off an Airbnb
     scrape for the one required property. Registration itself never waits on
     that scrape -- Bright Data's job can take a while and the account should
@@ -97,6 +127,7 @@ async def register_host(payload: HostRegistration, db: AsyncSession = Depends(ge
         # registration. Host can add the property manually afterward.
         import_error = str(exc)
 
+    _set_refresh_cookie(response, await issue_refresh_token(db, user.id))
     return HostRegistrationResponse(
         access_token=create_access_token(user.id),
         snapshot_id=snapshot_id,
@@ -105,11 +136,49 @@ async def register_host(payload: HostRegistration, db: AsyncSession = Depends(ge
 
 
 @router.post("/login", response_model=Token)
-async def login(payload: UserLogin, db: AsyncSession = Depends(get_db)) -> Token:
+async def login(payload: UserLogin, response: Response, db: AsyncSession = Depends(get_db)) -> Token:
     user = await db.scalar(select(User).where(User.email == payload.email))
     if user is None or not verify_password(payload.password, user.hashed_password):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Incorrect email or password")
+    _set_refresh_cookie(response, await issue_refresh_token(db, user.id))
     return Token(access_token=create_access_token(user.id))
+
+
+@router.post("/refresh", response_model=Token)
+async def refresh(request: Request, response: Response, db: AsyncSession = Depends(get_db)) -> Token:
+    """Silently renews the access token using the HttpOnly refresh cookie --
+    called by the frontend ~1min before its in-memory access token expires
+    (see frontend/src/lib/auth-context.tsx), so a host working continuously
+    never sees a 401 or gets logged out mid-session. The refresh token itself
+    is rotated on every call (see rotate_refresh_token) -- a stolen refresh
+    cookie only stays useful until its next legitimate use.
+    """
+    raw_token = request.cookies.get(REFRESH_COOKIE_NAME)
+    if raw_token is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "No refresh token")
+
+    result = await rotate_refresh_token(db, raw_token)
+    if result is None:
+        _clear_refresh_cookie(response)
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired refresh token")
+
+    user_id, new_raw_token = result
+    _set_refresh_cookie(response, new_raw_token)
+    return Token(access_token=create_access_token(user_id))
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout(request: Request, response: Response, db: AsyncSession = Depends(get_db)) -> None:
+    """Revokes the refresh token server-side (so it can't be replayed even
+    if captured before this call) and clears the cookie. Called both on an
+    explicit logout click and by the frontend's idle timer (see
+    auth-context.tsx) -- always succeeds even if the cookie is already
+    missing/expired, since logout must never get "stuck" client-side.
+    """
+    raw_token = request.cookies.get(REFRESH_COOKIE_NAME)
+    if raw_token is not None:
+        await revoke_refresh_token(db, raw_token)
+    _clear_refresh_cookie(response)
 
 
 @router.get("/me", response_model=UserOut)
