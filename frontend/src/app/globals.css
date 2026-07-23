@@ -219,7 +219,8 @@
      text generally. */
   .brand-logo {
     font-family: var(--font-brand);
-    font-weight: 400;
+    font-weight: 500;
+    font-size: 1.5em;
     font-style: normal;
   }
 
@@ -236,9 +237,16 @@
      subheading face throughout the app -- keeps a third, distinct type
      voice between page titles (--font-display) and body copy
      (--font-sans), consistent everywhere TableHead is used rather than
-     each page restyling its own tables. */
+     each page restyling its own tables. Size/weight set explicitly here
+     (not left at the table's inherited text-sm + a font-medium utility)
+     -- New Title reads noticeably smaller than Amulya/Clash Display at
+     the same declared size, so the inherited 14px read as too small;
+     450 is a lighter weight than the previous 500 (font-medium), a
+     deliberately modest reduction rather than dropping to regular. */
   [data-slot="table-head"] {
     font-family: var(--font-subheading);
+    font-size: 1rem;
+    font-weight: 450;
   }
 
   /* Status badge colors -- pair with <Badge variant="outline" className="badge-status-*">

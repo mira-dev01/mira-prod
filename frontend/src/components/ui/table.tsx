@@ -88,7 +88,11 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
     <th
       data-slot="table-head"
       className={cn(
-        "h-10 px-2 text-left align-middle font-medium whitespace-nowrap text-foreground [&:has([role=checkbox])]:pr-0",
+        // font-size/font-weight for this element are owned by the
+        // [data-slot="table-head"] rule in globals.css (New Title,
+        // --font-subheading) -- not set here, so that rule's values apply
+        // instead of a Tailwind utility fighting it at equal specificity.
+        "h-10 px-2 text-left align-middle whitespace-nowrap text-foreground [&:has([role=checkbox])]:pr-0",
         className
       )}
       {...props}
