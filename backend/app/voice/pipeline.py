@@ -71,9 +71,17 @@ logger = logging.getLogger(__name__)
 # over what was often just a stray sound, not the caller actually talking.
 # Raising confidence/min_volume makes VAD require louder, more confident
 # speech before it fires -- filters out background noise without adding
-# latency to genuine interruptions (start_secs/stop_secs, the actual timing
-# knobs, are left at their defaults).
-_VAD_PARAMS = VADParams(confidence=0.85, min_volume=0.7)
+# latency to genuine interruptions.
+#
+# start_secs raised from pipecat's own default (0.2s) to 0.35s -- 0.2s only
+# needs a sound to persist a fifth of a second before VAD confirms "speech
+# started" and fires an interruption, closer to a mic bump or a breath than
+# real speech. Guest feedback (2026-07-23): the bot was cutting the guest
+# off too readily. 0.35s asks for a bit more sustained sound before
+# confirming an interruption, without being so long it makes the bot feel
+# unresponsive to a genuine interruption -- needs a real call to confirm
+# this is the right number, not just a plausible one.
+_VAD_PARAMS = VADParams(confidence=0.85, min_volume=0.7, start_secs=0.35)
 
 
 def _pick_groq_model() -> str:
@@ -315,11 +323,18 @@ async def _run_pipeline(
     )
     language_sync = LanguageSyncProcessor()
     # Auto-cuts a call where the guest has gone silent/unresponsive: nudges
-    # ("Hello? Are you still there?") after each ~5s of silence, hangs up
+    # ("Hello? Are you still there?") after each ~9s of silence, hangs up
     # after the second nudge goes unanswered. See app/voice/silence_watchdog.py
     # for why this has to live as its own processor rather than piggybacking
     # on the turn-stop strategy.
-    silence_watchdog = SilenceWatchdogProcessor()
+    #
+    # 9.0s, not the module default of 5.0s -- confirmed live on 2026-07-23: a
+    # guest recalling specific dates and phrasing an availability question in
+    # Hindi hadn't finished formulating their reply by 5s (their real answer
+    # landed 4s after the nudge already fired, mid-thought). 5s is plausible
+    # for a yes/no but too tight for anything requiring the guest to actually
+    # think and construct a sentence.
+    silence_watchdog = SilenceWatchdogProcessor(timeout_seconds=9.0)
 
     async with aiohttp.ClientSession() as http_session:
         tts = SarvamTTSService(
