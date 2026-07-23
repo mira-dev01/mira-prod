@@ -24,6 +24,10 @@
 .DS_Store
 *.pem
 
+# raw font downloads (source archives for src/app/fonts/*.woff2 -- only the
+# extracted woff2 files actually used by next/font/local are tracked)
+/fonts
+
 # debug
 npm-debug.log*
 yarn-debug.log*

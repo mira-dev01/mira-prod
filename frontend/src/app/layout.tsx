@@ -1,20 +1,36 @@
 import type { Metadata } from "next";
-import { DM_Sans, Instrument_Serif } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth-context";
 import { Toaster } from "@/components/ui/sonner";
 
-const dmSans = DM_Sans({
-  variable: "--font-dm-sans",
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600"],
+// Variable fonts -- no `weight` needed, the browser interpolates whatever
+// Tailwind's font-medium/font-semibold/font-bold classes ask for along each
+// font's own weight axis.
+const boska = localFont({
+  variable: "--font-boska",
+  src: [
+    { path: "./fonts/boska/Boska-Variable.woff2", style: "normal" },
+    { path: "./fonts/boska/Boska-VariableItalic.woff2", style: "italic" },
+  ],
 });
 
-const instrumentSerif = Instrument_Serif({
-  variable: "--font-instrument-serif",
-  subsets: ["latin"],
-  style: ["normal", "italic"],
-  weight: "400",
+const pilcrowRounded = localFont({
+  variable: "--font-pilcrow-rounded",
+  src: "./fonts/pilcrow-rounded/PilcrowRounded-Variable.woff2",
+});
+
+// Loaded but not wired into the active theme yet -- the alternate
+// Melodrama + Nunito pairing, ready to swap to in globals.css without
+// needing to touch font loading again.
+const nunito = localFont({
+  variable: "--font-nunito",
+  src: "./fonts/nunito/Nunito-Variable.woff2",
+});
+
+const melodrama = localFont({
+  variable: "--font-melodrama",
+  src: "./fonts/melodrama/Melodrama-Variable.woff2",
 });
 
 export const metadata: Metadata = {
@@ -35,7 +51,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${dmSans.variable} ${instrumentSerif.variable} h-full antialiased`}
+      className={`${boska.variable} ${pilcrowRounded.variable} ${nunito.variable} ${melodrama.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-background">
         <AuthProvider>{children}</AuthProvider>
