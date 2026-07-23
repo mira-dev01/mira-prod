@@ -58,6 +58,56 @@ async def test_get_pricing_includes_total(test_property, db_session):
     assert test_property.name in result
 
 
+async def test_get_pricing_never_quotes_zero_when_base_price_is_zero(test_user, db_session):
+    # Confirmed live 2026-07-23: a property with base_price=0 (and no live
+    # price available) was quoted to a guest as "zero rupees for the night".
+    # The guard must refuse to quote it and instead direct an escalation.
+    zero_priced = Property(
+        user_id=test_user.id,
+        name="Zero Villa",
+        city="Goa",
+        exophone=f"+9180{__import__('uuid').uuid4().int % 10**8:08d}",
+        base_price=0,
+        max_guests=2,
+    )
+    db_session.add(zero_priced)
+    await db_session.commit()
+    await db_session.refresh(zero_priced)
+
+    today = date.today()
+    args = GetPricingArgs(
+        property_id=str(zero_priced.id), check_in=today + timedelta(days=1), check_out=today + timedelta(days=2), num_guests=2
+    )
+    result = await tool_handlers.handle_get_pricing(db_session, args)
+    # Returns the price-unavailable directive, not a numeric quote.
+    assert result == tool_handlers._PRICE_UNAVAILABLE_MESSAGE
+    assert "₹" not in result
+    assert "escalate_to_host" in result
+
+
+async def test_negotiate_rate_never_quotes_zero_when_base_price_is_zero(test_user, db_session):
+    zero_priced = Property(
+        user_id=test_user.id,
+        name="Zero Villa",
+        city="Goa",
+        exophone=f"+9180{__import__('uuid').uuid4().int % 10**8:08d}",
+        base_price=0,
+        max_guests=2,
+    )
+    db_session.add(zero_priced)
+    await db_session.commit()
+    await db_session.refresh(zero_priced)
+
+    today = date.today()
+    args = NegotiateRateArgs(
+        property_id=str(zero_priced.id), check_in=today + timedelta(days=1), check_out=today + timedelta(days=2), num_guests=2
+    )
+    result = await tool_handlers.handle_negotiate_rate(db_session, args, host_user_id=test_user.id)
+    assert result == tool_handlers._PRICE_UNAVAILABLE_MESSAGE
+    assert "₹" not in result
+    assert "escalate_to_host" in result
+
+
 async def test_get_pricing_backfills_lead_even_if_update_lead_never_called(test_property, test_call_session, db_session):
     # Regression: real calls were going through a full get_pricing/negotiate_rate
     # negotiation and ending with zero Lead row, because the model said its

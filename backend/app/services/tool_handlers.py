@@ -42,6 +42,22 @@ from app.services import (
 
 logger = logging.getLogger(__name__)
 
+# A resolved price of ₹0 (or negative) is never a real rate a guest should
+# hear -- it means the pricing source failed silently and fell through to a
+# stale/unset base_price. Confirmed live 2026-07-23: a property whose stored
+# base_price was 0 (and whose live SearchApi fetch couldn't run -- credits
+# exhausted) was quoted to a guest as "zero rupees for the night". The agent
+# was faithfully reading what the pricing engine returned; the fix is to
+# never return a zero as if it were a quote. This is a directive to the model
+# (same embedded-instruction pattern as recommend_properties' combo_note),
+# not just a spoken line -- it must NOT read the number out.
+_PRICE_UNAVAILABLE_MESSAGE = (
+    "The system doesn't have a confirmed nightly rate for this property and these dates right now, so there is "
+    "NO price to quote. Do NOT say a number, and never tell the guest it's zero, free, or complimentary -- that "
+    "would be wrong. Tell them you'll confirm the exact rate with the host and follow up shortly, then call "
+    "escalate_to_host so the host can provide the correct price."
+)
+
 # WhatsApp has no color/font-weight rendering beyond *bold*/_italic_, so
 # urgency is signaled with an emoji instead -- a host skimming a stack of
 # these needs to triage by glancing at the left edge of each message, not
@@ -233,6 +249,20 @@ async def handle_get_pricing(
     breakdown = await pricing_engine.calculate_price(
         db, property_, args.check_in, args.check_out, apply_discounts=args.apply_discounts
     )
+
+    # Never quote a non-positive total as a real price -- see
+    # _PRICE_UNAVAILABLE_MESSAGE. base_total is the pre-discount figure, so
+    # checking it (not just total) catches the ₹0-base case regardless of any
+    # discount applied on top.
+    if breakdown.base_total <= 0 or breakdown.total <= 0:
+        logger.warning(
+            "get_pricing produced a non-positive quote for property %s (base_total=%s, total=%s) -- "
+            "likely a base_price of 0 with no live price available; refusing to quote it",
+            property_.id,
+            breakdown.base_total,
+            breakdown.total,
+        )
+        return _PRICE_UNAVAILABLE_MESSAGE
 
     # Lead with the total as one natural spoken sentence -- this string is
     # what the LLM tends to read back almost verbatim. No cleaning fee/tax
@@ -496,6 +526,19 @@ async def handle_negotiate_rate(
         host_id=host_user_id,
         guest_profile_id=guest_profile_id,
     )
+    # Same non-positive-price guard as handle_get_pricing -- negotiate_rate
+    # derives everything (asking price, floor, counter-offer) from
+    # calculate_price, so a ₹0 base means every number here is 0 too. Never
+    # let that reach the guest as a "discounted" or "best" price.
+    if result.asking_price <= 0 or result.counter_offer <= 0:
+        logger.warning(
+            "negotiate_rate produced a non-positive quote for property %s (asking=%s, counter=%s) -- "
+            "likely a base_price of 0 with no live price available; refusing to quote it",
+            property_.id,
+            result.asking_price,
+            result.counter_offer,
+        )
+        return _PRICE_UNAVAILABLE_MESSAGE
     return result.message
 
 
