@@ -13,7 +13,9 @@ locked onto in a Lead Agent (portfolio-wide) call, instead of relying solely
 on the LLM re-supplying a property_id on every tool call (see
 app/voice/conversation_state.py and memory-architecture-plan.md section 2).
 `silence_watchdog` is threaded through the same way, purely so the end_call
-tool can arm it -- see app/voice/silence_watchdog.py.
+tool can arm it -- see app/voice/silence_watchdog.py. `escalation_guard` is
+the same pattern again, armed by escalate_to_host -- see
+app/voice/escalation_phrase_guard.py.
 """
 
 import uuid
@@ -39,6 +41,7 @@ from app.schemas.tool import (
 )
 from app.services import tool_handlers
 from app.voice.conversation_state import ConversationState
+from app.voice.escalation_phrase_guard import EscalationPhraseGuardProcessor
 from app.voice.silence_watchdog import SilenceWatchdogProcessor
 
 Urgency = Literal["low", "medium", "high", "emergency"]
@@ -56,6 +59,7 @@ def build_voice_tools(
     guest_profile_id: uuid.UUID | None = None,
     caller_number: str | None = None,
     silence_watchdog: SilenceWatchdogProcessor | None = None,
+    escalation_guard: EscalationPhraseGuardProcessor | None = None,
 ) -> list:
     """Build the tool functions for one call, bound to its call_session_id/property_id/host_user_id.
 
@@ -238,6 +242,8 @@ def build_voice_tools(
                 caller's own number automatically (see your instructions).
             call_summary: A short summary of the call so far.
         """
+        if escalation_guard is not None:
+            escalation_guard.arm()
         async with AsyncSessionLocal() as db:
             try:
                 args = EscalateToHostArgs(

@@ -56,6 +56,7 @@ from app.prompts.system_prompt import (
 from app.schemas.call_classification import QUALIFIED_CALL_TYPES
 from app.services import call_classification_service, call_service, guest_memory_service, lead_service
 from app.voice.conversation_state import ConversationState
+from app.voice.escalation_phrase_guard import EscalationPhraseGuardProcessor
 from app.voice.language_sync import DEFAULT_TTS_LANGUAGE, LanguageSyncProcessor
 from app.voice.silence_watchdog import SilenceWatchdogProcessor
 from app.voice.tools import build_voice_tools
@@ -335,6 +336,10 @@ async def _run_pipeline(
     # for a yes/no but too tight for anything requiring the guest to actually
     # think and construct a sentence.
     silence_watchdog = SilenceWatchdogProcessor(timeout_seconds=9.0)
+    # Code-level backstop for the "let me loop in the host" ban in
+    # GOLDEN_RULES -- prompting alone has failed on this exact wording
+    # repeatedly across real calls. See app/voice/escalation_phrase_guard.py.
+    escalation_guard = EscalationPhraseGuardProcessor()
 
     async with aiohttp.ClientSession() as http_session:
         tts = SarvamTTSService(
@@ -373,6 +378,7 @@ async def _run_pipeline(
             guest_profile_id,
             caller_number=real_caller_number,
             silence_watchdog=silence_watchdog,
+            escalation_guard=escalation_guard,
         )
         # first_message is pre-seeded as an assistant turn so the LLM knows
         # it was already said (the "don't repeat greeting" rule relies on
@@ -430,6 +436,7 @@ async def _run_pipeline(
                 language_sync,
                 user_aggregator,
                 llm,
+                escalation_guard,
                 tts,
                 transport.output(),
                 assistant_aggregator,
