@@ -28,7 +28,9 @@ services:
       - key: JWT_ALGORITHM
         value: HS256
       - key: JWT_EXPIRE_MINUTES
-        value: "1440"
+        value: "20"
+      - key: REFRESH_TOKEN_EXPIRE_DAYS
+        value: "30"
       - key: LLM_PROVIDER
         value: groq
       - key: GROQ_API_KEY

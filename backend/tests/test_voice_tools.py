@@ -282,3 +282,29 @@ async def test_end_call_without_a_watchdog_still_returns_a_result(db_session, te
     params = _FakeFunctionCallParams()
     await end_call(params)
     assert params.result is not None
+
+
+async def test_decline_irrelevant_call_arms_the_silence_watchdog(db_session, test_user):
+    watchdog = SilenceWatchdogProcessor()
+    tools = build_voice_tools(
+        call_session_id=None, property_id=None, host_user_id=test_user.id, silence_watchdog=watchdog
+    )
+    decline_irrelevant_call = next(t for t in tools if t.__name__ == "decline_irrelevant_call")
+
+    params = _FakeFunctionCallParams()
+    await decline_irrelevant_call(params)
+
+    # Same graceful-hangup mechanism as end_call -- only arms the flag, the
+    # actual hangup happens on the next BotStoppedSpeakingFrame once the
+    # agent's decline line has finished playing.
+    assert watchdog._end_requested is True
+    assert params.result is not None
+
+
+async def test_decline_irrelevant_call_without_a_watchdog_still_returns_a_result(db_session, test_user):
+    tools = build_voice_tools(call_session_id=None, property_id=None, host_user_id=test_user.id)
+    decline_irrelevant_call = next(t for t in tools if t.__name__ == "decline_irrelevant_call")
+
+    params = _FakeFunctionCallParams()
+    await decline_irrelevant_call(params)
+    assert params.result is not None

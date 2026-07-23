@@ -7,6 +7,7 @@ from app.models.lead import Lead
 from app.models.notification import Notification
 from app.models.pricing_rule import PricingRule
 from app.models.property import Property
+from app.models.refresh_token import RefreshToken
 from app.models.technician import Technician
 from app.models.unanswered_question import UnansweredQuestion
 from app.models.user import User
@@ -21,6 +22,7 @@ __all__ = [
     "Notification",
     "PricingRule",
     "Property",
+    "RefreshToken",
     "Technician",
     "UnansweredQuestion",
     "User",

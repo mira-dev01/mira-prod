@@ -37,8 +37,8 @@ async def test_silence_prompts_then_hangs_up_after_two_unanswered_nudges():
 
     speak_frames = [f for f in down_frames if isinstance(f, TTSSpeakFrame)]
     assert len(speak_frames) == 3
-    assert speak_frames[0].text == "Hello? Are you still there?"
-    assert speak_frames[1].text == "Hello? Are you still there?"
+    assert speak_frames[0].text == "Hello?"
+    assert speak_frames[1].text == "Hello, are you there?"
     assert "end the call" in speak_frames[2].text.lower()
     assert isinstance(down_frames[-1], EndFrame)
     assert down_frames[-1].reason == "silent caller"
@@ -62,7 +62,7 @@ async def test_blank_transcript_does_not_reset_or_count_as_reply():
 
     speak_frames = [f for f in down_frames if isinstance(f, TTSSpeakFrame)]
     assert len(speak_frames) == 1
-    assert speak_frames[0].text == "Hello? Are you still there?"
+    assert speak_frames[0].text == "Hello?"
 
 
 @pytest.mark.asyncio
@@ -128,4 +128,4 @@ async def test_guest_speaking_again_cancels_a_pending_end_call():
     assert not any(isinstance(f, EndFrame) for f in down_frames)
     speak_frames = [f for f in down_frames if isinstance(f, TTSSpeakFrame)]
     assert len(speak_frames) == 1
-    assert speak_frames[0].text == "Hello? Are you still there?"
+    assert speak_frames[0].text == "Hello?"

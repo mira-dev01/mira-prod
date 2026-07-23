@@ -54,10 +54,11 @@ from app.prompts.system_prompt import (
     lead_first_message_for,
 )
 from app.schemas.call_classification import QUALIFIED_CALL_TYPES
-from app.services import call_classification_service, call_service, guest_memory_service, lead_service
+from app.services import call_classification_service, call_service, faq_service, guest_memory_service, lead_service
 from app.voice.conversation_state import ConversationState
 from app.voice.escalation_phrase_guard import EscalationPhraseGuardProcessor
 from app.voice.language_sync import DEFAULT_TTS_LANGUAGE, LanguageSyncProcessor
+from app.voice.ringing_audio import play_ringing_tone
 from app.voice.silence_watchdog import SilenceWatchdogProcessor
 from app.voice.tools import build_voice_tools
 from app.voice.turn_strategies import HybridCompletenessUserTurnStopStrategy
@@ -306,6 +307,7 @@ async def _run_pipeline(
     property_name: str | None = None,
     guest_profile_id: uuid.UUID | None = None,
     guest_known_name: str | None = None,
+    ringing_audio_task: asyncio.Task | None = None,
 ) -> None:
     # NOTE: we deliberately do NOT create a Lead row up front. Doing so gave
     # every connection attempt its own empty lead, and a browser/ICE
@@ -317,6 +319,46 @@ async def _run_pipeline(
     # exactly one row per session), and the caller's phone / the property
     # discussed are backfilled onto it at call end (see on_pipeline_finished).
     # A call where the agent captured nothing simply leaves no lead behind.
+    try:
+        await _run_pipeline_inner(
+            transport,
+            property_id,
+            call_session_id,
+            host_user_id,
+            system_prompt,
+            first_message,
+            caller_number=caller_number,
+            property_name=property_name,
+            guest_profile_id=guest_profile_id,
+            ringing_audio_task=ringing_audio_task,
+        )
+    finally:
+        # Guarantees the ringing-tone task (see app/voice/ringing_audio.py)
+        # is always stopped, even if _run_pipeline_inner raises before
+        # reaching its own cancel point (e.g. SarvamTTSService/_build_llm
+        # construction failing) -- without this, a build-time failure would
+        # leave the task looping forever, writing to a websocket whose fate
+        # is no longer being managed by anything.
+        if ringing_audio_task is not None and not ringing_audio_task.done():
+            ringing_audio_task.cancel()
+            try:
+                await ringing_audio_task
+            except asyncio.CancelledError:
+                pass
+
+
+async def _run_pipeline_inner(
+    transport: BaseTransport,
+    property_id: uuid.UUID | None,
+    call_session_id: uuid.UUID,
+    host_user_id: uuid.UUID,
+    system_prompt: str,
+    first_message: str,
+    caller_number: str | None = None,
+    property_name: str | None = None,
+    guest_profile_id: uuid.UUID | None = None,
+    ringing_audio_task: asyncio.Task | None = None,
+) -> None:
     stt = _ReconnectingSarvamSTTService(
         api_key=settings.sarvam_api_key,
         model=settings.sarvam_stt_model,
@@ -581,6 +623,25 @@ async def _run_pipeline(
         async def _on_client_disconnected(transport, client):
             await worker.cancel()
 
+        # The ringing-tone task (see app/voice/ringing_audio.py) writes
+        # directly to the same raw websocket this transport wraps -- it must
+        # be fully stopped before runner.run() below, which is what starts
+        # the transport's own writes (StartFrame -> transport.start() ->
+        # first real audio out), or the two would race on the same socket.
+        # Cancelling this late (right before handing the socket to the real
+        # pipeline, not any earlier) is what lets the ringing tone cover as
+        # much of the setup above -- STT/TTS build, LLM build, tool wiring --
+        # as it can, while guaranteeing it can never still be playing once
+        # Mira's own audio starts: cancel() + await here only returns once
+        # the ringing loop has actually unwound (see ringing_audio.py's
+        # docstring for why that ordering is airtight, not just usually fine).
+        if ringing_audio_task is not None:
+            ringing_audio_task.cancel()
+            try:
+                await ringing_audio_task
+            except asyncio.CancelledError:
+                pass
+
         runner = WorkerRunner()
         await runner.add_workers(worker)
         await runner.run()
@@ -590,6 +651,19 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
     exotel_call_id = call_data.call_id
     dialed_number = call_data.to_number
     caller_number = call_data.from_number
+
+    # Plays a looping ring tone directly on the raw websocket (see
+    # app/voice/ringing_audio.py) while everything below -- DB lookups, then
+    # the real pipeline build and Sarvam STT/TTS connect inside
+    # _run_pipeline -- is still in progress. Confirmed via call logs this
+    # setup takes ~4-6s total, which the guest otherwise hears as dead air
+    # before Mira's first word. Cancelled just before _run_pipeline hands the
+    # socket to the real transport (see the comment at that call site) --
+    # every exit path below (early return or the normal path into
+    # _run_pipeline) must account for stopping it.
+    ringing_audio_task = (
+        asyncio.create_task(play_ringing_tone(websocket, call_data.stream_id)) if call_data.stream_id else None
+    )
 
     async with AsyncSessionLocal() as db:
         property_ = await call_service.get_property_by_number(db, dialed_number)
@@ -601,6 +675,12 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
                 dialed_number,
                 exotel_call_id,
             )
+            if ringing_audio_task is not None:
+                ringing_audio_task.cancel()
+                try:
+                    await ringing_audio_task
+                except asyncio.CancelledError:
+                    pass
             try:
                 await websocket.close()
             except RuntimeError:
@@ -624,7 +704,11 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
                 caller_number=caller_number,
                 user_id=property_.user_id,
             )
-            system_prompt = build_system_prompt(property_, guest, host, active_booking, caller_phone=caller_number)
+            verified_faq_entries = await faq_service.list_verified_property_faq(db, property_.id)
+            system_prompt = build_system_prompt(
+                property_, guest, host, active_booking, caller_phone=caller_number,
+                verified_faq_entries=verified_faq_entries,
+            )
             first_message = first_message_for(property_, guest, host)
             property_id = property_.id
             property_name = property_.name
@@ -672,6 +756,7 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
         property_name=property_name,
         guest_profile_id=guest.id if guest else None,
         guest_known_name=guest.name if guest else None,
+        ringing_audio_task=ringing_audio_task,
     )
 
 
@@ -695,7 +780,8 @@ async def run_browser_voice_pipeline(connection: SmallWebRTCConnection, property
             caller_number=call_service.BROWSER_TEST_CALLER_NUMBER,
             user_id=property_.user_id,
         )
-        system_prompt = build_system_prompt(property_, None, host)
+        verified_faq_entries = await faq_service.list_verified_property_faq(db, property_.id)
+        system_prompt = build_system_prompt(property_, None, host, verified_faq_entries=verified_faq_entries)
         first_message = first_message_for(property_, None, host)
         property_id = property_.id
         host_user_id = property_.user_id

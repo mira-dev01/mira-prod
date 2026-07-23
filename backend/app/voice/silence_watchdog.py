@@ -49,7 +49,10 @@ from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 DEFAULT_SILENCE_TIMEOUT_SECONDS = 5.0
 DEFAULT_MAX_PROMPTS = 2
-DEFAULT_PROMPT_TEXT = "Hello? Are you still there?"
+# Two distinct nudges, not the same line twice -- a human receptionist
+# doesn't repeat themselves verbatim (see GOLDEN_RULES's own "never repeat a
+# sentence" rule, same underlying reasoning applied here).
+DEFAULT_PROMPT_TEXTS = ["Hello?", "Hello, are you there?"]
 DEFAULT_GOODBYE_TEXT = "I'll go ahead and end the call here. Feel free to call back anytime -- have a great day!"
 
 
@@ -61,13 +64,13 @@ class SilenceWatchdogProcessor(FrameProcessor):
         *,
         timeout_seconds: float = DEFAULT_SILENCE_TIMEOUT_SECONDS,
         max_prompts: int = DEFAULT_MAX_PROMPTS,
-        prompt_text: str = DEFAULT_PROMPT_TEXT,
+        prompt_texts: list[str] = DEFAULT_PROMPT_TEXTS,
         goodbye_text: str = DEFAULT_GOODBYE_TEXT,
     ):
         super().__init__()
         self._timeout_seconds = timeout_seconds
         self._max_prompts = max_prompts
-        self._prompt_text = prompt_text
+        self._prompt_texts = prompt_texts
         self._goodbye_text = goodbye_text
 
         self._prompts_sent = 0
@@ -174,7 +177,11 @@ class SilenceWatchdogProcessor(FrameProcessor):
             self._prompts_sent,
             self._max_prompts,
         )
-        await self.push_frame(TTSSpeakFrame(self._prompt_text, append_to_context=False))
+        # index by which nudge this is (1st -> "Hello?", 2nd -> "Hello, are
+        # you there?"); clamp to the last entry if max_prompts ever exceeds
+        # how many distinct lines are configured.
+        prompt_index = min(self._prompts_sent, len(self._prompt_texts)) - 1
+        await self.push_frame(TTSSpeakFrame(self._prompt_texts[prompt_index], append_to_context=False))
         # Restart the clock directly rather than waiting for TTS to actually
         # speak the nudge and transport to report BotStoppedSpeakingFrame --
         # that round trip works too (this frame will still arrive and no-op

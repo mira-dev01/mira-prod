@@ -1,6 +1,7 @@
 import uuid
 from datetime import date, datetime
 
+from app.models.faq_entry import FaqEntry
 from app.models.guest_profile import GuestProfile
 from app.models.lead import Lead
 from app.models.property import Property
@@ -231,6 +232,51 @@ def test_property_neighborhood_info_omitted_when_not_set():
     host = _user()
     prompt = build_system_prompt(_property(neighborhood_info=None), None, host)
     assert "Neighborhood / local area info" not in prompt
+
+
+def test_legacy_property_faq_still_inlined():
+    """Property.faq (the legacy inline column) must keep working for hosts/
+    properties not yet migrated to FaqEntry rows (see alembic 7a7297081aaa)."""
+    host = _user()
+    prop = _property(faq=[{"question": "Is parking free?", "answer": "Yes, in the driveway."}])
+    prompt = build_system_prompt(prop, None, host)
+    assert "Q: Is parking free?" in prompt
+    assert "A: Yes, in the driveway." in prompt
+
+
+def test_verified_faq_entries_inlined_alongside_legacy_faq():
+    """The per-property FAQ editor now writes structured FaqEntry rows
+    instead of the legacy Property.faq column -- they must be inlined into
+    the static prompt the same way, not just reachable via the search_faq
+    tool, so behavior for hosts using the dashboard FAQ tab matches what the
+    legacy column always did."""
+    host = _user()
+    prop = _property(faq=[{"question": "Is parking free?", "answer": "Yes, in the driveway."}])
+    entry = FaqEntry(
+        user_id=prop.user_id,
+        property_id=prop.id,
+        question="Is there a pool?",
+        answer="Yes, a private plunge pool.",
+        status="verified",
+    )
+    prompt = build_system_prompt(prop, None, host, verified_faq_entries=[entry])
+    assert "Q: Is parking free?\nA: Yes, in the driveway." in prompt
+    assert "Q: Is there a pool?\nA: Yes, a private plunge pool." in prompt
+
+
+def test_faq_section_omitted_when_no_legacy_or_verified_entries():
+    host = _user()
+    prompt = build_system_prompt(_property(faq=[]), None, host, verified_faq_entries=[])
+    assert "Frequently asked questions" not in prompt
+
+
+def test_verified_faq_entries_defaults_to_none_for_existing_call_sites():
+    """Every existing call site that doesn't pass verified_faq_entries= must
+    keep working exactly as before."""
+    host = _user()
+    prop = _property(faq=[{"question": "Is parking free?", "answer": "Yes, in the driveway."}])
+    prompt = build_system_prompt(prop, None, host)
+    assert "Q: Is parking free?\nA: Yes, in the driveway." in prompt
 
 
 def test_property_usp_omitted_from_lead_agent_portfolio_listing():

@@ -1,3 +1,5 @@
+import hashlib
+import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -27,3 +29,16 @@ def decode_access_token(token: str) -> uuid.UUID | None:
         return uuid.UUID(payload["sub"])
     except (jwt.PyJWTError, KeyError, ValueError):
         return None
+
+
+def generate_refresh_token() -> tuple[str, str]:
+    """Returns (raw_token, token_hash). The raw value goes in the HttpOnly
+    cookie and is never persisted; only its SHA-256 hash is stored, so a DB
+    read/backup leak can't be replayed as a live session (same reasoning as
+    hashed_password on User)."""
+    raw = secrets.token_urlsafe(48)
+    return raw, hash_refresh_token(raw)
+
+
+def hash_refresh_token(raw_token: str) -> str:
+    return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
