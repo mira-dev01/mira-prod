@@ -16,15 +16,27 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, [loading, user, router]);
 
   if (loading || !user) {
-    return <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Loading…</div>;
+    return (
+      <div className="fixed inset-0 flex items-center justify-center text-sm text-muted-foreground">Loading…</div>
+    );
   }
 
   return (
     <DateRangeProvider>
-      <div className="flex h-screen flex-1 overflow-hidden">
+      {/* fixed inset-0 (not h-screen + flex-1) -- this div is a flex item of
+          body (app/layout.tsx's `body` is `flex flex-col min-h-full`, not a
+          fixed height, so it sizes to fit its content). Combined with
+          flex-1's flex-basis:0%, that let a tall dashboard page (e.g.
+          Properties with many cards) override this element's own h-screen,
+          stretch it -- and body -- to the page's full content height, and
+          scroll the DOCUMENT instead of just `main` below. That dragged the
+          sidebar along with it despite its own `sticky` (sticky only has
+          room to work inside a scroll container shorter than its content).
+          fixed inset-0 takes this completely out of that flow -- it's
+          always exactly the viewport, independent of body/content height. */}
+      <div className="fixed inset-0 flex overflow-hidden">
         <SidebarNav />
-        {/* pt-14 on mobile offsets the fixed top bar; md:pt-0 removes it on desktop */}
-        <main className="flex-1 overflow-y-auto p-4 pt-[calc(3.5rem+1rem)] md:p-6 md:pt-6">
+        <main className="min-h-0 flex-1 overflow-y-auto p-4 pt-[calc(3.5rem+1rem)] md:p-6 md:pt-6">
           <PendingImportBanner />
           {children}
         </main>
