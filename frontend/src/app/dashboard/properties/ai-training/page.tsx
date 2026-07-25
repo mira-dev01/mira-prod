@@ -10,6 +10,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { AiTrainingSection } from "@/components/settings/ai-training-section";
 import { ApiError, api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { cn } from "@/lib/utils";
+import type { AgentVoiceGender } from "@/lib/types";
 
 // Merged from the former "Voice AI" and "AI Training" tabs on the Settings
 // page into a single full-screen page under Properties -- content and
@@ -20,6 +22,7 @@ export default function AiTrainingPage() {
   const [firstMessage, setFirstMessage] = useState(user?.agent_first_message ?? "");
   const [persona, setPersona] = useState(user?.agent_persona ?? "");
   const [escalationPhrase, setEscalationPhrase] = useState(user?.agent_escalation_phrase ?? "");
+  const [voiceGender, setVoiceGender] = useState<AgentVoiceGender>(user?.agent_voice_gender ?? "female");
   const [savingPersonalization, setSavingPersonalization] = useState(false);
 
   async function handleSavePersonalization(e: React.FormEvent) {
@@ -30,6 +33,7 @@ export default function AiTrainingPage() {
         agent_first_message: firstMessage || null,
         agent_persona: persona || null,
         agent_escalation_phrase: escalationPhrase || null,
+        agent_voice_gender: voiceGender,
       });
       await refreshUser();
       toast.success("Voice agent personalization saved");
@@ -42,12 +46,12 @@ export default function AiTrainingPage() {
 
   if (loading) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-8">
         <div>
           <h1 className="page-title">AI Training</h1>
           <p className="text-sm text-muted-foreground">Voice agent personalization and negotiation policy</p>
         </div>
-        <Card className="max-w-3xl">
+        <Card>
           <CardHeader>
             <Skeleton variant="text" className="w-1/2" />
           </CardHeader>
@@ -62,13 +66,13 @@ export default function AiTrainingPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div>
         <h1 className="page-title">AI Training</h1>
         <p className="text-sm text-muted-foreground">Voice agent personalization and negotiation policy</p>
       </div>
 
-      <Card className="max-w-3xl">
+      <Card>
         <CardHeader>
           <CardTitle>Voice agent personalization</CardTitle>
         </CardHeader>
@@ -78,7 +82,7 @@ export default function AiTrainingPage() {
             pricing, always escalate when unsure, etc.) stay fixed regardless — these only change
             tone and wording.
           </p>
-          <form onSubmit={handleSavePersonalization} className="space-y-4">
+          <form onSubmit={handleSavePersonalization} className="space-y-6">
             <div className="space-y-2">
               <Label htmlFor="agent_first_message">Opening greeting</Label>
               <DictationTextarea
@@ -93,14 +97,35 @@ export default function AiTrainingPage() {
                 it here any time.
               </p>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="agent_persona">Personality note</Label>
-              <DictationTextarea
-                id="agent_persona"
-                placeholder="e.g. Sound like a warm, chatty local host -- informal, never corporate."
-                value={persona}
-                onValueChange={setPersona}
-              />
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="agent_persona">Personality note</Label>
+                <DictationTextarea
+                  id="agent_persona"
+                  placeholder="e.g. Sound like a warm, chatty local host -- informal, never corporate."
+                  value={persona}
+                  onValueChange={setPersona}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Voice</Label>
+                <div className="flex gap-2">
+                  {(["female", "male"] as const).map((gender) => (
+                    <Button
+                      key={gender}
+                      type="button"
+                      variant={voiceGender === gender ? "default" : "outline"}
+                      size="sm"
+                      aria-pressed={voiceGender === gender}
+                      className={cn("capitalize", voiceGender === gender && "pointer-events-none")}
+                      onClick={() => setVoiceGender(gender)}
+                    >
+                      {gender}
+                    </Button>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">MIRA speaks in this voice on every call for this account.</p>
+              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="agent_escalation_phrase">Escalation phrase</Label>

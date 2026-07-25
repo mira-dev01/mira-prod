@@ -89,8 +89,8 @@ export function CallsTable({ calls, compact = false }: { calls: CallSessionOut[]
   const router = useRouter();
 
   return (
-    <div className="overflow-x-auto">
-      <Table>
+    <div className="h-full overflow-x-auto">
+      <Table className="h-full">
         <TableHeader>
           <TableRow>
             <TableHead>Caller</TableHead>

@@ -7,6 +7,10 @@ export type AirbnbHostStatus =
   | "professional_host"
   | "prefer_not_to_say";
 
+// Maps to a specific Sarvam bulbul:v3 speaker name server-side
+// (app/voice/pipeline.py's VOICE_BY_GENDER) -- not a Sarvam-native concept.
+export type AgentVoiceGender = "female" | "male";
+
 export type UserOut = {
   id: string;
   email: string;
@@ -23,6 +27,7 @@ export type UserOut = {
   agent_first_message: string | null;
   agent_persona: string | null;
   agent_escalation_phrase: string | null;
+  agent_voice_gender: AgentVoiceGender;
   notification_email: string | null;
   discount_policy_text: string | null;
   negotiation_allowed: boolean;
@@ -46,6 +51,7 @@ export type UserUpdate = {
   agent_first_message?: string | null;
   agent_persona?: string | null;
   agent_escalation_phrase?: string | null;
+  agent_voice_gender?: AgentVoiceGender;
   notification_email?: string | null;
   discount_policy_text?: string | null;
   negotiation_allowed?: boolean | null;

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ExpandableText } from "@/components/expandable-text";
 import { RightPanel } from "@/components/ui/right-panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatusChip, type StatusTone } from "@/components/status-chip";
@@ -74,10 +75,12 @@ function ServiceRequestsList({
               <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
                 {formatTimestamp(req.created_at)}
               </TableCell>
-              <TableCell>{req.property_name ?? "—"}</TableCell>
+              <TableCell className="max-w-[220px]">
+                {req.property_name ? <ExpandableText text={req.property_name} maxLength={40} /> : "—"}
+              </TableCell>
               <TableCell>{req.room_number ?? "—"}</TableCell>
-              <TableCell className="max-w-md truncate" title={req.message}>
-                {req.message}
+              <TableCell className="max-w-md">
+                <ExpandableText text={req.message} maxLength={90} />
               </TableCell>
               <TableCell>
                 <StatusChip status={req.urgency} tone={urgencyTone[req.urgency] ?? "neutral"} />

@@ -560,12 +560,13 @@ def _caller_phone_section(caller_phone: str | None) -> str:
     if not caller_phone:
         return ""
     return (
-        f"\nThe caller's own phone number is already known from the call itself: {caller_phone}. Use this "
-        "directly as the phone/guest_phone value for update_lead/send_whatsapp/send_photos/escalate_to_host/"
-        "dispatch_technician whenever the guest wants something sent or saved to \"this number\" or \"the "
-        "number I'm calling from\" -- never ask them to say or repeat their number aloud for that. Only ask "
-        "for a phone number if the guest explicitly wants a DIFFERENT number used (e.g. booking on behalf of "
-        "someone else)."
+        f"\nThe caller's own phone number is already known from the call itself: {caller_phone}. For "
+        "send_whatsapp/send_photos/escalate_to_host/dispatch_technician, use this directly whenever the guest "
+        "wants something sent to \"this number\" or \"the number I'm calling from\" -- never ask them to say "
+        "or repeat their number aloud for that. For update_lead / booking specifically, don't assume it "
+        "silently -- offer it back and let the guest confirm or give a different one instead (see the lead "
+        "qualification workflow's phone-number step), since the number they want on the booking may not be "
+        "the one they're calling from."
     )
 
 
@@ -662,8 +663,14 @@ Lead qualification workflow:
    Signs of interest: they ask its price or availability, ask for photos or
    more details about that one property, say they like it / it sounds good, or ask to book, hold, or
    visit it. Ask naturally and give a reason -- e.g. "Lovely choice! May I take your name so I can
-   check the dates and hold it for you?" then "And the best phone number to reach you on?". Ask for
-   the name first, then the phone number -- one at a time, never both in one breath.
+   check the dates and hold it for you?" then ask for the phone number. Ask for the name first, then
+   the phone number -- one at a time, never both in one breath.
+   For the phone number specifically: if the caller's own number is already known (see below), do NOT
+   just silently assume it -- offer it back and let the guest confirm or override, e.g. "And should I
+   use the number you're calling from for the booking, or would you like to give a different one?".
+   If they confirm, use that number and do not ask them to recite it. If they give a different number
+   instead, use the one they give. If the caller's number is not known (e.g. a browser test call), ask
+   normally: "And the best phone number to reach you on?"
    Phone number is required for every interested lead; if the guest sidesteps it, ask once more before
    continuing. Do NOT ask for name/phone before they've shown interest in a specific property --
    people share details once they see something they want, not while just browsing. And do NOT ask for

@@ -128,42 +128,47 @@ export function AiTrainingSection() {
 
   return (
     <div className="space-y-6">
-      <p className="text-sm text-muted-foreground">
-        Teach Mira how you handle discounts, and review anything she&apos;s learned before it goes live.
-      </p>
+      <div>
+        <h2 className="font-heading text-lg font-medium">AI Negotiation Policy</h2>
+        <p className="text-sm text-muted-foreground">
+          Teach Mira how you handle discounts, and review anything she&apos;s learned before it goes live.
+        </p>
+      </div>
 
-      <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
-        <Card>
-          <CardHeader>
-            <CardTitle>Negotiation policy</CardTitle>
-            <CardDescription>
-              Describe how you usually handle discounts, in your own words -- e.g. &quot;If a guest doesn&apos;t
-              ask, I keep the price as offered. If they ask for a discount, I offer 5%. Repeat guests across my
-              properties get 8%.&quot; Mira will turn this into specific rules below for you to review and
-              approve -- nothing changes until you approve it.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleParsePolicy} className="space-y-3">
-              <DictationTextarea
-                placeholder="e.g. If a guest doesn't ask for a discount, I keep my price as offered. If they push back, I can go down to 5%. Guests who've stayed at more than one of my properties get 8% off."
-                value={policyText}
-                onValueChange={setPolicyText}
-                className="min-h-32"
-              />
-              <Button type="submit" disabled={parsing || !policyText.trim()}>
-                {parsing ? "Analyzing..." : "Analyze policy"}
-              </Button>
-            </form>
-            {user?.discount_policy_text && (
-              <p className="mt-3 text-xs text-muted-foreground">
-                Last saved policy: &quot;{user.discount_policy_text}&quot;
-              </p>
-            )}
-          </CardContent>
-        </Card>
+      <div className="grid gap-6 lg:grid-cols-5 lg:items-start">
+        <div className="lg:col-span-3">
+          <Card>
+            <CardHeader>
+              <CardTitle>Negotiation policy</CardTitle>
+              <CardDescription>
+                Describe how you usually handle discounts, in your own words -- e.g. &quot;If a guest doesn&apos;t
+                ask, I keep the price as offered. If they ask for a discount, I offer 5%. Repeat guests across my
+                properties get 8%.&quot; Mira will turn this into specific rules below for you to review and
+                approve -- nothing changes until you approve it.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleParsePolicy} className="space-y-3">
+                <DictationTextarea
+                  placeholder="e.g. If a guest doesn't ask for a discount, I keep my price as offered. If they push back, I can go down to 5%. Guests who've stayed at more than one of my properties get 8% off."
+                  value={policyText}
+                  onValueChange={setPolicyText}
+                  className="min-h-32"
+                />
+                <Button type="submit" disabled={parsing || !policyText.trim()}>
+                  {parsing ? "Analyzing..." : "Analyze policy"}
+                </Button>
+              </form>
+              {user?.discount_policy_text && (
+                <p className="mt-3 text-xs text-muted-foreground">
+                  Last saved policy: &quot;{user.discount_policy_text}&quot;
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
 
-        <div className="space-y-6">
+        <div className="space-y-6 lg:sticky lg:top-6 lg:col-span-2 lg:self-start">
           <Card>
             <CardHeader>
               <CardTitle>Pending validation</CardTitle>
@@ -263,38 +268,38 @@ export function AiTrainingSection() {
               )}
             </CardContent>
           </Card>
+
+          {editingRule && (
+            <Card className="border-primary/40">
+              <CardHeader>
+                <CardTitle>Edit -- {triggerLabel(editingRule.trigger_type)}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleSaveEdit} className="flex flex-wrap items-end gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="discount-percent">Discount %</Label>
+                    <Input
+                      id="discount-percent"
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={editDiscountPercent}
+                      onChange={(e) => setEditDiscountPercent(e.target.value)}
+                      className="w-28"
+                    />
+                  </div>
+                  <Button type="submit" disabled={savingRuleId === editingRule.id}>
+                    Save and approve
+                  </Button>
+                  <Button type="button" variant="outline" onClick={() => setEditingRule(null)}>
+                    Cancel
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
-
-      {editingRule && (
-        <Card className="max-w-2xl border-primary/40">
-          <CardHeader>
-            <CardTitle>Edit -- {triggerLabel(editingRule.trigger_type)}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSaveEdit} className="flex items-end gap-3">
-              <div className="space-y-2">
-                <Label htmlFor="discount-percent">Discount %</Label>
-                <Input
-                  id="discount-percent"
-                  type="number"
-                  min={0}
-                  max={100}
-                  value={editDiscountPercent}
-                  onChange={(e) => setEditDiscountPercent(e.target.value)}
-                  className="w-28"
-                />
-              </div>
-              <Button type="submit" disabled={savingRuleId === editingRule.id}>
-                Save and approve
-              </Button>
-              <Button type="button" variant="outline" onClick={() => setEditingRule(null)}>
-                Cancel
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }

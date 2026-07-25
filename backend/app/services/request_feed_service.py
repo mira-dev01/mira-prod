@@ -36,6 +36,23 @@ def _room_number(call: CallSession) -> str | None:
     return room_number
 
 
+def _property_name(call: CallSession) -> str | None:
+    # A property-specific exophone call always has property_id set (see
+    # app/voice/pipeline.py's _run_pipeline), so call.property.name is the
+    # source of truth there. A Lead Agent (portfolio-wide) call has no single
+    # property_id even when the guest was clearly asking about one specific
+    # listing -- fall back to the AI summary's own extraction (see
+    # schemas/call_summary.py's BookingSnapshot.property) so this column
+    # isn't blank just because the call took the portfolio-wide number.
+    if call.property_id and call.property:
+        return call.property.name
+    if call.ai_summary:
+        discussed = (call.ai_summary.get("booking_snapshot") or {}).get("property")
+        if discussed:
+            return ", ".join(discussed)
+    return None
+
+
 def _message(call: CallSession, notifications: list[Notification]) -> str:
     # Prefer the most recent Notification's message (what dispatch_technician
     # /escalate_to_host/send_whatsapp/send_photos actually wrote) -- it's the
@@ -61,7 +78,7 @@ def _to_out(call: CallSession) -> ServiceRequestOut:
     return ServiceRequestOut(
         call_session_id=call.id,
         property_id=call.property_id,
-        property_name=call.property.name if call.property_id and call.property else None,
+        property_name=_property_name(call),
         room_number=_room_number(call),
         message=_message(call, notifications),
         urgency=_urgency(call, notifications),
