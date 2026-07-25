@@ -40,7 +40,7 @@ function SettingsPageContent() {
   const searchParams = useSearchParams();
   const initialTab = searchParams.get("tab");
   const [tab, setTab] = useState<SettingsTab>(
-    VALID_TABS.includes(initialTab as SettingsTab) ? (initialTab as SettingsTab) : "workspace"
+    VALID_TABS.includes(initialTab as SettingsTab) ? (initialTab as SettingsTab) : "your account"
   );
 
   function handleTabChange(value: unknown) {
