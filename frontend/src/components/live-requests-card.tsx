@@ -113,12 +113,12 @@ export function LiveRequestsCard({
   const visibleLeads = limit ? escalatedLeads.slice(0, limit) : escalatedLeads;
 
   return (
-    <Card>
+    <Card className="h-full">
       <CardHeader className="flex flex-row items-center justify-between gap-2">
         <CardTitle>Live requests</CardTitle>
         <Badge variant="outline">{escalatedLeads.length} active</Badge>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="flex-1 space-y-3">
         {escalatedLeads.length === 0 && (
           <p className="text-sm text-muted-foreground">Nothing pending — you're all caught up.</p>
         )}
@@ -165,7 +165,7 @@ export function LiveRequestsCard({
       {limit && escalatedLeads.length > limit && (
         <div className="border-t px-4 py-3">
           <Link
-            href="/dashboard/leads?status=open"
+            href="/dashboard/leads?tab=booking&status=open"
             className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
           >
             View all {escalatedLeads.length} live requests

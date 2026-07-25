@@ -176,6 +176,30 @@ export type CallType =
   | "INCOMPLETE"
   | "UNKNOWN";
 
+export type CallSummary = {
+  booking_snapshot: {
+    guest_name: string;
+    intent: string;
+    check_in: string;
+    check_out: string;
+    nights: string;
+    guests: string;
+    property: string[];
+    budget: string;
+    occasion: string;
+    language: string;
+    room_number: string;
+  };
+  conversation_summary: string;
+  outcome: {
+    status: string;
+    reason: string;
+  };
+  host_action: string[];
+  key_details: string[];
+  missing_information: string[];
+};
+
 export type CallSessionOut = {
   id: string;
   exotel_call_id: string | null;
@@ -187,7 +211,7 @@ export type CallSessionOut = {
   duration_minutes: number | null;
   recording_url: string | null;
   transcript: string | null;
-  ai_summary: string | null;
+  ai_summary: CallSummary | null;
   status: string;
   urgency: string | null;
   call_type: CallType;
@@ -233,7 +257,7 @@ export type GuestRecentCall = {
   property_id: string | null;
   property_name: string | null;
   status: string;
-  ai_summary: string | null;
+  ai_summary: CallSummary | null;
   started_at: string | null;
 };
 
@@ -392,6 +416,20 @@ export type LeadOut = {
 };
 
 export type LeadStatus = "open" | "contacted" | "booked" | "closed";
+
+// Backs the Service Requests tab (dashboard/leads/page.tsx, "Live
+// Requests") -- one row per GUEST_SUPPORT-classified CallSession, not a
+// stored table of its own. See backend/app/schemas/service_request.py.
+export type ServiceRequestOut = {
+  call_session_id: string;
+  property_id: string | null;
+  property_name: string | null;
+  room_number: string | null;
+  message: string;
+  urgency: string;
+  created_at: string;
+  dismissed_at: string | null;
+};
 
 export type LeadUpdate = {
   guest_name?: string | null;

@@ -69,6 +69,15 @@ function formatDuration(minutes: number | null): string {
   return `${whole}m ${seconds}s`;
 }
 
+// Compact mode's "Started" column uses this short form (no year, no
+// seconds) instead of toLocaleString()'s full datetime -- the long form's
+// fixed width was the one column forcing Overview's narrow "Recent calls"
+// card into horizontal scroll.
+function formatStartedCompact(iso: string | null): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
 /**
  * One shared row rendering for both the full Calls page and Overview's
  * "Recent calls" card -- previously two independent ad hoc <Table>s with
@@ -144,7 +153,9 @@ export function CallsTable({ calls, compact = false }: { calls: CallSessionOut[]
                   </TableCell>
                 </>
               )}
-              <TableCell>{call.started_at ? new Date(call.started_at).toLocaleString() : "—"}</TableCell>
+              <TableCell>
+                {compact ? formatStartedCompact(call.started_at) : call.started_at ? new Date(call.started_at).toLocaleString() : "—"}
+              </TableCell>
               <TableCell>
                 <ChevronRight className="size-4 text-muted-foreground" />
               </TableCell>

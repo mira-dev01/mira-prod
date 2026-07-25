@@ -112,7 +112,7 @@ export function UnansweredQuestionsCard({
 
   return (
     <>
-      <Card className="min-w-0">
+      <Card className="h-full min-w-0">
         {collapsible ? (
           <button
             type="button"
@@ -147,7 +147,7 @@ export function UnansweredQuestionsCard({
             </CardDescription>
           </CardHeader>
         )}
-        {expanded && <CardContent className="min-w-0">
+        {expanded && <CardContent className="min-w-0 flex-1">
           {gapsLoading ? (
             <Skeleton className="h-32 w-full" />
           ) : !gaps || gaps.length === 0 ? (

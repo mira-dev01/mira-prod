@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronRight, LayoutGrid, Table2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -11,14 +11,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatusChip, type StatusTone } from "@/components/status-chip";
 import { DateRangePicker } from "@/components/date-range-picker";
 import { LeadDetailPanel, LEAD_STATUSES, leadUrgencyTone } from "@/components/lead-detail-panel";
+import { ServiceRequestsTable } from "@/components/service-requests-table";
 import { useAsync } from "@/hooks/use-async";
 import { useDateRange } from "@/hooks/use-date-range";
 import { api, ApiError } from "@/lib/api";
 import { cn, isBrowserTestIdentity } from "@/lib/utils";
 import type { LeadOut, LeadStatus } from "@/lib/types";
+
+const VALID_TABS = ["service", "booking"] as const;
+type RequestsTab = (typeof VALID_TABS)[number];
 
 const STATUSES = LEAD_STATUSES;
 const urgencyTone = leadUrgencyTone;
@@ -239,7 +244,34 @@ function LeadsKanban({
   );
 }
 
-function LeadsPageContent() {
+function ServiceRequestsTabContent() {
+  const { data: requests, loading, refetch } = useAsync(() => api.leads.serviceRequests(), []);
+
+  async function handleDismiss(callSessionIds: string[]) {
+    try {
+      await api.leads.dismissServiceRequests(callSessionIds);
+      toast.success(callSessionIds.length === 1 ? "Request marked as completed" : "Requests marked as completed");
+      refetch();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Failed to update requests");
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        In-stay guest asks (housekeeping, amenities, maintenance) MIRA logged during a call.
+      </p>
+      {loading ? (
+        <Skeleton className="h-64 w-full" />
+      ) : (
+        <ServiceRequestsTable requests={requests ?? []} onDismiss={handleDismiss} />
+      )}
+    </div>
+  );
+}
+
+function BookingRequestsTabContent() {
   const searchParams = useSearchParams();
   const initialStatus = searchParams.get("status") ?? "all";
 
@@ -292,10 +324,7 @@ function LeadsPageContent() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="page-title">Leads</h1>
-          <p className="text-sm text-muted-foreground">Booking enquiries qualified by the Lead Agent</p>
-        </div>
+        <p className="text-sm text-muted-foreground">Booking enquiries qualified by the Lead Agent</p>
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-1 rounded-lg border p-0.5">
             <Button
@@ -381,13 +410,47 @@ function LeadsPageContent() {
   );
 }
 
+function LiveRequestsPageContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialTab = searchParams.get("tab");
+  const [tab, setTab] = useState<RequestsTab>(
+    VALID_TABS.includes(initialTab as RequestsTab) ? (initialTab as RequestsTab) : "service"
+  );
+
+  function handleTabChange(value: unknown) {
+    if (typeof value !== "string" || !VALID_TABS.includes(value as RequestsTab)) return;
+    setTab(value as RequestsTab);
+    router.replace(`/dashboard/leads?tab=${value}`, { scroll: false });
+  }
+
+  return (
+    <div className="space-y-6">
+      <h1 className="page-title">Live Requests</h1>
+
+      <Tabs value={tab} onValueChange={handleTabChange}>
+        <TabsList>
+          <TabsTrigger value="service">Service Requests</TabsTrigger>
+          <TabsTrigger value="booking">Booking Requests</TabsTrigger>
+        </TabsList>
+        <TabsContent value="service" className="pt-4">
+          <ServiceRequestsTabContent />
+        </TabsContent>
+        <TabsContent value="booking" className="pt-4">
+          <BookingRequestsTabContent />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
 export default function LeadsPage() {
   // useSearchParams requires a Suspense boundary -- see Next.js docs (this
   // route is behind auth/client-rendered anyway, but this is the documented
   // pattern to avoid de-opting the whole tree above it to client rendering).
   return (
     <Suspense fallback={<Skeleton className="h-64 w-full" />}>
-      <LeadsPageContent />
+      <LiveRequestsPageContent />
     </Suspense>
   );
 }

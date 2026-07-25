@@ -200,7 +200,9 @@ export default function GuestProfilePage() {
                         <span className="text-sm font-medium">{call.property_name ?? "Portfolio-wide"}</span>
                         <StatusChip status={call.status} tone={callStatusTone[call.status] ?? "neutral"} />
                       </ListRowHeader>
-                      {call.ai_summary && <p className="text-sm text-muted-foreground">{call.ai_summary}</p>}
+                      {call.ai_summary && (
+                        <p className="text-sm text-muted-foreground">{call.ai_summary.conversation_summary}</p>
+                      )}
                       <p className="text-xs text-muted-foreground">
                         {call.started_at ? new Date(call.started_at).toLocaleString() : "—"}
                       </p>
