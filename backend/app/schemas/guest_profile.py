@@ -3,6 +3,8 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
+from app.schemas.call_summary import CallSummary
+
 
 class ConversationSummaryEntry(BaseModel):
     call_session_id: uuid.UUID
@@ -42,7 +44,7 @@ class GuestRecentCall(BaseModel):
     property_id: uuid.UUID | None
     property_name: str | None
     status: str
-    ai_summary: str | None
+    ai_summary: CallSummary | None
     started_at: datetime | None
 
     model_config = {"from_attributes": True}

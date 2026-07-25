@@ -1,6 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,9 +12,18 @@ from app.models.lead import Lead
 from app.models.notification import Notification
 from app.models.user import User
 from app.schemas.lead import LeadOut, LeadUpdate
-from app.services import lead_service
+from app.schemas.service_request import ServiceRequestOut
+from app.services import lead_service, request_feed_service
 
 router = APIRouter(prefix="/leads", tags=["leads"])
+
+
+class BulkDismissRequest(BaseModel):
+    call_session_ids: list[uuid.UUID]
+
+
+class BulkDismissResponse(BaseModel):
+    dismissed: int
 
 
 async def _with_urgency(db: AsyncSession, leads: list[Lead]) -> list[LeadOut]:
@@ -54,6 +64,27 @@ async def list_leads(
 ) -> list[LeadOut]:
     leads = await lead_service.list_leads(db, current_user.id, date_range)
     return await _with_urgency(db, leads)
+
+
+@router.get("/service-requests", response_model=list[ServiceRequestOut])
+async def list_service_requests(
+    include_dismissed: bool = False,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[ServiceRequestOut]:
+    return await request_feed_service.list_service_requests(
+        db, current_user.id, include_dismissed=include_dismissed
+    )
+
+
+@router.post("/service-requests/dismiss", response_model=BulkDismissResponse)
+async def dismiss_service_requests(
+    payload: BulkDismissRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> BulkDismissResponse:
+    dismissed = await request_feed_service.bulk_dismiss(db, current_user.id, payload.call_session_ids)
+    return BulkDismissResponse(dismissed=dismissed)
 
 
 @router.get("/{lead_id}", response_model=LeadOut)

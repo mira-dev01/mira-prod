@@ -435,7 +435,11 @@ export default function PropertiesPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {properties.map((property) => (
-            <Card key={property.id} className="overflow-hidden">
+            <Card
+              key={property.id}
+              className="cursor-pointer overflow-hidden pt-0"
+              onClick={() => openEdit(property)}
+            >
               <PropertyPhotoCarousel photos={property.photos} name={property.name} />
               <CardHeader>
                 <CardTitle className="flex items-center justify-between text-base">
@@ -447,7 +451,7 @@ export default function PropertiesPage() {
                 <p className="text-muted-foreground">{property.city ?? "No city set"}</p>
                 <p>₹{property.base_price.toLocaleString("en-IN")} / night · {property.max_guests} guests</p>
                 {property.exophone && <p className="text-muted-foreground">{property.exophone}</p>}
-                <div className="flex items-center gap-2 pt-2">
+                <div className="flex items-center gap-2 pt-2" onClick={(e) => e.stopPropagation()}>
                   <Button
                     size="sm"
                     className="min-w-0 flex-1"

@@ -11,7 +11,7 @@ function LightboxImage({ src, alt }: { src: string; alt: string }) {
   const [loaded, setLoaded] = useState(false);
   return (
     <>
-      {!loaded && <div className="absolute size-8 animate-pulse rounded-full bg-white/10" />}
+      {!loaded && <div className="absolute size-8 animate-pulse rounded-full bg-foreground/10" />}
       <img
         src={src}
         alt={alt}
@@ -74,7 +74,7 @@ export function ImageLightbox({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         showCloseButton
-        className="flex h-[90vh] w-full max-w-6xl flex-col gap-3 border-none bg-black/95 p-0 text-white shadow-none ring-0 sm:max-w-6xl [&_button[data-slot=dialog-close]]:text-white [&_button[data-slot=dialog-close]]:hover:bg-white/10"
+        className="flex h-[90vh] w-full max-w-6xl flex-col gap-3 border border-white/40 bg-white/30 p-0 text-foreground shadow-xl ring-0 backdrop-blur-2xl sm:max-w-6xl dark:border-white/10 dark:bg-black/30 [&_button[data-slot=dialog-close]]:text-foreground [&_button[data-slot=dialog-close]]:hover:bg-foreground/10"
       >
         <div className="flex min-h-0 flex-1 items-center justify-center px-4 pt-10">
           <div className="relative flex h-full w-full items-center justify-center">
@@ -86,7 +86,7 @@ export function ImageLightbox({
                   type="button"
                   aria-label="Previous photo"
                   onClick={goPrev}
-                  className="absolute left-0 top-1/2 z-10 -translate-y-1/2 rounded-full bg-black/40 p-2 text-white hover:bg-black/60"
+                  className="absolute left-0 top-1/2 z-10 -translate-y-1/2 rounded-full border border-white/40 bg-white/30 p-2 text-foreground backdrop-blur-md hover:bg-white/50 dark:border-white/10 dark:bg-black/30 dark:hover:bg-black/50"
                 >
                   <ChevronLeft className="size-6" />
                 </button>
@@ -94,7 +94,7 @@ export function ImageLightbox({
                   type="button"
                   aria-label="Next photo"
                   onClick={goNext}
-                  className="absolute right-0 top-1/2 z-10 -translate-y-1/2 rounded-full bg-black/40 p-2 text-white hover:bg-black/60"
+                  className="absolute right-0 top-1/2 z-10 -translate-y-1/2 rounded-full border border-white/40 bg-white/30 p-2 text-foreground backdrop-blur-md hover:bg-white/50 dark:border-white/10 dark:bg-black/30 dark:hover:bg-black/50"
                 >
                   <ChevronRight className="size-6" />
                 </button>
@@ -114,7 +114,7 @@ export function ImageLightbox({
                   onClick={() => onIndexChange(i)}
                   className={cn(
                     "size-12 shrink-0 overflow-hidden rounded-md ring-2 transition-opacity",
-                    i === index ? "opacity-100 ring-white" : "opacity-50 ring-transparent hover:opacity-80"
+                    i === index ? "opacity-100 ring-foreground" : "opacity-50 ring-transparent hover:opacity-80"
                   )}
                 >
                   <img src={photo} alt="" className="h-full w-full object-cover" />
@@ -124,7 +124,7 @@ export function ImageLightbox({
           </div>
         )}
 
-        <p className="pb-2 text-center text-xs text-white/60">
+        <p className="pb-2 text-center text-xs text-muted-foreground">
           {index + 1} / {photos.length}
         </p>
       </DialogContent>

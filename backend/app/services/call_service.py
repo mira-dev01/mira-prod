@@ -9,6 +9,7 @@ from app.models.guest_profile import GuestProfile
 from app.models.property import Property
 from app.models.user import User
 from app.schemas.call_classification import ClassificationResult
+from app.schemas.call_summary import CallSummary
 
 # Placeholder caller identity for the dashboard's "test in browser" feature
 # (no real phone number exists for a WebRTC test call). The frontend renders
@@ -148,6 +149,21 @@ async def set_call_classification(
     await db.commit()
 
 
+async def set_call_summary(db: AsyncSession, call_session_id: uuid.UUID | None, summary: CallSummary) -> None:
+    """Persists the end-of-call structured summary (app/services/
+    call_summary_service.py), called from on_pipeline_finished alongside
+    set_call_classification. No-op if the call session can't be resolved --
+    mirrors set_call_classification's own None-tolerant shape."""
+    if call_session_id is None:
+        return
+    session = await db.get(CallSession, call_session_id)
+    if session is None:
+        return
+
+    session.ai_summary = summary.model_dump()
+    await db.commit()
+
+
 def _map_exotel_status(exotel_status: str) -> str:
     completed = {"completed", "answered"}
     failed = {"failed", "busy", "no-answer", "canceled"}
@@ -163,7 +179,6 @@ async def finalize_call_session(
     db: AsyncSession,
     call_session_id: uuid.UUID,
     transcript: str | None,
-    ai_summary: str | None,
     status: str = "completed",
 ) -> CallSession | None:
     session = await db.get(CallSession, call_session_id)
@@ -172,8 +187,6 @@ async def finalize_call_session(
 
     if transcript is not None:
         session.transcript = transcript
-    if ai_summary is not None:
-        session.ai_summary = ai_summary
     session.status = status
     session.ended_at = datetime.now(timezone.utc)
 

@@ -3,6 +3,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
+from app.schemas.call_summary import CallSummary
 from app.schemas.notification import NotificationOut
 
 
@@ -21,7 +22,9 @@ class CallSessionOut(BaseModel):
     duration_minutes: float | None
     recording_url: str | None
     transcript: str | None
-    ai_summary: str | None
+    # Structured summary (see schemas/call_summary.py) -- NULL until
+    # call_summary_service.summarize_call runs via on_pipeline_finished.
+    ai_summary: CallSummary | None
     status: str
     urgency: str | None
     # Set by call_classification_service via on_pipeline_finished once the

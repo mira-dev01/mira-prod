@@ -31,9 +31,10 @@ function statusTone(status: string): "live" | "pending" | "destructive" {
   return "pending";
 }
 
-// Moved out of its own /dashboard/ai-training page into a Settings tab --
-// same host-configuration category as the rest of Settings. Content
-// unchanged from the original page, minus the page-level <h1> header.
+// Rendered on the standalone AI Training page under Properties
+// (app/dashboard/properties/ai-training/page.tsx), alongside the merged-in
+// Voice AI personalization form. Content unchanged from its earlier life as
+// a Settings tab, minus the page-level <h1> header.
 export function AiTrainingSection() {
   const { user, refreshUser } = useAuth();
   const [policyText, setPolicyText] = useState("");

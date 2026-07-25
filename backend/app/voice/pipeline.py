@@ -54,7 +54,14 @@ from app.prompts.system_prompt import (
     lead_first_message_for,
 )
 from app.schemas.call_classification import QUALIFIED_CALL_TYPES
-from app.services import call_classification_service, call_service, faq_service, guest_memory_service, lead_service
+from app.services import (
+    call_classification_service,
+    call_service,
+    call_summary_service,
+    faq_service,
+    guest_memory_service,
+    lead_service,
+)
 from app.voice.conversation_state import ConversationState
 from app.voice.escalation_phrase_guard import EscalationPhraseGuardProcessor
 from app.voice.language_sync import DEFAULT_TTS_LANGUAGE, LanguageSyncProcessor
@@ -531,9 +538,7 @@ async def _run_pipeline_inner(
                 and message.get("content") is not None  # skip tool-call turns (content=null)
             )
             async with AsyncSessionLocal() as finalize_db:
-                finalized_session = await call_service.finalize_call_session(
-                    finalize_db, call_session_id, transcript, None
-                )
+                finalized_session = await call_service.finalize_call_session(finalize_db, call_session_id, transcript)
 
                 duration_seconds = None
                 if finalized_session is not None and finalized_session.started_at and finalized_session.ended_at:
@@ -546,6 +551,13 @@ async def _run_pipeline_inner(
                 # them, it only delays how quickly the row settles.
                 classification = await call_classification_service.classify_call(transcript, duration_seconds)
                 await call_service.set_call_classification(finalize_db, call_session_id, classification)
+
+                # Same one-shot-LLM-after-call-ends shape as classification
+                # above, and just as safe to await inline -- summarize_call
+                # never raises (see call_summary_service.py), so this can't
+                # itself crash on_pipeline_finished.
+                summary = await call_summary_service.summarize_call(transcript, duration_seconds)
+                await call_service.set_call_summary(finalize_db, call_session_id, summary)
 
                 if any(m.get("role") == "user" for m in context.messages):
                     # Backfill the real caller's phone (from Exotel) and the
