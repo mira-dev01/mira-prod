@@ -16,7 +16,14 @@ def test_build_llm_defaults_to_groq_with_low_reasoning_effort(monkeypatch):
 
     assert isinstance(llm, GroqLLMService)
     assert llm._settings.model == "openai/gpt-oss-120b"
-    assert llm._settings.extra == {"reasoning_effort": "low"}
+    # reasoning_format="hidden" is required on Groq's gpt-oss models --
+    # without it, Groq embeds raw chain-of-thought directly in the reply
+    # content itself (confirmed live: a guest heard the model's internal
+    # reasoning spoken as part of its answer). Passed via extra_body, not as
+    # a bare kwarg -- unlike reasoning_effort, it isn't part of the OpenAI/Groq
+    # SDK's typed create() signature (confirmed live: a bare kwarg it doesn't
+    # recognize broke every single completion call for an entire test call).
+    assert llm._settings.extra == {"reasoning_effort": "low", "extra_body": {"reasoning_format": "hidden"}}
 
 
 def test_build_llm_skips_groq_model_marked_down_in_health_check(monkeypatch):

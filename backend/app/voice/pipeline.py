@@ -161,7 +161,20 @@ class _FallbackGroqLLMService(GroqLLMService):
 
         for model in ordered_models:
             self._settings.model = model
-            self._settings.extra = {"reasoning_effort": "low"} if "gpt-oss" in model else {}
+            # reasoning_format isn't a typed parameter on the OpenAI/Groq SDK's
+            # AsyncCompletions.create() -- passing it as a bare kwarg (like
+            # reasoning_effort, which IS typed) raises "unexpected keyword
+            # argument" on every single completion call, confirmed live (the
+            # guest got no response at all, repeatedly, for the whole call).
+            # extra_body is the SDK's own sanctioned escape hatch for
+            # provider-specific fields outside its typed surface -- it merges
+            # into the raw outgoing JSON body instead of being validated as a
+            # named parameter.
+            self._settings.extra = (
+                {"reasoning_effort": "low", "extra_body": {"reasoning_format": "hidden"}}
+                if "gpt-oss" in model
+                else {}
+            )
             try:
                 return await super().get_chat_completions(context)
             except RateLimitError as e:
@@ -259,10 +272,25 @@ def _build_llm():
         return _build_openrouter_llm()
 
     model = _pick_groq_model()
-    # reasoning_effort is gpt-oss-specific -- other models in the fallback
-    # chain (e.g. llama-3.1-8b-instant) reject it outright with a 400, which
-    # would break the exact call this fallback exists to save.
-    extra = {"reasoning_effort": "low"} if "gpt-oss" in model else {}
+    # reasoning_effort/reasoning_format are gpt-oss-specific -- other models
+    # in the fallback chain (e.g. llama-3.1-8b-instant) reject them outright
+    # with a 400, which would break the exact call this fallback exists to
+    # save. reasoning_format="hidden" is required, not cosmetic: without it,
+    # Groq's gpt-oss models default to embedding their raw chain-of-thought
+    # directly in the same content field as the actual reply (confirmed
+    # live -- guest heard "User wants to confirm booking. We need to
+    # finalize..." spoken as part of the response), since pipecat's
+    # GroqLLMService has no separate handling for a reasoning channel and
+    # just speaks whatever comes back in content. It must be passed via
+    # extra_body, not as a bare kwarg -- unlike reasoning_effort, it isn't a
+    # parameter the OpenAI/Groq SDK's create() actually recognizes, and a
+    # bare kwarg it doesn't recognize raises "unexpected keyword argument" on
+    # every single completion call (confirmed live -- this broke ALL
+    # responses for an entire call, not just leaked reasoning text).
+    # extra_body is the SDK's own sanctioned escape hatch for exactly this.
+    extra = (
+        {"reasoning_effort": "low", "extra_body": {"reasoning_format": "hidden"}} if "gpt-oss" in model else {}
+    )
     return _FallbackGroqLLMService(
         api_key=settings.groq_api_key,
         settings=GroqLLMService.Settings(model=model, extra=extra),
@@ -330,6 +358,7 @@ async def _run_pipeline(
             caller_number=caller_number,
             property_name=property_name,
             guest_profile_id=guest_profile_id,
+            guest_known_name=guest_known_name,
             ringing_audio_task=ringing_audio_task,
         )
     finally:
@@ -357,6 +386,7 @@ async def _run_pipeline_inner(
     caller_number: str | None = None,
     property_name: str | None = None,
     guest_profile_id: uuid.UUID | None = None,
+    guest_known_name: str | None = None,
     ringing_audio_task: asyncio.Task | None = None,
 ) -> None:
     stt = _ReconnectingSarvamSTTService(

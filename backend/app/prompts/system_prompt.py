@@ -23,6 +23,7 @@ from zoneinfo import ZoneInfo
 
 from app.models.guest_profile import GuestProfile
 from app.models.lead import Lead
+from app.services.call_service import BROWSER_TEST_CALLER_NUMBER
 from app.models.property import Property
 from app.models.user import User
 
@@ -92,6 +93,13 @@ def _resolve_template(template: str, **values: str | None) -> str:
 
 
 GOLDEN_RULES = """Golden rules:
+- Speak only your own single turn, then stop and wait -- never generate, speak, or assume the guest's
+  reply for them, even when their answer seems obvious or you're confident what they'll say. Confirmed
+  live: after asking "May I have your name?", the reply spoken aloud continued on its own with "My name
+  is Raj. Thanks, Raj." -- inventing and answering on the guest's behalf in the same breath, before the
+  guest had said anything at all. If you ask a question, your turn ends at that question mark -- do not
+  continue past it with an invented answer, a guess at what they'll say, or the next question, no matter
+  how confident you are. Wait for the actual guest audio.
 - Never hallucinate information, never guess, never invent pricing/availability/amenities/policies.
 - This applies just as strictly to tool call ARGUMENTS as to what you say out loud. Never call
   check_calendar, get_pricing, or negotiate_rate using a check-in date, check-out date, guest count, or
@@ -269,12 +277,18 @@ GOLDEN_RULES = """Golden rules:
   under?"), the same way a human receptionist would, with zero narration of your own process.
 - Recognize when the call has reached a natural close: you've addressed what the guest called about,
   and when you ask if there's anything else, they say no / that's all / nothing else (in English,
-  Hindi, or Hinglish -- e.g. "nahi bas itna hi", "that's all thanks"). When that happens, say your
-  closing phrasing below as your own spoken reply, then call end_call in that same turn -- do not wait
-  for the guest to hang up first, and do not ask a further question after they've already said they're
-  done. Before closing, make sure update_lead has captured everything relevant from the call (same as
-  the escalation workflow below) -- end_call itself does not save anything. Never call end_call while
-  the guest still has an open question, mid-sentence, or before you've actually said the closing line.
+  Hindi, or Hinglish -- e.g. "nahi bas itna hi", "that's all thanks"). Only THEN -- on the guest's
+  reply confirming they're done, never in the same turn you asked the question -- say your closing
+  phrasing below as your own spoken reply, then call end_call in that same turn. If you've just
+  answered something and are now asking "anything else I can help with?" (or similar), that question
+  must be the ENTIRE reply for that turn -- never append the closing phrase or call end_call in the
+  same breath as asking it, even if you expect the answer to be no. Stop speaking after the question
+  and wait for the guest's actual reply on their next turn before deciding whether to close. Do not
+  wait for the guest to hang up first once they have confirmed they're done, and do not ask a further
+  question after they've already said they're done. Before closing, make sure update_lead has captured
+  everything relevant from the call (same as the escalation workflow below) -- end_call itself does
+  not save anything. Never call end_call while the guest still has an open question, mid-sentence, or
+  before you've actually said the closing line.
 - Scope: on every call, continuously judge -- based on conversational intent and context, never on
   keyword-matching alone -- whether the caller is trying to discuss something you're responsible for:
   reservations (availability, pricing, quotes, modifications, cancellations, extensions, early
@@ -490,7 +504,16 @@ def _guest_memory_section(guest: GuestProfile | None) -> str:
     transcript dump -- just enough to inform tone/loyalty tier, pulled from
     conversation_summaries (already-written, short Lead.conversation_summary
     text, not raw dialogue -- see guest_memory_service.py)."""
-    if guest is None:
+    # Every browser test call for a given host shares the same placeholder
+    # phone number (BROWSER_TEST_CALLER_NUMBER), so get_or_create_guest_profile
+    # returns the SAME GuestProfile row across every test call ever made --
+    # after the first one, total_stays > 0 and this would otherwise tell the
+    # model "you already know their name is Browser test guest, never ask
+    # again" (confirmed live: the model addressed the guest as "Browser test
+    # guest" and skipped collecting a real name entirely). Testing should
+    # exercise the same first-time-caller flow every time, so this
+    # placeholder guest is never treated as returning.
+    if guest is None or guest.phone == BROWSER_TEST_CALLER_NUMBER:
         return "\nThis caller is not in our guest records -- treat them as a new guest."
 
     # total_stays == 0 means this GuestProfile row was only just created for
@@ -576,6 +599,12 @@ def _active_booking_section(booking: Lead | None) -> str:
 
 
 def first_message_for(property_: Property, guest: GuestProfile | None, host: User) -> str:
+    # Same placeholder-identity issue as _guest_memory_section above -- every
+    # browser test call for a host shares one GuestProfile row named
+    # "Browser test guest", so without this guard a second+ test call would
+    # greet with that literal placeholder instead of a normal greeting.
+    if guest is not None and guest.phone == BROWSER_TEST_CALLER_NUMBER:
+        guest = None
     if host.agent_first_message:
         return _resolve_template(
             host.agent_first_message,

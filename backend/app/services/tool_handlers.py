@@ -692,21 +692,34 @@ async def handle_search_faq(
             property_id = None
     property_id = property_id or default_property_id
 
+    parts: list[str] = []
+
     entries = await faq_service.search_faq_entries(db, host_user_id, args.query, property_id)
     if entries:
-        return " | ".join(f"{entry.question}: {entry.answer}" for entry in entries)
-
-    if property_id is not None:
+        parts.append(" | ".join(f"{entry.question}: {entry.answer}" for entry in entries))
+    elif property_id is not None:
         legacy = await faq_service.search_legacy_property_faq(db, property_id, args.query)
         if legacy:
-            return " | ".join(f"{item['question']}: {item['answer']}" for item in legacy)
+            parts.append(" | ".join(f"{item['question']}: {item['answer']}" for item in legacy))
 
+    if property_id is not None:
         property_ = await _get_property(db, str(property_id))
         if property_ is not None:
-            # Every fact on file for this property, handed to the model to
-            # read the actual answer out of -- see full_property_context's
-            # docstring for why this replaced per-field keyword matching.
-            return f"{property_.name}: {faq_service.full_property_context(property_)}"
+            # Always included, even when a verified FaqEntry already matched
+            # above -- a verified entry can match the query's *wording*
+            # (trigram similarity) without actually covering what the guest
+            # asked. Confirmed live: "is it on the ground floor" got "I
+            # don't have that specific detail" even though the property's
+            # own description states the floor explicitly, because a
+            # loosely-matching verified entry short-circuited before this
+            # ever ran. Handing the model everything on file alongside
+            # whatever specific entry matched lets it pick the real answer
+            # itself rather than trusting a similarity score to have judged
+            # relevance correctly -- see full_property_context's docstring.
+            parts.append(f"{property_.name}: {faq_service.full_property_context(property_)}")
+
+    if parts:
+        return " | ".join(parts)
 
     # No verified answer anywhere -- log the gap for the FAQ Learning Engine
     # (app/api/v1/faq.py's /faq/gaps endpoints) so hosts can see frequently
