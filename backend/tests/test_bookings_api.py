@@ -41,10 +41,9 @@ async def test_cancel_booking_not_found(client, auth_headers):
 
 
 async def test_cancel_booking_from_other_host_forbidden(test_property, client, db_session):
-    from app.auth.security import create_access_token
     from app.models.user import User
 
-    other_user = User(email="other-host@example.com", hashed_password="x", name="Other Host")
+    other_user = User(email="other-host@example.com", name="Other Host")
     db_session.add(other_user)
     await db_session.commit()
     await db_session.refresh(other_user)
@@ -60,8 +59,7 @@ async def test_cancel_booking_from_other_host_forbidden(test_property, client, d
     await db_session.commit()
     await db_session.refresh(booking)
 
-    other_token = create_access_token(other_user.id)
     resp = await client.delete(
-        f"/api/v1/bookings/{booking.id}", headers={"Authorization": f"Bearer {other_token}"}
+        f"/api/v1/bookings/{booking.id}", headers={"Authorization": f"Bearer {other_user.id}"}
     )
     assert resp.status_code == 404

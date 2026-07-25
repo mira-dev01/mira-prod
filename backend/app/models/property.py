@@ -49,6 +49,13 @@ class Property(UUIDPkMixin, TimestampMixin, Base):
     check_out_time: Mapped[str] = mapped_column(String(8), default="11:00", server_default="11:00")
     max_guests: Mapped[int] = mapped_column(default=4, server_default="4")
 
+    # Airbnb's own minimum-stay setting for this listing -- not enforced
+    # anywhere before this column existed, so check_calendar could confirm
+    # "available" for a 1-night request even when Airbnb itself requires 2+
+    # (confirmed live against a host's actual listing). Default 1 = no
+    # constraint, matching every property that predates this field.
+    minimum_nights: Mapped[int] = mapped_column(default=1, server_default="1")
+
     # Property Memory (memory-architecture-plan.md section 5) -- the one
     # genuinely new piece beyond consolidating existing fields (house_rules/
     # neighborhood_info/amenities/faq already cover everything else).

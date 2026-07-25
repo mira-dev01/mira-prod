@@ -190,6 +190,14 @@ async def handle_check_calendar(
     if args.num_guests is not None and args.num_guests > property_.max_guests:
         return f"{property_.name} sleeps up to {property_.max_guests} guests, which is fewer than {args.num_guests}."
 
+    nights_requested = (args.check_out - args.check_in).days
+    if nights_requested < property_.minimum_nights:
+        return (
+            f"{property_.name} has a minimum stay of {property_.minimum_nights} nights -- "
+            f"{nights_requested} night{'s' if nights_requested != 1 else ''} is below that. "
+            "Would a longer stay work?"
+        )
+
     if host_user_id is not None:
         await lead_service.backfill_lead_from_engagement(
             db,

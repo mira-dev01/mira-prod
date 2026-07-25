@@ -129,8 +129,8 @@ function SettingsPageContent() {
     }
   }
 
-  function handleTestLeadAgent() {
-    const token = getToken();
+  async function handleTestLeadAgent() {
+    const token = await getToken();
     if (!token) {
       toast.error("Not logged in");
       return;

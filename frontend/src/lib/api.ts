@@ -19,8 +19,8 @@ import type {
   GuestProfileUpdate,
   HostDiscountRuleOut,
   HostDiscountRuleUpdate,
-  HostRegistration,
-  HostRegistrationResponse,
+  HostOnboarding,
+  HostOnboardingResponse,
   LeadOut,
   LeadUpdate,
   NotificationOut,
@@ -38,19 +38,21 @@ import type {
 } from "@/lib/types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
-const TOKEN_KEY = "mira_token";
 
-export function getToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(TOKEN_KEY);
+// Clerk's session token is only obtainable from its React hooks
+// (useAuth().getToken()), not from a plain module-level function -- this is
+// how AuthProvider (lib/auth-context.tsx) hands that async getter down to
+// every request/uploadFiles/uploadAudio call below without threading it
+// through every single api.* call site.
+let tokenGetter: (() => Promise<string | null>) | null = null;
+
+export function setTokenGetter(fn: (() => Promise<string | null>) | null): void {
+  tokenGetter = fn;
 }
 
-export function setToken(token: string): void {
-  window.localStorage.setItem(TOKEN_KEY, token);
-}
-
-export function clearToken(): void {
-  window.localStorage.removeItem(TOKEN_KEY);
+export async function getToken(): Promise<string | null> {
+  if (!tokenGetter) return null;
+  return tokenGetter();
 }
 
 export class ApiError extends Error {
@@ -62,7 +64,7 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const token = getToken();
+  const token = await getToken();
   const headers = new Headers(options.headers);
   headers.set("Content-Type", "application/json");
   if (token) headers.set("Authorization", `Bearer ${token}`);
@@ -94,7 +96,7 @@ function buildQuery(params: Record<string, string | number | boolean | undefined
 }
 
 async function uploadFiles<T>(path: string, files: File[], fieldName: string = "files"): Promise<T> {
-  const token = getToken();
+  const token = await getToken();
   const headers = new Headers();
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
@@ -121,7 +123,7 @@ async function uploadFiles<T>(path: string, files: File[], fieldName: string = "
 }
 
 async function uploadAudio<T>(path: string, audio: Blob, filename: string): Promise<T> {
-  const token = getToken();
+  const token = await getToken();
   const headers = new Headers();
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
@@ -146,23 +148,13 @@ async function uploadAudio<T>(path: string, audio: Blob, filename: string): Prom
 
 export const api = {
   auth: {
-    login: (email: string, password: string) =>
-      request<{ access_token: string; token_type: string }>("/auth/login", {
-        method: "POST",
-        body: JSON.stringify({ email, password }),
-      }),
-    register: (email: string, password: string, name?: string, phone?: string) =>
-      request<{ access_token: string; token_type: string }>("/auth/register", {
-        method: "POST",
-        body: JSON.stringify({ email, password, name, phone }),
-      }),
-    registerHost: (data: HostRegistration) =>
-      request<HostRegistrationResponse>("/auth/register-host", {
+    onboard: (data: HostOnboarding) =>
+      request<HostOnboardingResponse>("/auth/onboarding", {
         method: "POST",
         body: JSON.stringify(data),
       }),
     // Unauthenticated -- used by the "Add your voice agent's intro"
-    // registration step, before an account (and token) exists.
+    // onboarding step.
     transcribeRegistrationIntro: (audio: Blob) =>
       uploadAudio<{ text: string }>("/auth/register-host/transcribe-intro", audio, "intro.webm"),
     me: () => request<UserOut>("/auth/me"),

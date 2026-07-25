@@ -64,6 +64,19 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 1440
 
+    # Clerk migration (see the Clerk Organizations plan in project_state.md).
+    # Not yet read by get_current_user -- added ahead of the actual cutover
+    # so config plumbing is ready the moment real keys are available.
+    # clerk_secret_key verifies session JWTs server-side; clerk_publishable_key
+    # is frontend-only but kept here too for completeness/single source of
+    # truth. clerk_dev_org_id is the one Clerk Organization whose members see
+    # internal-only dashboard features (e.g. "Talk to Mira") -- compared
+    # directly against a verified token's org_id claim, no extra Clerk API
+    # call needed per request.
+    clerk_secret_key: str | None = None
+    clerk_publishable_key: str | None = None
+    clerk_dev_org_id: str | None = None
+
     llm_provider: Literal["groq", "anthropic", "openrouter"] = "groq"
     groq_api_key: str | None = None
     # llama-3.3-70b-versatile was deprecated by Groq on 2026-06-17;

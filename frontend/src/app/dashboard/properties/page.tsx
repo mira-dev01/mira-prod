@@ -22,6 +22,7 @@ import { PropertyPhotosManager } from "@/components/property-photos-manager";
 import { TalkToMiraDialog } from "@/components/talk-to-mira-dialog";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError, API_BASE_URL, getToken } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 import type { AirbnbUrlImportStatus, PropertyCreate, PropertyOut } from "@/lib/types";
 
 const emptyForm: PropertyCreate = {
@@ -39,6 +40,7 @@ const emptyForm: PropertyCreate = {
   check_in_time: "14:00",
   check_out_time: "11:00",
   max_guests: 4,
+  minimum_nights: 1,
   exact_airbnb_pricing: false,
 };
 
@@ -74,11 +76,13 @@ function propertyToForm(property: PropertyOut): PropertyCreate {
     check_in_time: property.check_in_time,
     check_out_time: property.check_out_time,
     max_guests: property.max_guests,
+    minimum_nights: property.minimum_nights,
     exact_airbnb_pricing: property.exact_airbnb_pricing,
   };
 }
 
 export default function PropertiesPage() {
+  const { isInternalOrg } = useAuth();
   const { data: properties, loading, refetch } = useAsync(() => api.properties.list(), []);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<PropertyCreate>(emptyForm);
@@ -163,8 +167,8 @@ export default function PropertiesPage() {
     }
   }
 
-  function handleTestInBrowser(id: string) {
-    const token = getToken();
+  async function handleTestInBrowser(id: string) {
+    const token = await getToken();
     if (!token) {
       toast.error("Not logged in");
       return;
@@ -353,10 +357,14 @@ export default function PropertiesPage() {
               </div>
             )}
           </RightPanel>
-          <Button variant="secondary" onClick={() => setTalkOpen(true)}>
-            Test full portfolio in browser
-          </Button>
-          <TalkToMiraDialog open={talkOpen} onOpenChange={setTalkOpen} />
+          {isInternalOrg && (
+            <>
+              <Button variant="secondary" onClick={() => setTalkOpen(true)}>
+                Test full portfolio in browser
+              </Button>
+              <TalkToMiraDialog open={talkOpen} onOpenChange={setTalkOpen} />
+            </>
+          )}
           <Button onClick={() => setOpen(true)}>Add property</Button>
           <RightPanel
             open={open}
@@ -442,7 +450,9 @@ export default function PropertiesPage() {
                       }
                     />
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => handleTestInBrowser(property.id)}>Test</DropdownMenuItem>
+                      {isInternalOrg && (
+                        <DropdownMenuItem onClick={() => handleTestInBrowser(property.id)}>Test</DropdownMenuItem>
+                      )}
                       <DropdownMenuItem onClick={() => openEdit(property)}>Edit</DropdownMenuItem>
                       <DropdownMenuItem
                         disabled={!property.ical_url || syncingId === property.id}

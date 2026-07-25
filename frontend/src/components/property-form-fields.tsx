@@ -124,6 +124,16 @@ export function PropertyFormFields({
           />
         </div>
         <div className="space-y-2">
+          <Label htmlFor="minimum_nights">Minimum stay (nights)</Label>
+          <Input
+            id="minimum_nights"
+            type="number"
+            min={1}
+            value={form.minimum_nights ?? 1}
+            onChange={(e) => onChange({ ...form, minimum_nights: Number(e.target.value) })}
+          />
+        </div>
+        <div className="space-y-2">
           <Label htmlFor="ical_url">iCal URL</Label>
           <Input
             id="ical_url"

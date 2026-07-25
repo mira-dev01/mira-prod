@@ -1,8 +1,35 @@
+import ipaddress
 import uuid
 from datetime import datetime
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, Field, field_validator
+
+
+def _validate_ical_url(value: str | None) -> str | None:
+    """Blocks the obvious SSRF case: a host pointing ical_url at an internal/
+    cloud-metadata address. fetch_ical (app/integrations/ical_client.py) has
+    no destination checking of its own, and is re-run on every property
+    automatically by the unconditional sync cron -- reject here, once, at
+    the point the host actually sets the value, rather than at fetch time."""
+    if not value:
+        return value
+    parts = urlsplit(value)
+    if parts.scheme not in ("http", "https"):
+        raise ValueError("ical_url must be an http:// or https:// URL")
+    host = parts.hostname
+    if not host:
+        raise ValueError("ical_url must include a host")
+    if host == "localhost" or host.endswith(".local"):
+        raise ValueError("ical_url may not point to a local/internal host")
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        ip = None
+    if ip is not None and (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast):
+        raise ValueError("ical_url may not point to a private/internal address")
+    return value
 
 
 class FAQItem(BaseModel):
@@ -32,6 +59,7 @@ class PropertyCreate(BaseModel):
     check_in_time: str = "14:00"
     check_out_time: str = "11:00"
     max_guests: int = 4
+    minimum_nights: int = Field(default=1, ge=1)
 
     @field_validator("exophone")
     @classmethod
@@ -40,6 +68,11 @@ class PropertyCreate(BaseModel):
         # there (and would collide across properties), so treat "not set"
         # as None rather than "".
         return value or None
+
+    @field_validator("ical_url")
+    @classmethod
+    def _check_ical_url(cls, value: str | None) -> str | None:
+        return _validate_ical_url(value)
 
 
 class PropertyUpdate(BaseModel):
@@ -58,12 +91,18 @@ class PropertyUpdate(BaseModel):
     check_in_time: str | None = None
     check_out_time: str | None = None
     max_guests: int | None = None
+    minimum_nights: int | None = Field(default=None, ge=1)
     exact_airbnb_pricing: bool | None = None
 
     @field_validator("exophone")
     @classmethod
     def _blank_exophone_is_none(cls, value: str | None) -> str | None:
         return value or None
+
+    @field_validator("ical_url")
+    @classmethod
+    def _check_ical_url(cls, value: str | None) -> str | None:
+        return _validate_ical_url(value)
 
 
 class PropertyGalleryOut(BaseModel):
@@ -96,6 +135,7 @@ class PropertyOut(BaseModel):
     check_in_time: str
     check_out_time: str
     max_guests: int
+    minimum_nights: int
     airbnb_listing_id: str | None
     smart_price_estimate: float | None
     smart_price_sample_size: int

@@ -18,8 +18,8 @@ const PORTFOLIO_VALUE = "__portfolio__";
  * the one shared entry point for both, so the sidebar's global "Talk to
  * Mira" and the Properties page always drive the exact same call flow.
  */
-function openVoiceTest(propertyId: string | null) {
-  const token = getToken();
+async function openVoiceTest(propertyId: string | null) {
+  const token = await getToken();
   if (!token) {
     toast.error("Not logged in");
     return;

@@ -1,22 +1,21 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { api, clearToken, getToken, setToken } from "@/lib/api";
-import type { HostRegistration, UserOut } from "@/lib/types";
+import { useAuth as useClerkAuth, useClerk, useOrganization, useOrganizationList } from "@clerk/nextjs";
+import { api, setTokenGetter } from "@/lib/api";
+import type { UserOut } from "@/lib/types";
 
-// Sessionstorage key the dashboard reads on first load after a host
-// registration to resume polling the Bright Data scrape triggered during
-// signup (see app/api/v1/auth.py register_host -- registration never blocks
-// on that scrape, so the poll has to continue somewhere after the redirect).
+// Sessionstorage key the dashboard reads on first load after onboarding to
+// resume polling the Bright Data scrape triggered by POST /auth/onboarding
+// (that call never blocks on the scrape, so the poll has to continue
+// somewhere after the redirect).
 export const PENDING_IMPORT_KEY = "mira_pending_import";
 
 type AuthContextValue = {
   user: UserOut | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, name?: string, phone?: string) => Promise<void>;
-  registerHost: (data: HostRegistration) => Promise<void>;
+  isInternalOrg: boolean;
   logout: () => void;
   refreshUser: () => Promise<void>;
 };
@@ -24,69 +23,76 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const { isLoaded, isSignedIn, getToken } = useClerkAuth();
+  const { signOut } = useClerk();
+  const { organization } = useOrganization();
+  const { isLoaded: orgListLoaded, setActive, userMemberships } = useOrganizationList({
+    userMemberships: true,
+  });
   const [user, setUser] = useState<UserOut | null>(null);
-  const [loading, setLoading] = useState(() => getToken() !== null);
+  const [profileLoading, setProfileLoading] = useState(true);
   const router = useRouter();
+  const autoActivatedRef = useRef(false);
 
   useEffect(() => {
-    if (!getToken()) return;
+    setTokenGetter(isSignedIn ? getToken : null);
+  }, [isSignedIn, getToken]);
+
+  // Being a member of an org isn't the same as it being *active* in the
+  // session -- the org_id claim the backend checks (see get_current_user's
+  // is_internal_org) only appears on the token once an org is active, and
+  // Clerk never does that automatically. Prefer the Mira Dev org if the user
+  // is a member of it (internal team members may also belong to a personal
+  // host org from earlier testing) -- otherwise fall back to whichever
+  // membership they have, matching this app's 1-active-org-per-account model.
+  useEffect(() => {
+    if (!isSignedIn || !orgListLoaded || organization || autoActivatedRef.current) return;
+    const memberships = userMemberships.data;
+    if (memberships && memberships.length > 0) {
+      const devOrgId = process.env.NEXT_PUBLIC_CLERK_DEV_ORG_ID;
+      const target = memberships.find((m) => m.organization.id === devOrgId) ?? memberships[0];
+      autoActivatedRef.current = true;
+      setActive?.({ organization: target.organization.id });
+    }
+  }, [isSignedIn, orgListLoaded, organization, userMemberships.data, setActive]);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (!isSignedIn) {
+      setUser(null);
+      setProfileLoading(false);
+      return;
+    }
+    setProfileLoading(true);
     api.auth
       .me()
       .then(setUser)
-      .catch(() => clearToken())
-      .finally(() => setLoading(false));
-  }, []);
-
-  const login = useCallback(
-    async (email: string, password: string) => {
-      const { access_token } = await api.auth.login(email, password);
-      setToken(access_token);
-      setUser(await api.auth.me());
-      router.push("/dashboard");
-    },
-    [router]
-  );
-
-  const register = useCallback(
-    async (email: string, password: string, name?: string, phone?: string) => {
-      const { access_token } = await api.auth.register(email, password, name, phone);
-      setToken(access_token);
-      setUser(await api.auth.me());
-      router.push("/dashboard");
-    },
-    [router]
-  );
-
-  const registerHost = useCallback(
-    async (data: HostRegistration) => {
-      const { access_token, snapshot_id, import_error } = await api.auth.registerHost(data);
-      setToken(access_token);
-      setUser(await api.auth.me());
-      if (snapshot_id) {
-        window.sessionStorage.setItem(
-          PENDING_IMPORT_KEY,
-          JSON.stringify({ snapshotId: snapshot_id, icalUrl: data.ical_url ?? null })
-        );
-      } else if (import_error) {
-        window.sessionStorage.setItem(PENDING_IMPORT_KEY, JSON.stringify({ error: import_error }));
-      }
-      router.push("/dashboard");
-    },
-    [router]
-  );
+      .catch(() => setUser(null))
+      .finally(() => setProfileLoading(false));
+    // organization?.id is a dependency, not just isLoaded/isSignedIn --
+    // setActive() above swaps the session token (it now carries an org_id
+    // claim), so /auth/me has to be re-fetched for is_internal_org to
+    // reflect the newly-active org instead of the stale pre-activation one.
+  }, [isLoaded, isSignedIn, organization?.id]);
 
   const logout = useCallback(() => {
-    clearToken();
-    setUser(null);
-    router.push("/login");
-  }, [router]);
+    signOut(() => router.push("/login"));
+  }, [signOut, router]);
 
   const refreshUser = useCallback(async () => {
     setUser(await api.auth.me());
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, registerHost, logout, refreshUser }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading: !isLoaded || (isSignedIn && profileLoading),
+        isInternalOrg: user?.is_internal_org ?? false,
+        logout,
+        refreshUser,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

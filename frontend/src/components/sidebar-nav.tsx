@@ -51,22 +51,24 @@ function MiraLogo() {
 
 function NavLinks({ onNavigate, onTalkToMira }: { onNavigate?: () => void; onTalkToMira: () => void }) {
   const pathname = usePathname();
-  const { user, logout } = useAuth();
+  const { user, logout, isInternalOrg } = useAuth();
 
   return (
     <>
       <nav className="flex flex-1 flex-col gap-1">
-        <button
-          type="button"
-          onClick={() => {
-            onTalkToMira();
-            onNavigate?.();
-          }}
-          className="rounded-lg px-3 py-2 text-left text-sm font-medium text-accent-foreground transition-colors duration-150 hover:bg-accent"
-        >
-          <span className="mr-1.5 text-[var(--accent-warm)]">{"✳︎"}</span>
-          Talk to Mira
-        </button>
+        {isInternalOrg && (
+          <button
+            type="button"
+            onClick={() => {
+              onTalkToMira();
+              onNavigate?.();
+            }}
+            className="rounded-lg px-3 py-2 text-left text-sm font-medium text-accent-foreground transition-colors duration-150 hover:bg-accent"
+          >
+            <span className="mr-1.5 text-[var(--accent-warm)]">{"✳︎"}</span>
+            Talk to Mira
+          </button>
+        )}
         <span className="text-micro px-2 pb-1 pt-2">Main</span>
         {links.map((link) => {
           const active =

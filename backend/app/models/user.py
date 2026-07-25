@@ -11,7 +11,20 @@ class User(UUIDPkMixin, TimestampMixin, Base):
     __tablename__ = "users"
 
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
-    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Nullable as of the Clerk cutover -- no longer written or read by
+    # get_current_user (app/auth/security.py's bcrypt code is gone). Kept
+    # rather than dropped outright so existing rows' historical hashes
+    # aren't destroyed in the same migration as the auth-boundary rewrite;
+    # safe to drop in a later cleanup pass once Clerk is confirmed stable.
+    hashed_password: Mapped[str | None] = mapped_column(String(255))
+
+    # Clerk migration -- new User rows are now created directly against
+    # this identity (see app/auth/dependencies.py's _resolve_local_user).
+    # Existing rows get linked by matching email on first Clerk sign-in, and
+    # hashed_password is dropped in the same follow-up migration that makes
+    # this column load-bearing.
+    clerk_user_id: Mapped[str | None] = mapped_column(String(255), unique=True, index=True)
+
     name: Mapped[str | None] = mapped_column(String(255))
     phone: Mapped[str | None] = mapped_column(String(32))
     tier: Mapped[str] = mapped_column(String(32), default="tier_1", server_default="tier_1")

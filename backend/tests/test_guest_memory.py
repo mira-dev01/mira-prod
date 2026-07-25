@@ -14,10 +14,9 @@ async def test_same_phone_different_hosts_gets_separate_profiles(db_session, tes
     other_host_id = uuid.uuid4()
     # Bypass the FK requirement for this isolated unit test by using a
     # second real host row -- simpler to just create one.
-    from app.auth.security import hash_password
     from app.models.user import User
 
-    other_host = User(id=other_host_id, email=f"other-{uuid.uuid4().hex[:8]}@example.com", hashed_password=hash_password("x"))
+    other_host = User(id=other_host_id, email=f"other-{uuid.uuid4().hex[:8]}@example.com")
     db_session.add(other_host)
     await db_session.commit()
 

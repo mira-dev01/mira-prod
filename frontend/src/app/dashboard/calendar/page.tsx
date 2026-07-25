@@ -66,12 +66,21 @@ export default function CalendarPage() {
 
   function bookingsForDay(propertyId: string, day: number): BookingOut[] {
     if (!bookings) return [];
-    const cellDate = new Date(year, month, day);
+    // Compare as YYYY-MM-DD strings, NOT Date objects. `new Date("2026-08-01")`
+    // parses as UTC midnight, while `new Date(year, month, day)` is local
+    // midnight -- in IST (UTC+5:30) those differ, so a booking's checkout day
+    // (Aug 1, meant to be free) would flip to blocked because the local-
+    // constructed cell Date landed before the UTC-parsed checkOut Date.
+    // Confirmed live: Aug 1/11/17/23 for Olive all showed blocked despite
+    // being the checkout days of preceding bookings. String comparison
+    // sidesteps timezones entirely since check_in/check_out come from the
+    // backend as plain YYYY-MM-DD.
+    const mm = String(month + 1).padStart(2, "0");
+    const dd = String(day).padStart(2, "0");
+    const cellIso = `${year}-${mm}-${dd}`;
     return bookings.filter((b) => {
       if (b.property_id !== propertyId || b.status !== "confirmed") return false;
-      const checkIn = new Date(b.check_in);
-      const checkOut = new Date(b.check_out);
-      return cellDate >= checkIn && cellDate < checkOut;
+      return cellIso >= b.check_in && cellIso < b.check_out;
     });
   }
 

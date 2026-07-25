@@ -30,6 +30,9 @@ export type UserOut = {
   allow_pets: boolean | null;
   allow_early_checkin: boolean | null;
   follow_up_channel_preference: string | null;
+  // Whether the request's active Clerk org matches the configured dev org --
+  // gates dev-only features (currently just "Talk to Mira").
+  is_internal_org: boolean;
 };
 
 export type UserUpdate = {
@@ -76,9 +79,7 @@ export type HostDiscountRuleUpdate = {
   status?: HostDiscountRuleStatus;
 };
 
-export type HostRegistration = {
-  email: string;
-  password: string;
+export type HostOnboarding = {
   name: string;
   phone?: string | null;
   business_name?: string | null;
@@ -90,9 +91,7 @@ export type HostRegistration = {
   agent_first_message?: string | null;
 };
 
-export type HostRegistrationResponse = {
-  access_token: string;
-  token_type: string;
+export type HostOnboardingResponse = {
   snapshot_id: string | null;
   import_error: string | null;
 };
@@ -119,6 +118,7 @@ export type PropertyOut = {
   check_in_time: string;
   check_out_time: string;
   max_guests: number;
+  minimum_nights: number;
   airbnb_listing_id: string | null;
   smart_price_estimate: number | null;
   smart_price_sample_size: number;
@@ -157,6 +157,7 @@ export type PropertyCreate = {
   check_in_time?: string;
   check_out_time?: string;
   max_guests?: number;
+  minimum_nights?: number;
   exact_airbnb_pricing?: boolean;
 };
 

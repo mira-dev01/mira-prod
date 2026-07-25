@@ -101,18 +101,16 @@ async def test_approve_rule_flips_status_and_marks_host_edited_if_changed(client
 async def test_cannot_approve_another_hosts_rule(client, auth_headers, db_session, monkeypatch):
     import uuid
 
-    from app.auth.security import create_access_token, hash_password
     from app.models.user import User
 
     other_host = User(
         email=f"other-{uuid.uuid4().hex[:8]}@example.com",
-        hashed_password=hash_password("testpass123"),
         name="Other Host",
     )
     db_session.add(other_host)
     await db_session.commit()
     await db_session.refresh(other_host)
-    other_headers = {"Authorization": f"Bearer {create_access_token(other_host.id)}"}
+    other_headers = {"Authorization": f"Bearer {other_host.id}"}
 
     async def _fake_call_groq(prompt):
         return json.dumps({"rules": [{"trigger_type": "guest_requests", "discount_percent": 5}]})

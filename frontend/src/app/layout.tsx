@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
+import { ClerkProvider } from "@clerk/nextjs";
 import { AuthProvider } from "@/lib/auth-context";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -82,7 +83,9 @@ export default function RootLayout({
       className={`${boska.variable} ${pilcrowRounded.variable} ${nunito.variable} ${melodrama.variable} ${clashDisplay.variable} ${amulya.variable} ${newTitle.variable} ${alexBrush.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-background">
-        <AuthProvider>{children}</AuthProvider>
+        <ClerkProvider>
+          <AuthProvider>{children}</AuthProvider>
+        </ClerkProvider>
         <Toaster richColors position="top-right" />
       </body>
     </html>
