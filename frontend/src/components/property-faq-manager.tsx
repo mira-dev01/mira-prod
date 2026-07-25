@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { DictationTextarea } from "@/components/ui/dictation-textarea";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { PropertyFormSection } from "@/components/property-form-section";
 import { api, ApiError } from "@/lib/api";
 import type { FaqEntryOut } from "@/lib/types";
 
@@ -76,22 +76,25 @@ export function PropertyFaqManager({
   }
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <Label>FAQ</Label>
+    <PropertyFormSection
+      icon="F"
+      title="FAQ"
+      count={entries.length}
+      action={
         <Button type="button" variant="outline" size="sm" disabled={adding} onClick={addQuestion}>
-          {adding ? "Adding…" : "Add question"}
+          {adding ? "Adding…" : "+ Add question"}
         </Button>
-      </div>
-      <p className="text-xs text-muted-foreground">
-        Also appears on the dashboard&apos;s FAQ tab, tagged as applying to this property.
-      </p>
+      }
+      helpText="Also appears on the dashboard's FAQ tab, tagged as applying to this property."
+    >
       {entries.length === 0 ? (
-        <p className="text-xs text-muted-foreground">No FAQ entries on this property yet.</p>
+        <p className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">
+          No FAQ entries on this property yet.
+        </p>
       ) : (
         <div className="space-y-3">
           {entries.map((entry) => (
-            <div key={entry.id} className="space-y-2 rounded-md border p-3">
+            <div key={entry.id} className="space-y-2 rounded-lg border p-3">
               <Input
                 placeholder="Question"
                 value={entry.question}
@@ -108,6 +111,7 @@ export function PropertyFaqManager({
                 type="button"
                 variant="ghost"
                 size="sm"
+                className="text-destructive"
                 disabled={savingId === entry.id}
                 onClick={() => removeQuestion(entry)}
               >
@@ -117,6 +121,6 @@ export function PropertyFaqManager({
           ))}
         </div>
       )}
-    </div>
+    </PropertyFormSection>
   );
 }

@@ -2,10 +2,11 @@
 
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ChevronRight, LayoutGrid, Table2 } from "lucide-react";
+import { ChevronRight, LayoutGrid, Search, Table2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -19,7 +20,7 @@ import { ServiceRequestsTable } from "@/components/service-requests-table";
 import { useAsync } from "@/hooks/use-async";
 import { useDateRange } from "@/hooks/use-date-range";
 import { api, ApiError } from "@/lib/api";
-import { cn, isBrowserTestIdentity } from "@/lib/utils";
+import { cn, isBrowserTestIdentity, matchesSearch } from "@/lib/utils";
 import type { LeadOut, LeadStatus } from "@/lib/types";
 
 const VALID_TABS = ["service", "booking"] as const;
@@ -246,6 +247,11 @@ function LeadsKanban({
 
 function ServiceRequestsTabContent() {
   const { data: requests, loading, refetch } = useAsync(() => api.leads.serviceRequests(), []);
+  const [search, setSearch] = useState("");
+
+  const filteredRequests = (requests ?? []).filter((req) =>
+    matchesSearch(search, [req.property_name, req.room_number, req.message, req.urgency])
+  );
 
   async function handleDismiss(callSessionIds: string[]) {
     try {
@@ -259,13 +265,24 @@ function ServiceRequestsTabContent() {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        In-stay guest asks (housekeeping, amenities, maintenance) MIRA logged during a call.
-      </p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-muted-foreground">
+          In-stay guest asks (housekeeping, amenities, maintenance) MIRA logged during a call.
+        </p>
+        {requests && requests.length > 0 && (
+          <Input
+            placeholder="Search requests…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            leadingIcon={<Search />}
+            className="w-64"
+          />
+        )}
+      </div>
       {loading ? (
         <Skeleton className="h-64 w-full" />
       ) : (
-        <ServiceRequestsTable requests={requests ?? []} onDismiss={handleDismiss} />
+        <ServiceRequestsTable requests={filteredRequests} onDismiss={handleDismiss} />
       )}
     </div>
   );
@@ -282,14 +299,46 @@ function BookingRequestsTabContent() {
   );
   const [statusFilter, setStatusFilter] = useState<string>(initialStatus);
   const [showEmpty, setShowEmpty] = useState(false);
+  // Same "browser-test" caller identity + default-hidden behavior as the
+  // Calls page's "Include browser test calls" switch (calls/page.tsx) --
+  // here filtered client-side against LeadOut.phone (api.leads.list has no
+  // server-side include_test_calls param the way calls.list does, so this
+  // stays a plain array filter, same mechanism as isEmptyLead below).
+  const [includeTestCalls, setIncludeTestCalls] = useState(false);
   const [editing, setEditing] = useState<LeadOut | null>(null);
   const [view, setView] = useState<"table" | "board">("board");
+  const [search, setSearch] = useState("");
 
-  const statusFilteredLeads = (leads ?? []).filter((lead) => statusFilter === "all" || lead.status === statusFilter);
-  const contentLeads = statusFilteredLeads
+  const testFilteredLeads = (leads ?? []).filter(
+    (lead) => includeTestCalls || !isBrowserTestIdentity(lead.phone)
+  );
+  const statusFilteredLeads = testFilteredLeads.filter(
+    (lead) => statusFilter === "all" || lead.status === statusFilter
+  );
+  // Applies to both the table and kanban views -- slotted in after
+  // status/test-call filtering, before the empty/content split below, so
+  // "N leads with no captured info" still reflects the searched-down set.
+  const searchFilteredLeads = statusFilteredLeads.filter((lead) =>
+    matchesSearch(search, [
+      leadGuestLabel(lead),
+      leadPhoneLabel(lead),
+      lead.email,
+      lead.check_in,
+      lead.check_out,
+      lead.purpose_of_stay,
+      lead.preferred_location,
+      lead.occasion,
+      lead.status,
+      lead.lead_temperature,
+      lead.urgency,
+      lead.conversation_summary,
+      ...lead.properties_discussed,
+    ])
+  );
+  const contentLeads = searchFilteredLeads
     .filter((lead) => !isEmptyLead(lead))
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-  const emptyLeads = statusFilteredLeads.filter(isEmptyLead);
+  const emptyLeads = searchFilteredLeads.filter(isEmptyLead);
 
   // Drag-drop on the Kanban board should only ever send {status} -- kept
   // structurally independent of LeadDetailPanel's edit form (temperature +
@@ -326,6 +375,19 @@ function BookingRequestsTabContent() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-muted-foreground">Booking enquiries qualified by the Lead Agent</p>
         <div className="flex flex-wrap items-center gap-4">
+          <Input
+            placeholder="Search leads…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            leadingIcon={<Search />}
+            className="w-56"
+          />
+          <div className="flex items-center gap-2">
+            <Switch id="include-test-leads" checked={includeTestCalls} onCheckedChange={setIncludeTestCalls} />
+            <Label htmlFor="include-test-leads" className="text-sm text-muted-foreground">
+              Include browser test calls
+            </Label>
+          </div>
           <div className="flex items-center gap-1 rounded-lg border p-0.5">
             <Button
               variant={view === "table" ? "secondary" : "ghost"}
@@ -370,8 +432,10 @@ function BookingRequestsTabContent() {
           <p className="text-sm text-muted-foreground">
             No leads yet — they appear here once your portfolio&rsquo;s lead intake number starts receiving calls.
           </p>
+        ) : searchFilteredLeads.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No leads match your search.</p>
         ) : (
-          <LeadsKanban leads={leads ?? []} onCardClick={setEditing} onDropStatus={handleStatusDrop} />
+          <LeadsKanban leads={searchFilteredLeads} onCardClick={setEditing} onDropStatus={handleStatusDrop} />
         )
       ) : statusFilteredLeads.length === 0 ? (
         <p className="text-sm text-muted-foreground">
@@ -379,6 +443,8 @@ function BookingRequestsTabContent() {
             ? "No leads match this status filter."
             : "No leads yet — they appear here once your portfolio's lead intake number starts receiving calls."}
         </p>
+      ) : searchFilteredLeads.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No leads match your search.</p>
       ) : (
         <div className="space-y-4">
           {contentLeads.length > 0 ? (

@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { Search } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
@@ -8,8 +10,9 @@ import { Label } from "@/components/ui/label";
 import { useAsync } from "@/hooks/use-async";
 import { useDateRange } from "@/hooks/use-date-range";
 import { api } from "@/lib/api";
+import { matchesSearch } from "@/lib/utils";
 import { DateRangePicker } from "@/components/date-range-picker";
-import { CallsTable } from "@/components/calls-table";
+import { CallsTable, callTypeLabel } from "@/components/calls-table";
 
 // Each option's callType maps 1:1 to the API's comma-separated call_type
 // filter (app/api/v1/calls.py) -- "Qualified Calls" is the one option that's
@@ -33,6 +36,7 @@ const CALL_LOG_FILTERS: { value: string; label: string; callType?: string }[] = 
 export default function CallsPage() {
   const [includeTestCalls, setIncludeTestCalls] = useState(false);
   const [activeTab, setActiveTab] = useState("all");
+  const [search, setSearch] = useState("");
   const { startDateISO, endDateISO } = useDateRange();
 
   const activeFilter = CALL_LOG_FILTERS.find((f) => f.value === activeTab) ?? CALL_LOG_FILTERS[0];
@@ -46,6 +50,21 @@ export default function CallsPage() {
         callType: activeFilter.callType,
       }),
     [startDateISO, endDateISO, includeTestCalls, activeTab]
+  );
+
+  // Client-side only -- every other filter above is server-side (calls
+  // already come back scoped by date/type/test-call status), so search just
+  // narrows the page already fetched, across every column the table shows.
+  const filteredCalls = (calls ?? []).filter((call) =>
+    matchesSearch(search, [
+      call.caller_number,
+      call.guest_name,
+      call.guest_phone,
+      call.status,
+      call.urgency,
+      callTypeLabel[call.call_type],
+      call.classification_reason,
+    ])
   );
 
   return (
@@ -79,14 +98,23 @@ export default function CallsPage() {
             ))}
           </SelectContent>
         </Select>
+        <Input
+          placeholder="Search calls…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          leadingIcon={<Search />}
+          className="w-64"
+        />
       </div>
 
       {loading ? (
         <Skeleton className="h-64 w-full" />
       ) : !calls || calls.length === 0 ? (
         <p className="text-sm text-muted-foreground">No calls yet.</p>
+      ) : filteredCalls.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No calls match your search.</p>
       ) : (
-        <CallsTable calls={calls} />
+        <CallsTable calls={filteredCalls} />
       )}
     </div>
   );

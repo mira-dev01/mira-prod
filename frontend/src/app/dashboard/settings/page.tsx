@@ -15,7 +15,7 @@ import { TechniciansSection } from "@/components/settings/technicians-section";
 import { API_BASE_URL, ApiError, api, getToken } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 
-const VALID_TABS = ["workspace", "technicians", "billing", "api", "team"] as const;
+const VALID_TABS = ["your account", "technicians", "billing", "api", "team"] as const;
 type SettingsTab = (typeof VALID_TABS)[number];
 
 function ComingSoonTab({ icon: Icon, label }: { icon: React.ComponentType<{ className?: string }>; label: string }) {
@@ -145,14 +145,14 @@ function SettingsPageContent() {
 
       <Tabs value={tab} onValueChange={handleTabChange}>
         <TabsList>
-          <TabsTrigger value="workspace">Workspace</TabsTrigger>
+          <TabsTrigger value="your account">Your account</TabsTrigger>
           <TabsTrigger value="technicians">Technicians</TabsTrigger>
           <TabsTrigger value="billing">Billing</TabsTrigger>
           <TabsTrigger value="api">API</TabsTrigger>
           <TabsTrigger value="team">Team</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="workspace" className="pt-4">
+        <TabsContent value="your account" className="pt-4">
           <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
             <Card>
               <CardHeader>

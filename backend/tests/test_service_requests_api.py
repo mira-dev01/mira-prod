@@ -32,6 +32,33 @@ async def test_guest_support_call_appears_in_service_requests(client, auth_heade
     assert body[0]["message"] == "Guest asked for extra towels."
 
 
+async def test_lead_agent_call_falls_back_to_ai_summary_property(client, auth_headers, db_session, test_user):
+    """A Lead Agent (portfolio-wide) call has no property_id, even when the
+    guest was clearly asking about one specific listing -- the Property
+    column must fall back to the AI summary's own extraction instead of
+    showing blank."""
+    session = CallSession(
+        user_id=test_user.id,
+        property_id=None,
+        caller_number="+919999999999",
+        status="completed",
+        call_type="GUEST_SUPPORT",
+        ai_summary={
+            "booking_snapshot": {"property": ["Nile w/pool & projector"], "room_number": "Not mentioned"},
+            "conversation_summary": "Guest asked about AC maintenance for Nile.",
+        },
+    )
+    db_session.add(session)
+    await db_session.commit()
+
+    resp = await client.get("/api/v1/leads/service-requests", headers=auth_headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body) == 1
+    assert body[0]["property_id"] is None
+    assert body[0]["property_name"] == "Nile w/pool & projector"
+
+
 async def test_booking_lead_call_is_excluded_from_service_requests(client, auth_headers, db_session, test_user, test_property):
     session = CallSession(
         user_id=test_user.id,

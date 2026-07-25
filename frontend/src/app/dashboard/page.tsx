@@ -128,7 +128,7 @@ export default function OverviewPage() {
             leads={leads ?? []}
             onRefetch={refetchLeads}
             onCardClick={setEditingLead}
-            limit={3}
+            limit={2}
           />
         )}
 
