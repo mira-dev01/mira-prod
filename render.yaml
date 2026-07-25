@@ -23,12 +23,14 @@ services:
         sync: false
       - key: BACKEND_BASE_URL
         sync: false
-      - key: JWT_SECRET_KEY
-        generateValue: true
-      - key: JWT_ALGORITHM
-        value: HS256
-      - key: JWT_EXPIRE_MINUTES
-        value: "1440"
+      # Clerk owns auth entirely -- set these manually in the Render
+      # dashboard from the Clerk instance's API Keys page.
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: CLERK_PUBLISHABLE_KEY
+        sync: false
+      - key: CLERK_DEV_ORG_ID
+        sync: false
       - key: LLM_PROVIDER
         value: groq
       - key: GROQ_API_KEY
@@ -84,4 +86,14 @@ services:
       # deploy. NEXT_PUBLIC_* vars are baked in at build time, so changing
       # this requires a redeploy (Render does this automatically on save).
       - key: NEXT_PUBLIC_API_BASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+        sync: false
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: NEXT_PUBLIC_CLERK_SIGN_IN_URL
+        value: /login
+      - key: NEXT_PUBLIC_CLERK_SIGN_UP_URL
+        value: /sign-up
+      - key: NEXT_PUBLIC_CLERK_DEV_ORG_ID
         sync: false

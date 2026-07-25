@@ -6,7 +6,7 @@ import { DictationTextarea } from "@/components/ui/dictation-textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import type { FAQItem, PropertyCreate, SeasonalNote } from "@/lib/types";
+import type { PropertyCreate, SeasonalNote } from "@/lib/types";
 
 type PropertyFormValue = PropertyCreate;
 
@@ -22,21 +22,7 @@ export function PropertyFormFields({
   onChange: (next: PropertyFormValue) => void;
 }) {
   const amenitiesText = (form.amenities ?? []).join(", ");
-  const faq = form.faq ?? [];
   const seasonalNotes = form.seasonal_notes ?? [];
-
-  function updateFaqItem(index: number, patch: Partial<FAQItem>) {
-    const next = faq.map((item, i) => (i === index ? { ...item, ...patch } : item));
-    onChange({ ...form, faq: next });
-  }
-
-  function addFaqItem() {
-    onChange({ ...form, faq: [...faq, { question: "", answer: "" }] });
-  }
-
-  function removeFaqItem(index: number) {
-    onChange({ ...form, faq: faq.filter((_, i) => i !== index) });
-  }
 
   function updateSeasonalNote(index: number, patch: Partial<SeasonalNote>) {
     const next = seasonalNotes.map((item, i) => (i === index ? { ...item, ...patch } : item));
@@ -224,39 +210,6 @@ export function PropertyFormFields({
           MIRA answers local-area questions directly from this -- nearby cafes, rentals, distance to
           the beach/airport/railway station, cab availability and typical fares, etc.
         </p>
-      </div>
-
-      <SectionLabel>FAQ</SectionLabel>
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <Label>FAQ</Label>
-          <Button type="button" variant="outline" size="sm" onClick={addFaqItem}>
-            Add question
-          </Button>
-        </div>
-        {faq.length === 0 ? (
-          <p className="text-xs text-muted-foreground">No FAQ entries on this property yet.</p>
-        ) : (
-          <div className="space-y-3">
-            {faq.map((item, index) => (
-              <div key={index} className="space-y-2 rounded-md border p-3">
-                <Input
-                  placeholder="Question"
-                  value={item.question}
-                  onChange={(e) => updateFaqItem(index, { question: e.target.value })}
-                />
-                <DictationTextarea
-                  placeholder="Answer"
-                  value={item.answer}
-                  onValueChange={(value) => updateFaqItem(index, { answer: value })}
-                />
-                <Button type="button" variant="ghost" size="sm" onClick={() => removeFaqItem(index)}>
-                  Remove
-                </Button>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
       <SectionLabel>Seasonal notes</SectionLabel>

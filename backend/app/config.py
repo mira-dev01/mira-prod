@@ -60,19 +60,15 @@ class Settings(BaseSettings):
         data["database_url"] = value
         return data
 
-    jwt_secret_key: str = "dev-secret-change-me"
-    jwt_algorithm: str = "HS256"
-    jwt_expire_minutes: int = 1440
-
-    # Clerk migration (see the Clerk Organizations plan in project_state.md).
-    # Not yet read by get_current_user -- added ahead of the actual cutover
-    # so config plumbing is ready the moment real keys are available.
-    # clerk_secret_key verifies session JWTs server-side; clerk_publishable_key
-    # is frontend-only but kept here too for completeness/single source of
-    # truth. clerk_dev_org_id is the one Clerk Organization whose members see
-    # internal-only dashboard features (e.g. "Talk to Mira") -- compared
-    # directly against a verified token's org_id claim, no extra Clerk API
-    # call needed per request.
+    # Clerk owns auth entirely (see app/auth/dependencies.py's
+    # get_current_user) -- the old bcrypt/HS256-JWT/refresh-token system this
+    # replaced is gone, not just unused. clerk_secret_key verifies session
+    # JWTs server-side (via JWKS, derived from clerk_publishable_key);
+    # clerk_publishable_key is frontend-only but kept here too for
+    # completeness/single source of truth. clerk_dev_org_id is the one Clerk
+    # Organization whose members see internal-only dashboard features (e.g.
+    # "Talk to Mira") -- compared directly against a verified token's active
+    # org id, no extra Clerk API call needed per request.
     clerk_secret_key: str | None = None
     clerk_publishable_key: str | None = None
     clerk_dev_org_id: str | None = None

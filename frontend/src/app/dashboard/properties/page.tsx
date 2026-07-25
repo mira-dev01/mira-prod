@@ -16,6 +16,7 @@ import {
 import { RightPanel, RightPanelFooterButton } from "@/components/ui/right-panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { PropertyFaqManager } from "@/components/property-faq-manager";
 import { PropertyFormFields } from "@/components/property-form-fields";
 import { PropertyPhotoCarousel } from "@/components/property-photo-carousel";
 import { PropertyPhotosManager } from "@/components/property-photos-manager";
@@ -23,7 +24,7 @@ import { TalkToMiraDialog } from "@/components/talk-to-mira-dialog";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError, API_BASE_URL, getToken } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import type { AirbnbUrlImportStatus, PropertyCreate, PropertyOut } from "@/lib/types";
+import type { AirbnbUrlImportStatus, FaqEntryOut, PropertyCreate, PropertyOut } from "@/lib/types";
 
 const emptyForm: PropertyCreate = {
   name: "",
@@ -119,6 +120,8 @@ export default function PropertiesPage() {
   const [editing, setEditing] = useState<PropertyOut | null>(null);
   const [editForm, setEditForm] = useState<PropertyCreate>(emptyForm);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [editFaqEntries, setEditFaqEntries] = useState<FaqEntryOut[]>([]);
+  const [loadingFaq, setLoadingFaq] = useState(false);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -139,6 +142,13 @@ export default function PropertiesPage() {
   function openEdit(property: PropertyOut) {
     setEditing(property);
     setEditForm(propertyToForm(property));
+    setEditFaqEntries([]);
+    setLoadingFaq(true);
+    api.faq
+      .list()
+      .then((all) => setEditFaqEntries(all.filter((entry) => entry.property_id === property.id)))
+      .catch((err) => toast.error(err instanceof ApiError ? err.message : "Failed to load FAQ entries"))
+      .finally(() => setLoadingFaq(false));
   }
 
   async function handleSaveEdit(e: React.FormEvent) {
@@ -379,6 +389,10 @@ export default function PropertiesPage() {
           >
             <form id="create-property-form" onSubmit={handleCreate} className="space-y-4">
               <PropertyFormFields form={form} onChange={setForm} />
+              <p className="text-micro pt-2 text-muted-foreground">
+                FAQ and photos can be added once the property is created — edit it afterward from the property
+                card.
+              </p>
             </form>
           </RightPanel>
         </div>
@@ -496,6 +510,20 @@ export default function PropertiesPage() {
             </div>
           )}
           <PropertyFormFields form={editForm} onChange={setEditForm} />
+          {editing && (
+            <div className="space-y-2">
+              <p className="text-micro pt-2 text-muted-foreground">FAQ</p>
+              {loadingFaq ? (
+                <Skeleton className="h-24 w-full" />
+              ) : (
+                <PropertyFaqManager
+                  propertyId={editing.id}
+                  entries={editFaqEntries}
+                  onChange={setEditFaqEntries}
+                />
+              )}
+            </div>
+          )}
         </form>
       </RightPanel>
     </div>
