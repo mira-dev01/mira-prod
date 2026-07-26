@@ -193,9 +193,15 @@ function LeadsKanban({
   const [dragOverColumn, setDragOverColumn] = useState<LeadStatus | null>(null);
 
   function leadsForColumn(status: LeadStatus): LeadOut[] {
+    // updated_at, not created_at -- a lead's row is created once but gets
+    // touched again on every later call/update_lead about the same guest.
+    // Sorting by created_at put a lead that happened to be *created*
+    // slightly later above one that was *created* earlier but had a real,
+    // much more recent call against it (confirmed live 2026-07-27: a
+    // closed lead outranked the guest's actual latest, still-open call).
     return leads
       .filter((lead) => lead.status === status && !isEmptyLead(lead))
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
   }
 
   return (
@@ -335,9 +341,10 @@ function BookingRequestsTabContent() {
       ...lead.properties_discussed,
     ])
   );
+  // updated_at, not created_at -- see leadsForColumn's comment above for why.
   const contentLeads = searchFilteredLeads
     .filter((lead) => !isEmptyLead(lead))
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
   const emptyLeads = searchFilteredLeads.filter(isEmptyLead);
 
   // Drag-drop on the Kanban board should only ever send {status} -- kept
