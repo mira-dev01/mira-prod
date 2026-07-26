@@ -65,6 +65,7 @@ from app.services import (
 from app.voice.conversation_state import ConversationState
 from app.voice.escalation_phrase_guard import EscalationPhraseGuardProcessor
 from app.voice.language_sync import DEFAULT_TTS_LANGUAGE, LanguageSyncProcessor
+from app.voice.premature_end_call_guard import PrematureEndCallGuardProcessor
 from app.voice.redundant_context_guard import RedundantContextGuardProcessor
 from app.voice.ringing_audio import play_ringing_tone
 from app.voice.silence_watchdog import SilenceWatchdogProcessor
@@ -440,6 +441,11 @@ async def _run_pipeline_inner(
     # confirmed live: caused a call to end itself with no guest reply in
     # between. See app/voice/redundant_context_guard.py.
     redundant_context_guard = RedundantContextGuardProcessor()
+    # Separate failure mode, same symptom: the model itself (in a single
+    # turn, not a spurious re-invocation) asks a real question and calls
+    # end_call together -- confirmed live. Cancels the pending hangup so the
+    # guest gets a real chance to reply. See app/voice/premature_end_call_guard.py.
+    premature_end_call_guard = PrematureEndCallGuardProcessor(silence_watchdog)
 
     async with aiohttp.ClientSession() as http_session:
         tts = SarvamTTSService(
@@ -537,6 +543,7 @@ async def _run_pipeline_inner(
                 redundant_context_guard,
                 llm,
                 escalation_guard,
+                premature_end_call_guard,
                 tts,
                 transport.output(),
                 assistant_aggregator,

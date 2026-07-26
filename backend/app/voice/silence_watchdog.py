@@ -91,6 +91,19 @@ class SilenceWatchdogProcessor(FrameProcessor):
         self._end_requested = True
         await self._cancel_timer()
 
+    def cancel_end_request(self) -> None:
+        """Called by PrematureEndCallGuardProcessor (app/voice/
+        premature_end_call_guard.py) when the same turn that called end_call
+        also asked the guest an open question -- confirmed live 2026-07-26:
+        "Anything else you'd like to sort out? Thanks so much for calling --
+        have a wonderful day!" and end_call fired together in one turn, never
+        giving the guest a real chance to answer. Un-arms the pending
+        end-of-call so the next BotStoppedSpeakingFrame falls through to the
+        normal silence-nudge/restart-timer path instead of hanging up --
+        the guest still gets nudged and the call still ends eventually if
+        they truly say nothing, just not instantly."""
+        self._end_requested = False
+
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
 
