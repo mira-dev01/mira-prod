@@ -48,6 +48,7 @@ async def sync_property_ical(db: AsyncSession, property_: Property) -> int:
         return 0
 
     events = await fetch_ical(property_.ical_url)
+    current_uids = {event.uid for event in events}
 
     existing_by_uid = {
         b.source_uid: b
@@ -76,6 +77,15 @@ async def sync_property_ical(db: AsyncSession, property_: Property) -> int:
                     guest_name=event.summary,
                 )
             )
+
+    # Remove bookings whose iCal event no longer appears in the feed -- e.g.
+    # the guest cancelled on Airbnb. Without this, a cancelled booking's
+    # dates stayed permanently blocked in Mira even after Airbnb released
+    # them, since this loop only ever upserted, never reconciled removals.
+    # Confirmed live: dates Airbnb showed as open were still blocked here.
+    for source_uid, existing in existing_by_uid.items():
+        if source_uid not in current_uids:
+            await db.delete(existing)
 
     await db.commit()
     return len(events)

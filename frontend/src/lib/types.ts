@@ -30,6 +30,9 @@ export type UserOut = {
   allow_pets: boolean | null;
   allow_early_checkin: boolean | null;
   follow_up_channel_preference: string | null;
+  photo_url: string | null;
+  banner_url: string | null;
+  whatsapp_assist_enabled: boolean;
   // Whether the request's active Clerk org matches the configured dev org --
   // gates dev-only features (currently just "Talk to Mira").
   is_internal_org: boolean;
@@ -53,6 +56,7 @@ export type UserUpdate = {
   allow_pets?: boolean | null;
   allow_early_checkin?: boolean | null;
   follow_up_channel_preference?: string | null;
+  whatsapp_assist_enabled?: boolean | null;
 };
 
 export type HostDiscountRuleTriggerType = "no_ask" | "guest_requests" | "repeat_guest_same_host" | "custom";

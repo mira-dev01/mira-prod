@@ -39,6 +39,21 @@ class User(UUIDPkMixin, TimestampMixin, Base):
     timezone: Mapped[str] = mapped_column(String(64), default="Asia/Kolkata", server_default="Asia/Kolkata")
     terms_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    # Host Profile page (step-by-step completion, not required at signup --
+    # see POST /auth/me/photo, same Cloudinary upload pattern as property
+    # photos). photo_url is the host's own picture, shown in the sidebar and
+    # profile page; None means "no photo set", frontend falls back to
+    # initials. whatsapp_assist_enabled is a simple on/off placeholder for
+    # now -- deliberately not a richer config shape yet, since which
+    # WhatsApp features actually matter is still being worked out from host
+    # testing.
+    photo_url: Mapped[str | None] = mapped_column(String(512))
+    # Cover/banner image for the profile page's hero section. Same optional,
+    # add-it-whenever pattern as photo_url -- None just means the hero shows
+    # an empty placeholder inviting the host to add one later.
+    banner_url: Mapped[str | None] = mapped_column(String(512))
+    whatsapp_assist_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+
     # Where escalation summaries (app/integrations/email_client.py, fired
     # from handle_escalate_to_host) get sent. None -- the common case -- means
     # "use the login email above"; set this when the host wants escalations

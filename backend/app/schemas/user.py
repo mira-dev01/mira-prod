@@ -60,6 +60,7 @@ class UserUpdate(BaseModel):
     allow_pets: bool | None = None
     allow_early_checkin: bool | None = None
     follow_up_channel_preference: str | None = None
+    whatsapp_assist_enabled: bool | None = None
 
 
 class UserOut(BaseModel):
@@ -91,6 +92,9 @@ class UserOut(BaseModel):
     allow_pets: bool | None
     allow_early_checkin: bool | None
     follow_up_channel_preference: str | None
+    photo_url: str | None
+    banner_url: str | None
+    whatsapp_assist_enabled: bool
 
     model_config = {"from_attributes": True}
 

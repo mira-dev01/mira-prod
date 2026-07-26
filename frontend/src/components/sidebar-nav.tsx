@@ -18,6 +18,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { TalkToMiraDialog } from "@/components/talk-to-mira-dialog";
 import { useAuth } from "@/lib/auth-context";
@@ -95,7 +96,19 @@ function NavLinks({ onNavigate, onTalkToMira }: { onNavigate?: () => void; onTal
         })}
       </nav>
       <div className="space-y-2 border-t pt-4">
-        <p className="truncate px-2 text-xs text-muted-foreground">{user?.email}</p>
+        <Link
+          href="/dashboard/profile"
+          onClick={onNavigate}
+          className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors duration-150 hover:bg-accent"
+        >
+          <Avatar size="sm">
+            <AvatarImage src={user?.photo_url ?? undefined} alt="" />
+            <AvatarFallback>{(user?.name ?? user?.email ?? "?").charAt(0).toUpperCase()}</AvatarFallback>
+          </Avatar>
+          <span className="min-w-0 flex-1 truncate text-xs font-medium">
+            {user?.name || user?.business_name || user?.email}
+          </span>
+        </Link>
         <Button variant="outline" size="sm" className="w-full" onClick={logout}>
           Log out
         </Button>

@@ -159,6 +159,8 @@ export const api = {
       uploadAudio<{ text: string }>("/auth/register-host/transcribe-intro", audio, "intro.webm"),
     me: () => request<UserOut>("/auth/me"),
     updateMe: (data: UserUpdate) => request<UserOut>("/auth/me", { method: "PATCH", body: JSON.stringify(data) }),
+    uploadPhoto: (file: File) => uploadFiles<UserOut>("/auth/me/photo", [file], "file"),
+    uploadBanner: (file: File) => uploadFiles<UserOut>("/auth/me/banner", [file], "file"),
   },
   properties: {
     list: () => request<PropertyOut[]>("/properties"),

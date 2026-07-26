@@ -4,13 +4,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
 from app.database import get_db
-from app.integrations import bright_data_client
+from app.integrations import bright_data_client, cloudinary_client
 from app.integrations.bright_data_client import BrightDataError
 from app.models.user import User
 from app.schemas.user import HostOnboarding, HostOnboardingResponse, UserOut, UserUpdate
 from app.services import faq_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+_MAX_PHOTO_BYTES = 10 * 1024 * 1024  # 10MB -- matches properties.py's own photo upload cap
+_ALLOWED_PHOTO_TYPES = {"image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"}
 
 
 @router.post("/register-host/transcribe-intro")
@@ -77,6 +80,47 @@ async def onboard_host(
 
 @router.get("/me", response_model=UserOut)
 async def me(current_user: User = Depends(get_current_user)) -> User:
+    return current_user
+
+
+async def _upload_host_image(file: UploadFile, current_user: User, db: AsyncSession) -> str:
+    """Shared by /me/photo and /me/banner -- same Cloudinary upload pattern
+    as POST /properties/{id}/photos, just replacing a single *_url field
+    instead of appending to an array."""
+    if file.content_type not in _ALLOWED_PHOTO_TYPES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "File must be an image (jpeg, png, webp, or heic)")
+
+    data = await file.read()
+    if len(data) > _MAX_PHOTO_BYTES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Image must be under 10MB")
+
+    try:
+        return await cloudinary_client.upload_image_bytes(data, folder=f"mira/hosts/{current_user.id}")
+    except Exception as exc:  # noqa: BLE001 - surface as a clean 502 rather than a raw SDK/connection error
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Photo upload failed: {exc}") from exc
+
+
+@router.post("/me/photo", response_model=UserOut)
+async def upload_my_photo(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    current_user.photo_url = await _upload_host_image(file, current_user, db)
+    await db.commit()
+    await db.refresh(current_user)
+    return current_user
+
+
+@router.post("/me/banner", response_model=UserOut)
+async def upload_my_banner(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    current_user.banner_url = await _upload_host_image(file, current_user, db)
+    await db.commit()
+    await db.refresh(current_user)
     return current_user
 
 

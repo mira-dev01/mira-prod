@@ -83,7 +83,37 @@ export default function RootLayout({
       className={`${boska.variable} ${pilcrowRounded.variable} ${nunito.variable} ${melodrama.variable} ${clashDisplay.variable} ${amulya.variable} ${newTitle.variable} ${alexBrush.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-background">
-        <ClerkProvider>
+        <ClerkProvider
+          appearance={{
+            variables: {
+              // Mirrors the app's own CSS custom properties (globals.css) --
+              // kept as literal hex/rgba here since Clerk's hosted
+              // components render in their own isolated context, not this
+              // page's DOM, so `var(--primary)` etc. wouldn't resolve.
+              colorPrimary: "#d94f3d",
+              colorBackground: "#fdfaf5",
+              colorForeground: "#1a1714",
+              colorMutedForeground: "#6b5f4f",
+              colorInput: "#f5f0e8",
+              colorInputForeground: "#1a1714",
+              colorBorder: "#e8e0d5",
+              borderRadius: "0.625rem",
+              fontFamily: "var(--font-amulya), sans-serif",
+            },
+          }}
+          localization={{
+            createOrganization: {
+              title: "Set up your account",
+              // @ts-expect-error -- subtitle exists in Clerk's actual runtime
+              // localization dictionary for this screen, just not yet
+              // reflected in @clerk/shared's published .d.ts types.
+              subtitle: "Tell us a bit about your property business to get started.",
+              formButtonSubmit: "Continue",
+            },
+            formFieldLabel__organizationName: "Business name",
+            formFieldInputPlaceholder__organizationName: "e.g. Pause Projects Goa",
+          }}
+        >
           <AuthProvider>{children}</AuthProvider>
         </ClerkProvider>
         <Toaster richColors position="top-right" />
