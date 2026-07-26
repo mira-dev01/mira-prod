@@ -351,12 +351,14 @@ export type NotificationOut = {
   created_at: string;
 };
 
+// Mirrors app/services/pricing_engine.PriceBreakdown exactly -- no synthetic
+// markup (weekend surge/cleaning fee/tax) exists on any property, on or off
+// exact_airbnb_pricing; every property quotes its stored rate (or a live
+// SearchApi fetch for exact_airbnb_pricing properties) as-is. Don't add
+// fields here the backend dataclass doesn't actually have.
 export type PriceBreakdown = {
   nights: number;
   base_total: number;
-  weekend_nights: number;
-  cleaning_fee: number;
-  tax_amount: number;
   discount_percent: number;
   discount_amount: number;
   total: number;
