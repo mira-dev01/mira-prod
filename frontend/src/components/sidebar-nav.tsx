@@ -7,6 +7,7 @@ import { Drawer } from "@base-ui/react/drawer";
 import {
   Home,
   Building2,
+  BrainCircuit,
   Calendar,
   Phone,
   Users,
@@ -23,16 +24,19 @@ import { Button } from "@/components/ui/button";
 import { TalkToMiraDialog } from "@/components/talk-to-mira-dialog";
 import { useAuth } from "@/lib/auth-context";
 
-// Technicians and AI Training moved into Settings as tabs (see
-// app/dashboard/settings/page.tsx) rather than their own top-level nav
-// entries -- both are host configuration, same category as the rest of
-// what lives in Settings, not something checked day-to-day like Calls/Leads.
+// Technicians stayed a Settings tab (see app/dashboard/settings/page.tsx) --
+// host configuration, same category as the rest of Settings, not something
+// checked day-to-day like Calls/Leads. AI Training (formerly the "Voice AI"
+// + "AI Training" Settings tabs, merged) instead gets its own top-level nav
+// entry right after Properties, since it configures the voice agent that
+// serves those properties.
 const links: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/dashboard", label: "Overview", icon: Home },
   { href: "/dashboard/properties", label: "Properties", icon: Building2 },
+  { href: "/dashboard/properties/ai-training", label: "AI Training", icon: BrainCircuit },
   { href: "/dashboard/calendar", label: "Calendar", icon: Calendar },
   { href: "/dashboard/calls", label: "Calls", icon: Phone },
-  { href: "/dashboard/leads", label: "Leads", icon: Users },
+  { href: "/dashboard/leads", label: "Live Requests", icon: Users },
   { href: "/dashboard/guests", label: "Guests", icon: UserRound },
   { href: "/dashboard/faq", label: "FAQ", icon: HelpCircle },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
@@ -75,7 +79,9 @@ function NavLinks({ onNavigate, onTalkToMira }: { onNavigate?: () => void; onTal
           const active =
             link.href === "/dashboard"
               ? pathname === link.href
-              : pathname.startsWith(link.href);
+              : link.href === "/dashboard/properties"
+                ? pathname === link.href || (pathname.startsWith(link.href) && !pathname.startsWith("/dashboard/properties/ai-training"))
+                : pathname.startsWith(link.href);
           const Icon = link.icon;
           return (
             <Link

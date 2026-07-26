@@ -6,6 +6,7 @@ import { DictationTextarea } from "@/components/ui/dictation-textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { PropertyFormSection } from "@/components/property-form-section";
 import type { PropertyCreate, SeasonalNote } from "@/lib/types";
 
 type PropertyFormValue = PropertyCreate;
@@ -147,21 +148,22 @@ export function PropertyFormFields({
         </div>
       </div>
 
-      <SectionLabel>Description (USP)</SectionLabel>
-      <div className="space-y-2">
-        <Label htmlFor="usp">One-line description</Label>
-        <DictationInput
-          id="usp"
-          placeholder="e.g. Glass house, 1BHK with a private jacuzzi"
-          maxLength={280}
-          value={form.usp ?? ""}
-          onValueChange={(value) => onChange({ ...form, usp: value })}
-        />
-        <p className="text-xs text-muted-foreground">
-          MIRA leads with this whenever a guest asks generally about the property, and uses it when
-          comparing properties for the Lead Agent.
-        </p>
-      </div>
+      <PropertyFormSection
+        icon="D"
+        title="Description"
+        helpText="MIRA answers general questions about the property directly from this -- what makes it stand out, the vibe, what's nearby."
+      >
+        <div className="space-y-2 rounded-lg border bg-muted/50 p-3">
+          <Label htmlFor="usp">One-line description</Label>
+          <DictationInput
+            id="usp"
+            placeholder="e.g. Glass house, 1BHK with a private jacuzzi"
+            maxLength={280}
+            value={form.usp ?? ""}
+            onValueChange={(value) => onChange({ ...form, usp: value })}
+          />
+        </div>
+      </PropertyFormSection>
 
       <SectionLabel>Amenities</SectionLabel>
       <div className="space-y-2">
@@ -212,24 +214,30 @@ export function PropertyFormFields({
         </p>
       </div>
 
-      <SectionLabel>Seasonal notes</SectionLabel>
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <Label>Seasonal notes</Label>
+      <PropertyFormSection
+        icon="S"
+        title="Seasonal Notes"
+        count={seasonalNotes.length}
+        action={
           <Button type="button" variant="outline" size="sm" onClick={addSeasonalNote}>
-            Add note
+            + Add note
           </Button>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Time-varying facts MIRA should only mention during the months they apply -- e.g. &quot;pool closed for
-          monsoon cleaning&quot; (Jun-Aug) or &quot;extra heater provided&quot; (Nov-Feb, wrapping the year is fine).
-        </p>
+        }
+        helpText={
+          <>
+            Time-varying facts MIRA should only mention during the months they apply -- e.g. &quot;pool closed for
+            monsoon cleaning&quot; (Jun-Aug) or &quot;extra heater provided&quot; (Nov-Feb, wrapping the year is fine).
+          </>
+        }
+      >
         {seasonalNotes.length === 0 ? (
-          <p className="text-xs text-muted-foreground">No seasonal notes on this property yet.</p>
+          <p className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">
+            No seasonal notes on this property yet.
+          </p>
         ) : (
           <div className="space-y-3">
             {seasonalNotes.map((item, index) => (
-              <div key={index} className="space-y-2 rounded-md border p-3">
+              <div key={index} className="space-y-2 rounded-lg border p-3">
                 <DictationTextarea
                   placeholder="e.g. Pool closed for monsoon cleaning."
                   value={item.note}
@@ -259,14 +267,14 @@ export function PropertyFormFields({
                     />
                   </div>
                 </div>
-                <Button type="button" variant="ghost" size="sm" onClick={() => removeSeasonalNote(index)}>
+                <Button type="button" variant="ghost" size="sm" className="text-destructive" onClick={() => removeSeasonalNote(index)}>
                   Remove
                 </Button>
               </div>
             ))}
           </div>
         )}
-      </div>
+      </PropertyFormSection>
     </div>
   );
 }

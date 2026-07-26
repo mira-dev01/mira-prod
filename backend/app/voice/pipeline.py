@@ -54,7 +54,14 @@ from app.prompts.system_prompt import (
     lead_first_message_for,
 )
 from app.schemas.call_classification import QUALIFIED_CALL_TYPES
-from app.services import call_classification_service, call_service, faq_service, guest_memory_service, lead_service
+from app.services import (
+    call_classification_service,
+    call_service,
+    call_summary_service,
+    faq_service,
+    guest_memory_service,
+    lead_service,
+)
 from app.voice.conversation_state import ConversationState
 from app.voice.escalation_phrase_guard import EscalationPhraseGuardProcessor
 from app.voice.language_sync import DEFAULT_TTS_LANGUAGE, LanguageSyncProcessor
@@ -84,6 +91,17 @@ logger = logging.getLogger(__name__)
 # unresponsive to a genuine interruption -- needs a real call to confirm
 # this is the right number, not just a plausible one.
 _VAD_PARAMS = VADParams(confidence=0.85, min_volume=0.7, start_secs=0.35)
+
+# Per-host voice gender (User.agent_voice_gender, "female" | "male") maps to
+# one representative Sarvam bulbul:v3 speaker name each -- the v3 speaker
+# enum itself carries no gender metadata (unlike the older v2 enum, which
+# did), so this mapping is MIRA's own. "female" keeps settings.sarvam_tts_speaker
+# ("roopa") as the fallback so an unset/unrecognized gender behaves exactly
+# as it did before this field existed.
+VOICE_BY_GENDER = {
+    "female": settings.sarvam_tts_speaker,
+    "male": "shubh",
+}
 
 
 def _pick_groq_model() -> str:
@@ -336,6 +354,7 @@ async def _run_pipeline(
     guest_profile_id: uuid.UUID | None = None,
     guest_known_name: str | None = None,
     ringing_audio_task: asyncio.Task | None = None,
+    voice_gender: str = "female",
 ) -> None:
     # NOTE: we deliberately do NOT create a Lead row up front. Doing so gave
     # every connection attempt its own empty lead, and a browser/ICE
@@ -360,6 +379,7 @@ async def _run_pipeline(
             guest_profile_id=guest_profile_id,
             guest_known_name=guest_known_name,
             ringing_audio_task=ringing_audio_task,
+            voice_gender=voice_gender,
         )
     finally:
         # Guarantees the ringing-tone task (see app/voice/ringing_audio.py)
@@ -388,6 +408,7 @@ async def _run_pipeline_inner(
     guest_profile_id: uuid.UUID | None = None,
     guest_known_name: str | None = None,
     ringing_audio_task: asyncio.Task | None = None,
+    voice_gender: str = "female",
 ) -> None:
     stt = _ReconnectingSarvamSTTService(
         api_key=settings.sarvam_api_key,
@@ -419,7 +440,7 @@ async def _run_pipeline_inner(
             aiohttp_session=http_session,
             settings=SarvamTTSService.Settings(
                 model=settings.sarvam_tts_model,
-                voice=settings.sarvam_tts_speaker,
+                voice=VOICE_BY_GENDER.get(voice_gender, settings.sarvam_tts_speaker),
                 pace=1.15,  # slightly faster than 1.0 default for phone call cadence
                 # Starting language; language_sync (below) switches this live
                 # once the guest is heard speaking Hindi/Hinglish.
@@ -531,9 +552,7 @@ async def _run_pipeline_inner(
                 and message.get("content") is not None  # skip tool-call turns (content=null)
             )
             async with AsyncSessionLocal() as finalize_db:
-                finalized_session = await call_service.finalize_call_session(
-                    finalize_db, call_session_id, transcript, None
-                )
+                finalized_session = await call_service.finalize_call_session(finalize_db, call_session_id, transcript)
 
                 duration_seconds = None
                 if finalized_session is not None and finalized_session.started_at and finalized_session.ended_at:
@@ -546,6 +565,13 @@ async def _run_pipeline_inner(
                 # them, it only delays how quickly the row settles.
                 classification = await call_classification_service.classify_call(transcript, duration_seconds)
                 await call_service.set_call_classification(finalize_db, call_session_id, classification)
+
+                # Same one-shot-LLM-after-call-ends shape as classification
+                # above, and just as safe to await inline -- summarize_call
+                # never raises (see call_summary_service.py), so this can't
+                # itself crash on_pipeline_finished.
+                summary = await call_summary_service.summarize_call(transcript, duration_seconds)
+                await call_service.set_call_summary(finalize_db, call_session_id, summary)
 
                 if any(m.get("role") == "user" for m in context.messages):
                     # Backfill the real caller's phone (from Exotel) and the
@@ -742,6 +768,7 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
             first_message = first_message_for(property_, guest, host)
             property_id = property_.id
             property_name = property_.name
+            voice_gender = host.agent_voice_gender
         else:
             properties = list(
                 (await db.scalars(select(Property).where(Property.user_id == lead_user.id))).all()
@@ -760,6 +787,7 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
             first_message = lead_first_message_for(lead_user)
             property_id = None
             property_name = None
+            voice_gender = lead_user.agent_voice_gender
 
         call_session_id = session.id
 
@@ -787,6 +815,7 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
         guest_profile_id=guest.id if guest else None,
         guest_known_name=guest.name if guest else None,
         ringing_audio_task=ringing_audio_task,
+        voice_gender=voice_gender,
     )
 
 
@@ -836,6 +865,7 @@ async def run_browser_voice_pipeline(connection: SmallWebRTCConnection, property
         first_message,
         property_name=property_.name,
         guest_profile_id=guest_profile_id,
+        voice_gender=host.agent_voice_gender,
     )
 
 
@@ -871,5 +901,12 @@ async def run_browser_lead_pipeline(connection: SmallWebRTCConnection, user: Use
     )
 
     await _run_pipeline(
-        transport, None, call_session_id, user.id, system_prompt, first_message, guest_profile_id=guest_profile_id
+        transport,
+        None,
+        call_session_id,
+        user.id,
+        system_prompt,
+        first_message,
+        guest_profile_id=guest_profile_id,
+        voice_gender=user.agent_voice_gender,
     )

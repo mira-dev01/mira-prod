@@ -174,7 +174,7 @@ function PricingPageContent() {
           </CardHeader>
           <CardContent>
             <Link
-              href="/dashboard/settings?tab=ai-training"
+              href="/dashboard/properties/ai-training"
               className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
             >
               Review negotiation policy

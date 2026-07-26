@@ -24,6 +24,7 @@ import type {
   LeadOut,
   LeadUpdate,
   NotificationOut,
+  ServiceRequestOut,
   PriceBreakdown,
   PricingRuleCreate,
   PricingRuleOut,
@@ -288,6 +289,15 @@ export const api = {
     get: (id: string) => request<LeadOut>(`/leads/${id}`),
     update: (id: string, data: LeadUpdate) =>
       request<LeadOut>(`/leads/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    serviceRequests: (params?: { includeDismissed?: boolean }) =>
+      request<ServiceRequestOut[]>(
+        `/leads/service-requests${buildQuery({ include_dismissed: params?.includeDismissed ?? false })}`
+      ),
+    dismissServiceRequests: (callSessionIds: string[]) =>
+      request<{ dismissed: number }>(`/leads/service-requests/dismiss`, {
+        method: "POST",
+        body: JSON.stringify({ call_session_ids: callSessionIds }),
+      }),
   },
   faq: {
     list: () => request<FaqEntryOut[]>("/faq"),

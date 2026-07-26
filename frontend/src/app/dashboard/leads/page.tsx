@@ -1,24 +1,30 @@
 "use client";
 
 import { Suspense, useState } from "react";
-import { useSearchParams } from "next/navigation";
-import { ChevronRight, LayoutGrid, Table2 } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ChevronRight, LayoutGrid, Search, Table2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatusChip, type StatusTone } from "@/components/status-chip";
 import { DateRangePicker } from "@/components/date-range-picker";
 import { LeadDetailPanel, LEAD_STATUSES, leadUrgencyTone } from "@/components/lead-detail-panel";
+import { ServiceRequestsTable } from "@/components/service-requests-table";
 import { useAsync } from "@/hooks/use-async";
 import { useDateRange } from "@/hooks/use-date-range";
 import { api, ApiError } from "@/lib/api";
-import { cn, isBrowserTestIdentity } from "@/lib/utils";
+import { cn, isBrowserTestIdentity, matchesSearch } from "@/lib/utils";
 import type { LeadOut, LeadStatus } from "@/lib/types";
+
+const VALID_TABS = ["service", "booking"] as const;
+type RequestsTab = (typeof VALID_TABS)[number];
 
 const STATUSES = LEAD_STATUSES;
 const urgencyTone = leadUrgencyTone;
@@ -239,7 +245,50 @@ function LeadsKanban({
   );
 }
 
-function LeadsPageContent() {
+function ServiceRequestsTabContent() {
+  const { data: requests, loading, refetch } = useAsync(() => api.leads.serviceRequests(), []);
+  const [search, setSearch] = useState("");
+
+  const filteredRequests = (requests ?? []).filter((req) =>
+    matchesSearch(search, [req.property_name, req.room_number, req.message, req.urgency])
+  );
+
+  async function handleDismiss(callSessionIds: string[]) {
+    try {
+      await api.leads.dismissServiceRequests(callSessionIds);
+      toast.success(callSessionIds.length === 1 ? "Request marked as completed" : "Requests marked as completed");
+      refetch();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Failed to update requests");
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-muted-foreground">
+          In-stay guest asks (housekeeping, amenities, maintenance) MIRA logged during a call.
+        </p>
+        {requests && requests.length > 0 && (
+          <Input
+            placeholder="Search requests…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            leadingIcon={<Search />}
+            className="w-64"
+          />
+        )}
+      </div>
+      {loading ? (
+        <Skeleton className="h-64 w-full" />
+      ) : (
+        <ServiceRequestsTable requests={filteredRequests} onDismiss={handleDismiss} />
+      )}
+    </div>
+  );
+}
+
+function BookingRequestsTabContent() {
   const searchParams = useSearchParams();
   const initialStatus = searchParams.get("status") ?? "all";
 
@@ -250,14 +299,46 @@ function LeadsPageContent() {
   );
   const [statusFilter, setStatusFilter] = useState<string>(initialStatus);
   const [showEmpty, setShowEmpty] = useState(false);
+  // Same "browser-test" caller identity + default-hidden behavior as the
+  // Calls page's "Include browser test calls" switch (calls/page.tsx) --
+  // here filtered client-side against LeadOut.phone (api.leads.list has no
+  // server-side include_test_calls param the way calls.list does, so this
+  // stays a plain array filter, same mechanism as isEmptyLead below).
+  const [includeTestCalls, setIncludeTestCalls] = useState(false);
   const [editing, setEditing] = useState<LeadOut | null>(null);
   const [view, setView] = useState<"table" | "board">("board");
+  const [search, setSearch] = useState("");
 
-  const statusFilteredLeads = (leads ?? []).filter((lead) => statusFilter === "all" || lead.status === statusFilter);
-  const contentLeads = statusFilteredLeads
+  const testFilteredLeads = (leads ?? []).filter(
+    (lead) => includeTestCalls || !isBrowserTestIdentity(lead.phone)
+  );
+  const statusFilteredLeads = testFilteredLeads.filter(
+    (lead) => statusFilter === "all" || lead.status === statusFilter
+  );
+  // Applies to both the table and kanban views -- slotted in after
+  // status/test-call filtering, before the empty/content split below, so
+  // "N leads with no captured info" still reflects the searched-down set.
+  const searchFilteredLeads = statusFilteredLeads.filter((lead) =>
+    matchesSearch(search, [
+      leadGuestLabel(lead),
+      leadPhoneLabel(lead),
+      lead.email,
+      lead.check_in,
+      lead.check_out,
+      lead.purpose_of_stay,
+      lead.preferred_location,
+      lead.occasion,
+      lead.status,
+      lead.lead_temperature,
+      lead.urgency,
+      lead.conversation_summary,
+      ...lead.properties_discussed,
+    ])
+  );
+  const contentLeads = searchFilteredLeads
     .filter((lead) => !isEmptyLead(lead))
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-  const emptyLeads = statusFilteredLeads.filter(isEmptyLead);
+  const emptyLeads = searchFilteredLeads.filter(isEmptyLead);
 
   // Drag-drop on the Kanban board should only ever send {status} -- kept
   // structurally independent of LeadDetailPanel's edit form (temperature +
@@ -292,11 +373,21 @@ function LeadsPageContent() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="page-title">Leads</h1>
-          <p className="text-sm text-muted-foreground">Booking enquiries qualified by the Lead Agent</p>
-        </div>
+        <p className="text-sm text-muted-foreground">Booking enquiries qualified by the Lead Agent</p>
         <div className="flex flex-wrap items-center gap-4">
+          <Input
+            placeholder="Search leads…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            leadingIcon={<Search />}
+            className="w-56"
+          />
+          <div className="flex items-center gap-2">
+            <Switch id="include-test-leads" checked={includeTestCalls} onCheckedChange={setIncludeTestCalls} />
+            <Label htmlFor="include-test-leads" className="text-sm text-muted-foreground">
+              Include browser test calls
+            </Label>
+          </div>
           <div className="flex items-center gap-1 rounded-lg border p-0.5">
             <Button
               variant={view === "table" ? "secondary" : "ghost"}
@@ -341,8 +432,10 @@ function LeadsPageContent() {
           <p className="text-sm text-muted-foreground">
             No leads yet — they appear here once your portfolio&rsquo;s lead intake number starts receiving calls.
           </p>
+        ) : searchFilteredLeads.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No leads match your search.</p>
         ) : (
-          <LeadsKanban leads={leads ?? []} onCardClick={setEditing} onDropStatus={handleStatusDrop} />
+          <LeadsKanban leads={searchFilteredLeads} onCardClick={setEditing} onDropStatus={handleStatusDrop} />
         )
       ) : statusFilteredLeads.length === 0 ? (
         <p className="text-sm text-muted-foreground">
@@ -350,6 +443,8 @@ function LeadsPageContent() {
             ? "No leads match this status filter."
             : "No leads yet — they appear here once your portfolio's lead intake number starts receiving calls."}
         </p>
+      ) : searchFilteredLeads.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No leads match your search.</p>
       ) : (
         <div className="space-y-4">
           {contentLeads.length > 0 ? (
@@ -381,13 +476,47 @@ function LeadsPageContent() {
   );
 }
 
+function LiveRequestsPageContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialTab = searchParams.get("tab");
+  const [tab, setTab] = useState<RequestsTab>(
+    VALID_TABS.includes(initialTab as RequestsTab) ? (initialTab as RequestsTab) : "service"
+  );
+
+  function handleTabChange(value: unknown) {
+    if (typeof value !== "string" || !VALID_TABS.includes(value as RequestsTab)) return;
+    setTab(value as RequestsTab);
+    router.replace(`/dashboard/leads?tab=${value}`, { scroll: false });
+  }
+
+  return (
+    <div className="space-y-6">
+      <h1 className="page-title">Live Requests</h1>
+
+      <Tabs value={tab} onValueChange={handleTabChange}>
+        <TabsList>
+          <TabsTrigger value="service">Service Requests</TabsTrigger>
+          <TabsTrigger value="booking">Booking Requests</TabsTrigger>
+        </TabsList>
+        <TabsContent value="service" className="pt-4">
+          <ServiceRequestsTabContent />
+        </TabsContent>
+        <TabsContent value="booking" className="pt-4">
+          <BookingRequestsTabContent />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
 export default function LeadsPage() {
   // useSearchParams requires a Suspense boundary -- see Next.js docs (this
   // route is behind auth/client-rendered anyway, but this is the documented
   // pattern to avoid de-opting the whole tree above it to client rendering).
   return (
     <Suspense fallback={<Skeleton className="h-64 w-full" />}>
-      <LeadsPageContent />
+      <LiveRequestsPageContent />
     </Suspense>
   );
 }

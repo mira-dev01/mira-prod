@@ -1,10 +1,11 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { MoreHorizontal, X } from "lucide-react";
+import { MoreHorizontal, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { ListRow } from "@/components/ui/list-row";
 import { StatusChip } from "@/components/status-chip";
 import {
@@ -24,6 +25,7 @@ import { TalkToMiraDialog } from "@/components/talk-to-mira-dialog";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError, API_BASE_URL, getToken } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { matchesSearch } from "@/lib/utils";
 import type { AirbnbUrlImportStatus, FaqEntryOut, PropertyCreate, PropertyOut } from "@/lib/types";
 
 const emptyForm: PropertyCreate = {
@@ -93,6 +95,19 @@ export default function PropertiesPage() {
   const importInputRef = useRef<HTMLInputElement>(null);
   const [talkOpen, setTalkOpen] = useState(false);
   const [phoneBannerDismissed, setPhoneBannerDismissed] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const filteredProperties = (properties ?? []).filter((property) =>
+    matchesSearch(search, [
+      property.name,
+      property.city,
+      property.exophone,
+      property.usp,
+      property.house_rules,
+      property.neighborhood_info,
+      ...property.amenities,
+    ])
+  );
 
   const [airbnbUrlDialogOpen, setAirbnbUrlDialogOpen] = useState(false);
   const [airbnbUrlsText, setAirbnbUrlsText] = useState("");
@@ -424,6 +439,18 @@ export default function PropertiesPage() {
         </div>
       )}
 
+      {!loading && properties && properties.length > 0 && (
+        <div className="flex items-center">
+          <Input
+            placeholder="Search properties…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            leadingIcon={<Search />}
+            className="w-64"
+          />
+        </div>
+      )}
+
       {loading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {[0, 1, 2].map((i) => (
@@ -432,10 +459,16 @@ export default function PropertiesPage() {
         </div>
       ) : !properties || properties.length === 0 ? (
         <p className="text-sm text-muted-foreground">No properties yet — add one to get started.</p>
+      ) : filteredProperties.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No properties match your search.</p>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {properties.map((property) => (
-            <Card key={property.id} className="overflow-hidden">
+          {filteredProperties.map((property) => (
+            <Card
+              key={property.id}
+              className="cursor-pointer overflow-hidden pt-0"
+              onClick={() => openEdit(property)}
+            >
               <PropertyPhotoCarousel photos={property.photos} name={property.name} />
               <CardHeader>
                 <CardTitle className="flex items-center justify-between text-base">
@@ -447,7 +480,7 @@ export default function PropertiesPage() {
                 <p className="text-muted-foreground">{property.city ?? "No city set"}</p>
                 <p>₹{property.base_price.toLocaleString("en-IN")} / night · {property.max_guests} guests</p>
                 {property.exophone && <p className="text-muted-foreground">{property.exophone}</p>}
-                <div className="flex items-center gap-2 pt-2">
+                <div className="flex items-center gap-2 pt-2" onClick={(e) => e.stopPropagation()}>
                   <Button
                     size="sm"
                     className="min-w-0 flex-1"
@@ -510,20 +543,16 @@ export default function PropertiesPage() {
             </div>
           )}
           <PropertyFormFields form={editForm} onChange={setEditForm} />
-          {editing && (
-            <div className="space-y-2">
-              <p className="text-micro pt-2 text-muted-foreground">FAQ</p>
-              {loadingFaq ? (
-                <Skeleton className="h-24 w-full" />
-              ) : (
-                <PropertyFaqManager
-                  propertyId={editing.id}
-                  entries={editFaqEntries}
-                  onChange={setEditFaqEntries}
-                />
-              )}
-            </div>
-          )}
+          {editing &&
+            (loadingFaq ? (
+              <Skeleton className="h-24 w-full" />
+            ) : (
+              <PropertyFaqManager
+                propertyId={editing.id}
+                entries={editFaqEntries}
+                onChange={setEditFaqEntries}
+              />
+            ))}
         </form>
       </RightPanel>
     </div>

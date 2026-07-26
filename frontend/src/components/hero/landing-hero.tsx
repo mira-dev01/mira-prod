@@ -63,7 +63,7 @@ export function LandingHero({ user }: { user: UserOut | null }) {
                   className="h-12 px-7 text-base transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg"
                   render={<Link href="/login?intent=demo" />}
                 >
-                  Login
+                  Sign In
                 </Button>
                 <Link
                   href="/login?tab=register"

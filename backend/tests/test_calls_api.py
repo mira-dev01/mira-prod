@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from app.models.call_session import CallSession
 from app.models.guest_profile import GuestProfile
 from app.models.lead import Lead
+from app.schemas.call_summary import BookingSnapshot, CallSummary, SummaryOutcome
 
 
 async def test_property_call_appears_in_calls_list(client, auth_headers, test_call_session):
@@ -10,6 +11,46 @@ async def test_property_call_appears_in_calls_list(client, auth_headers, test_ca
     assert resp.status_code == 200
     ids = [c["id"] for c in resp.json()]
     assert str(test_call_session.id) in ids
+
+
+async def test_call_detail_returns_structured_ai_summary(client, auth_headers, test_user, db_session):
+    """Full round-trip: a structured CallSummary written to the JSONB
+    ai_summary column must come back from GET /calls/{id} with the exact
+    nested shape the frontend (calls/[id]/page.tsx) renders -- snake_case
+    keys throughout, matching frontend/src/lib/types.ts's CallSummary."""
+    summary = CallSummary(
+        booking_snapshot=BookingSnapshot(guest_name="Rohan", property=["Villa A", "Villa B"], guests="8"),
+        conversation_summary="Guest asked about a birthday trip to Goa.",
+        outcome=SummaryOutcome(status="Awaiting Guest Details", reason="Check-out date not yet confirmed."),
+        host_action=["Confirm availability for 29 May."],
+        key_details=["Group of 8 friends", "Birthday celebration"],
+        missing_information=["Check-out date", "Budget"],
+    )
+    session = CallSession(
+        exotel_call_id="summary-roundtrip-1",
+        user_id=test_user.id,
+        caller_number="+919999999999",
+        status="completed",
+        ai_summary=summary.model_dump(),
+    )
+    db_session.add(session)
+    await db_session.commit()
+
+    resp = await client.get(f"/api/v1/calls/{session.id}", headers=auth_headers)
+    assert resp.status_code == 200
+    body = resp.json()["ai_summary"]
+    assert body["booking_snapshot"]["guest_name"] == "Rohan"
+    assert body["booking_snapshot"]["property"] == ["Villa A", "Villa B"]
+    assert body["conversation_summary"] == "Guest asked about a birthday trip to Goa."
+    assert body["outcome"]["status"] == "Awaiting Guest Details"
+    assert body["host_action"] == ["Confirm availability for 29 May."]
+    assert body["missing_information"] == ["Check-out date", "Budget"]
+
+
+async def test_call_detail_ai_summary_is_null_when_not_yet_generated(client, auth_headers, test_call_session):
+    resp = await client.get(f"/api/v1/calls/{test_call_session.id}", headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["ai_summary"] is None
 
 
 async def test_lead_agent_call_with_no_property_appears_in_calls_list(client, auth_headers, test_user, db_session):

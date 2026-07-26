@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { Plus } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { DictationTextarea } from "@/components/ui/dictation-textarea";
@@ -16,6 +16,7 @@ import { StatusChip } from "@/components/status-chip";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError } from "@/lib/api";
+import { matchesSearch } from "@/lib/utils";
 import { UnansweredQuestionsCard } from "@/components/unanswered-questions-card";
 
 export default function FaqPage() {
@@ -28,9 +29,14 @@ export default function FaqPage() {
   const [answer, setAnswer] = useState("");
   const [category, setCategory] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [search, setSearch] = useState("");
 
   const propertyName = (id: string | null) =>
     id ? properties?.find((p) => p.id === id)?.name ?? id : "All properties";
+
+  const filteredEntries = (entries ?? []).filter((entry) =>
+    matchesSearch(search, [entry.question, entry.answer, propertyName(entry.property_id), entry.category, entry.status])
+  );
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -90,21 +96,34 @@ export default function FaqPage() {
       <UnansweredQuestionsCard collapsible />
 
       <Card className="min-w-0">
-        <CardHeader className="flex items-center justify-between gap-3 space-y-0">
+        <CardHeader className="flex flex-wrap items-center justify-between gap-3 space-y-0">
           <div className="min-w-0">
             <CardTitle>Verified FAQ entries</CardTitle>
             <CardDescription>Answers already in the knowledge base, added by you or resolved from a gap.</CardDescription>
           </div>
-          <Button size="sm" className="shrink-0" onClick={() => setAddOpen(true)}>
-            <Plus className="size-4" />
-            Add new
-          </Button>
+          <div className="flex shrink-0 items-center gap-2">
+            {entries && entries.length > 0 && (
+              <Input
+                placeholder="Search FAQ…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                leadingIcon={<Search />}
+                className="w-56"
+              />
+            )}
+            <Button size="sm" className="shrink-0" onClick={() => setAddOpen(true)}>
+              <Plus className="size-4" />
+              Add new
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="min-w-0">
           {loading ? (
             <Skeleton className="h-64 w-full" />
           ) : !entries || entries.length === 0 ? (
             <p className="text-sm text-muted-foreground">No FAQ entries yet.</p>
+          ) : filteredEntries.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No FAQ entries match your search.</p>
           ) : (
             <div className="min-w-0 max-h-[32rem] overflow-y-auto overflow-x-auto">
               <Table>
@@ -119,7 +138,7 @@ export default function FaqPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {entries.map((entry) => (
+                  {filteredEntries.map((entry) => (
                     <TableRow key={entry.id} className="align-top">
                       <TableCell className="w-[180px] max-w-[180px] py-3">
                         <ExpandableText text={entry.question} maxLength={60} />

@@ -70,6 +70,10 @@ class User(UUIDPkMixin, TimestampMixin, Base):
     agent_first_message: Mapped[str | None] = mapped_column(Text)
     agent_persona: Mapped[str | None] = mapped_column(Text)
     agent_escalation_phrase: Mapped[str | None] = mapped_column(Text)
+    # "female" | "male" -- maps to a specific Sarvam bulbul:v3 speaker name in
+    # app/voice/pipeline.py (VOICE_BY_GENDER). Default "female" matches the
+    # pre-existing global SARVAM_TTS_SPEAKER default ("roopa").
+    agent_voice_gender: Mapped[str] = mapped_column(String(16), default="female", server_default="female")
 
     # Host Memory: host-level negotiation/policy preferences (see
     # memory-architecture-plan.md section 4). discount_policy_text is the

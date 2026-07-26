@@ -8,17 +8,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CreditCard, KeyRound, Users } from "lucide-react";
 import { DefinitionRow } from "@/components/ui/definition-row";
-import { DictationTextarea } from "@/components/ui/dictation-textarea";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AiTrainingSection } from "@/components/settings/ai-training-section";
 import { TechniciansSection } from "@/components/settings/technicians-section";
 import { API_BASE_URL, ApiError, api, getToken } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 
-const VALID_TABS = ["workspace", "voice-ai", "technicians", "ai-training", "billing", "api", "team"] as const;
+const VALID_TABS = ["your account", "technicians", "billing", "api", "team"] as const;
 type SettingsTab = (typeof VALID_TABS)[number];
 
 function ComingSoonTab({ icon: Icon, label }: { icon: React.ComponentType<{ className?: string }>; label: string }) {
@@ -43,15 +40,14 @@ function SettingsPageContent() {
   const searchParams = useSearchParams();
   const initialTab = searchParams.get("tab");
   const [tab, setTab] = useState<SettingsTab>(
-    VALID_TABS.includes(initialTab as SettingsTab) ? (initialTab as SettingsTab) : "workspace"
+    VALID_TABS.includes(initialTab as SettingsTab) ? (initialTab as SettingsTab) : "your account"
   );
 
   function handleTabChange(value: unknown) {
     if (typeof value !== "string" || !VALID_TABS.includes(value as SettingsTab)) return;
     setTab(value as SettingsTab);
-    // Keeps the URL deep-linkable (e.g. the Pricing page's "Review
-    // negotiation policy" link opens straight to ?tab=ai-training) without
-    // adding a history entry for every tab click.
+    // Keeps the URL deep-linkable without adding a history entry for every
+    // tab click.
     router.replace(`/dashboard/settings?tab=${value}`, { scroll: false });
   }
 
@@ -63,11 +59,6 @@ function SettingsPageContent() {
 
   const [notificationEmail, setNotificationEmail] = useState(user?.notification_email ?? "");
   const [savingNotificationEmail, setSavingNotificationEmail] = useState(false);
-
-  const [firstMessage, setFirstMessage] = useState(user?.agent_first_message ?? "");
-  const [persona, setPersona] = useState(user?.agent_persona ?? "");
-  const [escalationPhrase, setEscalationPhrase] = useState(user?.agent_escalation_phrase ?? "");
-  const [savingPersonalization, setSavingPersonalization] = useState(false);
 
   async function handleSaveLeadExophone(e: React.FormEvent) {
     e.preventDefault();
@@ -108,24 +99,6 @@ function SettingsPageContent() {
       toast.error(err instanceof ApiError ? err.message : "Failed to save notification email");
     } finally {
       setSavingNotificationEmail(false);
-    }
-  }
-
-  async function handleSavePersonalization(e: React.FormEvent) {
-    e.preventDefault();
-    setSavingPersonalization(true);
-    try {
-      await api.auth.updateMe({
-        agent_first_message: firstMessage || null,
-        agent_persona: persona || null,
-        agent_escalation_phrase: escalationPhrase || null,
-      });
-      await refreshUser();
-      toast.success("Voice agent personalization saved");
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to save personalization");
-    } finally {
-      setSavingPersonalization(false);
     }
   }
 
@@ -172,20 +145,18 @@ function SettingsPageContent() {
 
       <Tabs value={tab} onValueChange={handleTabChange}>
         <TabsList>
-          <TabsTrigger value="workspace">Workspace</TabsTrigger>
-          <TabsTrigger value="voice-ai">Voice AI</TabsTrigger>
+          <TabsTrigger value="your account">Your account</TabsTrigger>
           <TabsTrigger value="technicians">Technicians</TabsTrigger>
-          <TabsTrigger value="ai-training">AI Training</TabsTrigger>
           <TabsTrigger value="billing">Billing</TabsTrigger>
           <TabsTrigger value="api">API</TabsTrigger>
           <TabsTrigger value="team">Team</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="workspace" className="pt-4">
+        <TabsContent value="your account" className="pt-4">
           <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
             <Card>
               <CardHeader>
-                <CardTitle>Host account</CardTitle>
+                <CardTitle>Your profile</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
                 <DefinitionRow label="Name" value={user?.name ?? "—"} />
@@ -208,7 +179,7 @@ function SettingsPageContent() {
 
             <Card>
               <CardHeader>
-                <CardTitle>WhatsApp escalations</CardTitle>
+                <CardTitle>WhatsApp Assist</CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="mb-3 text-sm text-muted-foreground">
@@ -231,7 +202,7 @@ function SettingsPageContent() {
 
             <Card>
               <CardHeader>
-                <CardTitle>Escalation notifications</CardTitle>
+                <CardTitle>Email Summaries</CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="mb-3 text-sm text-muted-foreground">
@@ -254,7 +225,7 @@ function SettingsPageContent() {
 
             <Card>
               <CardHeader>
-                <CardTitle>Lead intake number</CardTitle>
+                <CardTitle>Guest Call Number</CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="mb-3 text-sm text-muted-foreground">
@@ -280,64 +251,8 @@ function SettingsPageContent() {
           </div>
         </TabsContent>
 
-        <TabsContent value="voice-ai" className="space-y-6 pt-4">
-          <Card className="max-w-3xl">
-            <CardHeader>
-              <CardTitle>Voice agent personalization</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="mb-3 text-sm text-muted-foreground">
-                Leave any field blank to use MIRA&apos;s default. The golden rules (never hallucinate
-                pricing, always escalate when unsure, etc.) stay fixed regardless — these only change
-                tone and wording.
-              </p>
-              <form onSubmit={handleSavePersonalization} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="agent_first_message">Opening greeting</Label>
-                  <DictationTextarea
-                    id="agent_first_message"
-                    placeholder="Namaste {guest_name}! I'm Mira, calling on behalf of {host_name} about {property_name}."
-                    value={firstMessage}
-                    onValueChange={setFirstMessage}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Placeholders: {"{host_name}"}, {"{property_name}"}, {"{city}"}, {"{guest_name}"} — any that
-                    don&apos;t apply to a given call are left blank automatically. Set during registration; edit
-                    it here any time.
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="agent_persona">Personality note</Label>
-                  <DictationTextarea
-                    id="agent_persona"
-                    placeholder="e.g. Sound like a warm, chatty local host -- informal, never corporate."
-                    value={persona}
-                    onValueChange={setPersona}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="agent_escalation_phrase">Escalation phrase</Label>
-                  <DictationTextarea
-                    id="agent_escalation_phrase"
-                    placeholder="e.g. One moment, let me get my colleague on the line for you."
-                    value={escalationPhrase}
-                    onValueChange={setEscalationPhrase}
-                  />
-                  <p className="text-xs text-muted-foreground">Said right before MIRA hands off to you.</p>
-                </div>
-                <Button type="submit" disabled={savingPersonalization}>
-                  Save personalization
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
         <TabsContent value="technicians" className="pt-4">
           <TechniciansSection />
-        </TabsContent>
-        <TabsContent value="ai-training" className="pt-4">
-          <AiTrainingSection />
         </TabsContent>
 
         <TabsContent value="billing" className="pt-4">

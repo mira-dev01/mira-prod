@@ -84,7 +84,7 @@ export default function OverviewPage() {
           value={summary?.pipeline_value != null ? `₹${summary.pipeline_value.toLocaleString("en-IN")}` : undefined}
           loading={summaryLoading}
         />
-        <Link href="/dashboard/leads?status=open" className="block">
+        <Link href="/dashboard/leads?tab=booking&status=open" className="block">
           <StatCard icon={Users} label="Open leads" value={summary?.open_leads} loading={summaryLoading} interactive />
         </Link>
       </div>
@@ -95,13 +95,13 @@ export default function OverviewPage() {
           widths (1366x768/1440x900) it wraps to a second row but stays
           right below the fold rather than pushed down by an 8-row calls
           table (cut to 5 here, full list stays one click away). */}
-      <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
-        <Card>
+      <div className="grid items-stretch gap-6 lg:grid-cols-2 xl:grid-cols-3">
+        <Card className="h-full">
           <CardHeader>
             <CardTitle>Recent calls</CardTitle>
             <CardDescription>Latest 5 call sessions across your properties</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex-1">
             {callsLoading ? (
               <Skeleton className="h-40 w-full" />
             ) : recentCalls.length === 0 ? (
@@ -128,11 +128,11 @@ export default function OverviewPage() {
             leads={leads ?? []}
             onRefetch={refetchLeads}
             onCardClick={setEditingLead}
-            limit={3}
+            limit={2}
           />
         )}
 
-        <div className="lg:col-span-2 xl:col-span-1">
+        <div className="flex lg:col-span-2 xl:col-span-1">
           <UnansweredQuestionsCard limit={2} linkToFaqPage />
         </div>
       </div>
