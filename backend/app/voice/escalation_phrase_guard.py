@@ -8,18 +8,30 @@ bigger prompt reliably fixes on its own. This processor is the backstop,
 not a replacement for the rule.
 
 Scoped narrowly on purpose: it only buffers and scans the first text-bearing
-LLM response at or after an escalate_to_host call, via arm(). Every other
-turn in the call passes straight through unmodified and unbuffered -- no
-added latency to the common case. Buffering the full response before
-release does add latency to the one turn it's active for (can't scan text
-that hasn't arrived yet), which is an acceptable trade only because it's
-rare and specifically where the failure has actually happened.
+LLM response at or after an escalate_to_host call. Every other turn in the
+call passes straight through unmodified and unbuffered -- no added latency
+to the common case. Buffering the full response before release does add
+latency to the one turn it's active for (can't scan text that hasn't
+arrived yet), which is an acceptable trade only because it's rare and
+specifically where the failure has actually happened.
+
+Arms itself by watching for FunctionCallsStartedFrame naming
+escalate_to_host, not via an arm() called from the tool's own Python code.
+Confirmed live 2026-07-26: the model generates the tool call AND the banned
+text in the SAME completion, microseconds apart -- an arm() invoked from
+inside the tool-execution handler races against that same completion's text
+already flowing through this processor and can lose. Watching the frame
+directly in this processor's own stream removes the race entirely, since
+FunctionCallsStartedFrame and the response's LLMFullResponseStartFrame both
+flow through this exact position, in order, with no cross-stream timing
+involved.
 """
 
 import re
 
 from pipecat.frames.frames import (
     Frame,
+    FunctionCallsStartedFrame,
     LLMFullResponseEndFrame,
     LLMFullResponseStartFrame,
     LLMTextFrame,
@@ -39,18 +51,18 @@ class EscalationPhraseGuardProcessor(FrameProcessor):
         self._armed = False
         self._buffering = False
         self._buffer: list[str] = []
-        self._start_frame: LLMFullResponseStartFrame | None = None
-
-    def arm(self) -> None:
-        """Called by the escalate_to_host tool (app/voice/tools.py) the
-        moment it fires. Stays armed across an empty (tool-call-only)
-        response cycle -- only a cycle that actually contains text disarms
-        it -- so it catches the reply whether the model speaks in the same
-        completion as the tool call or the very next one."""
-        self._armed = True
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
+
+        if isinstance(frame, FunctionCallsStartedFrame):
+            if any(fc.function_name == "escalate_to_host" for fc in frame.function_calls):
+                # Stays armed across a tool-call-only cycle with no text of
+                # its own (this frame's own cycle) -- only a cycle that
+                # actually contains text disarms it, in the block below.
+                self._armed = True
+            await self.push_frame(frame, direction)
+            return
 
         if not self._armed:
             await self.push_frame(frame, direction)
@@ -59,7 +71,6 @@ class EscalationPhraseGuardProcessor(FrameProcessor):
         if isinstance(frame, LLMFullResponseStartFrame):
             self._buffering = True
             self._buffer = []
-            self._start_frame = frame
             return
 
         if self._buffering and isinstance(frame, LLMTextFrame):
@@ -69,11 +80,8 @@ class EscalationPhraseGuardProcessor(FrameProcessor):
         if self._buffering and isinstance(frame, LLMFullResponseEndFrame):
             text = "".join(self._buffer)
             self._buffering = False
-            self._start_frame = None
 
             if not text.strip():
-                # Tool-call-only cycle, nothing spoken -- stay armed for the
-                # next (likely text-bearing) cycle instead of disarming here.
                 await self.push_frame(frame, direction)
                 return
 

@@ -65,6 +65,7 @@ from app.services import (
 from app.voice.conversation_state import ConversationState
 from app.voice.escalation_phrase_guard import EscalationPhraseGuardProcessor
 from app.voice.language_sync import DEFAULT_TTS_LANGUAGE, LanguageSyncProcessor
+from app.voice.redundant_context_guard import RedundantContextGuardProcessor
 from app.voice.ringing_audio import play_ringing_tone
 from app.voice.silence_watchdog import SilenceWatchdogProcessor
 from app.voice.tools import build_voice_tools
@@ -433,6 +434,12 @@ async def _run_pipeline_inner(
     # GOLDEN_RULES -- prompting alone has failed on this exact wording
     # repeatedly across real calls. See app/voice/escalation_phrase_guard.py.
     escalation_guard = EscalationPhraseGuardProcessor()
+    # Drops a spurious LLM re-invocation when pipecat's own deferred
+    # context-push (bundling function-call results that arrive while the
+    # bot is speaking) fires with nothing new since the last completion --
+    # confirmed live: caused a call to end itself with no guest reply in
+    # between. See app/voice/redundant_context_guard.py.
+    redundant_context_guard = RedundantContextGuardProcessor()
 
     async with aiohttp.ClientSession() as http_session:
         tts = SarvamTTSService(
@@ -471,7 +478,6 @@ async def _run_pipeline_inner(
             guest_profile_id,
             caller_number=real_caller_number,
             silence_watchdog=silence_watchdog,
-            escalation_guard=escalation_guard,
         )
         # first_message is pre-seeded as an assistant turn so the LLM knows
         # it was already said (the "don't repeat greeting" rule relies on
@@ -528,6 +534,7 @@ async def _run_pipeline_inner(
                 silence_watchdog,
                 language_sync,
                 user_aggregator,
+                redundant_context_guard,
                 llm,
                 escalation_guard,
                 tts,
