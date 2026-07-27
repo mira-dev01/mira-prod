@@ -62,8 +62,13 @@ _UUID_RE = re.compile(_UUID_PATTERN, re.IGNORECASE)
 _PROPERTY_ID_ASIDE_RE = re.compile(r"\(\s*property[\s_]?id:?\s*" + _UUID_PATTERN + r"\s*\)", re.IGNORECASE)
 
 # Matches handle_recommend_properties's own result-line format (tool_handlers.py):
-# "{name} in {city}: ₹{price}/night, sleeps {guests}, ..."
-_RECOMMEND_LINE_RE = re.compile(r"^(?P<name>.+?) in (?P<city>[^:]+): ₹(?P<price>[\d,]+)/night, sleeps (?P<guests>\d+)")
+# "N. {name} in {city}: ₹{price}/night, sleeps {guests}, ...". Greedy .+ (not
+# .+?) so a name that itself happens to contain " in " (unlikely but not
+# impossible) still resolves to the LAST " in " before the price, i.e. the
+# actual city boundary -- defense in depth alongside the newline-per-property
+# format below, which is what actually fixed real property names containing
+# "|" being torn apart (confirmed live 2026-07-27, see tool_handlers.py).
+_RECOMMEND_LINE_RE = re.compile(r"^\d+\.\s*(?P<name>.+) in (?P<city>[^:]+): ₹(?P<price>[\d,]+)/night, sleeps (?P<guests>\d+)")
 
 
 def strip_property_ids(text: str) -> str:
@@ -79,7 +84,7 @@ def parse_recommend_properties_result(result) -> list[dict]:
     callers treat an empty list as "nothing to verify/fall back to"."""
     if not isinstance(result, str) or not result.startswith("Here are some options:"):
         return []
-    body = result[len("Here are some options:") :].split(" | ")
+    body = result[len("Here are some options:") :].split("\n")
     options = []
     for segment in body:
         match = _RECOMMEND_LINE_RE.match(segment.strip())

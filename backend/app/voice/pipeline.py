@@ -65,6 +65,7 @@ from app.services import (
 from app.voice.conversation_state import ConversationState
 from app.voice.escalation_phrase_guard import EscalationPhraseGuardProcessor
 from app.voice.language_sync import DEFAULT_TTS_LANGUAGE, LanguageSyncProcessor
+from app.voice.meta_commentary_guard import MetaCommentaryGuardProcessor
 from app.voice.premature_end_call_guard import PrematureEndCallGuardProcessor
 from app.voice.property_recommendation_guard import PropertyRecommendationGuardProcessor
 from app.voice.redundant_context_guard import RedundantContextGuardProcessor
@@ -492,6 +493,10 @@ async def _run_pipeline_inner(
     # doesn't provide (a cap bounds how much garbage CAN be generated, not
     # whether any of it repeats). See app/voice/repetition_guard.py.
     repetition_guard = RepetitionGuardProcessor()
+    # Drops narrator/stage-direction asides like "(Waiting for guest
+    # response)" before they reach TTS -- confirmed live. See
+    # app/voice/meta_commentary_guard.py.
+    meta_commentary_guard = MetaCommentaryGuardProcessor()
 
     async with aiohttp.ClientSession() as http_session:
         tts = SarvamTTSService(
@@ -590,6 +595,7 @@ async def _run_pipeline_inner(
                 redundant_context_guard,
                 llm,
                 repetition_guard,
+                meta_commentary_guard,
                 property_recommendation_guard,
                 escalation_guard,
                 premature_end_call_guard,

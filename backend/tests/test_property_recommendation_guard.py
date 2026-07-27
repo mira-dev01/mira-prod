@@ -15,10 +15,26 @@ from app.voice.property_recommendation_guard import (
 )
 
 _RESULT = (
-    "Here are some options: Cabana 1BHK in South Goa: ₹0/night, sleeps 2, wifi, pool "
-    "(property_id: 48c687d2-7be8-435c-951c-080d5bab0314) | "
-    "Azure 1BHK in South Goa: ₹3,500/night, sleeps 2, wifi, ac "
+    "Here are some options:\n"
+    "1. Cabana 1BHK in South Goa: ₹0/night, sleeps 2, wifi, pool "
+    "(property_id: 48c687d2-7be8-435c-951c-080d5bab0314)\n"
+    "2. Azure 1BHK in South Goa: ₹3,500/night, sleeps 2, wifi, ac "
     "(property_id: 804e8006-e547-4962-bc40-3e9f3357c413)"
+)
+
+# Regression fixture for the exact live failure on 2026-07-27: real property
+# names contain a literal "|" (imported Airbnb titles), which the OLD " | "
+# -joined result format collided with -- tearing "Azure 1bhk | 5 mins walk to
+# beach | Pause Project" into fragments that got read back as if "Pause
+# Project" (the shared brand name, not a unit name) was the property.
+_PIPE_IN_NAME_RESULT = (
+    "Here are some options:\n"
+    "1. Azure 1bhk | 5 mins walk to beach | Pause Project in Colva: ₹3,500/night, sleeps 2, wifi, ac "
+    "(property_id: 11111111-1111-1111-1111-111111111111)\n"
+    "2. Cabana 1bhk | 5 mins walk to beach- Pause Project in South Goa: ₹4,000/night, sleeps 2, wifi, pool "
+    "(property_id: 22222222-2222-2222-2222-222222222222)\n"
+    "3. Olive-Wake up by the forest @ Pause Project 1bhk in Siolim: ₹4,500/night, sleeps 3, wifi, forest view "
+    "(property_id: 33333333-3333-3333-3333-333333333333)"
 )
 
 
@@ -41,6 +57,15 @@ def test_parse_recommend_properties_result():
 
 def test_parse_not_found_message_returns_empty():
     assert parse_recommend_properties_result("I couldn't find a property in our portfolio matching that") == []
+
+
+def test_regression_pipe_in_property_name_no_longer_tears_the_name_apart():
+    options = parse_recommend_properties_result(_PIPE_IN_NAME_RESULT)
+    assert [o["name"] for o in options] == [
+        "Azure 1bhk | 5 mins walk to beach | Pause Project",
+        "Cabana 1bhk | 5 mins walk to beach- Pause Project",
+        "Olive-Wake up by the forest @ Pause Project 1bhk",
+    ]
 
 
 def test_strip_property_ids_removes_the_whole_aside():

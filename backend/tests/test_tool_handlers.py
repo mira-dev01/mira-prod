@@ -362,6 +362,44 @@ async def test_recommend_properties_matches_south_goa_locality_without_literal_t
     assert "Limón" not in result
 
 
+async def test_recommend_properties_south_goa_query_excludes_airport_travel_time_mention(test_user, db_session):
+    """Regression for the exact live failure on 2026-07-27: Olive's real
+    city is Siolim (North Goa), but its neighborhood_info mentions "Dabolim
+    (South Goa airport)" purely as a travel-time reference point. Matching
+    the literal "South Goa" phrase against neighborhood_info free text
+    wrongly treated that incidental mention as the property being in South
+    Goa -- a guest who explicitly asked for South Goa was recommended a
+    North Goa property."""
+    olive = Property(
+        user_id=test_user.id,
+        name="Olive-Wake up by the forest @ Pause Project 1bhk",
+        city="Siolim",
+        exophone="+918033336666",
+        base_price=4500,
+        max_guests=3,
+        neighborhood_info=(
+            "The Pause Project is centrally located in North Goa. Dabolim (South Goa airport) "
+            "and Madgao railway station are both 75 mins away."
+        ),
+    )
+    azure = Property(
+        user_id=test_user.id,
+        name="Azure 1bhk",
+        city="Colva",
+        exophone="+918011114444",
+        base_price=3500,
+        max_guests=2,
+        neighborhood_info="2 min walk to Colva Beach.",
+    )
+    db_session.add_all([olive, azure])
+    await db_session.commit()
+
+    args = RecommendPropertiesArgs(preferred_location="South Goa")
+    result = await tool_handlers.handle_recommend_properties(db_session, args, test_user.id)
+    assert "Azure" in result
+    assert "Olive" not in result
+
+
 async def test_recommend_properties_matches_north_goa_locality(test_user, db_session):
     north_property = Property(
         user_id=test_user.id,

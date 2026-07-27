@@ -588,20 +588,28 @@ async def handle_recommend_properties(db: AsyncSession, args: RecommendPropertie
     if args.preferred_location:
         # Match against city name OR neighborhood_info so state-level queries
         # ("Kerala", "Himachal") find properties whose city is e.g. "Alleppey"
-        # but whose neighborhood text mentions the broader region. For Goa
-        # specifically, also expand "north/south goa" into the actual
-        # localities in that region (see _goa_region_localities above).
-        loc = f"%{args.preferred_location}%"
-        location_filter = or_(Property.city.ilike(loc), Property.neighborhood_info.ilike(loc))
+        # but whose neighborhood text mentions the broader region.
         localities = _goa_region_localities(args.preferred_location)
         if localities:
+            # For "north/south goa" specifically, match ONLY against the
+            # expanded locality list -- never the literal "South Goa"/
+            # "North Goa" phrase against neighborhood_info free text.
+            # Confirmed live 2026-07-27: several North Goa (Siolim)
+            # properties' neighborhood_info mentions "Dabolim (South Goa
+            # airport)" purely as a travel-time reference point, and a
+            # literal "%South Goa%" substring match against that text
+            # wrongly treated the mention as evidence the property itself is
+            # in South Goa -- a guest who explicitly asked for South Goa was
+            # recommended a Siolim (North Goa) property because of it.
             location_filter = or_(
-                location_filter,
                 *[
                     or_(Property.city.ilike(f"%{locality}%"), Property.neighborhood_info.ilike(f"%{locality}%"))
                     for locality in localities
-                ],
+                ]
             )
+        else:
+            loc = f"%{args.preferred_location}%"
+            location_filter = or_(Property.city.ilike(loc), Property.neighborhood_info.ilike(loc))
         base_stmt = base_stmt.where(location_filter)
 
     stmt = base_stmt
@@ -629,15 +637,25 @@ async def handle_recommend_properties(db: AsyncSession, args: RecommendPropertie
     if not properties:
         return "I couldn't find a property in our portfolio matching that -- let me connect you with the host directly."
 
+    # One property per line, numbered, not " | "-joined -- real property
+    # names routinely contain a literal "|" themselves (e.g. imported Airbnb
+    # titles like "Azure 1bhk | 5 mins walk to beach | Pause Project"),
+    # confirmed live 2026-07-27: splitting the combined string back apart on
+    # " | " tore individual names into fragments ("Pause Project", "5 mins
+    # walk to beach- Pause Project" as if those were the property names) --
+    # both for whatever parsed this downstream and, per the transcript, for
+    # the model itself trying to read the mashed-together line back to the
+    # guest. A newline can never appear inside these single-line DB fields,
+    # so it can't collide the way " | " did.
     lines = []
-    for property_ in properties:
+    for i, property_ in enumerate(properties, 1):
         amenities = ", ".join(property_.amenities[:4]) if property_.amenities else "no listed amenities"
         usp_part = f" -- {property_.usp}" if property_.usp else ""
         lines.append(
-            f"{property_.name} in {property_.city or 'unlisted city'}: ₹{float(property_.base_price):,.0f}/night, "
+            f"{i}. {property_.name} in {property_.city or 'unlisted city'}: ₹{float(property_.base_price):,.0f}/night, "
             f"sleeps {property_.max_guests}, {amenities}{usp_part} (property_id: {property_.id})"
         )
-    return "Here are some options: " + " | ".join(lines) + combo_note
+    return "Here are some options:\n" + "\n".join(lines) + combo_note
 
 
 async def _resolve_property_names(db: AsyncSession, values: list[str]) -> list[str]:
