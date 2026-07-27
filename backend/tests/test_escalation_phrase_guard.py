@@ -58,7 +58,7 @@ async def test_a_different_tool_call_does_not_arm_the_guard():
 
 
 @pytest.mark.asyncio
-async def test_escalate_to_host_call_started_arms_and_rewrites_banned_phrase():
+async def test_escalate_to_host_call_started_arms_and_replaces_the_reply():
     guard = EscalationPhraseGuardProcessor()
 
     down_frames, _ = await run_test(
@@ -70,6 +70,25 @@ async def test_escalate_to_host_call_started_arms_and_rewrites_banned_phrase():
     assert len(text_frames) == 1
     assert text_frames[0].text == SAFE_REPLACEMENT_TEXT
     assert "loop" not in text_frames[0].text.lower()
+
+
+@pytest.mark.asyncio
+async def test_regression_a_phrasing_variant_the_old_regex_never_covered_is_still_replaced():
+    """Regression for exactly the complaint that motivated dropping phrase
+    detection: 'let me open the host' was a real live variant that the old
+    'loop...host' regex never matched, so it kept getting spoken despite the
+    guard supposedly already fixing this. Unconditional replacement has no
+    such gap -- it doesn't matter what the model says here."""
+    guard = EscalationPhraseGuardProcessor()
+
+    down_frames, _ = await run_test(
+        guard,
+        frames_to_send=[_escalate_call_started()] + _response("Let me open the host for you real quick."),
+    )
+
+    text_frames = [f for f in down_frames if isinstance(f, LLMTextFrame)]
+    assert len(text_frames) == 1
+    assert text_frames[0].text == SAFE_REPLACEMENT_TEXT
 
 
 @pytest.mark.asyncio
@@ -100,7 +119,11 @@ async def test_same_completion_race_is_caught():
 
 
 @pytest.mark.asyncio
-async def test_armed_leaves_clean_reply_untouched_and_disarms():
+async def test_armed_replaces_even_an_already_clean_reply_and_disarms():
+    """Even a reply that never says anything banned still gets replaced --
+    there's no detection step to pass or fail. This keeps the guest-facing
+    line consistent regardless of what the model happened to phrase, and
+    means a future new phrasing variant can never slip through undetected."""
     guard = EscalationPhraseGuardProcessor()
 
     down_frames, _ = await run_test(
@@ -110,7 +133,7 @@ async def test_armed_leaves_clean_reply_untouched_and_disarms():
     )
 
     text_frames = [f for f in down_frames if isinstance(f, LLMTextFrame)]
-    assert "".join(f.text for f in text_frames) == "Understood, the host will follow up with you shortly."
+    assert "".join(f.text for f in text_frames) == SAFE_REPLACEMENT_TEXT
     assert guard._armed is False
 
 

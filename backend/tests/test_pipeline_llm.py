@@ -26,6 +26,24 @@ def test_build_llm_defaults_to_groq_with_low_reasoning_effort(monkeypatch):
     assert llm._settings.extra == {"reasoning_effort": "low", "extra_body": {"reasoning_format": "hidden"}}
 
 
+def test_build_llm_groq_caps_max_completion_tokens(monkeypatch):
+    """Regression for the exact live failure on 2026-07-27: a single Groq
+    reply came back as 3072 completion tokens (the same clarifying question
+    paraphrased dozens of times, all spoken to the guest) on a long, noisy
+    call -- reasoning_format="hidden" was working correctly on that same
+    completion (a small, separately-reported reasoning token count), so this
+    was the model's actual answer content degenerating into repetition, not
+    a reasoning leak. The Groq path had no token cap at all before this fix."""
+    monkeypatch.setattr(pipeline.settings, "llm_provider", "groq")
+    monkeypatch.setattr(pipeline.settings, "groq_api_key", "test-key")
+    monkeypatch.setattr(pipeline.settings, "groq_models", ["openai/gpt-oss-120b", "llama-3.1-8b-instant"])
+    monkeypatch.setattr(main_mod, "llm_health", {})
+
+    llm = pipeline._build_llm()
+
+    assert llm._settings.max_completion_tokens == 400
+
+
 def test_build_llm_skips_groq_model_marked_down_in_health_check(monkeypatch):
     # _check_llm_health (app/main.py) marks a model down (e.g. after a 429
     # from that model's own rate limit) -- _build_llm must skip it and pick
@@ -116,7 +134,15 @@ def test_build_llm_openrouter_gpt_oss_gets_low_reasoning_effort(monkeypatch):
 
     llm = pipeline._build_llm()
 
-    assert llm._settings.extra == {"reasoning_effort": "low"}
+    # extra_body's reasoning.exclude=True is the OpenRouter-side equivalent of
+    # Groq's reasoning_format="hidden" -- without it, gpt-oss-120b's raw
+    # chain-of-thought leaks straight into spoken replies (confirmed live
+    # 2026-07-27, see property_recommendation_guard.py's sibling fix and
+    # _build_openrouter_llm's comment).
+    assert llm._settings.extra == {
+        "reasoning_effort": "low",
+        "extra_body": {"reasoning": {"exclude": True}},
+    }
 
 
 def test_build_llm_openrouter_non_gpt_oss_model_has_no_reasoning_effort(monkeypatch):

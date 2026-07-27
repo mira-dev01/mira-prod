@@ -1,23 +1,32 @@
 """Code-level backstop for the "let me loop in the host" ban in
 GOLDEN_RULES (system_prompt.py).
 
-Prompting alone has failed on this exact wording repeatedly across real
-calls despite the rule citing this precise phrase as its own confirmed-live
-counterexample -- a known limit of instruction-following, not something a
-bigger prompt reliably fixes on its own. This processor is the backstop,
-not a replacement for the rule.
+Originally a regex that rewrote the reply only if it matched a banned
+"loop...host" phrase. That approach was confirmed live to be a genuine
+whack-a-mole problem, not a one-time fix: the model has been caught saying
+"let me loop in the host", "let me open the host", and other live variants
+that don't share a common regex-matchable shape -- each fix narrowed to the
+specific wording already seen, and the next call surfaced a new phrasing the
+regex didn't cover. Prompting alone doesn't reliably prevent this either
+(GOLDEN_RULES already banned the "loop in the host" phrase by name).
 
-Scoped narrowly on purpose: it only buffers and scans the first text-bearing
-LLM response at or after an escalate_to_host call. Every other turn in the
+Given a growing, open-ended set of ways the model can phrase "I'm bringing
+the host into this call right now" -- which is never correct; a booking
+confirmation always means the host follows up later, not that they join
+live -- this guard no longer tries to detect bad phrasings at all. It
+unconditionally replaces the ENTIRE first text-bearing reply after
+escalate_to_host fires with SAFE_REPLACEMENT_TEXT, regardless of what the
+model actually said. This is the only way to guarantee no phrasing variant
+can slip through: there is no detection step left to have a gap in.
+
+Scoped narrowly on purpose: only the first text-bearing LLM response at or
+after an escalate_to_host call is buffered/replaced. Every other turn in the
 call passes straight through unmodified and unbuffered -- no added latency
-to the common case. Buffering the full response before release does add
-latency to the one turn it's active for (can't scan text that hasn't
-arrived yet), which is an acceptable trade only because it's rare and
-specifically where the failure has actually happened.
+to the common case.
 
 Arms itself by watching for FunctionCallsStartedFrame naming
 escalate_to_host, not via an arm() called from the tool's own Python code.
-Confirmed live 2026-07-26: the model generates the tool call AND the banned
+Confirmed live 2026-07-26: the model generates the tool call AND its own
 text in the SAME completion, microseconds apart -- an arm() invoked from
 inside the tool-execution handler races against that same completion's text
 already flowing through this processor and can lose. Watching the frame
@@ -26,8 +35,6 @@ FunctionCallsStartedFrame and the response's LLMFullResponseStartFrame both
 flow through this exact position, in order, with no cross-stream timing
 involved.
 """
-
-import re
 
 from pipecat.frames.frames import (
     Frame,
@@ -38,13 +45,15 @@ from pipecat.frames.frames import (
 )
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
-_BANNED_PHRASE_RE = re.compile(r"loop\w*.{0,15}host|host.{0,15}loop", re.IGNORECASE)
-SAFE_REPLACEMENT_TEXT = "The host will follow up with you on WhatsApp shortly."
+SAFE_REPLACEMENT_TEXT = (
+    "Okay, I've noted your details -- the host will follow up with you on WhatsApp shortly to confirm."
+)
 
 
 class EscalationPhraseGuardProcessor(FrameProcessor):
-    """Buffers and rewrites the one LLM response right after escalate_to_host
-    fires, if it contains a banned "loop in the host" variant."""
+    """Unconditionally replaces the one LLM response right after
+    escalate_to_host fires with SAFE_REPLACEMENT_TEXT -- see module docstring
+    for why detecting bad phrasings first was abandoned."""
 
     def __init__(self):
         super().__init__()
@@ -82,20 +91,17 @@ class EscalationPhraseGuardProcessor(FrameProcessor):
             self._buffering = False
 
             if not text.strip():
+                # A tool-call-only cycle with no text of its own -- stays
+                # armed for the next cycle, same as before this frame.
                 await self.push_frame(frame, direction)
                 return
 
+            # No detection step -- see module docstring. Every reply here
+            # becomes SAFE_REPLACEMENT_TEXT, regardless of what the model
+            # actually said.
             self._armed = False
-            if _BANNED_PHRASE_RE.search(text):
-                # Replace the whole utterance, not just the matched phrase --
-                # a surgical substring swap risks leaving a grammatically
-                # broken fragment around it (e.g. "Okay, so <replacement>
-                # directly!"). The confirmed failures are short, single-idea
-                # sentences, so a full swap reads cleanly.
-                text = SAFE_REPLACEMENT_TEXT
-
             await self.push_frame(LLMFullResponseStartFrame())
-            await self.push_frame(LLMTextFrame(text))
+            await self.push_frame(LLMTextFrame(SAFE_REPLACEMENT_TEXT))
             await self.push_frame(frame, direction)
             return
 

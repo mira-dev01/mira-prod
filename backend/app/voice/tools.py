@@ -22,6 +22,15 @@ naming escalate_to_host directly in its own frame stream (see that module's
 docstring for why: an arm() called from inside this file's escalate_to_host,
 racing against that same completion's own text, lost the race live on
 2026-07-26).
+
+`property_recommendation_guard` IS threaded through, unlike the guard above --
+recommend_properties's result string is only ever visible here, and the guard
+needs to see it (to parse expected property names for its "did the reply
+actually name one" check) before result_callback triggers the completion that
+will render it into speech. This isn't racy the way an arm()-from-inside-a-
+tool-call is: the completion that needs this data is CAUSED by
+result_callback, so recording it just beforehand always beats any frame from
+that completion reaching the guard. See app/voice/property_recommendation_guard.py.
 """
 
 import uuid
@@ -47,6 +56,7 @@ from app.schemas.tool import (
 )
 from app.services import tool_handlers
 from app.voice.conversation_state import ConversationState
+from app.voice.property_recommendation_guard import PropertyRecommendationGuardProcessor
 from app.voice.silence_watchdog import SilenceWatchdogProcessor
 
 Urgency = Literal["low", "medium", "high", "emergency"]
@@ -64,6 +74,7 @@ def build_voice_tools(
     guest_profile_id: uuid.UUID | None = None,
     caller_number: str | None = None,
     silence_watchdog: SilenceWatchdogProcessor | None = None,
+    property_recommendation_guard: PropertyRecommendationGuardProcessor | None = None,
 ) -> list:
     """Build the tool functions for one call, bound to its call_session_id/property_id/host_user_id.
 
@@ -347,6 +358,8 @@ def build_voice_tools(
                 purpose_of_stay=purpose_of_stay,
             )
             result = await tool_handlers.handle_recommend_properties(db, args, host_user_id)
+        if property_recommendation_guard is not None:
+            property_recommendation_guard.record_tool_result("recommend_properties", result)
         await params.result_callback(result)
 
     async def update_lead(

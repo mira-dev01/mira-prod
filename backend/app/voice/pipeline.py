@@ -66,7 +66,9 @@ from app.voice.conversation_state import ConversationState
 from app.voice.escalation_phrase_guard import EscalationPhraseGuardProcessor
 from app.voice.language_sync import DEFAULT_TTS_LANGUAGE, LanguageSyncProcessor
 from app.voice.premature_end_call_guard import PrematureEndCallGuardProcessor
+from app.voice.property_recommendation_guard import PropertyRecommendationGuardProcessor
 from app.voice.redundant_context_guard import RedundantContextGuardProcessor
+from app.voice.repetition_guard import RepetitionGuardProcessor
 from app.voice.ringing_audio import play_ringing_tone
 from app.voice.silence_watchdog import SilenceWatchdogProcessor
 from app.voice.tools import build_voice_tools
@@ -313,7 +315,24 @@ def _build_llm():
     )
     return _FallbackGroqLLMService(
         api_key=settings.groq_api_key,
-        settings=GroqLLMService.Settings(model=model, extra=extra),
+        # max_completion_tokens caps a single reply -- the Groq path had no
+        # cap at all until this fix. Confirmed live 2026-07-27: a single turn
+        # on a long, noisy (mixed-script, low-signal) call came back as 3072
+        # completion tokens -- the same clarifying question paraphrased
+        # dozens of times back to back, all spoken to the guest -- versus a
+        # normal reply's tens of tokens. reasoning_format="hidden" above was
+        # working correctly on that same completion (reasoning tokens were
+        # separately reported, not the cause) -- this was the model's actual
+        # answer content degenerating into repetition, a distinct failure
+        # mode. 400 gives real headroom over the longest legitimate single
+        # turn (e.g. describing three recommended properties in one sentence
+        # each) while making a multi-thousand-token repetition loop
+        # impossible -- it gets hard-truncated instead of running away.
+        # GroqLLMSettings is a dataclass field, set once here and never
+        # touched by _FallbackGroqLLMService's per-model retry loop (which
+        # only reassigns .model/.extra), so it stays capped across every
+        # model in the fallback chain, not just the first one tried.
+        settings=GroqLLMService.Settings(model=model, extra=extra, max_completion_tokens=400),
     )
 
 
@@ -336,7 +355,25 @@ def _build_openrouter_llm():
     # "medium", a hidden chain-of-thought pass that adds latency), not
     # something specific to Groq's hosting of it -- carry the same fix
     # over when this model is reached via OpenRouter instead.
-    extra = {"reasoning_effort": "low"} if "gpt-oss" in settings.openrouter_model else {}
+    #
+    # reasoning: {"exclude": true} is OpenRouter's own unified param for
+    # dropping reasoning tokens from the response entirely -- the equivalent
+    # of Groq's reasoning_format="hidden" (see _build_llm's comment on that).
+    # Without it, gpt-oss-120b via OpenRouter returns raw harmony-format
+    # chain-of-thought inline in the same `content` field pipecat's
+    # OpenAILLMService just speaks verbatim -- confirmed live 2026-07-27:
+    # "We need to recommend properties for 10 guests, 3 nights... Use
+    # recommend_properties with num_guests maybe 5?" was spoken directly to
+    # a guest. This path is reachable in production: OPENROUTER_MODEL is
+    # configured to openai/gpt-oss-120b as the last-resort fallback when
+    # every Groq model in the chain is rate-limited. Must go in extra_body,
+    # not as a bare kwarg -- same reasoning as reasoning_format above, it
+    # isn't a parameter the OpenAI-compatible SDK's create() recognizes.
+    extra = (
+        {"reasoning_effort": "low", "extra_body": {"reasoning": {"exclude": True}}}
+        if "gpt-oss" in settings.openrouter_model
+        else {}
+    )
     return OpenAILLMService(
         api_key=settings.openrouter_api_key,
         base_url="https://openrouter.ai/api/v1",
@@ -446,6 +483,15 @@ async def _run_pipeline_inner(
     # end_call together -- confirmed live. Cancels the pending hangup so the
     # guest gets a real chance to reply. See app/voice/premature_end_call_guard.py.
     premature_end_call_guard = PrematureEndCallGuardProcessor(silence_watchdog)
+    # Strips leaked property_id UUIDs from speech and backstops a
+    # recommend_properties call whose result never actually got named to the
+    # guest -- both confirmed live. See app/voice/property_recommendation_guard.py.
+    property_recommendation_guard = PropertyRecommendationGuardProcessor()
+    # Cuts a response short, mid-stream, the moment it starts repeating
+    # itself -- the deterministic guarantee max_completion_tokens alone
+    # doesn't provide (a cap bounds how much garbage CAN be generated, not
+    # whether any of it repeats). See app/voice/repetition_guard.py.
+    repetition_guard = RepetitionGuardProcessor()
 
     async with aiohttp.ClientSession() as http_session:
         tts = SarvamTTSService(
@@ -484,6 +530,7 @@ async def _run_pipeline_inner(
             guest_profile_id,
             caller_number=real_caller_number,
             silence_watchdog=silence_watchdog,
+            property_recommendation_guard=property_recommendation_guard,
         )
         # first_message is pre-seeded as an assistant turn so the LLM knows
         # it was already said (the "don't repeat greeting" rule relies on
@@ -542,6 +589,8 @@ async def _run_pipeline_inner(
                 user_aggregator,
                 redundant_context_guard,
                 llm,
+                repetition_guard,
+                property_recommendation_guard,
                 escalation_guard,
                 premature_end_call_guard,
                 tts,
