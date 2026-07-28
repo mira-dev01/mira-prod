@@ -315,16 +315,36 @@ async def update_property(
     return property_
 
 
-async def _renormalize_one(db: AsyncSession, property_: Property) -> None:
+async def _renormalize_one(db: AsyncSession, property_: Property, *, allow_llm_fallback: bool = True) -> None:
     """Re-runs the name normalizer against a property's own raw_name (or
     name, for pre-normalizer rows where raw_name is still unset) and
     overwrites the derived name fields. Shared by both the single and bulk
     renormalize endpoints below -- also what any future one-off backfill
     script should call directly, so there is exactly one code path for
-    "recompute these fields," not a duplicate script-only version."""
+    "recompute these fields," not a duplicate script-only version.
+
+    allow_llm_fallback=False skips the optional LLM extraction pass even on
+    "low" confidence -- used by the startup backfill (app/main.py), since
+    property_normalizer's own contract is "import-time only, never on the
+    live path"; a background startup task isn't a live guest call, but it
+    runs on every deploy/restart, and an unbounded number of LLM calls
+    there for however many rows are still unresolved is a real, uncapped
+    cost this function must not incur silently. The host-triggered
+    renormalize endpoints below keep the LLM fallback on, since those are
+    explicit, low-frequency, one-property-at-a-time actions a host chose.
+
+    display_name is ALWAYS set to a non-None value by the end of this
+    function (falling back to raw_name/name verbatim if the normalizer
+    couldn't derive anything cleaner) -- this is what makes the startup
+    backfill's `WHERE display_name IS NULL` scan actually terminate. A
+    property whose title reduces to nothing after stripping (e.g. a title
+    that's just a bare property-type word) would otherwise leave
+    display_name NULL forever, getting re-selected and re-processed (LLM
+    call included) on every single restart indefinitely -- confirmed live
+    against a real row during testing."""
     raw_name = property_.raw_name or property_.name
     normalized = normalize_property_name(raw_name, description=property_.usp)
-    if normalized.confidence == "low":
+    if normalized.confidence == "low" and allow_llm_fallback:
         fallback = await normalize_property_name_llm_fallback(raw_name, property_.usp)
         if fallback is not None:
             # Regex-extracted bedroom/bathroom counts are more reliable
@@ -336,8 +356,7 @@ async def _renormalize_one(db: AsyncSession, property_: Property) -> None:
 
     if not property_.raw_name:
         property_.raw_name = raw_name
-    if normalized.display_name:
-        property_.display_name = normalized.display_name
+    property_.display_name = normalized.display_name or raw_name
     if normalized.spoken_name:
         property_.spoken_name = normalized.spoken_name
     if normalized.property_type:
@@ -388,6 +407,36 @@ async def renormalize_all_property_names(
     for property_ in properties:
         await db.refresh(property_)
     return properties
+
+
+async def backfill_missing_display_names(db: AsyncSession) -> int:
+    """Cross-host, one-time (but safe to re-run) backfill for properties
+    imported before the canonical-name feature existed -- display_name is
+    NULL for those rows (raw_name/spoken_name/property_type never got
+    computed at import time), which is exactly what makes
+    build_property_card fall back to speaking the raw scraped title
+    verbatim on live calls. Genuinely idempotent: _renormalize_one now
+    always sets display_name to a non-None value (falling back to the raw
+    title verbatim if the normalizer couldn't derive anything cleaner), so
+    every row this touches is removed from the `WHERE display_name IS
+    NULL` scan for good -- a second call in a row processes zero rows.
+    allow_llm_fallback=False (see _renormalize_one) -- this runs on every
+    deploy/restart, not per-guest-call, so an unbounded LLM-fallback call
+    per still-unresolved row every time the app boots is real, uncapped
+    cost this backfill must not pay; the heuristic pass alone plus the
+    raw-title fallback above is enough to guarantee termination, and a
+    host can still explicitly opt into the LLM pass via the
+    renormalize-name(s) endpoints below if they want a specific property's
+    name cleaned up further. Called fire-and-forget from app/main.py's
+    lifespan startup, same pattern as the other one-shot startup tasks
+    there -- never blocks server startup, and a slow/failing backfill
+    never takes the app down.
+    """
+    properties = list((await db.scalars(select(Property).where(Property.display_name.is_(None)))).all())
+    for property_ in properties:
+        await _renormalize_one(db, property_, allow_llm_fallback=False)
+    await db.commit()
+    return len(properties)
 
 
 _MAX_PHOTO_BYTES = 10 * 1024 * 1024  # 10MB -- generous for a phone-camera photo, small enough to keep upload snappy

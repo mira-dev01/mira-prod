@@ -43,6 +43,16 @@ def test_build_property_card_falls_back_to_raw_name_then_name():
     assert card_no_raw.spoken_name == "Pine - Glasshouse Suite w/bathtub | Pause Project"
 
 
+def test_build_property_card_prioritizes_notable_amenities_over_generic():
+    # Regression, confirmed live 2026-07-28: a real call spoke "Bath and
+    # Hairdryer" as a property's top amenities while its own title
+    # advertised "pool & projector" -- top_amenities must prefer
+    # differentiating amenities over baseline ones every listing has.
+    property_ = _property(amenities=["Bath", "Hairdryer", "Cleaning products", "Private pool", "Projector", "Wifi"])
+    card = build_property_card(property_)
+    assert card.top_amenities == ["Private pool", "Projector"]
+
+
 def test_format_property_pitch_line_reads_naturally():
     card = PropertyCard(
         property_id=uuid.uuid4(),

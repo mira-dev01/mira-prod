@@ -55,3 +55,29 @@ def canonicalize_amenity(raw: str) -> str:
 
 def canonicalize_amenities(raw_amenities: list[str]) -> list[str]:
     return sorted({canonicalize_amenity(a) for a in raw_amenities if a and a.strip()})
+
+
+# Notable/differentiating amenities a guest would actually want called out
+# in a spoken pitch (a private pool, a projector) -- ranked ahead of
+# amenities most listings have as a baseline (wifi, ac, kitchen, parking,
+# tv) which add no distinguishing signal when speaking a recommendation.
+# Confirmed live 2026-07-28: without this ranking, top_amenities picked
+# whichever two amenities happened to be scraped first (e.g. "Bath" and
+# "Hairdryer"), while the property's own listing title advertised "pool"
+# and "projector" as its actual selling points -- a guest never heard the
+# thing that made the property worth choosing.
+_NOTABLE_AMENITY_TAGS = {
+    "pool", "bathtub", "projector", "view", "pets_allowed", "workspace",
+}
+
+
+def rank_amenities_for_pitch(raw_amenities: list[str], limit: int = 2) -> list[str]:
+    """Picks up to `limit` amenities from a property's free-text amenities
+    list, preferring notable/differentiating ones (pool, bathtub, view,
+    projector, ...) over generic baseline ones (wifi, ac, kitchen, parking,
+    tv). Ties within a tier keep their original scrape order. Returns the
+    original (non-canonicalized) amenity strings, since these are for
+    display/speech, not facet matching."""
+    notable = [a for a in raw_amenities if canonicalize_amenity(a) in _NOTABLE_AMENITY_TAGS]
+    generic = [a for a in raw_amenities if canonicalize_amenity(a) not in _NOTABLE_AMENITY_TAGS]
+    return (notable + generic)[:limit]
