@@ -12,6 +12,8 @@ context builder) gets identical fallback behavior instead of reimplementing
 import uuid
 from dataclasses import dataclass
 
+from app.services.amenity_taxonomy import rank_amenities_for_pitch
+
 
 @dataclass(frozen=True)
 class PropertyCard:
@@ -39,6 +41,6 @@ def build_property_card(property_) -> PropertyCard:
         bedroom_count=property_.bedroom_count,
         base_price=float(property_.base_price),
         max_guests=property_.max_guests,
-        top_amenities=list(property_.amenities[:2]) if property_.amenities else [],
+        top_amenities=rank_amenities_for_pitch(property_.amenities) if property_.amenities else [],
         usp=property_.usp,
     )

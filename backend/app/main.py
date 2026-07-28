@@ -42,6 +42,25 @@ async def _scheduled_ical_sync() -> None:
             logger.info("iCal sync complete: %s", results)
 
 
+async def _backfill_property_display_names() -> None:
+    """One-shot, idempotent startup task: backfills display_name/
+    spoken_name/property_type/etc for any property imported before that
+    feature existed (raw_name/display_name still NULL) -- without this,
+    those properties keep speaking their raw scraped Airbnb title verbatim
+    on live calls indefinitely, since nothing else ever re-touches an
+    existing property's name fields. Safe to run on every deploy: scoped
+    to WHERE display_name IS NULL, so it's a no-op once every property has
+    been backfilled once. Logged loudly on failure but never raised --
+    must not block server startup."""
+    try:
+        async with AsyncSessionLocal() as db:
+            count = await properties.backfill_missing_display_names(db)
+        if count:
+            logger.info("Backfilled display_name/spoken_name for %d propert%s", count, "y" if count == 1 else "ies")
+    except Exception:
+        logger.exception("Property display_name backfill failed -- will retry on next deploy/restart")
+
+
 async def _scheduled_smart_pricing_refresh() -> None:
     async with AsyncSessionLocal() as db:
         await refresh_smart_pricing(db)
@@ -189,6 +208,7 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(_scheduled_ical_sync())   # kick off one sync immediately, don't block startup on it
     asyncio.create_task(_check_llm_health())      # pre-warm + health-check LLM routes so first caller doesn't wait
     asyncio.create_task(_check_db_health())       # pre-warm the DB connection so the first caller doesn't wait
+    asyncio.create_task(_backfill_property_display_names())  # self-heal any pre-existing NULL display_name rows
     logger.info("MIRA backend started (env=%s)", settings.environment)
     yield
     scheduler.shutdown(wait=False)
