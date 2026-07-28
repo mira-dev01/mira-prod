@@ -1,8 +1,18 @@
+import re
 import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
+
+# Same pattern app/voice/escalation_phrase_guard.py originally detected
+# (before that guard moved to unconditional replacement, see its module
+# docstring) -- reused here to reject the banned phrasing at the API
+# boundary instead of only papering over it live on the call. Confirmed
+# live: a host set agent_escalation_phrase to this exact wording, and Mira
+# dutifully spoke it verbatim (GOLDEN_RULES's ban only covers what the model
+# generates itself, not a host-authored line it's instructed to recite).
+_LOOP_IN_HOST_RE = re.compile(r"loop\w*.{0,15}host|host.{0,15}loop", re.IGNORECASE)
 
 # Self-reported only -- MIRA has no Airbnb API access to verify this.
 # Collapses Airbnb's actual (overlapping, quarterly-refreshed) badge system
@@ -67,6 +77,17 @@ class UserUpdate(BaseModel):
     allow_early_checkin: bool | None = None
     follow_up_channel_preference: str | None = None
     whatsapp_assist_enabled: bool | None = None
+
+    @field_validator("agent_escalation_phrase")
+    @classmethod
+    def _reject_loop_in_host_phrasing(cls, value: str | None) -> str | None:
+        if value is not None and _LOOP_IN_HOST_RE.search(value):
+            raise ValueError(
+                'agent_escalation_phrase cannot contain a "loop in the host" variant -- Mira is never '
+                "allowed to say this, so this phrase can never actually be spoken on a call. Use wording "
+                "that names a real next step instead, e.g. \"One moment, let me get the host.\""
+            )
+        return value
 
 
 class UserOut(BaseModel):
