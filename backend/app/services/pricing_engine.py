@@ -277,9 +277,9 @@ async def negotiate_rate(
             asking_price=asking_price,
             refused=True,
             message=(
-                f"I'm not able to offer a discount on {property_.name} -- ₹{asking_price:,.0f} "
-                f"for {breakdown.nights} nights is our best price. I can connect you with the host "
-                f"if you'd like to discuss further."
+                f"I checked, but ₹{asking_price:,.0f} for {breakdown.nights} nights is already our best price "
+                f"on {property_.name} -- I'm not able to offer a further discount. Happy to connect you with "
+                f"the host if you'd like to discuss it further."
             ),
         )
 
@@ -314,8 +314,8 @@ async def negotiate_rate(
             counter_offer=floor_price,
             asking_price=asking_price,
             message=(
-                f"Best offer for {property_.name} ({breakdown.nights} nights): ₹{floor_price:,.0f} "
-                f"(asking price ₹{asking_price:,.0f})."
+                f"Good news -- for {property_.name} over {breakdown.nights} nights, I can bring it down to "
+                f"₹{floor_price:,.0f} (our standard rate is ₹{asking_price:,.0f})."
             ),
         )
 
@@ -324,7 +324,10 @@ async def negotiate_rate(
             accepted=True,
             counter_offer=guest_offer,
             asking_price=asking_price,
-            message=f"Offer of ₹{guest_offer:,.0f} accepted for {property_.name} ({breakdown.nights} nights).",
+            message=(
+                f"Good news -- I was able to accept ₹{guest_offer:,.0f} for {property_.name} over "
+                f"{breakdown.nights} nights."
+            ),
         )
 
     return NegotiationResult(
@@ -332,8 +335,8 @@ async def negotiate_rate(
         counter_offer=floor_price,
         asking_price=asking_price,
         message=(
-            f"₹{guest_offer:,.0f} is below our floor for {property_.name}. "
-            f"Counter-offer: ₹{floor_price:,.0f} for {breakdown.nights} nights "
-            f"(asking price ₹{asking_price:,.0f})."
+            f"I checked, but ₹{guest_offer:,.0f} is a bit below what I can do on {property_.name}. "
+            f"The best I can offer for {breakdown.nights} nights is ₹{floor_price:,.0f} "
+            f"(our standard rate is ₹{asking_price:,.0f})."
         ),
     )

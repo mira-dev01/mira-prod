@@ -477,8 +477,11 @@ async def _run_pipeline_inner(
     # context-push (bundling function-call results that arrive while the
     # bot is speaking) fires with nothing new since the last completion --
     # confirmed live: caused a call to end itself with no guest reply in
-    # between. See app/voice/redundant_context_guard.py.
-    redundant_context_guard = RedundantContextGuardProcessor()
+    # between. Also drops any re-invocation once silence_watchdog has a
+    # hangup armed/fired, closing a race that otherwise let an extra LLM
+    # turn fire after end_call/decline_irrelevant_call and kept calls from
+    # actually disconnecting. See app/voice/redundant_context_guard.py.
+    redundant_context_guard = RedundantContextGuardProcessor(silence_watchdog)
     # Separate failure mode, same symptom: the model itself (in a single
     # turn, not a spurious re-invocation) asks a real question and calls
     # end_call together -- confirmed live. Cancels the pending hangup so the

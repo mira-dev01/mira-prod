@@ -38,6 +38,7 @@ from typing import Literal
 
 from pydantic import ValidationError
 
+from pipecat.frames.frames import FunctionCallResultProperties
 from pipecat.services.llm_service import FunctionCallParams
 
 from app.database import AsyncSessionLocal
@@ -500,7 +501,17 @@ def build_voice_tools(
         """
         if silence_watchdog is not None:
             await silence_watchdog.request_end_after_current_turn()
-        await params.result_callback("Call will end after this turn.")
+        # run_llm=False: the call is ending, there's no guest reply left to
+        # respond to. Without this, pipecat's own deferred context-push
+        # (queued because the bot is still speaking the closing line) races
+        # silence_watchdog's own hangup for the same BotStoppedSpeakingFrame
+        # and reliably wins, firing an extra LLM turn instead of letting the
+        # call actually disconnect -- confirmed live 2026-07-28. See
+        # app/voice/redundant_context_guard.py for the same fix applied as a
+        # defense-in-depth backstop.
+        await params.result_callback(
+            "Call will end after this turn.", properties=FunctionCallResultProperties(run_llm=False)
+        )
 
     async def decline_irrelevant_call(params: FunctionCallParams):
         """Call this to end a call that is clearly NOT about a booking,
@@ -517,7 +528,10 @@ def build_voice_tools(
         """
         if silence_watchdog is not None:
             await silence_watchdog.request_end_after_current_turn()
-        await params.result_callback("Call will end after this turn.")
+        # See end_call above for why run_llm=False is required here too.
+        await params.result_callback(
+            "Call will end after this turn.", properties=FunctionCallResultProperties(run_llm=False)
+        )
 
     return [
         check_calendar,

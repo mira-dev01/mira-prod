@@ -78,6 +78,15 @@ class SilenceWatchdogProcessor(FrameProcessor):
         self._ended = False
         self._end_requested = False
 
+    @property
+    def hangup_pending(self) -> bool:
+        """True once a hangup has been armed (request_end_after_current_turn)
+        or already fired. Used by RedundantContextGuardProcessor (app/voice/
+        redundant_context_guard.py) to drop a spurious LLM re-invocation that
+        would otherwise race the actual hangup -- see that module's docstring
+        for the failure mode this closes."""
+        return self._end_requested or self._ended
+
     async def request_end_after_current_turn(self) -> None:
         """Called by the end_call tool (app/voice/tools.py) once the LLM has
         committed to closing the call and spoken its own closing line as

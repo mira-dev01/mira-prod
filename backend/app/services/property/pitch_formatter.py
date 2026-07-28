@@ -66,5 +66,11 @@ def render_recommendation_text(result: RecommendationResult) -> str:
     # Pause Project"); a newline can never appear inside a single-line DB
     # field, so it can't collide with a name's own delimiters the way " | "
     # did (confirmed live 2026-07-27).
+    #
+    # The intro line is a cue for the model's *tone*, not a script to read
+    # verbatim -- GOLDEN_RULES already instructs it to turn this into a
+    # warm, natural pitch rather than reciting a list (see the
+    # "conversational warmth" rule in system_prompt.py).
+    intro = "I found a couple of options I think could work well:" if len(result.options) > 1 else "I found one that could work well:"
     lines = [format_property_pitch_line(card, i) for i, card in enumerate(result.options, 1)]
-    return "Here are some options:\n" + "\n".join(lines) + result.combo_note
+    return intro + "\n" + "\n".join(lines) + result.combo_note
