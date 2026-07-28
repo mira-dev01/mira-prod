@@ -497,7 +497,7 @@ async def handle_escalate_to_host(
                 )
             )
 
-    return f"I've escalated this to the host as {args.urgency} priority. They'll follow up shortly."
+    return f"I've flagged this to the host as {args.urgency} priority, and they'll follow up with you on WhatsApp shortly."
 
 
 async def handle_negotiate_rate(
@@ -671,4 +671,7 @@ async def handle_search_faq(
     except Exception:
         await db.rollback()
 
-    return "I don't have verified information about that. I'll connect you with the host so you receive the correct details."
+    return (
+        "I don't have verified information about that on file. Let me check with the host so you get the "
+        "correct details."
+    )

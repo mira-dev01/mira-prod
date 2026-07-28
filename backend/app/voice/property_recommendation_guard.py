@@ -82,7 +82,8 @@ def strip_property_ids(text: str) -> str:
 
 def _fallback_recommendation_text(options: list[dict]) -> str:
     lines = [f"{o['name']} at {o['price']:,.0f} rupees per night, sleeping {o['guests']}" for o in options]
-    return "Here are some options: " + "; ".join(lines) + ". Which one sounds interesting?"
+    intro = "I found a couple of options I think could work well: " if len(options) > 1 else "I found one that could work well: "
+    return intro + "; ".join(lines) + ". Which one sounds interesting?"
 
 
 class PropertyRecommendationGuardProcessor(FrameProcessor):
