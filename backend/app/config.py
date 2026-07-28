@@ -237,6 +237,22 @@ class Settings(BaseSettings):
     # production config.
     turn_detection_strategy: Literal["vad_fixed", "hybrid_experimental"] = "vad_fixed"
 
+    # Kill-switch for recommend_properties' semantic search layer
+    # (app/services/property/retrieval/semantic_search.py) -- the one place
+    # in this codebase that makes a synchronous embedding API call on the
+    # live voice-call path (every other embedding use is write-time
+    # fire-and-forget or read-time against already-stored vectors). Default
+    # on since the layer is already timeout-guarded and fails open to
+    # SQL-only results, but this gives an instant, no-redeploy way to
+    # disable it entirely if real-call latency/cost turns out worse than
+    # expected.
+    enable_semantic_property_search: bool = True
+    # Hard cap on the one live-call embedding request semantic_search.py
+    # makes. Starting point, not empirically tuned yet -- see that module's
+    # docstring. Never allowed to stack with retries; one attempt, one
+    # timeout, done.
+    semantic_search_timeout_seconds: float = 1.5
+
     @property
     def is_production(self) -> bool:
         return self.environment.lower() == "production"

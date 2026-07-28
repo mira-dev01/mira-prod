@@ -836,7 +836,7 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
             )
             first_message = first_message_for(property_, guest, host)
             property_id = property_.id
-            property_name = property_.name
+            property_name = property_.spoken_name or property_.display_name or property_.name
             voice_gender = host.agent_voice_gender
         else:
             properties = list(
@@ -932,7 +932,7 @@ async def run_browser_voice_pipeline(connection: SmallWebRTCConnection, property
         host_user_id,
         system_prompt,
         first_message,
-        property_name=property_.name,
+        property_name=property_.spoken_name or property_.display_name or property_.name,
         guest_profile_id=guest_profile_id,
         voice_gender=host.agent_voice_gender,
     )

@@ -55,3 +55,108 @@ async def test_update_property_all_fields(client, auth_headers, test_property):
     assert body["amenities"] == ["Pool", "WiFi"]
     assert body["faq"] == [{"question": "Parking?", "answer": "Yes."}]
     assert body["check_in_time"] == "15:00"
+
+
+async def test_renormalize_property_name_derives_clean_fields(client, auth_headers, db_session, test_user):
+    from app.models.property import Property
+
+    property_ = Property(
+        user_id=test_user.id,
+        name="Pine - Glasshouse Suite w/bathtub | Pause Project",
+        base_price=4200,
+        max_guests=3,
+    )
+    db_session.add(property_)
+    await db_session.commit()
+    await db_session.refresh(property_)
+
+    resp = await client.post(f"/api/v1/properties/{property_.id}/renormalize-name", headers=auth_headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["raw_name"] == "Pine - Glasshouse Suite w/bathtub | Pause Project"
+    assert body["spoken_name"] == "Pine"
+    assert body["property_type"] == "glasshouse"
+
+
+async def test_renormalize_all_property_names_resolves_shared_brand(client, auth_headers, db_session, test_user):
+    from app.models.property import Property
+
+    first = Property(
+        user_id=test_user.id,
+        name="Nile w/pool & projector - Pause Project 1bhk",
+        base_price=4298,
+        max_guests=3,
+    )
+    second = Property(
+        user_id=test_user.id,
+        name="Terra - Glasshouse Studio w/pool - Pause Project",
+        base_price=4498,
+        max_guests=3,
+    )
+    db_session.add_all([first, second])
+    await db_session.commit()
+
+    resp = await client.post("/api/v1/properties/renormalize-names", headers=auth_headers)
+    assert resp.status_code == 200
+    bodies = {b["spoken_name"]: b for b in resp.json()}
+    assert bodies["Nile w/pool & projector"]["brand"] == "Pause Project"
+    assert bodies["Terra"]["brand"] == "Pause Project"
+
+
+async def test_renormalize_scoped_to_own_properties_only(client, auth_headers, db_session, test_property):
+    resp = await client.post(
+        f"/api/v1/properties/{test_property.id}/renormalize-name",
+        headers={"Authorization": "Bearer not-a-real-token"},
+    )
+    assert resp.status_code == 401
+
+
+async def test_create_property_populates_amenity_tags(client, auth_headers):
+    resp = await client.post(
+        "/api/v1/properties",
+        json={
+            "name": "New Villa",
+            "base_price": 3000,
+            "max_guests": 2,
+            "amenities": ["Private pool", "Wifi"],
+        },
+        headers=auth_headers,
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["amenities"] == ["Private pool", "Wifi"]
+
+
+async def test_update_property_amenities_recomputes_amenity_tags_for_filtering(
+    client, auth_headers, db_session, test_user
+):
+    # Regression: amenity_tags (the canonical facet recommend_properties
+    # filters on) must be recomputed whenever `amenities` changes via the
+    # dashboard PATCH endpoint -- not just at import time -- or the
+    # required_amenities filter silently matches against stale tags.
+    from app.models.property import Property
+    from app.schemas.tool import RecommendPropertiesArgs
+    from app.services import tool_handlers
+
+    property_ = Property(
+        user_id=test_user.id,
+        name="Nile",
+        base_price=4000,
+        max_guests=3,
+        amenities=["Wifi"],
+        amenity_tags=["wifi"],
+    )
+    db_session.add(property_)
+    await db_session.commit()
+    await db_session.refresh(property_)
+
+    resp = await client.patch(
+        f"/api/v1/properties/{property_.id}",
+        json={"amenities": ["Private pool", "Wifi"]},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+
+    args = RecommendPropertiesArgs(required_amenities=["pool"])
+    result = await tool_handlers.handle_recommend_properties(db_session, args, test_user.id)
+    assert any(card.spoken_name == "Nile" for card in result.options)

@@ -102,6 +102,8 @@ class RecommendPropertiesArgs(BaseModel):
     num_guests: int | None = None
     preferred_location: str | None = None
     purpose_of_stay: str | None = None
+    required_amenities: list[str] | None = None
+    near_landmark: str | None = None
 
 
 class UpdateLeadArgs(BaseModel):

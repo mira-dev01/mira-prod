@@ -18,6 +18,7 @@ from app.schemas.tool import (
 )
 from app.services import lead_service, tool_handlers
 from app.services.notification_service import list_notifications
+from app.services.property.pitch_formatter import render_recommendation_text
 
 
 async def test_check_calendar_available(test_property, db_session):
@@ -358,8 +359,9 @@ async def test_recommend_properties_matches_south_goa_locality_without_literal_t
 
     args = RecommendPropertiesArgs(preferred_location="South Goa")
     result = await tool_handlers.handle_recommend_properties(db_session, args, test_user.id)
-    assert "Azure" in result
-    assert "Limón" not in result
+    result_text = render_recommendation_text(result)
+    assert "Azure" in result_text
+    assert "Limón" not in result_text
 
 
 async def test_recommend_properties_south_goa_query_excludes_airport_travel_time_mention(test_user, db_session):
@@ -396,8 +398,9 @@ async def test_recommend_properties_south_goa_query_excludes_airport_travel_time
 
     args = RecommendPropertiesArgs(preferred_location="South Goa")
     result = await tool_handlers.handle_recommend_properties(db_session, args, test_user.id)
-    assert "Azure" in result
-    assert "Olive" not in result
+    result_text = render_recommendation_text(result)
+    assert "Azure" in result_text
+    assert "Olive" not in result_text
 
 
 async def test_recommend_properties_matches_north_goa_locality(test_user, db_session):
@@ -424,8 +427,9 @@ async def test_recommend_properties_matches_north_goa_locality(test_user, db_ses
 
     args = RecommendPropertiesArgs(preferred_location="North Goa")
     result = await tool_handlers.handle_recommend_properties(db_session, args, test_user.id)
-    assert "Limón" in result
-    assert "Azure" not in result
+    result_text = render_recommendation_text(result)
+    assert "Limón" in result_text
+    assert "Azure" not in result_text
 
 
 async def test_recommend_properties_suggests_combining_units_for_large_group(test_user, db_session):
@@ -445,6 +449,86 @@ async def test_recommend_properties_suggests_combining_units_for_large_group(tes
 
     args = RecommendPropertiesArgs(num_guests=6, preferred_location="Siolim")
     result = await tool_handlers.handle_recommend_properties(db_session, args, test_user.id)
-    assert "Unit A" in result
-    assert "Unit B" in result
-    assert "book two of them together" in result
+    result_text = render_recommendation_text(result)
+    assert "Unit A" in result_text
+    assert "Unit B" in result_text
+    assert "book two of them together" in result_text
+
+
+async def test_recommend_properties_combo_fallback_keeps_all_four_units(test_user, db_session):
+    # Regression: the retrieval pipeline's final result was unconditionally
+    # capped to 3 options even on the small-units-combo path, where
+    # sql_search deliberately over-fetches to 4 (since the combo_note tells
+    # the guest to consider pairing units, dropping one silently
+    # contradicts that suggestion). All 4 units must survive to the final
+    # rendered result.
+    units = [
+        Property(
+            user_id=test_user.id, name=f"Unit {letter}", city="Siolim",
+            exophone=f"+91801111{i}{i}{i}{i}", base_price=3000 + i * 100, max_guests=3,
+        )
+        for i, letter in enumerate("ABCD", start=1)
+    ]
+    db_session.add_all(units)
+    await db_session.commit()
+
+    args = RecommendPropertiesArgs(num_guests=6, preferred_location="Siolim")
+    result = await tool_handlers.handle_recommend_properties(db_session, args, test_user.id)
+    assert len(result.options) == 4
+
+
+async def test_recommend_properties_filters_by_required_amenity(test_user, db_session):
+    with_pool = Property(
+        user_id=test_user.id, name="Nile", city="Siolim", exophone="+918011116666",
+        base_price=4000, max_guests=3, amenities=["Private pool", "Wifi"],
+        amenity_tags=["pool", "wifi"],
+    )
+    without_pool = Property(
+        user_id=test_user.id, name="Mocha", city="Siolim", exophone="+918011117777",
+        base_price=3800, max_guests=3, amenities=["Wifi"], amenity_tags=["wifi"],
+    )
+    db_session.add_all([with_pool, without_pool])
+    await db_session.commit()
+
+    args = RecommendPropertiesArgs(required_amenities=["swimming pool"])
+    result = await tool_handlers.handle_recommend_properties(db_session, args, test_user.id)
+    result_text = render_recommendation_text(result)
+    assert "Nile" in result_text
+    assert "Mocha" not in result_text
+
+
+async def test_recommend_properties_near_landmark_boosts_matching_property(test_user, db_session):
+    near = Property(
+        user_id=test_user.id, name="Terra", city="Siolim", exophone="+918011118888",
+        base_price=4500, max_guests=3,
+        landmarks=[{"name": "Thalassa", "distance_minutes": 5, "mode": "walk"}],
+    )
+    far = Property(
+        user_id=test_user.id, name="Whyt", city="Siolim", exophone="+918011119999",
+        base_price=3000, max_guests=3,
+    )
+    db_session.add_all([near, far])
+    await db_session.commit()
+
+    args = RecommendPropertiesArgs(near_landmark="Thalassa")
+    result = await tool_handlers.handle_recommend_properties(db_session, args, test_user.id)
+    result_text = render_recommendation_text(result)
+    # Both still appear (soft signal, not a hard filter) but the matching
+    # property is boosted ahead of the cheaper non-matching one.
+    assert result_text.index("Terra") < result_text.index("Whyt")
+
+
+async def test_recommend_properties_near_landmark_never_drops_all_results(test_user, db_session):
+    # No property has structured landmark data yet -- must never zero out
+    # results just because nothing matched a landmark query.
+    only_property = Property(
+        user_id=test_user.id, name="Pine", city="Siolim", exophone="+918011110000",
+        base_price=4000, max_guests=3,
+    )
+    db_session.add(only_property)
+    await db_session.commit()
+
+    args = RecommendPropertiesArgs(near_landmark="Some Unknown Place")
+    result = await tool_handlers.handle_recommend_properties(db_session, args, test_user.id)
+    result_text = render_recommendation_text(result)
+    assert "Pine" in result_text

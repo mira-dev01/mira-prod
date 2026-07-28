@@ -112,3 +112,25 @@ async def backfill_faq_entry_embedding(faq_entry_id, question: str) -> None:
                 await db.commit()
     except Exception:
         logger.exception("Failed to save embedding for faq_entry_id=%s", faq_entry_id)
+
+
+async def backfill_property_chunk_embedding(chunk_id, text: str) -> None:
+    """Same fire-and-forget pattern as backfill_faq_entry_embedding, for a
+    newly-created PropertyChunk (app/models/property_chunk.py) -- fired
+    from _upsert_property_from_parsed (app/api/v1/properties.py) via
+    asyncio.create_task, AFTER the import HTTP response already returned,
+    so an embedding API call never adds latency to an import."""
+    from app.database import AsyncSessionLocal
+    from app.models.property_chunk import PropertyChunk
+
+    embedding = await get_embedding(text)
+    if embedding is None:
+        return
+    try:
+        async with AsyncSessionLocal() as db:
+            row = await db.get(PropertyChunk, chunk_id)
+            if row is not None:
+                row.embedding = embedding
+                await db.commit()
+    except Exception:
+        logger.exception("Failed to save embedding for property_chunk_id=%s", chunk_id)

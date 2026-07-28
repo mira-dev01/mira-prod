@@ -15,6 +15,49 @@ class Property(UUIDPkMixin, TimestampMixin, Base):
 
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    # raw_name: verbatim copy of whatever the importer wrote into `name` at
+    # import time (Airbnb's own SEO marketing title, unedited) -- `name`
+    # itself is kept exactly as-is for backward compat (every existing
+    # reader keeps working unchanged); raw_name/display_name/spoken_name
+    # below are what new guest-facing and dashboard code should read.
+    raw_name: Mapped[str | None] = mapped_column(String(255))
+
+    # display_name: clean, human-presentable name for dashboards/lists --
+    # may still include a light descriptor ("Pine Glasshouse Suite"), just
+    # stripped of SEO keyword-stuffing, star ratings, and pipe/dot-delimited
+    # marketing fragments. See app/services/property_normalizer.py.
+    display_name: Mapped[str | None] = mapped_column(String(120))
+
+    # spoken_name: what Mira actually says out loud to a guest -- shorter
+    # than display_name, no punctuation that reads awkwardly aloud. Falls
+    # back to display_name when nothing shorter is safely extractable.
+    # This is what property_recommendation_guard matches spoken text
+    # against to confirm a recommended property was actually named.
+    spoken_name: Mapped[str | None] = mapped_column(String(60))
+
+    # property_type: coarse category normalized from the raw title/
+    # description (villa, cottage, apartment, cabin, glasshouse, etc).
+    # Free text, not an enum -- source titles are too varied to constrain
+    # to a fixed list without frequently falling back to "other".
+    property_type: Mapped[str | None] = mapped_column(String(60))
+
+    # property_style: descriptive style/vibe distinct from type (e.g.
+    # "glass house", "beachfront", "forest cabin") -- display/context only,
+    # not a filterable facet (property_type/amenities/landmarks are).
+    property_style: Mapped[str | None] = mapped_column(String(80))
+
+    # brand: the recurring multi-property brand/collection name a title
+    # mentions (e.g. "Pause Project"), when confidently identified via
+    # cross-property co-occurrence for the same host. None otherwise.
+    brand: Mapped[str | None] = mapped_column(String(80))
+
+    # bedroom_count: extracted from the raw title by property_normalizer
+    # (bhk/"N bedroom"/"NBR" style patterns) -- used by the spoken pitch
+    # formatter ("a one-bedroom glasshouse suite") instead of parroting a
+    # raw "1bhk" fragment. None when the title had no extractable count.
+    bedroom_count: Mapped[int | None] = mapped_column()
+
     city: Mapped[str | None] = mapped_column(String(120))
     exophone: Mapped[str | None] = mapped_column(String(32), unique=True, index=True)
     base_price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
@@ -36,8 +79,26 @@ class Property(UUIDPkMixin, TimestampMixin, Base):
     # same as house_rules.
     neighborhood_info: Mapped[str | None] = mapped_column(Text)
 
+    # Structured points of guest interest near this property, e.g.
+    # [{"name": "Thalassa", "distance_minutes": 12, "mode": "drive"}].
+    # Host-dashboard-populated (no scraper reliably provides this --
+    # Bright Data's location_details is free text) -- empty by default.
+    # recommend_properties (app/services/tool_handlers.py) uses this for a
+    # "near <landmark>" query as a soft rank signal, falling back to a
+    # plain neighborhood_info substring match when a property has none yet.
+    landmarks: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
+
     faq: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
     amenities: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
+
+    # Canonical, deduplicated amenity tags derived from `amenities` at
+    # import time (see app/services/amenity_taxonomy.py) -- e.g. "Private
+    # pool"/"Swimming pool" both normalize to "pool". Kept alongside the
+    # free-text `amenities` list (which stays the display source, unchanged)
+    # so recommend_properties can filter on a canonical value instead of an
+    # inconsistent free-text ILIKE. Recomputed whenever `amenities` is
+    # re-imported; not directly host-editable.
+    amenity_tags: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
 
     # Cloudinary-hosted URLs (see app/integrations/cloudinary_client.py) --
     # re-hosted rather than storing Airbnb's own a0.muscache.com links
@@ -121,3 +182,4 @@ class Property(UUIDPkMixin, TimestampMixin, Base):
     notifications: Mapped[list["Notification"]] = relationship(
         back_populates="property", cascade="all, delete-orphan"
     )
+    chunks: Mapped[list["PropertyChunk"]] = relationship(back_populates="property", cascade="all, delete-orphan")

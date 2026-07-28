@@ -1,3 +1,5 @@
+import uuid
+
 import pytest
 from pipecat.frames.frames import (
     FunctionCallFromLLM,
@@ -8,33 +10,36 @@ from pipecat.frames.frames import (
 )
 from pipecat.tests.utils import run_test
 
+from app.services.property.card import PropertyCard
+from app.services.property.pitch_formatter import RecommendationResult
 from app.voice.property_recommendation_guard import (
     PropertyRecommendationGuardProcessor,
-    parse_recommend_properties_result,
     strip_property_ids,
 )
 
-_RESULT = (
-    "Here are some options:\n"
-    "1. Cabana 1BHK in South Goa: ₹0/night, sleeps 2, wifi, pool "
-    "(property_id: 48c687d2-7be8-435c-951c-080d5bab0314)\n"
-    "2. Azure 1BHK in South Goa: ₹3,500/night, sleeps 2, wifi, ac "
-    "(property_id: 804e8006-e547-4962-bc40-3e9f3357c413)"
-)
 
-# Regression fixture for the exact live failure on 2026-07-27: real property
-# names contain a literal "|" (imported Airbnb titles), which the OLD " | "
-# -joined result format collided with -- tearing "Azure 1bhk | 5 mins walk to
-# beach | Pause Project" into fragments that got read back as if "Pause
-# Project" (the shared brand name, not a unit name) was the property.
-_PIPE_IN_NAME_RESULT = (
-    "Here are some options:\n"
-    "1. Azure 1bhk | 5 mins walk to beach | Pause Project in Colva: ₹3,500/night, sleeps 2, wifi, ac "
-    "(property_id: 11111111-1111-1111-1111-111111111111)\n"
-    "2. Cabana 1bhk | 5 mins walk to beach- Pause Project in South Goa: ₹4,000/night, sleeps 2, wifi, pool "
-    "(property_id: 22222222-2222-2222-2222-222222222222)\n"
-    "3. Olive-Wake up by the forest @ Pause Project 1bhk in Siolim: ₹4,500/night, sleeps 3, wifi, forest view "
-    "(property_id: 33333333-3333-3333-3333-333333333333)"
+def _card(name: str, price: float = 3500, guests: int = 2, **overrides) -> PropertyCard:
+    defaults = dict(
+        property_id=uuid.uuid4(),
+        spoken_name=name,
+        display_name=name,
+        city="South Goa",
+        property_type=None,
+        bedroom_count=None,
+        base_price=price,
+        max_guests=guests,
+        top_amenities=[],
+        usp=None,
+    )
+    defaults.update(overrides)
+    return PropertyCard(**defaults)
+
+
+_RESULT = RecommendationResult(
+    options=[
+        _card("Cabana 1BHK", price=0),
+        _card("Azure 1BHK", price=3500),
+    ]
 )
 
 
@@ -48,24 +53,40 @@ def _call_started(name: str) -> FunctionCallsStartedFrame:
     )
 
 
-def test_parse_recommend_properties_result():
-    options = parse_recommend_properties_result(_RESULT)
-    assert [o["name"] for o in options] == ["Cabana 1BHK", "Azure 1BHK"]
-    assert options[0]["price"] == "0"
-    assert options[1]["price"] == "3,500"
+def test_record_tool_result_extracts_spoken_names_from_cards():
+    guard = PropertyRecommendationGuardProcessor()
+    guard.record_tool_result("recommend_properties", _RESULT)
+    assert [o["name"] for o in guard._pending_options] == ["Cabana 1BHK", "Azure 1BHK"]
 
 
-def test_parse_not_found_message_returns_empty():
-    assert parse_recommend_properties_result("I couldn't find a property in our portfolio matching that") == []
+def test_record_tool_result_ignores_not_found_result():
+    guard = PropertyRecommendationGuardProcessor()
+    guard.record_tool_result("recommend_properties", RecommendationResult(options=[], not_found=True))
+    assert guard._pending_options == []
 
 
-def test_regression_pipe_in_property_name_no_longer_tears_the_name_apart():
-    options = parse_recommend_properties_result(_PIPE_IN_NAME_RESULT)
-    assert [o["name"] for o in options] == [
-        "Azure 1bhk | 5 mins walk to beach | Pause Project",
-        "Cabana 1bhk | 5 mins walk to beach- Pause Project",
-        "Olive-Wake up by the forest @ Pause Project 1bhk",
-    ]
+def test_record_tool_result_ignores_non_recommendation_result_shape():
+    # Defensive: if something other than a RecommendationResult is ever
+    # passed (a bug elsewhere), the guard must not crash trying to read
+    # .options off it -- just treat it as "nothing to verify."
+    guard = PropertyRecommendationGuardProcessor()
+    guard.record_tool_result("recommend_properties", "not a RecommendationResult")
+    assert guard._pending_options == []
+
+
+def test_pipe_in_property_name_never_torn_apart_by_the_guard():
+    # Regression guard for the underlying bug that used to require regex-
+    # parsing rendered text: a real property name containing a literal "|"
+    # (imported Airbnb titles like "Azure 1bhk | 5 mins walk to beach |
+    # Pause Project") must pass through the guard's bookkeeping completely
+    # intact now that it's handed structured PropertyCards directly,
+    # instead of being re-split out of rendered speech text.
+    name_with_pipes = "Azure 1bhk | 5 mins walk to beach | Pause Project"
+    guard = PropertyRecommendationGuardProcessor()
+    guard.record_tool_result(
+        "recommend_properties", RecommendationResult(options=[_card(name_with_pipes)])
+    )
+    assert guard._pending_options[0]["name"] == name_with_pipes
 
 
 def test_strip_property_ids_removes_the_whole_aside():

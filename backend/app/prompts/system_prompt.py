@@ -429,7 +429,7 @@ def build_system_prompt(
     sections.append(
         f"\nCurrent property:\n"
         f"- property_id: {property_.id}\n"
-        f"- name: {property_.name}\n"
+        f"- name: {property_.display_name or property_.name}\n"
         f"- city: {property_.city or 'unknown'}\n"
         f"- check-in time: {property_.check_in_time}, check-out time: {property_.check_out_time}\n"
         f"- max guests: {property_.max_guests}\n"
@@ -606,17 +606,18 @@ def first_message_for(property_: Property, guest: GuestProfile | None, host: Use
     # greet with that literal placeholder instead of a normal greeting.
     if guest is not None and guest.phone == BROWSER_TEST_CALLER_NUMBER:
         guest = None
+    spoken_property_name = property_.spoken_name or property_.display_name or property_.name
     if host.agent_first_message:
         return _resolve_template(
             host.agent_first_message,
             host_name=host.name or "us",
-            property_name=property_.name,
+            property_name=spoken_property_name,
             city=property_.city,
             guest_name=guest.name if guest else None,
         )
     if guest is not None and guest.name:
-        return f"Namaste {guest.name}! I'm Mira, your virtual assistant for {property_.name}. How can I help you today?"
-    return f"Namaste! I'm Mira, your virtual assistant for {property_.name}. How can I help you today?"
+        return f"Namaste {guest.name}! I'm Mira, your virtual assistant for {spoken_property_name}. How can I help you today?"
+    return f"Namaste! I'm Mira, your virtual assistant for {spoken_property_name}. How can I help you today?"
 
 
 LEAD_AGENT_INSTRUCTIONS = f"""You are Mira, the AI Lead and Guest Experience Agent for {{host_name}}.
@@ -732,8 +733,9 @@ def build_lead_system_prompt(
         lines = []
         for property_ in properties:
             lines.append(
-                f"- {property_.name} (property_id: {property_.id}) -- {property_.city or 'unknown city'}, "
-                f"₹{float(property_.base_price):,.0f}/night, sleeps {property_.max_guests}"
+                f"- {property_.display_name or property_.name} (property_id: {property_.id}) -- "
+                f"{property_.city or 'unknown city'}, ₹{float(property_.base_price):,.0f}/night, "
+                f"sleeps {property_.max_guests}"
             )
         sections.append("\nProperty portfolio:\n" + "\n".join(lines))
     else:
