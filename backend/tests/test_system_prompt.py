@@ -97,6 +97,23 @@ def test_first_message_uses_host_template_with_placeholders():
     assert msg == "Hi from Asha at Sea View Villa in Goa!"
 
 
+def test_first_message_prefers_spoken_name_over_raw_name():
+    # spoken_name is what should actually be said aloud -- never the raw
+    # scraped Airbnb marketing title, even when display_name/spoken_name
+    # exist alongside a messier `name`.
+    host = _user(agent_first_message=None)
+    property_ = _property(name="Pine - Glasshouse Suite w/bathtub | Pause Project", spoken_name="Pine")
+    msg = first_message_for(property_, None, host)
+    assert "Pine" in msg
+    assert "Glasshouse Suite" not in msg
+
+
+def test_build_system_prompt_uses_display_name_over_raw_name():
+    property_ = _property(name="Pine - Glasshouse Suite w/bathtub | Pause Project", display_name="Pine - Suite w/bathtub")
+    prompt = build_system_prompt(property_, None, _user())
+    assert "Pine - Suite w/bathtub" in prompt
+
+
 def test_first_message_template_blank_on_missing_property_context():
     # Lead Agent first message has no property in scope -- {property_name}
     # must resolve to "" rather than crashing the call.
@@ -304,6 +321,17 @@ def test_property_amenities_omitted_from_lead_agent_portfolio_listing():
     assert "Glasshouse Studio" in prompt
     assert "WiFi" not in prompt
     assert "Private pool" not in prompt
+
+
+def test_lead_agent_portfolio_listing_uses_display_name_over_raw_name():
+    host = _user()
+    prop = _property(
+        name="Pine - Glasshouse Suite w/bathtub | Pause Project",
+        display_name="Pine - Suite w/bathtub",
+    )
+    prompt = build_lead_system_prompt(host, [prop])
+    assert "Pine - Suite w/bathtub" in prompt
+    assert "Pine - Glasshouse Suite w/bathtub | Pause Project" not in prompt
 
 
 def test_lead_agent_prompt_requires_phone_and_defers_email():

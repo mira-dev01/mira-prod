@@ -15,6 +15,8 @@ import re
 from typing import Any
 
 from app.integrations import cloudinary_client
+from app.services.amenity_taxonomy import canonicalize_amenities
+from app.services.property_normalizer import normalize_property_name
 
 _TIME_RE = re.compile(r"(\d{1,2})(?::(\d{2}))?\s*([ap]m)", re.IGNORECASE)
 _TAG_RE = re.compile(r"<[^>]+>")
@@ -47,6 +49,30 @@ def _strip_html(text: str | None) -> str:
     unescaped = html.unescape(text)
     with_breaks = re.sub(r"<br\s*/?>", "\n", unescaped, flags=re.IGNORECASE)
     return _TAG_RE.sub("", with_breaks).strip()
+
+
+def _apply_normalized_name_fields(fields: dict[str, Any], normalized) -> None:
+    """Copies non-None fields from a NormalizedName onto the parsed `fields`
+    dict, matching this module's existing "only include what was found"
+    convention. `brand` is deliberately never set here -- it needs
+    cross-property lookup for the same host, resolved in
+    _upsert_property_from_parsed (app/api/v1/properties.py) instead.
+
+    `_normalizer_confidence` is a private, non-Property key the caller pops
+    off before constructing/updating a Property -- it signals whether
+    _upsert_property_from_parsed should also try the optional one-shot LLM
+    fallback pass (only on "low" confidence, see property_normalizer.py)."""
+    if normalized.display_name:
+        fields["display_name"] = normalized.display_name
+    if normalized.spoken_name:
+        fields["spoken_name"] = normalized.spoken_name
+    if normalized.property_type:
+        fields["property_type"] = normalized.property_type
+    if normalized.property_style:
+        fields["property_style"] = normalized.property_style
+    if normalized.bedroom_count is not None:
+        fields["bedroom_count"] = normalized.bedroom_count
+    fields["_normalizer_confidence"] = normalized.confidence
 
 
 def _find_section(sections: list[dict], section_id: str) -> dict:
@@ -218,8 +244,14 @@ def parse_airbnb_listing(raw: dict[str, Any]) -> dict[str, Any]:
     fields: dict[str, Any] = {}
 
     name = _extract_name(node, pdp)
+    description_faq = _extract_description_faq(node)
     if name:
         fields["name"] = name
+        fields["raw_name"] = name
+        normalized = normalize_property_name(
+            name, description=description_faq["answer"] if description_faq else None
+        )
+        _apply_normalized_name_fields(fields, normalized)
 
     city = _extract_city(pdp, location_section)
     if city:
@@ -232,6 +264,7 @@ def parse_airbnb_listing(raw: dict[str, Any]) -> dict[str, Any]:
     amenities = _extract_amenities(pdp)
     if amenities:
         fields["amenities"] = amenities
+        fields["amenity_tags"] = canonicalize_amenities(amenities)
 
     house_rules, check_in_time, check_out_time = _extract_house_rules_and_times(policies)
     if house_rules:
@@ -285,15 +318,19 @@ async def parse_bright_data_listing(record: dict[str, Any], *, photo_folder: str
     # in Kecamatan Kuta Utara · ★5.0 · 2 bedrooms · 2
     # baths" -- listing_title/listing_name are closer to a clean name when
     # present.
+    description = _strip_html(record.get("description_html") or record.get("description") or "")
+
     name = record.get("listing_title") or record.get("listing_name") or record.get("name")
     if name:
         fields["name"] = name
+        fields["raw_name"] = name
+        normalized = normalize_property_name(name, description=description or None)
+        _apply_normalized_name_fields(fields, normalized)
 
     location = record.get("location") or ""
     if location:
         fields["city"] = location.split(",")[0].strip()
 
-    description = _strip_html(record.get("description_html") or record.get("description") or "")
     if description:
         fields["usp"] = description[:280]
 
@@ -323,6 +360,7 @@ async def parse_bright_data_listing(record: dict[str, Any], *, photo_folder: str
                 amenity_names.append(item_name)
     if amenity_names:
         fields["amenities"] = amenity_names
+        fields["amenity_tags"] = canonicalize_amenities(amenity_names)
 
     guests = record.get("guests")
     try:

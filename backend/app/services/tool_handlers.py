@@ -39,6 +39,8 @@ from app.services import (
     pricing_engine,
     technician_service,
 )
+from app.services.property.pitch_formatter import RecommendationResult
+from app.services.property.retrieval import orchestrator as property_retrieval_orchestrator
 
 logger = logging.getLogger(__name__)
 
@@ -550,112 +552,17 @@ async def handle_negotiate_rate(
     return result.message
 
 
-# Property.city/neighborhood_info are free text -- most properties only ever
-# say "Goa" or one specific locality ("Colva", "Siolim"), never the literal
-# words "North Goa"/"South Goa" (confirmed live: Azure's city is "Colva" and
-# its neighborhood_info never mentions "South Goa" either, so an ILIKE match
-# on those exact words silently excluded it from a "South Goa" query even
-# though Colva unambiguously is South Goa). This maps the common named
-# localities to their region so a region query matches on where a property
-# actually is, not on whether that exact phrase happens to appear in its text.
-_GOA_NORTH_LOCALITIES = [
-    "siolim", "anjuna", "vagator", "chapora", "morjim", "ashwem", "mandrem",
-    "calangute", "candolim", "baga", "arpora", "assagao", "mapusa",
-    "sinquerim", "arambol", "querim", "reis magos",
-]
-_GOA_SOUTH_LOCALITIES = [
-    "colva", "margao", "madgaon", "benaulim", "varca", "cavelossim", "mobor",
-    "palolem", "agonda", "majorda", "cansaulim", "betalbatim", "velsao",
-    "vasco", "bogmalo", "canacona",
-]
-
-
-def _goa_region_localities(preferred_location: str) -> list[str] | None:
-    normalized = preferred_location.strip().lower()
-    if "north goa" in normalized:
-        return _GOA_NORTH_LOCALITIES
-    if "south goa" in normalized:
-        return _GOA_SOUTH_LOCALITIES
-    return None
-
-
-async def handle_recommend_properties(db: AsyncSession, args: RecommendPropertiesArgs, host_user_id: uuid.UUID) -> str:
-    from sqlalchemy import or_
-
-    base_stmt = select(Property).where(Property.user_id == host_user_id)
-    if args.budget is not None:
-        base_stmt = base_stmt.where(Property.base_price <= args.budget * 1.15)
-    if args.preferred_location:
-        # Match against city name OR neighborhood_info so state-level queries
-        # ("Kerala", "Himachal") find properties whose city is e.g. "Alleppey"
-        # but whose neighborhood text mentions the broader region.
-        localities = _goa_region_localities(args.preferred_location)
-        if localities:
-            # For "north/south goa" specifically, match ONLY against the
-            # expanded locality list -- never the literal "South Goa"/
-            # "North Goa" phrase against neighborhood_info free text.
-            # Confirmed live 2026-07-27: several North Goa (Siolim)
-            # properties' neighborhood_info mentions "Dabolim (South Goa
-            # airport)" purely as a travel-time reference point, and a
-            # literal "%South Goa%" substring match against that text
-            # wrongly treated the mention as evidence the property itself is
-            # in South Goa -- a guest who explicitly asked for South Goa was
-            # recommended a Siolim (North Goa) property because of it.
-            location_filter = or_(
-                *[
-                    or_(Property.city.ilike(f"%{locality}%"), Property.neighborhood_info.ilike(f"%{locality}%"))
-                    for locality in localities
-                ]
-            )
-        else:
-            loc = f"%{args.preferred_location}%"
-            location_filter = or_(Property.city.ilike(loc), Property.neighborhood_info.ilike(loc))
-        base_stmt = base_stmt.where(location_filter)
-
-    stmt = base_stmt
-    if args.num_guests is not None:
-        stmt = stmt.where(Property.max_guests >= args.num_guests)
-    stmt = stmt.order_by(Property.base_price.asc()).limit(3)
-    properties = list((await db.scalars(stmt)).all())
-
-    combo_note = ""
-    if not properties and args.num_guests is not None:
-        # No single property sleeps the whole group -- fall back to smaller
-        # units (same location/budget filters, just without the guest-count
-        # cutoff) instead of a flat "nothing found", so the model can suggest
-        # booking two units together to cover the group. Hosts with several
-        # small 1BHKs at the same property (e.g. the Pause Project in Siolim)
-        # routinely accommodate larger groups exactly this way.
-        fallback_stmt = base_stmt.order_by(Property.base_price.asc()).limit(4)
-        properties = list((await db.scalars(fallback_stmt)).all())
-        if properties:
-            combo_note = (
-                f" None of these sleep all {args.num_guests} guests alone -- since they're separate units, "
-                "suggest the guest book two of them together to cover the group."
-            )
-
-    if not properties:
-        return "I couldn't find a property in our portfolio matching that -- let me connect you with the host directly."
-
-    # One property per line, numbered, not " | "-joined -- real property
-    # names routinely contain a literal "|" themselves (e.g. imported Airbnb
-    # titles like "Azure 1bhk | 5 mins walk to beach | Pause Project"),
-    # confirmed live 2026-07-27: splitting the combined string back apart on
-    # " | " tore individual names into fragments ("Pause Project", "5 mins
-    # walk to beach- Pause Project" as if those were the property names) --
-    # both for whatever parsed this downstream and, per the transcript, for
-    # the model itself trying to read the mashed-together line back to the
-    # guest. A newline can never appear inside these single-line DB fields,
-    # so it can't collide the way " | " did.
-    lines = []
-    for i, property_ in enumerate(properties, 1):
-        amenities = ", ".join(property_.amenities[:4]) if property_.amenities else "no listed amenities"
-        usp_part = f" -- {property_.usp}" if property_.usp else ""
-        lines.append(
-            f"{i}. {property_.name} in {property_.city or 'unlisted city'}: ₹{float(property_.base_price):,.0f}/night, "
-            f"sleeps {property_.max_guests}, {amenities}{usp_part} (property_id: {property_.id})"
-        )
-    return "Here are some options:\n" + "\n".join(lines) + combo_note
+async def handle_recommend_properties(
+    db: AsyncSession, args: RecommendPropertiesArgs, host_user_id: uuid.UUID
+) -> RecommendationResult:
+    """Thin delegate to app/services/property/retrieval/orchestrator.py --
+    the actual filter -> SQL search -> (conditionally) semantic search ->
+    merge/rank -> build context pipeline lives there, split into focused,
+    single-responsibility modules (filter_builder/sql_search/
+    semantic_search/ranking/context_builder). This function's signature/
+    name is kept stable so app/voice/tools.py's call site needed no change
+    when the internals were restructured out of this file."""
+    return await property_retrieval_orchestrator.recommend_properties(db, args, host_user_id)
 
 
 async def _resolve_property_names(db: AsyncSession, values: list[str]) -> list[str]:

@@ -16,20 +16,30 @@
    "Never react to a tool result before you've actually said what's in it"),
    confirmed live as a recurring failure prompting alone doesn't reliably prevent
    (guest had to say "You didn't recommend any properties" before getting a real
-   answer). Scoped to recommend_properties only, since it's the one tool with cleanly
-   parseable "Name in City: ..." result lines this guard can build a
-   guaranteed-correct fallback reply from.
+   answer). Scoped to recommend_properties only.
 
 Sits between llm and tts (same position as the other voice guards). Buffers only the
 one LLM response immediately following an armed tool call -- every other turn passes
 straight through unbuffered, no added latency to the common case.
 
 record_tool_result() is called directly from app/voice/tools.py's recommend_properties
-wrapper, synchronously, BEFORE it calls params.result_callback(result) -- not racy the
-way escalation_phrase_guard's old arm() was: that race was between an out-of-band call
-and text from the SAME completion already in flight. Here, the next completion is
-CAUSED by result_callback, so recording the parsed options before calling it guarantees
-they're set before any frame from the resulting completion can reach this processor.
+wrapper, synchronously, BEFORE it calls params.result_callback(rendered_result) -- not
+racy the way escalation_phrase_guard's old arm() was: that race was between an
+out-of-band call and text from the SAME completion already in flight. Here, the next
+completion is CAUSED by result_callback, so recording the options before calling it
+guarantees they're set before any frame from the resulting completion can reach this
+processor.
+
+Previously this guard regex-parsed handle_recommend_properties's RENDERED text back
+into structured data (name/city/price/guests) to do its job -- a coupling that
+silently broke any time the rendered pitch string's format changed without the regex
+being updated in lockstep (see git history: a real name containing a literal "|" once
+tore itself apart this way). handle_recommend_properties now returns a structured
+RecommendationResult (app/services/property/pitch_formatter.py) directly, and
+app/voice/tools.py hands THAT to record_tool_result -- this guard never touches or
+parses rendered speech text for its own bookkeeping, only for the strip/verify pass on
+the model's actual reply below. Any future change to the pitch string's wording has
+zero effect on this file.
 """
 
 import re
@@ -42,6 +52,8 @@ from pipecat.frames.frames import (
     LLMTextFrame,
 )
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
+
+from app.services.property.pitch_formatter import RecommendationResult
 
 # Any tool whose result (or the system-prompt portfolio listing feeding it) can
 # carry a property_id into context -- arms the UUID-stripping half of this guard.
@@ -61,15 +73,6 @@ _UUID_RE = re.compile(_UUID_PATTERN, re.IGNORECASE)
 # the UUID -- leaves a clean sentence instead of a dangling empty "()".
 _PROPERTY_ID_ASIDE_RE = re.compile(r"\(\s*property[\s_]?id:?\s*" + _UUID_PATTERN + r"\s*\)", re.IGNORECASE)
 
-# Matches handle_recommend_properties's own result-line format (tool_handlers.py):
-# "N. {name} in {city}: ₹{price}/night, sleeps {guests}, ...". Greedy .+ (not
-# .+?) so a name that itself happens to contain " in " (unlikely but not
-# impossible) still resolves to the LAST " in " before the price, i.e. the
-# actual city boundary -- defense in depth alongside the newline-per-property
-# format below, which is what actually fixed real property names containing
-# "|" being torn apart (confirmed live 2026-07-27, see tool_handlers.py).
-_RECOMMEND_LINE_RE = re.compile(r"^\d+\.\s*(?P<name>.+) in (?P<city>[^:]+): ₹(?P<price>[\d,]+)/night, sleeps (?P<guests>\d+)")
-
 
 def strip_property_ids(text: str) -> str:
     text = _PROPERTY_ID_ASIDE_RE.sub("", text)
@@ -77,24 +80,8 @@ def strip_property_ids(text: str) -> str:
     return re.sub(r"[ \t]{2,}", " ", text).strip()
 
 
-def parse_recommend_properties_result(result) -> list[dict]:
-    """Best-effort parse of handle_recommend_properties's result string into
-    structured options. Returns [] for anything that doesn't match the expected
-    shape (e.g. the "I couldn't find a property..." not-found message) --
-    callers treat an empty list as "nothing to verify/fall back to"."""
-    if not isinstance(result, str) or not result.startswith("Here are some options:"):
-        return []
-    body = result[len("Here are some options:") :].split("\n")
-    options = []
-    for segment in body:
-        match = _RECOMMEND_LINE_RE.match(segment.strip())
-        if match:
-            options.append(match.groupdict())
-    return options
-
-
 def _fallback_recommendation_text(options: list[dict]) -> str:
-    lines = [f"{o['name']} at {o['price']} rupees per night, sleeping {o['guests']}" for o in options]
+    lines = [f"{o['name']} at {o['price']:,.0f} rupees per night, sleeping {o['guests']}" for o in options]
     return "Here are some options: " + "; ".join(lines) + ". Which one sounds interesting?"
 
 
@@ -110,8 +97,11 @@ class PropertyRecommendationGuardProcessor(FrameProcessor):
         self._buffer: list[str] = []
 
     def record_tool_result(self, function_name: str, result) -> None:
-        if function_name == "recommend_properties":
-            self._pending_options = parse_recommend_properties_result(result)
+        if function_name == "recommend_properties" and isinstance(result, RecommendationResult):
+            self._pending_options = [
+                {"name": card.spoken_name, "price": card.base_price, "guests": card.max_guests}
+                for card in result.options
+            ]
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
