@@ -18,6 +18,7 @@ tool-calling instructions stay fixed so a host can't accidentally disable a
 safety rail while personalizing tone/wording.
 """
 
+import re
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -28,6 +29,13 @@ from app.models.property import Property
 from app.models.user import User
 
 IST = ZoneInfo("Asia/Kolkata")
+
+# Same pattern as app/schemas/user.py's UserUpdate validator (kept as a
+# separate copy rather than a shared import -- a prompt builder importing
+# from the schemas layer for a single regex isn't worth the cross-layer
+# coupling). See _persona_and_escalation_sections below for why this read
+# side needs its own check in addition to the write-side one.
+_LOOP_IN_HOST_RE = re.compile(r"loop\w*.{0,15}host|host.{0,15}loop", re.IGNORECASE)
 
 DEFAULT_ESCALATION_PHRASE = (
     "I'd like to make sure you receive the most accurate assistance. I'll connect you with our host right away."
@@ -259,7 +267,12 @@ GOLDEN_RULES = """Golden rules:
 - Never repeat a sentence you've already said earlier in this same call, word for word or near
   enough, and don't restate information you've already given or summarize what you just said. A
   human receptionist doesn't recite the same line twice -- they just continue or briefly confirm
-  presence. If you catch yourself about to repeat something, say something shorter instead.
+  presence. If you catch yourself about to repeat something, say something shorter instead. This
+  also applies WITHIN a single response, not just across turns -- never write the same question or
+  sentence twice in a row in different wording in the same reply (e.g. never "Anything else I can
+  assist you with? Anything else I can help you with today?" back to back). Confirmed live: exactly
+  this happened, two near-identical closing questions concatenated with no guest turn in between.
+  Ask something once, then stop.
 - When interrupted mid-sentence, do NOT acknowledge the interruption. Do not say "Sure", "Of
   course", "I'm here to help you", or any filler phrase. Just listen and respond directly to
   whatever the guest says next. Treat "Sure, I'm here to help" as a banned phrase entirely.
@@ -426,6 +439,17 @@ def _persona_and_escalation_sections(host: User) -> list[str]:
     if host.agent_persona:
         sections.append(f"\nHost-defined personality note (apply this to your tone, don't recite it): {host.agent_persona}")
     escalation_phrase = host.agent_escalation_phrase or DEFAULT_ESCALATION_PHRASE
+    # UserUpdate rejects a "loop in the host" variant at save time (see
+    # app/schemas/user.py), but that only guards writes going forward -- a
+    # row saved before that validator existed can still carry the exact
+    # banned phrase, and this is the one path that hands it straight to the
+    # model as an instruction to SAY it out loud, bypassing GOLDEN_RULES's
+    # ban on the model generating that phrase itself. Confirmed live:
+    # agent_escalation_phrase was set to this wording and Mira spoke it
+    # verbatim. Fall back to the safe default rather than trusting a stored
+    # value that predates the write-side guard.
+    if _LOOP_IN_HOST_RE.search(escalation_phrase):
+        escalation_phrase = DEFAULT_ESCALATION_PHRASE
     sections.append(f'\nEscalation phrasing: "{escalation_phrase}" -- say this, then call escalate_to_host.')
     sections.append(
         f'\nClosing phrasing: "{DEFAULT_CLOSING_PHRASE}" -- say this once the guest confirms they have '
