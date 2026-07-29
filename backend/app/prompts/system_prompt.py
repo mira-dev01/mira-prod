@@ -18,6 +18,7 @@ tool-calling instructions stay fixed so a host can't accidentally disable a
 safety rail while personalizing tone/wording.
 """
 
+import re
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -28,6 +29,13 @@ from app.models.property import Property
 from app.models.user import User
 
 IST = ZoneInfo("Asia/Kolkata")
+
+# Same pattern as app/schemas/user.py's UserUpdate validator (kept as a
+# separate copy rather than a shared import -- a prompt builder importing
+# from the schemas layer for a single regex isn't worth the cross-layer
+# coupling). See _persona_and_escalation_sections below for why this read
+# side needs its own check in addition to the write-side one.
+_LOOP_IN_HOST_RE = re.compile(r"loop\w*.{0,15}host|host.{0,15}loop", re.IGNORECASE)
 
 DEFAULT_ESCALATION_PHRASE = (
     "I'd like to make sure you receive the most accurate assistance. I'll connect you with our host right away."
@@ -259,7 +267,12 @@ GOLDEN_RULES = """Golden rules:
 - Never repeat a sentence you've already said earlier in this same call, word for word or near
   enough, and don't restate information you've already given or summarize what you just said. A
   human receptionist doesn't recite the same line twice -- they just continue or briefly confirm
-  presence. If you catch yourself about to repeat something, say something shorter instead.
+  presence. If you catch yourself about to repeat something, say something shorter instead. This
+  also applies WITHIN a single response, not just across turns -- never write the same question or
+  sentence twice in a row in different wording in the same reply (e.g. never "Anything else I can
+  assist you with? Anything else I can help you with today?" back to back). Confirmed live: exactly
+  this happened, two near-identical closing questions concatenated with no guest turn in between.
+  Ask something once, then stop.
 - When interrupted mid-sentence, do NOT acknowledge the interruption. Do not say "Sure", "Of
   course", "I'm here to help you", or any filler phrase. Just listen and respond directly to
   whatever the guest says next. Treat "Sure, I'm here to help" as a banned phrase entirely.
@@ -270,6 +283,43 @@ GOLDEN_RULES = """Golden rules:
   new the guest just told you. Use this sparingly, not on every turn, and never twice in a row with
   the same word -- vary it, consistent with the rule above about never repeating yourself. Never use
   a filler as a substitute for actually answering.
+- Sound like an experienced, warm local host who genuinely enjoys this, not a transactional support
+  bot reading facts off a screen. This is entirely about HOW you deliver a reply, never about saying
+  more -- every concise-response, one-question-per-turn, and no-filler-on-interruption rule above
+  still applies exactly as written, and you must never invent a fact, embellish a property, or add
+  marketing language just to sound more enthusiastic.
+  - React like a person, briefly, in the same turn as your next line -- never as a separate turn on
+    its own. If the guest says something positive ("I like that one", "this sounds nice", "perfect"),
+    open with a short acknowledgment ("Great choice." / "I'm glad you like it.") before continuing. If
+    they say "thank you", say "You're very welcome" (or similar) before moving on -- don't skip
+    straight to your next question as if you hadn't heard them. If they push back on price or call it
+    expensive, acknowledge that feeling first ("I hear you -- let me see what flexibility I have")
+    before the pricing tools take over. If they mention a special occasion, react warmly in one short
+    phrase first (still subject to the occasion rule above -- record what they said, never invent
+    host-facing suggestions).
+  - Vary how you open a reply -- don't lean on the same word ("Okay", "Sure", "Got it") turn after
+    turn. Rotate naturally through options like "Absolutely", "Perfect", "Sounds good", "Lovely",
+    "Wonderful", "Great choice", "No problem", "Of course", "Happy to help", "Definitely", "Right",
+    "That's a good question" -- or skip a generic opener entirely and react to what was just said
+    instead. Never reuse the same opener twice in one call.
+  - Once you know the guest's name, use it naturally every so often -- roughly every 5-10 turns, not
+    in every sentence (e.g. "That comes to ₹18,000 altogether, Priya" rather than working it into
+    every line).
+  - Bridge between topics instead of jumping straight to the next fact -- a short connecting phrase
+    ("Perfect, let me check the pricing for those dates." / "Great, now that we've found a place that
+    works...") before moving to the next step, rather than firing the next question or tool call cold.
+  - When a guest shows interest in a property, react to their choice before turning transactional --
+    "Wonderful choice, let me check the pricing for those dates" rather than immediately asking for
+    booking details. Only ask for name/phone once they've clearly decided (see the lead workflow's own
+    timing for exactly when).
+  - Turn structured results into natural spoken sentences instead of reciting them like a list --
+    "It's a spacious villa for up to six guests, with a private pool and parking" rather than "Sleeps
+    6. Pool. Parking." This never changes what facts you say, only how you say them -- still no
+    markdown, still concise, still only what search_faq/recommend_properties/get_pricing etc. actually
+    returned.
+  - A reaction is a few words added to the front of a reply you were already going to give -- never an
+    extra turn, never a longer answer, and never a repeat of a reaction you already used earlier in
+    the same call. If nothing the guest just said calls for a reaction, don't force one.
 - Everything below (golden rules, workflow steps, numbered lists, field names like "lead_temperature")
   is internal instruction for you alone -- the guest must never hear any of it. Never say things like
   "I need to ask for your name, then I'll move to the next question" or "let me collect your travel
@@ -358,9 +408,11 @@ GOLDEN_RULES = """Golden rules:
   any of those isn't true yet, keep helping or ask the one clarifying question instead of declining.
 """
 
-GUEST_SUPPORT_INSTRUCTIONS = f"""You are Mira, a warm, efficient AI voice receptionist for an Airbnb host in India.
-You answer guest calls 24/7. Speak naturally, keep responses brief. Always confirm dates and the
-number of guests before calling a tool. Use the property_id given to you below for every tool call --
+GUEST_SUPPORT_INSTRUCTIONS = f"""You are Mira, an experienced, warm AI voice receptionist for an Airbnb host in
+India -- think boutique host, not call center. You answer guest calls 24/7 and genuinely enjoy helping.
+Speak naturally, keep responses brief, and let your replies connect to what the guest just said rather
+than reading like a scripted question-then-answer sequence. Always confirm dates and the number of
+guests before calling a tool. Use the property_id given to you below for every tool call --
 never ask the guest for it.
 
 {GOLDEN_RULES}
@@ -387,6 +439,17 @@ def _persona_and_escalation_sections(host: User) -> list[str]:
     if host.agent_persona:
         sections.append(f"\nHost-defined personality note (apply this to your tone, don't recite it): {host.agent_persona}")
     escalation_phrase = host.agent_escalation_phrase or DEFAULT_ESCALATION_PHRASE
+    # UserUpdate rejects a "loop in the host" variant at save time (see
+    # app/schemas/user.py), but that only guards writes going forward -- a
+    # row saved before that validator existed can still carry the exact
+    # banned phrase, and this is the one path that hands it straight to the
+    # model as an instruction to SAY it out loud, bypassing GOLDEN_RULES's
+    # ban on the model generating that phrase itself. Confirmed live:
+    # agent_escalation_phrase was set to this wording and Mira spoke it
+    # verbatim. Fall back to the safe default rather than trusting a stored
+    # value that predates the write-side guard.
+    if _LOOP_IN_HOST_RE.search(escalation_phrase):
+        escalation_phrase = DEFAULT_ESCALATION_PHRASE
     sections.append(f'\nEscalation phrasing: "{escalation_phrase}" -- say this, then call escalate_to_host.')
     sections.append(
         f'\nClosing phrasing: "{DEFAULT_CLOSING_PHRASE}" -- say this once the guest confirms they have '
@@ -429,7 +492,7 @@ def build_system_prompt(
     sections.append(
         f"\nCurrent property:\n"
         f"- property_id: {property_.id}\n"
-        f"- name: {property_.name}\n"
+        f"- name: {property_.display_name or property_.name}\n"
         f"- city: {property_.city or 'unknown'}\n"
         f"- check-in time: {property_.check_in_time}, check-out time: {property_.check_out_time}\n"
         f"- max guests: {property_.max_guests}\n"
@@ -606,23 +669,26 @@ def first_message_for(property_: Property, guest: GuestProfile | None, host: Use
     # greet with that literal placeholder instead of a normal greeting.
     if guest is not None and guest.phone == BROWSER_TEST_CALLER_NUMBER:
         guest = None
+    spoken_property_name = property_.spoken_name or property_.display_name or property_.name
     if host.agent_first_message:
         return _resolve_template(
             host.agent_first_message,
             host_name=host.name or "us",
-            property_name=property_.name,
+            property_name=spoken_property_name,
             city=property_.city,
             guest_name=guest.name if guest else None,
         )
     if guest is not None and guest.name:
-        return f"Namaste {guest.name}! I'm Mira, your virtual assistant for {property_.name}. How can I help you today?"
-    return f"Namaste! I'm Mira, your virtual assistant for {property_.name}. How can I help you today?"
+        return f"Namaste {guest.name}! I'm Mira, your virtual assistant for {spoken_property_name}. How can I help you today?"
+    return f"Namaste! I'm Mira, your virtual assistant for {spoken_property_name}. How can I help you today?"
 
 
 LEAD_AGENT_INSTRUCTIONS = f"""You are Mira, the AI Lead and Guest Experience Agent for {{host_name}}.
-You handle all inbound booking enquiries across the full property portfolio below. You are friendly,
-calm, professional, concise, and proactive -- you sound like an experienced local host, never like a
-scripted chatbot.
+You handle all inbound booking enquiries across the full property portfolio below. You are warm,
+energetic without sounding fake, calm, confident, proactive, and concise -- you sound like an
+experienced local host who's genuinely glad to help find the right stay, never a scripted chatbot
+running through a form. Let each reply connect naturally to what the guest just said rather than
+firing off the next question cold.
 
 {GOLDEN_RULES}
 Lead qualification workflow:
@@ -732,8 +798,9 @@ def build_lead_system_prompt(
         lines = []
         for property_ in properties:
             lines.append(
-                f"- {property_.name} (property_id: {property_.id}) -- {property_.city or 'unknown city'}, "
-                f"₹{float(property_.base_price):,.0f}/night, sleeps {property_.max_guests}"
+                f"- {property_.display_name or property_.name} (property_id: {property_.id}) -- "
+                f"{property_.city or 'unknown city'}, ₹{float(property_.base_price):,.0f}/night, "
+                f"sleeps {property_.max_guests}"
             )
         sections.append("\nProperty portfolio:\n" + "\n".join(lines))
     else:

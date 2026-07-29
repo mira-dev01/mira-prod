@@ -477,8 +477,11 @@ async def _run_pipeline_inner(
     # context-push (bundling function-call results that arrive while the
     # bot is speaking) fires with nothing new since the last completion --
     # confirmed live: caused a call to end itself with no guest reply in
-    # between. See app/voice/redundant_context_guard.py.
-    redundant_context_guard = RedundantContextGuardProcessor()
+    # between. Also drops any re-invocation once silence_watchdog has a
+    # hangup armed/fired, closing a race that otherwise let an extra LLM
+    # turn fire after end_call/decline_irrelevant_call and kept calls from
+    # actually disconnecting. See app/voice/redundant_context_guard.py.
+    redundant_context_guard = RedundantContextGuardProcessor(silence_watchdog)
     # Separate failure mode, same symptom: the model itself (in a single
     # turn, not a spurious re-invocation) asks a real question and calls
     # end_call together -- confirmed live. Cancels the pending hangup so the
@@ -836,7 +839,7 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
             )
             first_message = first_message_for(property_, guest, host)
             property_id = property_.id
-            property_name = property_.name
+            property_name = property_.spoken_name or property_.display_name or property_.name
             voice_gender = host.agent_voice_gender
         else:
             properties = list(
@@ -932,7 +935,7 @@ async def run_browser_voice_pipeline(connection: SmallWebRTCConnection, property
         host_user_id,
         system_prompt,
         first_message,
-        property_name=property_.name,
+        property_name=property_.spoken_name or property_.display_name or property_.name,
         guest_profile_id=guest_profile_id,
         voice_gender=host.agent_voice_gender,
     )

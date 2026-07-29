@@ -38,6 +38,7 @@ from typing import Literal
 
 from pydantic import ValidationError
 
+from pipecat.frames.frames import FunctionCallResultProperties
 from pipecat.services.llm_service import FunctionCallParams
 
 from app.database import AsyncSessionLocal
@@ -55,6 +56,7 @@ from app.schemas.tool import (
     UpdateLeadArgs,
 )
 from app.services import tool_handlers
+from app.services.property.pitch_formatter import render_recommendation_text
 from app.voice.conversation_state import ConversationState
 from app.voice.property_recommendation_guard import PropertyRecommendationGuardProcessor
 from app.voice.silence_watchdog import SilenceWatchdogProcessor
@@ -318,6 +320,8 @@ def build_voice_tools(
         num_guests: int | None = None,
         preferred_location: str | None = None,
         purpose_of_stay: str | None = None,
+        required_amenities: list[str] | None = None,
+        near_landmark: str | None = None,
     ):
         """Recommend properties from the portfolio matching the guest's needs.
         Do NOT call this again with the SAME criteria once the guest has
@@ -331,19 +335,24 @@ def build_voice_tools(
             num_guests: Number of guests, if known.
             preferred_location: Preferred city/area, if known.
             purpose_of_stay: e.g. family trip, couples getaway, workcation.
+            required_amenities: Specific amenities the guest asked for, e.g.
+                ["pool", "projector"], if any.
+            near_landmark: A specific nearby place the guest asked to be
+                close to, e.g. "Thalassa", if any.
         """
         # A property is already locked for this call AND the guest hasn't
-        # given any new distinguishing criteria (no location/budget/purpose
-        # this time) -- almost certainly a redundant re-browse rather than a
-        # genuine switch/compare request, which would come with a new
-        # location or property name. Block only that case; a call with new
-        # criteria goes through normally, which is what makes "compare this
-        # with Palm Retreat" / "look at Ocean View instead" work -- the model
-        # names the new property/area as preferred_location and this still
-        # resolves it. This only fires if the model calls the tool anyway
-        # despite the docstring above; it's the enforced backstop, not the
-        # primary mechanism.
-        if state.selected_property_id and not any([preferred_location, budget, purpose_of_stay]):
+        # given any new distinguishing criteria (no location/budget/purpose/
+        # amenity/landmark this time) -- almost certainly a redundant
+        # re-browse rather than a genuine switch/compare request, which
+        # would come with new criteria. Block only that case; a call with
+        # new criteria goes through normally, which is what makes "compare
+        # this with Palm Retreat" / "does it have a pool" work -- the model
+        # supplies the new field and this still resolves it. This only
+        # fires if the model calls the tool anyway despite the docstring
+        # above; it's the enforced backstop, not the primary mechanism.
+        if state.selected_property_id and not any(
+            [preferred_location, budget, purpose_of_stay, required_amenities, near_landmark]
+        ):
             locked_name = state.selected_property_name or "that property"
             await params.result_callback(
                 f"We're already looking at {locked_name}. Ask the guest what they'd like to compare it "
@@ -356,11 +365,14 @@ def build_voice_tools(
                 num_guests=num_guests,
                 preferred_location=preferred_location,
                 purpose_of_stay=purpose_of_stay,
+                required_amenities=required_amenities,
+                near_landmark=near_landmark,
             )
-            result = await tool_handlers.handle_recommend_properties(db, args, host_user_id)
+            structured_result = await tool_handlers.handle_recommend_properties(db, args, host_user_id)
+        rendered_result = render_recommendation_text(structured_result)
         if property_recommendation_guard is not None:
-            property_recommendation_guard.record_tool_result("recommend_properties", result)
-        await params.result_callback(result)
+            property_recommendation_guard.record_tool_result("recommend_properties", structured_result)
+        await params.result_callback(rendered_result)
 
     async def update_lead(
         params: FunctionCallParams,
@@ -489,7 +501,17 @@ def build_voice_tools(
         """
         if silence_watchdog is not None:
             await silence_watchdog.request_end_after_current_turn()
-        await params.result_callback("Call will end after this turn.")
+        # run_llm=False: the call is ending, there's no guest reply left to
+        # respond to. Without this, pipecat's own deferred context-push
+        # (queued because the bot is still speaking the closing line) races
+        # silence_watchdog's own hangup for the same BotStoppedSpeakingFrame
+        # and reliably wins, firing an extra LLM turn instead of letting the
+        # call actually disconnect -- confirmed live 2026-07-28. See
+        # app/voice/redundant_context_guard.py for the same fix applied as a
+        # defense-in-depth backstop.
+        await params.result_callback(
+            "Call will end after this turn.", properties=FunctionCallResultProperties(run_llm=False)
+        )
 
     async def decline_irrelevant_call(params: FunctionCallParams):
         """Call this to end a call that is clearly NOT about a booking,
@@ -506,7 +528,10 @@ def build_voice_tools(
         """
         if silence_watchdog is not None:
             await silence_watchdog.request_end_after_current_turn()
-        await params.result_callback("Call will end after this turn.")
+        # See end_call above for why run_llm=False is required here too.
+        await params.result_callback(
+            "Call will end after this turn.", properties=FunctionCallResultProperties(run_llm=False)
+        )
 
     return [
         check_calendar,

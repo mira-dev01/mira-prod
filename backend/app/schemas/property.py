@@ -43,6 +43,12 @@ class SeasonalNote(BaseModel):
     end_month: int = Field(ge=1, le=12)
 
 
+class LandmarkItem(BaseModel):
+    name: str
+    distance_minutes: int = Field(ge=0)
+    mode: Literal["walk", "drive"] | None = None
+
+
 class PropertyCreate(BaseModel):
     name: str
     city: str | None = None
@@ -77,6 +83,12 @@ class PropertyCreate(BaseModel):
 
 class PropertyUpdate(BaseModel):
     name: str | None = None
+    display_name: str | None = Field(default=None, max_length=120)
+    spoken_name: str | None = Field(default=None, max_length=60)
+    property_type: str | None = Field(default=None, max_length=60)
+    property_style: str | None = Field(default=None, max_length=80)
+    brand: str | None = Field(default=None, max_length=80)
+    bedroom_count: int | None = Field(default=None, ge=0)
     city: str | None = None
     exophone: str | None = None
     base_price: float | None = None
@@ -84,6 +96,7 @@ class PropertyUpdate(BaseModel):
     usp: str | None = Field(default=None, max_length=280)
     house_rules: str | None = None
     neighborhood_info: str | None = None
+    landmarks: list[LandmarkItem] | None = None
     faq: list[FAQItem] | None = None
     amenities: list[str] | None = None
     photos: list[str] | None = None
@@ -121,6 +134,13 @@ class PropertyOut(BaseModel):
     id: uuid.UUID
     user_id: uuid.UUID
     name: str
+    raw_name: str | None
+    display_name: str | None
+    spoken_name: str | None
+    property_type: str | None
+    property_style: str | None
+    brand: str | None
+    bedroom_count: int | None
     city: str | None
     exophone: str | None
     base_price: float
@@ -128,8 +148,10 @@ class PropertyOut(BaseModel):
     usp: str | None
     house_rules: str | None
     neighborhood_info: str | None
+    landmarks: list[LandmarkItem]
     faq: list[dict]
     amenities: list[str]
+    amenity_tags: list[str]
     photos: list[str]
     seasonal_notes: list[SeasonalNote]
     check_in_time: str

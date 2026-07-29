@@ -25,11 +25,68 @@ from app.schemas.property import (
 )
 from app.services import faq_service
 from app.services.airbnb_import import parse_airbnb_listing, parse_bright_data_listing
+from app.services.amenity_taxonomy import canonicalize_amenities
 from app.services.calendar_service import sync_property_ical
+from app.services.property.chunking import sync_property_chunks
+from app.services.property_normalizer import (
+    NAME_DELIMITER_RE,
+    normalize_property_name,
+    normalize_property_name_llm_fallback,
+)
 
 router = APIRouter(prefix="/properties", tags=["properties"])
 
 _ROOM_ID_RE = re.compile(r"/rooms/(\d+)")
+_TRAILING_COUNT_RE = re.compile(r"\b\d+\s*(?:bhk|bedrooms?|beds?|bathrooms?|baths?)\b", re.IGNORECASE)
+
+
+def _brand_candidate(raw_name: str) -> str | None:
+    """Best-guess brand/collection segment from a raw title. Real titles
+    from both import sources consistently put the brand/collection name
+    LAST ("Nile w/pool - Pause Project 1bhk", "Pine - Suite | Pause
+    Project") -- the first segment is the actual listing name (see
+    property_normalizer.normalize_property_name's own reasoning for the
+    same ordering assumption), so the last remaining delimited segment,
+    with any trailing bhk/bedroom/bathroom count stripped, is the best
+    single-title guess at a brand. Used only for co-occurrence matching
+    across a host's other properties (_resolve_brand below) -- never
+    written directly as a confident brand from a single title alone."""
+    segments = [s.strip(" -·|,") for s in NAME_DELIMITER_RE.split(raw_name) if s.strip(" -·|,")]
+    if len(segments) < 2:
+        return None
+    candidate = _TRAILING_COUNT_RE.sub("", segments[-1]).strip(" -·|,")
+    if not candidate or len(candidate.split()) > 4:
+        return None
+    # Property.brand is String(80) -- guard against a rare pathological
+    # segment (4 very long words) still overflowing the column, same
+    # class of bug as property_normalizer's own length clamping.
+    return candidate[:80].strip(" -·|,") or None
+
+
+async def _resolve_brand(db: AsyncSession, user_id: uuid.UUID, raw_name: str) -> str | None:
+    """Cross-property co-occurrence check: if this title's brand-candidate
+    segment matches an already-stored brand (or another property's own
+    brand-candidate) for the same host, treat it as a confirmed brand.
+    Deliberately simple (exact match on the candidate string, not a
+    clustering algorithm) -- matches this codebase's preference for
+    pragmatic heuristics over speculative sophistication."""
+    candidate = _brand_candidate(raw_name)
+    if not candidate:
+        return None
+
+    existing = list(
+        (
+            await db.scalars(
+                select(Property).where(Property.user_id == user_id, Property.raw_name.isnot(None))
+            )
+        ).all()
+    )
+    for other in existing:
+        if other.brand and other.brand.lower() == candidate.lower():
+            return other.brand
+        if other.raw_name and _brand_candidate(other.raw_name) == candidate and other.id:
+            return candidate
+    return None
 
 
 @router.get("", response_model=list[PropertyOut])
@@ -58,7 +115,33 @@ async def _upsert_property_from_parsed(
     if not fields.get("name"):
         return PropertyImportResult(filename=label, status="error", error="Could not find a listing name")
 
+    # confidence is set by normalize_property_name (the heuristic pass in
+    # both parsers) but isn't itself a Property column -- pop it before the
+    # fields dict is spread onto the model below.
+    confidence = fields.pop("_normalizer_confidence", "high")
+
     async with AsyncSessionLocal() as db:
+        if confidence == "low":
+            fallback = await normalize_property_name_llm_fallback(
+                fields.get("raw_name", fields["name"]), fields.get("usp")
+            )
+            if fallback is not None:
+                if fallback.display_name and not fields.get("display_name"):
+                    fields["display_name"] = fallback.display_name
+                if fallback.spoken_name and not fields.get("spoken_name"):
+                    fields["spoken_name"] = fallback.spoken_name
+                if fallback.property_type and not fields.get("property_type"):
+                    fields["property_type"] = fallback.property_type
+                if fallback.property_style and not fields.get("property_style"):
+                    fields["property_style"] = fallback.property_style
+                if fallback.brand and not fields.get("brand"):
+                    fields["brand"] = fallback.brand
+
+        if not fields.get("brand") and fields.get("raw_name"):
+            resolved_brand = await _resolve_brand(db, user_id, fields["raw_name"])
+            if resolved_brand:
+                fields["brand"] = resolved_brand
+
         existing = await db.scalar(
             select(Property).where(Property.user_id == user_id, Property.airbnb_listing_id == listing_id)
         )
@@ -68,6 +151,7 @@ async def _upsert_property_from_parsed(
             await db.commit()
             await db.refresh(existing)
             faq_count = await faq_service.sync_imported_faq_entries(db, user_id, existing.id, faq_entries)
+            await sync_property_chunks(db, existing)
             return PropertyImportResult(
                 filename=label, status="updated", property=existing, faq_entries_created=faq_count
             )
@@ -77,6 +161,7 @@ async def _upsert_property_from_parsed(
         await db.commit()
         await db.refresh(property_)
         faq_count = await faq_service.sync_imported_faq_entries(db, user_id, property_.id, faq_entries)
+        await sync_property_chunks(db, property_)
         return PropertyImportResult(
             filename=label, status="created", property=property_, faq_entries_created=faq_count
         )
@@ -178,6 +263,7 @@ async def create_property(
         user_id=current_user.id,
         **payload.model_dump(exclude={"faq"}),
         faq=[item.model_dump() for item in payload.faq],
+        amenity_tags=canonicalize_amenities(payload.amenities),
     )
     db.add(property_)
     await db.commit()
@@ -215,11 +301,142 @@ async def update_property(
     updates = payload.model_dump(exclude_unset=True)
     if "faq" in updates and updates["faq"] is not None:
         updates["faq"] = [item if isinstance(item, dict) else item.model_dump() for item in payload.faq]
+    if "amenities" in updates:
+        # amenity_tags (the canonical, filterable facet recommend_properties
+        # queries) is derived from amenities -- must be recomputed here too,
+        # not just at import time, or a host editing amenities via the
+        # dashboard silently leaves the amenity filter matching against
+        # stale tags.
+        updates["amenity_tags"] = canonicalize_amenities(updates["amenities"] or [])
     for field, value in updates.items():
         setattr(property_, field, value)
     await db.commit()
     await db.refresh(property_)
     return property_
+
+
+async def _renormalize_one(db: AsyncSession, property_: Property, *, allow_llm_fallback: bool = True) -> None:
+    """Re-runs the name normalizer against a property's own raw_name (or
+    name, for pre-normalizer rows where raw_name is still unset) and
+    overwrites the derived name fields. Shared by both the single and bulk
+    renormalize endpoints below -- also what any future one-off backfill
+    script should call directly, so there is exactly one code path for
+    "recompute these fields," not a duplicate script-only version.
+
+    allow_llm_fallback=False skips the optional LLM extraction pass even on
+    "low" confidence -- used by the startup backfill (app/main.py), since
+    property_normalizer's own contract is "import-time only, never on the
+    live path"; a background startup task isn't a live guest call, but it
+    runs on every deploy/restart, and an unbounded number of LLM calls
+    there for however many rows are still unresolved is a real, uncapped
+    cost this function must not incur silently. The host-triggered
+    renormalize endpoints below keep the LLM fallback on, since those are
+    explicit, low-frequency, one-property-at-a-time actions a host chose.
+
+    display_name is ALWAYS set to a non-None value by the end of this
+    function (falling back to raw_name/name verbatim if the normalizer
+    couldn't derive anything cleaner) -- this is what makes the startup
+    backfill's `WHERE display_name IS NULL` scan actually terminate. A
+    property whose title reduces to nothing after stripping (e.g. a title
+    that's just a bare property-type word) would otherwise leave
+    display_name NULL forever, getting re-selected and re-processed (LLM
+    call included) on every single restart indefinitely -- confirmed live
+    against a real row during testing."""
+    raw_name = property_.raw_name or property_.name
+    normalized = normalize_property_name(raw_name, description=property_.usp)
+    if normalized.confidence == "low" and allow_llm_fallback:
+        fallback = await normalize_property_name_llm_fallback(raw_name, property_.usp)
+        if fallback is not None:
+            # Regex-extracted bedroom/bathroom counts are more reliable
+            # than an LLM's -- preserve the heuristic pass's counts rather
+            # than letting the fallback's (always-None) ones win.
+            fallback.bedroom_count = normalized.bedroom_count
+            fallback.bathroom_count = normalized.bathroom_count
+            normalized = fallback
+
+    if not property_.raw_name:
+        property_.raw_name = raw_name
+    property_.display_name = normalized.display_name or raw_name
+    if normalized.spoken_name:
+        property_.spoken_name = normalized.spoken_name
+    if normalized.property_type:
+        property_.property_type = normalized.property_type
+    if normalized.property_style:
+        property_.property_style = normalized.property_style
+    if normalized.bedroom_count is not None:
+        property_.bedroom_count = normalized.bedroom_count
+    if not property_.brand:
+        resolved_brand = await _resolve_brand(db, property_.user_id, raw_name)
+        if resolved_brand:
+            property_.brand = resolved_brand
+
+
+@router.post("/{property_id}/renormalize-name", response_model=PropertyOut)
+async def renormalize_property_name(
+    property_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Property:
+    """Re-derives display_name/spoken_name/property_type/property_style/
+    brand from this property's raw_name -- lets a host refresh a name the
+    importer got wrong (e.g. after the normalizer's heuristics improve)
+    without re-importing the whole listing. Backs a dashboard "Refresh
+    name" action."""
+    property_ = await get_owned_property(db, property_id, current_user)
+    await _renormalize_one(db, property_)
+    await db.commit()
+    await db.refresh(property_)
+    return property_
+
+
+@router.post("/renormalize-names", response_model=list[PropertyOut])
+async def renormalize_all_property_names(
+    current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+) -> list[Property]:
+    """Bulk version of the above, scoped to the current host's own
+    properties only -- this is also the mechanism for backfilling
+    display_name/spoken_name onto properties imported before this feature
+    existed (raw_name is null for those; _renormalize_one falls back to
+    `name`)."""
+    properties = list(
+        (await db.scalars(select(Property).where(Property.user_id == current_user.id))).all()
+    )
+    for property_ in properties:
+        await _renormalize_one(db, property_)
+    await db.commit()
+    for property_ in properties:
+        await db.refresh(property_)
+    return properties
+
+
+async def backfill_missing_display_names(db: AsyncSession) -> int:
+    """Cross-host, one-time (but safe to re-run) backfill for properties
+    imported before the canonical-name feature existed -- display_name is
+    NULL for those rows (raw_name/spoken_name/property_type never got
+    computed at import time), which is exactly what makes
+    build_property_card fall back to speaking the raw scraped title
+    verbatim on live calls. Genuinely idempotent: _renormalize_one now
+    always sets display_name to a non-None value (falling back to the raw
+    title verbatim if the normalizer couldn't derive anything cleaner), so
+    every row this touches is removed from the `WHERE display_name IS
+    NULL` scan for good -- a second call in a row processes zero rows.
+    allow_llm_fallback=False (see _renormalize_one) -- this runs on every
+    deploy/restart, not per-guest-call, so an unbounded LLM-fallback call
+    per still-unresolved row every time the app boots is real, uncapped
+    cost this backfill must not pay; the heuristic pass alone plus the
+    raw-title fallback above is enough to guarantee termination, and a
+    host can still explicitly opt into the LLM pass via the
+    renormalize-name(s) endpoints below if they want a specific property's
+    name cleaned up further. Called fire-and-forget from app/main.py's
+    lifespan startup, same pattern as the other one-shot startup tasks
+    there -- never blocks server startup, and a slow/failing backfill
+    never takes the app down.
+    """
+    properties = list((await db.scalars(select(Property).where(Property.display_name.is_(None)))).all())
+    for property_ in properties:
+        await _renormalize_one(db, property_, allow_llm_fallback=False)
+    await db.commit()
+    return len(properties)
 
 
 _MAX_PHOTO_BYTES = 10 * 1024 * 1024  # 10MB -- generous for a phone-camera photo, small enough to keep upload snappy

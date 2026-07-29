@@ -29,6 +29,25 @@ the last LLMContextFrame actually forwarded to the LLM, and drops (does not
 forward) any subsequent LLMContextFrame whose context has the same or fewer
 messages -- there's nothing new for the LLM to respond to, so don't ask it
 to.
+
+A second, related failure mode confirmed live 2026-07-28: end_call's own
+tool result IS one new message (the guest never spoke, but the tool result
+itself grows the context by one), so the message-count check above lets it
+through. That result reaches the assistant aggregator's deferred-push
+bookkeeping (queued while the bot is still speaking its closing line, same
+mechanism as above) at the same moment silence_watchdog's own hangup
+(app/voice/silence_watchdog.py) is racing to actually end the call --
+both wait on the very same BotStoppedSpeakingFrame once the closing line
+finishes, and the deferred LLM re-invocation (one processor hop from
+transport.output() to the assistant aggregator) reliably wins the race
+against silence_watchdog's EndWorkerFrame (which must round-trip through
+the whole pipeline sink/source to become a real EndFrame). The result: an
+extra LLM turn fires after the call was already supposed to be ending, and
+the call never actually hangs up. Once silence_watchdog has a hangup
+armed or fired, there is no legitimate reason left to re-invoke the LLM --
+the guest isn't getting another reply -- so this guard also drops any
+LLMContextFrame once silence_watchdog.hangup_pending is true, regardless
+of message count.
 """
 
 from loguru import logger
@@ -36,19 +55,30 @@ from loguru import logger
 from pipecat.frames.frames import Frame, LLMContextFrame
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
+from app.voice.silence_watchdog import SilenceWatchdogProcessor
+
 
 class RedundantContextGuardProcessor(FrameProcessor):
     """Drops an LLMContextFrame if nothing was added to context since the
-    last one actually forwarded to the LLM."""
+    last one actually forwarded to the LLM, or if a hangup is already
+    armed/fired on silence_watchdog."""
 
-    def __init__(self):
+    def __init__(self, silence_watchdog: SilenceWatchdogProcessor | None = None):
         super().__init__()
         self._last_forwarded_message_count = 0
+        self._silence_watchdog = silence_watchdog
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
 
         if isinstance(frame, LLMContextFrame):
+            if self._silence_watchdog is not None and self._silence_watchdog.hangup_pending:
+                logger.warning(
+                    "RedundantContextGuardProcessor: dropping an LLM re-invocation -- "
+                    "a hangup is already armed/fired on silence_watchdog, so there's no "
+                    "guest reply left to respond to"
+                )
+                return
             message_count = len(frame.context.messages)
             if message_count <= self._last_forwarded_message_count:
                 logger.warning(

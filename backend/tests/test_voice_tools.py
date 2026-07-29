@@ -11,9 +11,11 @@ class _FakeFunctionCallParams:
 
     def __init__(self):
         self.result = None
+        self.properties = None
 
-    async def result_callback(self, result):
+    async def result_callback(self, result, properties=None):
         self.result = result
+        self.properties = properties
 
 
 async def test_check_calendar_available(test_property, db_session, test_user):

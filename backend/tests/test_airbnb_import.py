@@ -24,6 +24,15 @@ def test_parse_airbnb_listing_extracts_core_fields():
     assert "Check-in after" in fields["house_rules"]
 
 
+def test_parse_airbnb_listing_extracts_canonical_name_fields():
+    parsed = parse_airbnb_listing(_load_fixture())
+    fields = parsed["fields"]
+
+    assert fields["raw_name"] == fields["name"]
+    assert fields["spoken_name"] == "Whyt"
+    assert fields["property_type"] == "glasshouse"
+
+
 def test_parse_airbnb_listing_extracts_faq_entries():
     parsed = parse_airbnb_listing(_load_fixture())
     faq_by_category = {entry["category"]: entry for entry in parsed["faq_entries"]}
@@ -60,6 +69,105 @@ async def test_import_creates_property_and_faq_entries(client, auth_headers):
     categories = {entry["category"] for entry in faq_resp.json()}
     assert categories == {"layout", "neighbourhood", "booking", "reputation", "description", "safety"}
     assert all(entry["status"] == "verified" for entry in faq_resp.json())
+
+
+async def test_import_creates_property_chunks(client, auth_headers, db_session):
+    from sqlalchemy import select
+
+    from app.models.property import Property
+    from app.models.property_chunk import PropertyChunk
+
+    with open(FIXTURE_PATH, "rb") as f:
+        resp = await client.post(
+            "/api/v1/properties/import",
+            files={"files": ("737471759834870714.json", f, "application/json")},
+            headers=auth_headers,
+        )
+    assert resp.status_code == 200
+    property_id = resp.json()[0]["property"]["id"]
+
+    property_ = await db_session.get(Property, property_id)
+    chunks = list(
+        (await db_session.scalars(select(PropertyChunk).where(PropertyChunk.property_id == property_.id))).all()
+    )
+    assert chunks
+    chunk_types = {c.chunk_type for c in chunks}
+    # This fixture has amenities, neighbourhood info (via FAQ), and house
+    # rules, so "overview" and "house_rules" chunks should exist at minimum.
+    assert "overview" in chunk_types
+    assert "house_rules" in chunk_types
+    for chunk in chunks:
+        assert chunk.text.strip()
+
+
+async def test_reimport_does_not_duplicate_property_chunks(client, auth_headers, db_session):
+    from sqlalchemy import select
+
+    from app.models.property_chunk import PropertyChunk
+
+    with open(FIXTURE_PATH, "rb") as f:
+        await client.post(
+            "/api/v1/properties/import",
+            files={"files": ("737471759834870714.json", f, "application/json")},
+            headers=auth_headers,
+        )
+    with open(FIXTURE_PATH, "rb") as f:
+        resp = await client.post(
+            "/api/v1/properties/import",
+            files={"files": ("737471759834870714.json", f, "application/json")},
+            headers=auth_headers,
+        )
+    property_id = resp.json()[0]["property"]["id"]
+
+    chunks = list(
+        (await db_session.scalars(select(PropertyChunk).where(PropertyChunk.property_id == property_id))).all()
+    )
+    chunk_types = [c.chunk_type for c in chunks]
+    assert len(chunk_types) == len(set(chunk_types))
+
+
+async def test_reimport_with_changed_amenities_replaces_stale_chunk_content(client, auth_headers, db_session):
+    # Stronger regression than the duplicate-count check above: proves
+    # sync_property_chunks actually DELETEs and rebuilds chunk content on
+    # re-import, not just that row counts stay stable. A broken
+    # delete-then-insert (e.g. skipping the DELETE, or reusing stale rows)
+    # would leave the old amenities text sitting in the "amenities" chunk
+    # even after a re-import with different data.
+    import json as json_module
+
+    from sqlalchemy import select
+
+    from app.models.property_chunk import PropertyChunk
+
+    fixture = json_module.loads(FIXTURE_PATH.read_text())
+
+    with open(FIXTURE_PATH, "rb") as f:
+        await client.post(
+            "/api/v1/properties/import",
+            files={"files": ("737471759834870714.json", f, "application/json")},
+            headers=auth_headers,
+        )
+
+    # Mutate the amenities list in the raw scrape before re-importing.
+    fixture["node"]["pdpPresentation"]["amenities"]["previewAmenitiesGroups"] = [
+        {"amenities": [{"title": "Zorbing pit", "available": True}]}
+    ]
+    fixture["node"]["pdpPresentation"]["amenities"]["seeAllAmenitiesGroups"] = []
+    mutated_bytes = json_module.dumps(fixture).encode()
+
+    resp = await client.post(
+        "/api/v1/properties/import",
+        files={"files": ("737471759834870714.json", mutated_bytes, "application/json")},
+        headers=auth_headers,
+    )
+    property_id = resp.json()[0]["property"]["id"]
+
+    amenity_chunk = await db_session.scalar(
+        select(PropertyChunk).where(PropertyChunk.property_id == property_id, PropertyChunk.chunk_type == "amenities")
+    )
+    assert amenity_chunk is not None
+    assert "Zorbing pit" in amenity_chunk.text
+    assert "Kitchen" not in amenity_chunk.text
 
 
 async def test_reimport_same_listing_updates_instead_of_duplicating(client, auth_headers):
@@ -215,3 +323,32 @@ async def test_import_airbnb_urls_status_ready_creates_property_with_photos(clie
         "https://res.cloudinary.com/mira/0.jpg",
         "https://res.cloudinary.com/mira/1.jpg",
     ]
+
+
+async def test_import_with_pathologically_long_seo_title_does_not_500(client, auth_headers, monkeypatch):
+    # Regression: a real, unsplit SEO-stuffed Bright Data title (this
+    # feature's actual target input) previously produced a normalized
+    # display_name/spoken_name longer than their DB columns
+    # (String(120)/String(60)), causing a raw StringDataRightTruncation
+    # error on insert instead of a clean import.
+    long_title = (
+        "Beautiful Spacious Sea Facing Penthouse With Amazing Panoramic View Of The "
+        "Arabian Sea In Candolim Near Beach - Pause Project Collection"
+    )
+
+    async def fake_get_snapshot_status(snapshot_id, timeout=15.0):
+        return "ready"
+
+    async def fake_get_snapshot_data(snapshot_id, timeout=30.0):
+        return [_bright_data_record(listing_title=long_title, property_id="88888888")]
+
+    monkeypatch.setattr(bright_data_client, "get_snapshot_status", fake_get_snapshot_status)
+    monkeypatch.setattr(bright_data_client, "get_snapshot_data", fake_get_snapshot_data)
+
+    resp = await client.get("/api/v1/properties/import-airbnb-urls/snap_long_title", headers=auth_headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["results"][0]["status"] == "created"
+    prop = body["results"][0]["property"]
+    assert len(prop["display_name"]) <= 120
+    assert len(prop["spoken_name"]) <= 60

@@ -238,11 +238,13 @@ export default function CallDetailPage() {
           ) : turns ? (
             <div className="space-y-3">
               {turns.map((turn, i) => (
-                <div key={i} className={cn("flex", turn.role === "mira" ? "justify-start" : "justify-end")}>
+                <div key={i} className={cn("flex", turn.role === "mira" ? "justify-end" : "justify-start")}>
                   <div
                     className={cn(
                       "max-w-[80%] rounded-lg px-3 py-2 text-sm leading-relaxed",
-                      turn.role === "mira" ? "bg-muted text-foreground" : "bg-primary text-primary-foreground"
+                      turn.role === "mira"
+                        ? "bg-muted text-foreground"
+                        : "bg-[var(--status-orange)] text-white"
                     )}
                   >
                     <p className="mb-0.5 text-[0.7rem] font-medium opacity-70">
