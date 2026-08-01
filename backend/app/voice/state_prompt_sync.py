@@ -21,10 +21,31 @@ gets a cache hit on it. Instead, this maintains exactly ONE additional
 system-role message, inserted right after context.messages[0], updated IN
 PLACE on every turn rather than appended fresh each time -- a growing list
 of stale state-summary messages would waste tokens and eventually confuse
-"most recent state" with "some state from 8 turns ago". Tagged via a
-sentinel key (_STATE_BLOCK_MARKER) so the update-in-place logic can find its
-own previous message reliably regardless of how many real conversation
-turns have since been appended after it.
+"most recent state" with "some state from 8 turns ago". Found via object
+IDENTITY (self._last_message is the exact same dict this processor itself
+inserted last time), not any marker field on the message -- see the
+confirmed-live bug below for why a marker field is unsafe here.
+
+Confirmed live 2026-08-01 (P0): an earlier version tagged the message with a
+SEPARATE dict key (`{"role": "system", "content": ...,
+"__mira_conversation_state_block__": True}`) so `process_frame` could scan
+`messages` for its own previous entry. That extra key was meant purely as
+internal bookkeeping -- but `_FallbackGroqLLMService` serializes each
+message dict directly into the Groq API request body, so the extra key rode
+along too. Groq's schema validator rejects any unrecognized property on a
+`role: system` message outright: "'messages.1' : for 'role:system' the
+following must be satisfied[('messages.1' : property
+'__mira_conversation_state_block__' is unsupported)]" -- a 400 on EVERY
+completion from the moment the state block first gets injected (the 2nd
+real turn onward) for the rest of the call, with no spoken response at all
+(the guest hears silence; `_FallbackGroqLLMService`'s model-fallback chain
+doesn't help, since every fallback model hits the identical validation error
+on the identical malformed request body). Fixed by dropping the marker field
+entirely and tracking the inserted message by Python object identity
+instead -- `messages` is the SAME list object across turns (pipecat mutates
+it in place, never rebuilds it), so `self._last_message is m` reliably finds
+the processor's own prior entry with zero extra fields on the message dict
+that could leak into any provider's request body, on Groq or anywhere else.
 
 Sits right before llm (after redundant_context_guard, same reasoning as that
 processor's own placement -- it needs to see the LLMContextFrame that's
@@ -38,8 +59,6 @@ from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.transcriptions.language import Language
 
 from app.voice.conversation_state import ConversationState
-
-_STATE_BLOCK_MARKER = "__mira_conversation_state_block__"
 
 # Phase 3.2 (documentation/agent-conversation-improvement.md): Sarvam tags
 # codemixed Hindi/English speech as Hindi (same fallback language_sync.py's
@@ -157,6 +176,12 @@ class StatePromptSyncProcessor(FrameProcessor):
     def __init__(self, conversation_state: ConversationState):
         super().__init__()
         self._state = conversation_state
+        # The exact dict object last inserted into context.messages by this
+        # processor, tracked by Python object identity (see module docstring
+        # for why a marker FIELD on the message itself is unsafe -- it leaks
+        # into the raw provider request body). None until the first turn
+        # that actually has something worth surfacing.
+        self._last_message: dict | None = None
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
@@ -166,11 +191,11 @@ class StatePromptSyncProcessor(FrameProcessor):
             messages = frame.context.messages
 
             existing_index = next(
-                (i for i, m in enumerate(messages) if m.get(_STATE_BLOCK_MARKER)), None
+                (i for i, m in enumerate(messages) if m is self._last_message), None
             )
 
             if content:
-                new_message = {"role": "system", "content": content, _STATE_BLOCK_MARKER: True}
+                new_message = {"role": "system", "content": content}
                 if existing_index is not None:
                     messages[existing_index] = new_message
                 else:
@@ -179,10 +204,12 @@ class StatePromptSyncProcessor(FrameProcessor):
                     # any real conversation turns would look like it's part
                     # of the dialogue rather than a system-level fact.
                     messages.insert(1, new_message)
+                self._last_message = new_message
             elif existing_index is not None:
                 # Nothing left worth surfacing (shouldn't normally happen
                 # once slots start accumulating, since they're never
                 # cleared mid-call, but handled for completeness/tests).
                 del messages[existing_index]
+                self._last_message = None
 
         await self.push_frame(frame, direction)

@@ -12,7 +12,16 @@ from pipecat.tests.utils import run_test
 from pipecat.transcriptions.language import Language
 
 from app.voice.conversation_state import ConversationState
-from app.voice.state_prompt_sync import _STATE_BLOCK_MARKER, StatePromptSyncProcessor, build_state_block_content
+from app.voice.state_prompt_sync import StatePromptSyncProcessor, build_state_block_content
+
+
+def _is_injected_state_block(message: dict, real_system_content: str) -> bool:
+    """Identifies the processor's own injected message by its role/content
+    shape alone -- deliberately NOT a marker field, matching the real
+    processor (Phase 4.1's P0 fix, see state_prompt_sync.py's module
+    docstring: a marker FIELD on the message leaked into the raw Groq
+    request body and crashed every completion, confirmed live 2026-08-01)."""
+    return message["role"] == "system" and message["content"] != real_system_content
 
 
 def _context_frame(*messages: dict) -> LLMContextFrame:
@@ -106,9 +115,35 @@ async def test_injects_state_block_right_after_system_prompt():
     messages = context_frames[0].context.messages
     assert len(messages) == 3
     assert messages[0]["content"] == "sys"  # real system prompt untouched
-    assert messages[1].get(_STATE_BLOCK_MARKER) is True
+    assert messages[1]["role"] == "system"
     assert "guests: 4" in messages[1]["content"]
     assert messages[2]["content"] == "hi"
+
+
+@pytest.mark.asyncio
+async def test_injected_message_has_no_extra_keys_beyond_role_and_content():
+    """Regression for a confirmed-live P0 (2026-08-01): the injected message
+    used to carry a third dict key (a marker field) purely for this
+    processor's own internal bookkeeping. That extra key was never meant to
+    leave this process, but _FallbackGroqLLMService serializes each message
+    dict directly into the Groq API request body -- Groq's schema validator
+    rejects ANY unrecognized property on a role:system message outright,
+    so every completion from the 2nd turn onward 400'd for the rest of the
+    call (the guest heard silence). The fix is architectural, not just this
+    one field: the injected message must never carry anything beyond the
+    two standard OpenAI-shaped keys every provider actually accepts."""
+    state = ConversationState()
+    state.set_slot("num_guests", 4)
+    processor = StatePromptSyncProcessor(state)
+
+    down_frames, _ = await run_test(
+        processor,
+        frames_to_send=[_context_frame({"role": "system", "content": "sys"}, {"role": "user", "content": "hi"})],
+    )
+
+    messages = down_frames[-1].context.messages
+    injected = messages[1]
+    assert set(injected.keys()) == {"role", "content"}
 
 
 @pytest.mark.asyncio
@@ -134,7 +169,7 @@ async def test_updates_existing_state_block_in_place_rather_than_appending():
     down_frames_2, _ = await run_test(processor, frames_to_send=[second_frame])
     messages_after_2 = down_frames_2[-1].context.messages
 
-    state_block_messages = [m for m in messages_after_2 if m.get(_STATE_BLOCK_MARKER)]
+    state_block_messages = [m for m in messages_after_2 if _is_injected_state_block(m, "sys")]
     assert len(state_block_messages) == 1
     assert "area: Goa" in state_block_messages[0]["content"]
     assert "guests: 4" in state_block_messages[0]["content"]
@@ -211,7 +246,7 @@ async def test_language_hint_flows_through_the_real_processor():
     down_frames, _ = await run_test(processor, frames_to_send=[frame])
 
     messages = down_frames[-1].context.messages
-    state_block = next(m for m in messages if m.get(_STATE_BLOCK_MARKER))
+    state_block = next(m for m in messages if _is_injected_state_block(m, "sys"))
     assert "Hinglish" in state_block["content"]
 
 

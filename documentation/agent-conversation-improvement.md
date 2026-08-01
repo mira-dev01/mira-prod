@@ -383,6 +383,56 @@ call placed (Clerk-only auth + WebRTC, neither scriptable from this environment)
 a full construction-path run against real production property/host data, exercising every real
 function in the actual call path. Recommend a genuine test call once Sarvam credits are topped up.
 
+**P0 found via real browser test call (2026-08-01)**: the outstanding item above was resolved — a
+real browser test call was placed against the deployed production backend (Railway), and it
+surfaced exactly the kind of bug that only a real call can catch. Mira spoke her greeting and one
+follow-up normally, then went completely silent for the rest of the call. Railway deploy logs
+showed every completion attempt from that point on failing with `HTTP 400` from Groq:
+```
+Error code: 400 - {'error': {'message': "'messages.1' : for 'role:system' the following must be
+satisfied[('messages.1' : property '__mira_conversation_state_block__' is unsupported)]",
+'type': 'invalid_request_error'}}
+```
+Root cause: `StatePromptSyncProcessor` (this phase, 1.3/1.6) tagged its injected state-summary
+message with a second dict key — `{"role": "system", "content": ..., "__mira_conversation_state_block__":
+True}` — purely so its own `process_frame` could find and update that same message on later turns,
+never intended to leave this process. But `_FallbackGroqLLMService` serializes each message dict
+directly into the Groq API request body, so the extra key rode along too, and Groq's schema
+validator rejects any unrecognized property on a `role: system` message outright — every completion
+from the moment the state block first gets injected (the 2nd real turn) failed identically, with no
+spoken response reaching the guest at all (the model-fallback chain didn't help, since every
+fallback model hit the same malformed request).
+
+**Fixed** (`app/voice/state_prompt_sync.py`): dropped the marker field entirely. The processor now
+identifies its own previously-inserted message by Python object IDENTITY (`self._last_message is m`)
+rather than a field on the message — `context.messages` is the same list, mutated in place by
+pipecat's aggregators turn over turn, never rebuilt, so tracking the exact dict object this
+processor itself created is both correct and leaves the message with only the two standard
+`role`/`content` keys any provider accepts. Verified this invariant directly against pipecat's own
+source (`LLMContext._messages` is set once in `__init__` and only ever mutated via
+`append`/`insert`, confirmed by reading `llm_response_universal.py`), not assumed.
+- Verify: `tests/test_state_prompt_sync.py`,
+  `test_injected_message_has_no_extra_keys_beyond_role_and_content` — asserts
+  `set(injected.keys()) == {"role", "content"}`, the exact shape Groq's validator requires and the
+  gap the original bug fell through. All 18 tests in the file pass (17 pre-existing, updated to
+  identify the injected message structurally instead of via the removed marker, + this 1 new one).
+  Full backend suite: 578 passed, same 5 pre-existing baseline failures — no regressions.
+- Lesson for future phases: any processor that injects bookkeeping-only data onto a frame/message
+  that later gets serialized into a real provider API call must keep that bookkeeping OUTSIDE the
+  serialized object (on the processor instance itself, as done here) — never as an extra field on a
+  dict shape a provider's schema validator will see. `EscalationPhraseGuardProcessor` and
+  `PropertyRecommendationGuardProcessor`'s own instance-level state (`_armed_tool`,
+  `_pending_options`, etc.) already follow this pattern; `StatePromptSyncProcessor`'s marker field
+  was the one place this plan's own guards didn't, and it was a live-call-only-reproducible bug as a
+  direct result — no unit test using synthetic frames caught it, since nothing in this codebase's
+  test harness re-validates a message dict's shape against a real provider's schema.
+  ✅ Spot-checked immediately: `grep`'d every raw `{"role": ..., "content": ...}` message-dict
+  construction across `app/voice/*.py` — only two other call sites exist at all
+  (`pipeline.py`'s initial `context = LLMContext(messages=[...])` construction for the system prompt
+  and pre-seeded greeting), and both were already the plain two-key shape with no extra fields.
+  `state_prompt_sync.py` was the only offender in the whole codebase; confirmed genuinely closed, not
+  left open.
+
 ---
 
 ## Phase 2 — Recommendation quality: explain the "why" (requirement #3, #4)
