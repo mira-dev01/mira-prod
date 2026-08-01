@@ -30,6 +30,7 @@ def _card(name: str, price: float = 3500, guests: int = 2, **overrides) -> Prope
         max_guests=guests,
         top_amenities=[],
         usp=None,
+        match_reasons=[],
     )
     defaults.update(overrides)
     return PropertyCard(**defaults)
@@ -210,3 +211,288 @@ async def test_guard_disarms_after_one_response_even_without_a_match():
 
     text_frames = [f.text for f in down_frames if isinstance(f, LLMTextFrame)]
     assert text_frames[-1] == "Anything else I can help with?"
+
+
+# --- Phase 4b.1: price fidelity (get_pricing / negotiate_rate) ---
+
+
+@pytest.mark.asyncio
+async def test_get_pricing_reply_stating_a_different_total_gets_corrected():
+    """The tool computed ₹18,700; the model's reply states a different
+    number entirely -- must be overridden with the real total."""
+    guard = PropertyRecommendationGuardProcessor()
+    guard.record_tool_result("get_pricing", {"property_name": "Ocean View Villa", "total": 18700})
+
+    down_frames, _ = await run_test(
+        guard,
+        frames_to_send=[_call_started("get_pricing")]
+        + _response("That comes to ₹12,000 total for Ocean View Villa, all inclusive."),
+    )
+
+    text = "".join(f.text for f in down_frames if isinstance(f, LLMTextFrame))
+    assert "18,700" in text
+    assert "12,000" not in text
+
+
+@pytest.mark.asyncio
+async def test_get_pricing_reply_stating_the_correct_total_passes_through_unmodified():
+    guard = PropertyRecommendationGuardProcessor()
+    guard.record_tool_result("get_pricing", {"property_name": "Ocean View Villa", "total": 18700})
+
+    down_frames, _ = await run_test(
+        guard,
+        frames_to_send=[_call_started("get_pricing")]
+        + _response("That comes to ₹18,700 total for Ocean View Villa, all inclusive."),
+    )
+
+    text = "".join(f.text for f in down_frames if isinstance(f, LLMTextFrame))
+    assert text == "That comes to ₹18,700 total for Ocean View Villa, all inclusive."
+
+
+@pytest.mark.asyncio
+async def test_negotiate_rate_reply_stating_a_different_counter_offer_gets_corrected():
+    guard = PropertyRecommendationGuardProcessor()
+    guard.record_tool_result("negotiate_rate", {"property_name": "Palm Retreat", "total": 9500})
+
+    down_frames, _ = await run_test(
+        guard,
+        frames_to_send=[_call_started("negotiate_rate")]
+        + _response("I can offer you Palm Retreat at ₹7,000 for your stay."),
+    )
+
+    text = "".join(f.text for f in down_frames if isinstance(f, LLMTextFrame))
+    assert "9,500" in text
+    assert "7,000" not in text
+
+
+@pytest.mark.asyncio
+async def test_price_fidelity_check_is_a_noop_without_a_recorded_fact():
+    """No price fact was ever recorded (e.g. get_pricing's own early-return
+    error paths never call on_priced) -- must never rewrite the text."""
+    guard = PropertyRecommendationGuardProcessor()
+
+    down_frames, _ = await run_test(
+        guard,
+        frames_to_send=[_call_started("get_pricing")]
+        + _response("I couldn't find that property to price."),
+    )
+
+    text = "".join(f.text for f in down_frames if isinstance(f, LLMTextFrame))
+    assert text == "I couldn't find that property to price."
+
+
+# --- Phase 4b.1: availability fidelity (check_calendar) ---
+
+
+@pytest.mark.asyncio
+async def test_check_calendar_reply_contradicting_true_availability_gets_corrected():
+    guard = PropertyRecommendationGuardProcessor()
+    guard.record_tool_result("check_calendar", {"property_name": "Ocean View Villa", "available": True})
+
+    down_frames, _ = await run_test(
+        guard,
+        frames_to_send=[_call_started("check_calendar")]
+        + _response("Unfortunately, Ocean View Villa is not available for those dates."),
+    )
+
+    text = "".join(f.text for f in down_frames if isinstance(f, LLMTextFrame))
+    assert text == "Ocean View Villa is available for those dates."
+
+
+@pytest.mark.asyncio
+async def test_check_calendar_reply_contradicting_false_availability_gets_corrected():
+    guard = PropertyRecommendationGuardProcessor()
+    guard.record_tool_result("check_calendar", {"property_name": "Ocean View Villa", "available": False})
+
+    down_frames, _ = await run_test(
+        guard,
+        frames_to_send=[_call_started("check_calendar")]
+        + _response("Good news, Ocean View Villa is available for those dates!"),
+    )
+
+    text = "".join(f.text for f in down_frames if isinstance(f, LLMTextFrame))
+    assert text == "Ocean View Villa is not available for those dates."
+
+
+@pytest.mark.asyncio
+async def test_check_calendar_reply_matching_real_availability_passes_through_unmodified():
+    guard = PropertyRecommendationGuardProcessor()
+    guard.record_tool_result("check_calendar", {"property_name": "Ocean View Villa", "available": True})
+
+    down_frames, _ = await run_test(
+        guard,
+        frames_to_send=[_call_started("check_calendar")]
+        + _response("Ocean View Villa is available from the 10th to the 12th."),
+    )
+
+    text = "".join(f.text for f in down_frames if isinstance(f, LLMTextFrame))
+    assert text == "Ocean View Villa is available from the 10th to the 12th."
+
+
+@pytest.mark.asyncio
+async def test_check_calendar_reply_with_neither_assertion_is_left_alone():
+    """A reply that doesn't clearly assert either way (relays dates/a
+    window without using 'available'/'not available' at all) must not be
+    guessed at -- this check only catches a CLEAR contradiction."""
+    guard = PropertyRecommendationGuardProcessor()
+    guard.record_tool_result("check_calendar", {"property_name": "Ocean View Villa", "available": False})
+
+    down_frames, _ = await run_test(
+        guard,
+        frames_to_send=[_call_started("check_calendar")]
+        + _response("The next open window for Ocean View Villa is the 15th to the 18th."),
+    )
+
+    text = "".join(f.text for f in down_frames if isinstance(f, LLMTextFrame))
+    assert text == "The next open window for Ocean View Villa is the 15th to the 18th."
+
+
+# --- Phase 4b.2: capacity fidelity (recommend_properties) ---
+
+
+@pytest.mark.asyncio
+async def test_recommend_properties_reply_misstating_capacity_gets_corrected():
+    """RecommendationResult already only contains properties that fit the
+    guest's real count (Phase 1.4's SQL filter) -- this is the
+    belt-and-suspenders check that even a correctly-filtered result is
+    SPOKEN correctly. Azure 1BHK really sleeps 2; the reply claims 6."""
+    guard = PropertyRecommendationGuardProcessor()
+    guard.record_tool_result(
+        "recommend_properties", RecommendationResult(options=[_card("Azure 1BHK", guests=2)])
+    )
+
+    down_frames, _ = await run_test(
+        guard,
+        frames_to_send=[_call_started("recommend_properties")]
+        + _response("Azure 1BHK is a lovely spot, sleeps 6. Interested?"),
+    )
+
+    text = "".join(f.text for f in down_frames if isinstance(f, LLMTextFrame))
+    assert "sleeping 2" in text
+    assert "sleeps 6" not in text
+
+
+@pytest.mark.asyncio
+async def test_recommend_properties_reply_with_correct_capacity_passes_through_unmodified():
+    guard = PropertyRecommendationGuardProcessor()
+    guard.record_tool_result(
+        "recommend_properties", RecommendationResult(options=[_card("Azure 1BHK", guests=2)])
+    )
+
+    down_frames, _ = await run_test(
+        guard,
+        frames_to_send=[_call_started("recommend_properties")]
+        + _response("Azure 1BHK is a lovely spot, sleeps 2. Interested?"),
+    )
+
+    text = "".join(f.text for f in down_frames if isinstance(f, LLMTextFrame))
+    assert text == "Azure 1BHK is a lovely spot, sleeps 2. Interested?"
+
+
+@pytest.mark.asyncio
+async def test_search_faq_reply_inventing_an_amenity_not_on_file_gets_corrected():
+    """The property's real amenities are pool/wifi only -- a reply claiming
+    a projector (never on file) must be corrected to the safe fallback."""
+    guard = PropertyRecommendationGuardProcessor()
+    guard.record_tool_result("search_faq", {"amenities": ["Private pool", "wifi"]})
+
+    down_frames, _ = await run_test(
+        guard,
+        frames_to_send=[_call_started("search_faq")]
+        + _response("Yes, this property has a projector for movie nights."),
+    )
+
+    text = "".join(f.text for f in down_frames if isinstance(f, LLMTextFrame))
+    assert text == (
+        "I don't have verified information about that on file. Let me check with the host so you get the "
+        "correct details."
+    )
+
+
+@pytest.mark.asyncio
+async def test_search_faq_reply_naming_a_real_amenity_passes_through_unmodified():
+    guard = PropertyRecommendationGuardProcessor()
+    guard.record_tool_result("search_faq", {"amenities": ["Private pool", "wifi"]})
+
+    down_frames, _ = await run_test(
+        guard,
+        frames_to_send=[_call_started("search_faq")] + _response("Yes, this property has a private pool."),
+    )
+
+    text = "".join(f.text for f in down_frames if isinstance(f, LLMTextFrame))
+    assert text == "Yes, this property has a private pool."
+
+
+@pytest.mark.asyncio
+async def test_search_faq_reply_with_a_synonym_of_a_real_amenity_is_not_flagged():
+    """'Swimming pool' and 'Private pool' both canonicalize to 'pool' --
+    a paraphrase using a different but equivalent wording must not be
+    treated as an invented amenity."""
+    guard = PropertyRecommendationGuardProcessor()
+    guard.record_tool_result("search_faq", {"amenities": ["Private pool"]})
+
+    down_frames, _ = await run_test(
+        guard,
+        frames_to_send=[_call_started("search_faq")]
+        + _response("Yes, there's a swimming pool on site."),
+    )
+
+    text = "".join(f.text for f in down_frames if isinstance(f, LLMTextFrame))
+    assert text == "Yes, there's a swimming pool on site."
+
+
+@pytest.mark.asyncio
+async def test_search_faq_reply_with_free_text_not_matching_any_known_keyword_is_not_flagged():
+    """A free-text paraphrase of a real, on-file fact that isn't one of the
+    fixed amenity keywords at all (e.g. check-in time) must never be
+    flagged -- this check only catches a SPECIFIC recognized amenity
+    keyword absent from the real list, not a full semantic check."""
+    guard = PropertyRecommendationGuardProcessor()
+    guard.record_tool_result("search_faq", {"amenities": ["wifi"]})
+
+    down_frames, _ = await run_test(
+        guard,
+        frames_to_send=[_call_started("search_faq")]
+        + _response("Check-in is at 2 PM and check-out is at 11 AM."),
+    )
+
+    text = "".join(f.text for f in down_frames if isinstance(f, LLMTextFrame))
+    assert text == "Check-in is at 2 PM and check-out is at 11 AM."
+
+
+@pytest.mark.asyncio
+async def test_search_faq_fidelity_check_is_a_noop_without_a_recorded_fact():
+    """No amenities fact was ever recorded (e.g. a portfolio-wide query with
+    no property resolved) -- must never rewrite the text."""
+    guard = PropertyRecommendationGuardProcessor()
+
+    down_frames, _ = await run_test(
+        guard,
+        frames_to_send=[_call_started("search_faq")]
+        + _response("I don't have verified information about that on file."),
+    )
+
+    text = "".join(f.text for f in down_frames if isinstance(f, LLMTextFrame))
+    assert text == "I don't have verified information about that on file."
+
+
+@pytest.mark.asyncio
+async def test_recommend_properties_multiple_options_each_with_own_correct_capacity_is_not_flagged():
+    """Regression guard for the naive global-scan approach: two DIFFERENT
+    correctly-named properties, each correctly stating its OWN (different)
+    real capacity, must never be flagged just because some other option's
+    number appears elsewhere in the same text."""
+    guard = PropertyRecommendationGuardProcessor()
+    guard.record_tool_result(
+        "recommend_properties",
+        RecommendationResult(options=[_card("Azure 1BHK", guests=2), _card("Palm Retreat", guests=6)]),
+    )
+
+    text_in = "Azure 1BHK sleeps 2, and Palm Retreat sleeps 6. Which sounds better?"
+    down_frames, _ = await run_test(
+        guard,
+        frames_to_send=[_call_started("recommend_properties")] + _response(text_in),
+    )
+
+    text = "".join(f.text for f in down_frames if isinstance(f, LLMTextFrame))
+    assert text == text_in

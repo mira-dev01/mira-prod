@@ -34,12 +34,14 @@ that completion reaching the guard. See app/voice/property_recommendation_guard.
 """
 
 import uuid
+from datetime import date
 from typing import Literal
 
 from pydantic import ValidationError
 
 from pipecat.frames.frames import FunctionCallResultProperties
 from pipecat.services.llm_service import FunctionCallParams
+from pipecat.transcriptions.language import Language
 
 from app.database import AsyncSessionLocal
 from app.schemas.tool import (
@@ -66,6 +68,33 @@ IssueType = Literal["plumbing", "electrical", "ac", "wifi", "lock", "general"]
 GuestLoyalty = Literal["new", "returning", "frequent"]
 
 INVALID_ARGS_MESSAGE = "I'm missing some details to do that -- could you repeat the dates/details?"
+
+# Phase 3.3 (documentation/agent-conversation-improvement.md): maps
+# update_lead's preferred_language argument (free text the model supplies,
+# constrained to "english"/"hindi" by that arg's own docstring) to the same
+# Language enum ConversationState.explicit_language_preference/
+# current_spoken_language already use -- "hindi" maps to HI_IN since
+# GOLDEN_RULES already specifies casual Hinglish rendering for anything in
+# this language family, never pure/shuddh Hindi, regardless of which of the
+# two the guest actually asked for.
+_LANGUAGE_PREFERENCE_MAP: dict[str, Language] = {
+    "english": Language.EN_IN,
+    "hindi": Language.HI_IN,
+    "hinglish": Language.HI_IN,
+}
+
+
+def _parse_iso_date(value: str | None) -> date | None:
+    """state.slots stores dates as ISO strings (Phase 1, app/voice/tools.py's
+    update_lead/check_calendar/get_pricing wrappers). Malformed/missing
+    values fail open to None -- Phase 2.4's availability pre-filter is a UX
+    improvement, never a reason a recommendation should error out."""
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
 
 
 def build_voice_tools(
@@ -113,10 +142,31 @@ def build_voice_tools(
                 args = CheckCalendarArgs(
                     property_id=property_id, check_in=check_in, check_out=check_out, num_guests=num_guests
                 )
+
+                # Phase 4b.1 (documentation/agent-conversation-improvement.md):
+                # feeds the real availability bool to
+                # property_recommendation_guard so it can catch the model
+                # flatly contradicting it (saying "available" when the tool
+                # said not, or vice versa) before that reaches TTS.
+                def _on_checked(property_, available):
+                    if property_recommendation_guard is not None:
+                        property_recommendation_guard.record_tool_result(
+                            "check_calendar", {"property_name": property_.name, "available": available}
+                        )
+
                 result = await tool_handlers.handle_check_calendar(
-                    db, args, host_user_id, call_session_id, guest_profile_id=guest_profile_id
+                    db,
+                    args,
+                    host_user_id,
+                    call_session_id,
+                    guest_profile_id=guest_profile_id,
+                    on_checked=_on_checked,
                 )
+                state.set_slot("check_in", args.check_in)
+                state.set_slot("check_out", args.check_out)
+                state.set_slot("num_guests", args.num_guests)
                 state.lock_property(args.property_id)
+                state.mark_checking_availability()
             except ValidationError:
                 result = INVALID_ARGS_MESSAGE
         await params.result_callback(result)
@@ -150,10 +200,40 @@ def build_voice_tools(
                     num_guests=num_guests,
                     apply_discounts=apply_discounts,
                 )
-                result = await tool_handlers.handle_get_pricing(
-                    db, args, host_user_id, call_session_id, guest_profile_id=guest_profile_id
-                )
+
+                state.set_slot("check_in", args.check_in)
+                state.set_slot("check_out", args.check_out)
+                state.set_slot("num_guests", args.num_guests)
                 state.lock_property(args.property_id)
+                state.mark_checking_availability()
+
+                # Phase 4.1 (documentation/agent-conversation-improvement.md):
+                # records the real quoted total into state so the prompt can
+                # say "you already quoted ₹X for these dates" instead of
+                # relying on the model to recall a specific number from a
+                # long transcript. Takes the real property_.name from
+                # handle_get_pricing's own on_priced callback (it already has
+                # the loaded Property row) rather than trusting
+                # state.selected_property_name, which may still be unset at
+                # this point (e.g. Guest Support mode, where the property is
+                # fixed and never came through recommend_properties).
+                #
+                # Phase 4b.1: the same callback also feeds
+                # property_recommendation_guard the real property name/total
+                # so it can verify the model's actual reply states this same
+                # number before it reaches TTS -- the identical "hand over
+                # the real structured fact directly" pattern already used for
+                # recommend_properties above, not a new mechanism.
+                def _on_priced(property_, breakdown):
+                    state.record_quoted_price(property_.name, check_in, check_out, breakdown.total)
+                    if property_recommendation_guard is not None:
+                        property_recommendation_guard.record_tool_result(
+                            "get_pricing", {"property_name": property_.name, "total": breakdown.total}
+                        )
+
+                result = await tool_handlers.handle_get_pricing(
+                    db, args, host_user_id, call_session_id, guest_profile_id=guest_profile_id, on_priced=_on_priced
+                )
             except ValidationError:
                 result = INVALID_ARGS_MESSAGE
         await params.result_callback(result)
@@ -271,6 +351,7 @@ def build_voice_tools(
                 result = await tool_handlers.handle_escalate_to_host(
                     db, args, call_session_id, host_user_id, guest_profile_id=guest_profile_id
                 )
+                state.mark_escalated()
             except ValidationError:
                 result = INVALID_ARGS_MESSAGE
         await params.result_callback(result)
@@ -306,10 +387,27 @@ def build_voice_tools(
                     num_guests=num_guests,
                     guest_loyalty=guest_loyalty,
                 )
+
+                # Phase 4b.1 (documentation/agent-conversation-improvement.md):
+                # same pattern as get_pricing's _on_priced above -- feeds the
+                # real counter_offer total to property_recommendation_guard
+                # so it can verify the model's actual reply states this same
+                # number before it reaches TTS.
+                def _on_negotiated(property_, negotiation_result):
+                    if property_recommendation_guard is not None:
+                        property_recommendation_guard.record_tool_result(
+                            "negotiate_rate",
+                            {"property_name": property_.name, "total": negotiation_result.counter_offer},
+                        )
+
                 result = await tool_handlers.handle_negotiate_rate(
-                    db, args, host_user_id, guest_profile_id, call_session_id
+                    db, args, host_user_id, guest_profile_id, call_session_id, on_priced=_on_negotiated
                 )
+                state.set_slot("check_in", args.check_in)
+                state.set_slot("check_out", args.check_out)
+                state.set_slot("num_guests", args.num_guests)
                 state.lock_property(args.property_id)
+                state.mark_negotiating()
             except ValidationError:
                 result = INVALID_ARGS_MESSAGE
         await params.result_callback(result)
@@ -359,19 +457,66 @@ def build_voice_tools(
                 "with or switch to, rather than listing unrelated options unprompted."
             )
             return
+        # Phase 1.4 (documentation/agent-conversation-improvement.md): backfill
+        # num_guests/budget from state.slots if this call omitted them. Without
+        # this, apply_guest_count_filter (filter_builder.py) applies ZERO
+        # capacity filtering when num_guests is None -- not a lenient filter,
+        # no filter at all -- even if the guest already stated a count earlier
+        # via update_lead. Confirmed live (catalogue item C1): a guest said
+        # "four people," and a later recommend_properties call that omitted
+        # num_guests recommended two properties that only sleep two. The tool
+        # call's own explicit argument always wins if the model did supply one
+        # -- this only fills a gap, never overrides a real value just given.
+        effective_num_guests = num_guests if num_guests is not None else state.slots.get("num_guests")
+        effective_budget = budget if budget is not None else state.slots.get("budget")
+        # Phase 2.4 (documentation/agent-conversation-improvement.md): if the
+        # guest's dates are already known from state.slots (set by an
+        # earlier update_lead/check_calendar/get_pricing call this same
+        # conversation), pre-filter already-booked properties out of the
+        # candidate set now, instead of the guest being recommended a
+        # property and only finding out it's unavailable on a later
+        # check_calendar call. RecommendPropertiesArgs itself deliberately
+        # carries no date fields -- this is sourced only from state, never a
+        # new argument the model is asked to supply. Malformed/missing
+        # dates in state fail open to None,None (today's unfiltered
+        # behavior), never raise.
+        recommend_check_in = _parse_iso_date(state.slots.get("check_in"))
+        recommend_check_out = _parse_iso_date(state.slots.get("check_out"))
         async with AsyncSessionLocal() as db:
             args = RecommendPropertiesArgs(
-                budget=budget,
-                num_guests=num_guests,
+                budget=effective_budget,
+                num_guests=effective_num_guests,
                 preferred_location=preferred_location,
                 purpose_of_stay=purpose_of_stay,
                 required_amenities=required_amenities,
                 near_landmark=near_landmark,
             )
-            structured_result = await tool_handlers.handle_recommend_properties(db, args, host_user_id)
+            structured_result = await tool_handlers.handle_recommend_properties(
+                db,
+                args,
+                host_user_id,
+                check_in=recommend_check_in,
+                check_out=recommend_check_out,
+                call_session_id=call_session_id,
+            )
         rendered_result = render_recommendation_text(structured_result)
         if property_recommendation_guard is not None:
             property_recommendation_guard.record_tool_result("recommend_properties", structured_result)
+        state.set_slot("num_guests", effective_num_guests)
+        state.set_slot("budget", effective_budget)
+        state.set_slot("preferred_location", preferred_location)
+        state.set_slot("purpose_of_stay", purpose_of_stay)
+        state.record_recommendations(
+            [
+                {
+                    "property_id": str(card.property_id),
+                    "name": card.spoken_name,
+                    "price": card.base_price,
+                    "guests": card.max_guests,
+                }
+                for card in structured_result.options
+            ]
+        )
         await params.result_callback(rendered_result)
 
     async def update_lead(
@@ -394,6 +539,7 @@ def build_voice_tools(
         escalated: bool | None = None,
         transferred_to_host: bool | None = None,
         occasion: str | None = None,
+        preferred_language: str | None = None,
     ):
         """Save or update this guest's CRM lead record. Call this silently
         (don't narrate it to the guest) whenever you learn something new about
@@ -430,7 +576,28 @@ def build_voice_tools(
             occasion: Special occasion the guest mentioned (birthday, anniversary,
                 honeymoon, etc.), exactly what they said -- their plans/requests/
                 preferences, verbatim. Never invent host-facing suggestions here.
+            preferred_language: Set this ONLY if the guest EXPLICITLY asked you to speak
+                a specific language (e.g. "can you speak Hindi?", "English mein baat karo
+                please", "seedha hindi bolo") -- one of "english" or "hindi". Do NOT set
+                this just because the guest is currently code-switching/speaking Hinglish
+                naturally -- that's the normal default and doesn't need this field. Only
+                for a direct, deliberate request to change how you speak.
         """
+        # Phase 3.3 (documentation/agent-conversation-improvement.md): an
+        # explicit, guest-stated language request is a stronger signal than
+        # passive per-turn code-switch detection (Phase 3.1/3.2) and should
+        # override it for the rest of the call. No clean tool-call signal
+        # exists for this the way there is for slots (a guest can state this
+        # in plain conversation with no other tool involved), so it rides on
+        # update_lead -- the same tool the model already calls "whenever you
+        # learn something new about them" -- rather than inventing a whole
+        # new tool for one field. Deliberately NOT persisted to the Lead DB
+        # row/UpdateLeadArgs -- this only ever needs to live in
+        # ConversationState for the current call.
+        if preferred_language is not None:
+            resolved = _LANGUAGE_PREFERENCE_MAP.get(preferred_language.strip().lower())
+            if resolved is not None:
+                state.explicit_language_preference = resolved
         async with AsyncSessionLocal() as db:
             try:
                 args = UpdateLeadArgs(
@@ -456,6 +623,20 @@ def build_voice_tools(
                 result = await tool_handlers.handle_update_lead(
                     db, args, host_user_id, call_session_id, guest_profile_id=guest_profile_id
                 )
+                # Phase 1.2: update_lead is the primary slot-writing tool --
+                # a guest mentioning dates/guests/budget/location/purpose in
+                # plain conversation (not while a recommend/calendar/pricing
+                # tool happens to be running) is captured here. set_slot only
+                # writes non-None values, so a call that only supplies `phone`
+                # never clobbers a `num_guests` set by an earlier turn.
+                state.set_slot("check_in", args.check_in.isoformat() if args.check_in else None)
+                state.set_slot("check_out", args.check_out.isoformat() if args.check_out else None)
+                state.set_slot("num_guests", args.num_guests)
+                state.set_slot("budget", args.budget)
+                state.set_slot("preferred_location", args.preferred_location)
+                state.set_slot("purpose_of_stay", args.purpose_of_stay)
+                state.set_slot("phone", args.phone)
+                state.set_slot("guest_name", args.guest_name)
             except ValidationError:
                 result = INVALID_ARGS_MESSAGE
         await params.result_callback(result)
@@ -487,7 +668,20 @@ def build_voice_tools(
                     default_property_id = uuid.UUID(state.selected_property_id)
                 except ValueError:
                     default_property_id = property_id
-            result = await tool_handlers.handle_search_faq(db, args, host_user_id, default_property_id, call_session_id)
+
+            # Phase 4b.3 (documentation/agent-conversation-improvement.md):
+            # feeds the real, on-file amenity list to
+            # property_recommendation_guard so it can catch the model
+            # inventing an amenity that was never actually on file.
+            def _on_answered(property_):
+                if property_recommendation_guard is not None:
+                    property_recommendation_guard.record_tool_result(
+                        "search_faq", {"amenities": property_.amenities}
+                    )
+
+            result = await tool_handlers.handle_search_faq(
+                db, args, host_user_id, default_property_id, call_session_id, on_answered=_on_answered
+            )
         await params.result_callback(result)
 
     async def end_call(params: FunctionCallParams):

@@ -4,12 +4,14 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { CallSummaryCard } from "@/components/call-summary-card";
 import { DictationTextarea } from "@/components/ui/dictation-textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RightPanel, RightPanelFooterButton } from "@/components/ui/right-panel";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusChip, type StatusTone } from "@/components/status-chip";
+import { useAsync } from "@/hooks/use-async";
 import { api, ApiError } from "@/lib/api";
 import { cn, isBrowserTestIdentity } from "@/lib/utils";
 import type { LeadOut, LeadStatus } from "@/lib/types";
@@ -78,6 +80,13 @@ export function LeadDetailPanel({
   const [submitting, setSubmitting] = useState(false);
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
 
+  // Same call fetch as the calls detail page, so the AI summary rendered
+  // here (via CallSummaryCard) is identical rather than just a link out.
+  const { data: call } = useAsync(
+    () => (lead?.call_session_id ? api.calls.get(lead.call_session_id) : Promise.resolve(null)),
+    [lead?.call_session_id]
+  );
+
   // Seed the form once per newly-opened lead, same pattern as the guest
   // profile page's edit form -- avoids stomping on in-progress edits if
   // `lead` identity changes for an unrelated reason while open.
@@ -144,9 +153,12 @@ export function LeadDetailPanel({
       )}
 
       {lead?.call_session_id && (
-        <Button variant="outline" size="sm" onClick={() => router.push(`/dashboard/calls/${lead.call_session_id}`)}>
-          View call summary
-        </Button>
+        <>
+          <CallSummaryCard summary={call?.ai_summary ?? null} />
+          <Button variant="outline" size="sm" onClick={() => router.push(`/dashboard/calls/${lead.call_session_id}`)}>
+            View full call
+          </Button>
+        </>
       )}
 
       <div className="space-y-2">

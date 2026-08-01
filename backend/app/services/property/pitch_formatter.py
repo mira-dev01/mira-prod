@@ -12,10 +12,19 @@ output is ONLY for speech, never re-parsed by anything downstream.
 """
 
 from dataclasses import dataclass
+from typing import Literal
 
 from app.services.property.card import PropertyCard
 
 _NUMBER_WORDS = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six"}
+
+# Phase 2.6 (documentation/agent-conversation-improvement.md): grounded in
+# real, already-computed signals (result count, whether the combo/fallback
+# path fired) -- deliberately NOT an LLM self-reported number, which would
+# just be another hallucination-shaped output. "strong" = exactly one clean
+# match; "moderate" = 2-3 comparable options to choose between; "weak" = the
+# combo/fallback path fired (no single property was a full match).
+RecommendationConfidence = Literal["strong", "moderate", "weak"]
 
 
 @dataclass
@@ -23,9 +32,32 @@ class RecommendationResult:
     options: list[PropertyCard]
     combo_note: str = ""
     not_found: bool = False
+    recommendation_confidence: RecommendationConfidence = "moderate"
 
 
 _NOT_FOUND_TEXT = "I couldn't find a property in our portfolio matching that -- let me connect you with the host directly."
+
+# Public (not _-prefixed) -- app/voice/response_shape_guard.py (Phase 4.3,
+# documentation/agent-conversation-improvement.md) also imports this
+# directly, to recognize a recommendation block's fixed intro text when
+# checking whether a response contains more than one.
+CONFIDENCE_INTROS: dict[RecommendationConfidence, str] = {
+    "strong": "This one's a great fit:",
+    "moderate": "I have a couple of options that could work well:",
+    "weak": "I don't have a single perfect match, but here's what could work if we combine two units:",
+}
+
+
+def confidence_for_result(options: list[PropertyCard], combo_note: str) -> RecommendationConfidence:
+    """Deterministic mapping from signals the orchestrator already computes
+    -- never a new judgment call handed to the model. combo_note firing
+    already means no single property was a full match (sql_search's own
+    fallback path), a real lower-confidence signal, not a guess."""
+    if combo_note:
+        return "weak"
+    if len(options) == 1:
+        return "strong"
+    return "moderate"
 
 
 def _number_word(n: int) -> str:
@@ -50,9 +82,20 @@ def format_property_pitch_line(card: PropertyCard, index: int) -> str:
 
     amenity_phrase = f" with {_join_natural(card.top_amenities)}" if card.top_amenities else ""
 
+    # Phase 2.2 (documentation/agent-conversation-improvement.md): ties the
+    # recommendation back to why it matches THIS guest, not just what the
+    # property is -- e.g. "sleeps 6 -- good for a group of friends who want
+    # a private pool." One added clause, not a second sentence (requirement
+    # #5's "no information dumping" applies to a good reason just as much as
+    # a bad one); card.match_reasons is already capped at 2 by
+    # match_reasons_for_card, and empty (producing no clause at all) when no
+    # guest criteria were given, per that function's own no-fabrication rule.
+    reason_clause = f" -- {_join_natural(card.match_reasons)}" if card.match_reasons else ""
+
     return (
         f"{index}. {card.spoken_name}, a {descriptor}{amenity_phrase} in {card.city or 'unlisted city'} "
-        f"for ₹{card.base_price:,.0f} a night, sleeps {card.max_guests}. (property_id: {card.property_id})"
+        f"for ₹{card.base_price:,.0f} a night, sleeps {card.max_guests}{reason_clause}. "
+        f"(property_id: {card.property_id})"
     )
 
 
@@ -70,7 +113,12 @@ def render_recommendation_text(result: RecommendationResult) -> str:
     # The intro line is a cue for the model's *tone*, not a script to read
     # verbatim -- GOLDEN_RULES already instructs it to turn this into a
     # warm, natural pitch rather than reciting a list (see the
-    # "conversational warmth" rule in system_prompt.py).
-    intro = "I found a couple of options I think could work well:" if len(result.options) > 1 else "I found one that could work well:"
+    # "conversational warmth" rule in system_prompt.py). Phase 2.6: the
+    # exact wording is now driven by recommendation_confidence (a
+    # deterministic mapping from real signals, not a new judgment call) --
+    # the underlying facts below (names/prices/capacity/reasons) are
+    # completely unchanged regardless of which intro is chosen, only the
+    # framing language differs.
+    intro = CONFIDENCE_INTROS[result.recommendation_confidence]
     lines = [format_property_pitch_line(card, i) for i, card in enumerate(result.options, 1)]
     return intro + "\n" + "\n".join(lines) + result.combo_note

@@ -48,3 +48,70 @@ async def test_run_sql_search_applies_landmark_boost(test_user, db_session):
     results, _ = await sql_search.run_sql_search(db_session, base_stmt, args)
 
     assert [p.name for p in results] == ["Near", "Far"]
+
+
+async def test_zero_price_property_excluded_from_recommendations(test_user, db_session):
+    """Phase 2.0 (documentation/agent-conversation-improvement.md, catalogue
+    item C2): a property with base_price=0 must never be recommended --
+    confirmed live, this was previously pitched to a guest as "free of
+    charge per night" during recommend_properties, a different path from
+    the already-fixed ₹0 guard in handle_get_pricing/handle_negotiate_rate."""
+    zero_priced = Property(
+        user_id=test_user.id, name="Zero Villa", base_price=0, max_guests=4, exophone="+918011110005"
+    )
+    real = Property(
+        user_id=test_user.id, name="Real Villa", base_price=4000, max_guests=4, exophone="+918011110006"
+    )
+    db_session.add_all([zero_priced, real])
+    await db_session.commit()
+
+    args = RecommendPropertiesArgs()
+    base_stmt = filter_builder.build_base_filters(args, test_user.id)
+    results, _ = await sql_search.run_sql_search(db_session, base_stmt, args)
+
+    assert [p.name for p in results] == ["Real Villa"]
+
+
+async def test_zero_price_property_with_exact_airbnb_pricing_is_not_excluded(test_user, db_session):
+    """A property with exact_airbnb_pricing=True gets its real price from a
+    live SearchApi fetch at get_pricing time regardless of base_price -- a
+    stale/unset base_price=0 there is harmless and must not hide an
+    otherwise-real, working listing from recommendations."""
+    live_priced = Property(
+        user_id=test_user.id,
+        name="Live Priced Villa",
+        base_price=0,
+        max_guests=4,
+        exophone="+918011110007",
+        exact_airbnb_pricing=True,
+        airbnb_listing_id="12345",
+    )
+    db_session.add(live_priced)
+    await db_session.commit()
+
+    args = RecommendPropertiesArgs()
+    base_stmt = filter_builder.build_base_filters(args, test_user.id)
+    results, _ = await sql_search.run_sql_search(db_session, base_stmt, args)
+
+    assert [p.name for p in results] == ["Live Priced Villa"]
+
+
+async def test_zero_price_property_excluded_even_with_budget_filter_active(test_user, db_session):
+    """base_price=0 trivially passes ANY budget<= check, so the exclusion
+    must be its own unconditional clause, not folded into the budget
+    filter -- confirmed by testing with a budget filter active, not just
+    the no-filter case above."""
+    zero_priced = Property(
+        user_id=test_user.id, name="Zero Villa", base_price=0, max_guests=4, exophone="+918011110008"
+    )
+    real = Property(
+        user_id=test_user.id, name="Real Villa", base_price=4000, max_guests=4, exophone="+918011110009"
+    )
+    db_session.add_all([zero_priced, real])
+    await db_session.commit()
+
+    args = RecommendPropertiesArgs(budget=5000)
+    base_stmt = filter_builder.build_base_filters(args, test_user.id)
+    results, _ = await sql_search.run_sql_search(db_session, base_stmt, args)
+
+    assert [p.name for p in results] == ["Real Villa"]

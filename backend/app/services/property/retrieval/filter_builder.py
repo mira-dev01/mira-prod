@@ -50,6 +50,24 @@ def build_base_filters(args: RecommendPropertiesArgs, host_user_id: uuid.UUID) -
     everyone" behavior)."""
     stmt = select(Property).where(Property.user_id == host_user_id)
 
+    # Phase 2.0 (documentation/agent-conversation-improvement.md, catalogue
+    # item C2): never recommend a property with no real nightly rate on
+    # file. Confirmed live: a base_price=0 property was pitched to a guest
+    # as "free of charge per night" during recommend_properties -- a
+    # DIFFERENT, previously-unguarded path from the existing ₹0 guard in
+    # handle_get_pricing/handle_negotiate_rate (project_state.md's
+    # 2026-07-23 fix), which only covers the pricing tool, not the
+    # recommendation pitch (pitch_formatter.py reads PropertyCard.base_price
+    # directly with no equivalent check). Scoped to exact_airbnb_pricing=False
+    # only: a True property's real price comes from a live SearchApi fetch
+    # at get_pricing time regardless of what base_price says, so a stale/
+    # unset base_price there is harmless and must not hide an otherwise-real,
+    # working listing. This must also NOT be folded into the budget filter
+    # below -- base_price=0 passes ANY "<=" budget check trivially, so the
+    # bug can surface even when a budget filter is active; it needs its own
+    # unconditional clause.
+    stmt = stmt.where(or_(Property.exact_airbnb_pricing.is_(True), Property.base_price > 0))
+
     if args.budget is not None:
         stmt = stmt.where(Property.base_price <= args.budget * 1.15)
 

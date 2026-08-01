@@ -37,6 +37,32 @@ async def test_check_calendar_unknown_property(db_session):
     assert "couldn't find" in result.lower()
 
 
+async def test_check_calendar_on_checked_fires_with_real_property_and_availability(test_property, db_session):
+    """Phase 4b.1 (documentation/agent-conversation-improvement.md): on_checked
+    is the hook property_recommendation_guard uses to verify the model's
+    reply doesn't contradict the real availability result."""
+    today = date.today()
+    args = CheckCalendarArgs(
+        property_id=str(test_property.id), check_in=today + timedelta(days=10), check_out=today + timedelta(days=12)
+    )
+    calls = []
+    await tool_handlers.handle_check_calendar(
+        db_session, args, on_checked=lambda property_, available: calls.append((property_.name, available))
+    )
+    assert calls == [(test_property.name, True)]
+
+
+async def test_check_calendar_on_checked_never_fires_on_not_found(db_session):
+    args = CheckCalendarArgs(
+        property_id="00000000-0000-0000-0000-000000000000", check_in=date.today(), check_out=date.today() + timedelta(days=1)
+    )
+    calls = []
+    await tool_handlers.handle_check_calendar(
+        db_session, args, on_checked=lambda property_, available: calls.append((property_.name, available))
+    )
+    assert calls == []
+
+
 async def test_check_calendar_exceeds_max_guests(test_property, db_session):
     today = date.today()
     args = CheckCalendarArgs(
@@ -59,6 +85,20 @@ async def test_get_pricing_includes_total(test_property, db_session):
     assert test_property.name in result
 
 
+async def test_get_pricing_on_priced_fires_with_real_property_and_breakdown(test_property, db_session):
+    today = date.today()
+    args = GetPricingArgs(
+        property_id=str(test_property.id), check_in=today + timedelta(days=1), check_out=today + timedelta(days=3), num_guests=2
+    )
+    calls = []
+    await tool_handlers.handle_get_pricing(
+        db_session, args, on_priced=lambda property_, breakdown: calls.append((property_.name, breakdown.total))
+    )
+    assert len(calls) == 1
+    assert calls[0][0] == test_property.name
+    assert calls[0][1] > 0
+
+
 async def test_get_pricing_never_quotes_zero_when_base_price_is_zero(test_user, db_session):
     # Confirmed live 2026-07-23: a property with base_price=0 (and no live
     # price available) was quoted to a guest as "zero rupees for the night".
@@ -79,11 +119,34 @@ async def test_get_pricing_never_quotes_zero_when_base_price_is_zero(test_user, 
     args = GetPricingArgs(
         property_id=str(zero_priced.id), check_in=today + timedelta(days=1), check_out=today + timedelta(days=2), num_guests=2
     )
-    result = await tool_handlers.handle_get_pricing(db_session, args)
+    calls = []
+    result = await tool_handlers.handle_get_pricing(
+        db_session, args, on_priced=lambda property_, breakdown: calls.append(property_)
+    )
     # Returns the price-unavailable directive, not a numeric quote.
     assert result == tool_handlers._PRICE_UNAVAILABLE_MESSAGE
     assert "₹" not in result
     assert "escalate_to_host" in result
+    # on_priced must never fire on this refusal path -- there is no real
+    # quote to verify a reply against.
+    assert calls == []
+
+
+async def test_negotiate_rate_on_priced_fires_with_real_property_and_result(test_property, test_user, db_session):
+    today = date.today()
+    args = NegotiateRateArgs(
+        property_id=str(test_property.id), check_in=today + timedelta(days=1), check_out=today + timedelta(days=3), num_guests=2
+    )
+    calls = []
+    await tool_handlers.handle_negotiate_rate(
+        db_session,
+        args,
+        host_user_id=test_user.id,
+        on_priced=lambda property_, result: calls.append((property_.name, result.counter_offer)),
+    )
+    assert len(calls) == 1
+    assert calls[0][0] == test_property.name
+    assert calls[0][1] > 0
 
 
 async def test_negotiate_rate_never_quotes_zero_when_base_price_is_zero(test_user, db_session):
@@ -103,10 +166,14 @@ async def test_negotiate_rate_never_quotes_zero_when_base_price_is_zero(test_use
     args = NegotiateRateArgs(
         property_id=str(zero_priced.id), check_in=today + timedelta(days=1), check_out=today + timedelta(days=2), num_guests=2
     )
-    result = await tool_handlers.handle_negotiate_rate(db_session, args, host_user_id=test_user.id)
+    calls = []
+    result = await tool_handlers.handle_negotiate_rate(
+        db_session, args, host_user_id=test_user.id, on_priced=lambda property_, result: calls.append(property_)
+    )
     assert result == tool_handlers._PRICE_UNAVAILABLE_MESSAGE
     assert "₹" not in result
     assert "escalate_to_host" in result
+    assert calls == []
 
 
 async def test_get_pricing_backfills_lead_even_if_update_lead_never_called(test_property, test_call_session, db_session):
@@ -286,6 +353,32 @@ async def test_search_faq_logs_gap_when_no_verified_answer(test_property, test_c
     assert gaps[0].property_id == test_property.id
     assert gaps[0].call_session_id == test_call_session.id
     assert gaps[0].status == "pending"
+
+
+async def test_search_faq_on_answered_fires_with_real_property_when_resolved(test_property, db_session):
+    """Phase 4b.3 (documentation/agent-conversation-improvement.md):
+    on_answered is the hook property_recommendation_guard uses to verify the
+    model's reply doesn't invent an amenity absent from the real list."""
+    args = SearchFaqArgs(query="Is wifi free?", property_id=str(test_property.id))
+    calls = []
+    await tool_handlers.handle_search_faq(
+        db_session, args, test_property.user_id, test_property.id, on_answered=lambda property_: calls.append(property_)
+    )
+    assert len(calls) == 1
+    assert calls[0].id == test_property.id
+    assert calls[0].amenities == test_property.amenities
+
+
+async def test_search_faq_on_answered_never_fires_for_portfolio_wide_query(test_property, db_session):
+    """No property_id resolved at all (a true portfolio-wide query) -- there
+    is no single property's amenity list to verify a reply against, so the
+    callback must not fire."""
+    args = SearchFaqArgs(query="Do you have a pool anywhere?", property_id=None)
+    calls = []
+    await tool_handlers.handle_search_faq(
+        db_session, args, test_property.user_id, None, on_answered=lambda property_: calls.append(property_)
+    )
+    assert calls == []
 
 
 async def test_search_faq_no_gap_logged_when_answer_found(test_property, db_session):

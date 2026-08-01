@@ -8,6 +8,8 @@ for that, not as raw JSON.
 import asyncio
 import logging
 import uuid
+from datetime import date
+from typing import Callable
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,6 +41,7 @@ from app.services import (
     pricing_engine,
     technician_service,
 )
+from app.services.pricing_engine import NegotiationResult, PriceBreakdown
 from app.services.property.pitch_formatter import RecommendationResult
 from app.services.property.retrieval import orchestrator as property_retrieval_orchestrator
 
@@ -181,7 +184,16 @@ async def handle_check_calendar(
     host_user_id: uuid.UUID | None = None,
     call_session_id: uuid.UUID | None = None,
     guest_profile_id: uuid.UUID | None = None,
+    on_checked: Callable[[Property, bool], None] | None = None,
 ) -> str:
+    """on_checked (Phase 4b.1, documentation/agent-conversation-improvement.md):
+    same on_priced pattern as handle_get_pricing/handle_negotiate_rate -- an
+    optional synchronous callback receiving the real Property and the actual
+    availability bool right before it's rendered to the spoken string, called
+    only once a real availability check has actually run (never on the
+    not-found/invalid-dates/capacity/minimum-nights early returns above,
+    since none of those represent a real yes/no answer to "is it available").
+    """
     property_ = await _get_property(db, args.property_id)
     if property_ is None:
         return "I couldn't find that property. Could you confirm which listing you're asking about?"
@@ -215,6 +227,9 @@ async def handle_check_calendar(
     available = await calendar_service.is_available(db, property_.id, args.check_in, args.check_out)
     nights = (args.check_out - args.check_in).days
 
+    if on_checked is not None:
+        on_checked(property_, available)
+
     if available:
         return (
             f"{property_.name} is AVAILABLE from {args.check_in.isoformat()} to {args.check_out.isoformat()} "
@@ -236,7 +251,23 @@ async def handle_get_pricing(
     host_user_id: uuid.UUID | None = None,
     call_session_id: uuid.UUID | None = None,
     guest_profile_id: uuid.UUID | None = None,
+    on_priced: Callable[[Property, PriceBreakdown], None] | None = None,
 ) -> str:
+    """on_priced (Phase 4.1, documentation/agent-conversation-improvement.md):
+    optional synchronous callback receiving the real Property (for its name
+    -- the caller's own property_id arg is a bare string/UUID, not something
+    guest-facing) and PriceBreakdown right before the result is rendered to
+    the spoken string, called only when a real quote is actually produced
+    (never for the not-found/invalid-dates/zero-price early returns above).
+    Lets app/voice/tools.py's wrapper record the exact quoted total into
+    ConversationState without this function's own return type changing
+    (still a plain str, matching every existing call site) and without
+    re-parsing the rendered natural-language string back into a number --
+    the same "hand over the real structured object directly" principle
+    app/services/property/pitch_formatter.py's own docstring already
+    explains the reasoning for (a prior version of
+    property_recommendation_guard.py regex-parsed rendered text and broke
+    when the format changed)."""
     property_ = await _get_property(db, args.property_id)
     if property_ is None:
         return "I couldn't find that property to price. Could you confirm which listing you're asking about?"
@@ -289,6 +320,8 @@ async def handle_get_pricing(
             f"off the base rate of ₹{breakdown.base_total:,.0f}"
         )
     summary += "."
+    if on_priced is not None:
+        on_priced(property_, breakdown)
     return summary
 
 
@@ -506,7 +539,16 @@ async def handle_negotiate_rate(
     host_user_id: uuid.UUID | None = None,
     guest_profile_id: uuid.UUID | None = None,
     call_session_id: uuid.UUID | None = None,
+    on_priced: Callable[[Property, NegotiationResult], None] | None = None,
 ) -> str:
+    """on_priced (Phase 4b.1, documentation/agent-conversation-improvement.md):
+    same pattern as handle_get_pricing's own on_priced -- an optional
+    synchronous callback receiving the real Property and NegotiationResult
+    right before the result is returned, called only on a real successful
+    negotiation (never on an error/not-found/non-positive-price path). Lets
+    app/voice/tools.py's wrapper feed property_recommendation_guard the real
+    counter_offer total to verify against, without this function's return
+    type changing or any existing call site being affected."""
     property_ = await _get_property(db, args.property_id)
     if property_ is None:
         return "I couldn't find that property to negotiate a rate for."
@@ -549,20 +591,33 @@ async def handle_negotiate_rate(
             result.counter_offer,
         )
         return _PRICE_UNAVAILABLE_MESSAGE
+    if on_priced is not None:
+        on_priced(property_, result)
     return result.message
 
 
 async def handle_recommend_properties(
-    db: AsyncSession, args: RecommendPropertiesArgs, host_user_id: uuid.UUID
+    db: AsyncSession,
+    args: RecommendPropertiesArgs,
+    host_user_id: uuid.UUID,
+    check_in: date | None = None,
+    check_out: date | None = None,
+    call_session_id: uuid.UUID | None = None,
 ) -> RecommendationResult:
     """Thin delegate to app/services/property/retrieval/orchestrator.py --
     the actual filter -> SQL search -> (conditionally) semantic search ->
     merge/rank -> build context pipeline lives there, split into focused,
     single-responsibility modules (filter_builder/sql_search/
-    semantic_search/ranking/context_builder). This function's signature/
-    name is kept stable so app/voice/tools.py's call site needed no change
-    when the internals were restructured out of this file."""
-    return await property_retrieval_orchestrator.recommend_properties(db, args, host_user_id)
+    semantic_search/ranking/context_builder). check_in/check_out (Phase 2.4,
+    documentation/agent-conversation-improvement.md) are optional,
+    caller-supplied from ConversationState.slots, not part of
+    RecommendPropertiesArgs itself -- see orchestrator.recommend_properties's
+    own docstring. call_session_id (Phase 2.5) seeds the leading-candidate
+    diversity rotation so the SAME call stays internally consistent while
+    DIFFERENT calls see genuine variety."""
+    return await property_retrieval_orchestrator.recommend_properties(
+        db, args, host_user_id, check_in=check_in, check_out=check_out, call_session_id=call_session_id
+    )
 
 
 async def _resolve_property_names(db: AsyncSession, values: list[str]) -> list[str]:
@@ -608,7 +663,17 @@ async def handle_search_faq(
     host_user_id: uuid.UUID,
     default_property_id: uuid.UUID | None,
     call_session_id: uuid.UUID | None = None,
+    on_answered: Callable[[Property], None] | None = None,
 ) -> str:
+    """on_answered (Phase 4b.3, documentation/agent-conversation-improvement.md):
+    optional synchronous callback receiving the real, resolved Property
+    (for its .amenities) right before the result is returned -- only called
+    when a specific property was actually resolved (never for a
+    portfolio-wide query with no property_id at all, since there's no
+    single property's amenity list to verify a reply against in that case).
+    Lets app/voice/tools.py's wrapper feed property_recommendation_guard the
+    real on-file amenity list so it can catch the model inventing an amenity
+    that was never actually on file."""
     property_id = None
     if args.property_id:
         try:
@@ -642,6 +707,8 @@ async def handle_search_faq(
             # itself rather than trusting a similarity score to have judged
             # relevance correctly -- see full_property_context's docstring.
             parts.append(f"{property_.name}: {faq_service.full_property_context(property_)}")
+            if on_answered is not None:
+                on_answered(property_)
 
     if parts:
         return " | ".join(parts)

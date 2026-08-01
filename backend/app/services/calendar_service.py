@@ -26,6 +26,35 @@ async def is_available(db: AsyncSession, property_id: uuid.UUID, check_in: date,
     return overlapping is None
 
 
+async def unavailable_property_ids(
+    db: AsyncSession, property_ids: list[uuid.UUID], check_in: date, check_out: date
+) -> set[uuid.UUID]:
+    """Batched version of is_available for a small candidate set -- Phase 2.4
+    (documentation/agent-conversation-improvement.md): recommend_properties
+    has no date-availability awareness at all today (RecommendPropertiesArgs
+    carries no check_in/check_out), so a guest can be recommended a property,
+    react positively, then be told it's unavailable via a separate
+    check_calendar call -- worse than filtering it out up front when dates
+    are already known (in ConversationState.slots, from an earlier
+    update_lead/check_calendar call this same conversation). One query for
+    the whole (already-small, budget/location/guest-count-narrowed) candidate
+    set rather than N round trips. Same overlap semantics as is_available
+    above -- not a second, different definition of "available"."""
+    if not property_ids:
+        return set()
+    rows = (
+        await db.scalars(
+            select(Booking.property_id).where(
+                Booking.property_id.in_(property_ids),
+                Booking.status == "confirmed",
+                Booking.check_in < check_out,
+                Booking.check_out > check_in,
+            )
+        )
+    ).all()
+    return set(rows)
+
+
 async def next_available_window(
     db: AsyncSession, property_id: uuid.UUID, from_date: date, nights: int, horizon_days: int = 90
 ) -> tuple[date, date] | None:
