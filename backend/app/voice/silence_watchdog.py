@@ -32,9 +32,23 @@ way to know whether TTS has actually finished speaking that line yet -- it
 just arms a flag so the *next* BotStoppedSpeakingFrame (i.e. once that
 closing line has actually finished playing) ends the call instead of
 starting another silence-nudge cycle.
+
+Phase 5 (documentation/agent-conversation-improvement.md), conversation
+lifecycle: this processor already owns every transition a real "closing"
+state needs to hang off of -- request_end_after_current_turn() (armed),
+cancel_end_request()/a real guest TranscriptionFrame arriving while armed
+(reopened), and the actual EndWorkerFrame push (closed) -- so
+ConversationState.closing_state (declared in Phase 1.1) is threaded through
+here rather than adding a parallel tracking mechanism. This is state for the
+PROMPT layer (StatePromptSyncProcessor tells the model "a goodbye has
+already been delivered, don't re-open new topics unless the guest does"),
+distinct from this processor's own hangup_pending property above, which
+RedundantContextGuardProcessor reads for a different purpose (suppressing a
+spurious re-invocation).
 """
 
 import asyncio
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
@@ -46,6 +60,9 @@ from pipecat.frames.frames import (
     TTSSpeakFrame,
 )
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
+
+if TYPE_CHECKING:
+    from app.voice.conversation_state import ConversationState
 
 DEFAULT_SILENCE_TIMEOUT_SECONDS = 5.0
 DEFAULT_MAX_PROMPTS = 2
@@ -66,12 +83,14 @@ class SilenceWatchdogProcessor(FrameProcessor):
         max_prompts: int = DEFAULT_MAX_PROMPTS,
         prompt_texts: list[str] = DEFAULT_PROMPT_TEXTS,
         goodbye_text: str = DEFAULT_GOODBYE_TEXT,
+        conversation_state: "ConversationState | None" = None,
     ):
         super().__init__()
         self._timeout_seconds = timeout_seconds
         self._max_prompts = max_prompts
         self._prompt_texts = prompt_texts
         self._goodbye_text = goodbye_text
+        self._conversation_state = conversation_state
 
         self._prompts_sent = 0
         self._timer_task: asyncio.Task | None = None
@@ -98,6 +117,8 @@ class SilenceWatchdogProcessor(FrameProcessor):
         finished playing, not when this method is called -- ends the call
         instead of starting another nudge cycle."""
         self._end_requested = True
+        if self._conversation_state is not None:
+            self._conversation_state.mark_farewell_pending()
         await self._cancel_timer()
 
     def cancel_end_request(self) -> None:
@@ -112,6 +133,8 @@ class SilenceWatchdogProcessor(FrameProcessor):
         the guest still gets nudged and the call still ends eventually if
         they truly say nothing, just not instantly."""
         self._end_requested = False
+        if self._conversation_state is not None:
+            self._conversation_state.mark_reopened()
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
@@ -120,6 +143,8 @@ class SilenceWatchdogProcessor(FrameProcessor):
             if self._end_requested:
                 self._ended = True
                 logger.info("SilenceWatchdogProcessor: ending call after agent's closing line")
+                if self._conversation_state is not None:
+                    self._conversation_state.mark_closed()
                 await self.push_frame(EndWorkerFrame(reason="conversation complete"))
             else:
                 # The bot just finished a turn (greeting or a real reply) --
@@ -142,6 +167,8 @@ class SilenceWatchdogProcessor(FrameProcessor):
                 # more question), that's a clear sign the call isn't actually
                 # over -- don't hang up on top of them.
                 self._prompts_sent = 0
+                if self._end_requested and self._conversation_state is not None:
+                    self._conversation_state.mark_reopened()
                 self._end_requested = False
                 await self._cancel_timer()
             # Blank/whitespace-only transcripts (background noise, breathing)

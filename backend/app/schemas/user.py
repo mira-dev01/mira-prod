@@ -33,6 +33,11 @@ AirbnbHostStatus = Literal[
 # bulbul:v3's speaker enum carries no gender metadata itself.
 AgentVoiceGender = Literal["female", "male"]
 
+# Phase 3.3 (documentation/agent-conversation-improvement.md) -- None/unset
+# means today's unchanged adaptive-mirroring behavior. See
+# app/models/user.py's agent_language_policy column docstring.
+AgentLanguagePolicy = Literal["hindi_first", "english_first"]
+
 
 class HostOnboarding(BaseModel):
     """Business/Airbnb-import data collected on the post-signup onboarding
@@ -64,6 +69,7 @@ class UserUpdate(BaseModel):
     agent_persona: str | None = None
     agent_escalation_phrase: str | None = None
     agent_voice_gender: AgentVoiceGender | None = None
+    agent_language_policy: AgentLanguagePolicy | None = None
     notification_email: EmailStr | None = None
     # Host Memory (see memory-architecture-plan.md section 4). Setting
     # discount_policy_text alone does NOT change pricing -- it's just the
@@ -113,6 +119,7 @@ class UserOut(BaseModel):
     agent_persona: str | None
     agent_escalation_phrase: str | None
     agent_voice_gender: AgentVoiceGender
+    agent_language_policy: AgentLanguagePolicy | None
     notification_email: str | None
     discount_policy_text: str | None
     negotiation_allowed: bool

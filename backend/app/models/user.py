@@ -75,6 +75,19 @@ class User(UUIDPkMixin, TimestampMixin, Base):
     # pre-existing global SARVAM_TTS_SPEAKER default ("roopa").
     agent_voice_gender: Mapped[str] = mapped_column(String(16), default="female", server_default="female")
 
+    # Phase 3.3 (documentation/agent-conversation-improvement.md) -- "adaptive"
+    # (None) | "hindi_first" | "english_first". None/unset (the default for
+    # every existing host) means today's unchanged adaptive-mirroring
+    # behavior -- GOLDEN_RULES' passive code-switch mirroring and explicit-
+    # preference override both still apply exactly as before regardless of
+    # this field. This exists so a host running a market where guests
+    # overwhelmingly prefer plain Hindi (or English) -- e.g. a homestay in
+    # rural Uttarakhand or Varanasi -- can set a baseline the per-call
+    # adaptive behavior still layers on top of, rather than this codebase
+    # structurally assuming urban-Hinglish-first is the only supported
+    # market (the goal's own "any host in India" framing).
+    agent_language_policy: Mapped[str | None] = mapped_column(String(16))
+
     # Host Memory: host-level negotiation/policy preferences (see
     # memory-architecture-plan.md section 4). discount_policy_text is the
     # host's own free-text paragraph describing how they usually handle

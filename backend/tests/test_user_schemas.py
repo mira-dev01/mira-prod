@@ -27,3 +27,19 @@ def test_agent_escalation_phrase_allows_safe_custom_wording():
 def test_agent_escalation_phrase_allows_none():
     update = UserUpdate(agent_escalation_phrase=None)
     assert update.agent_escalation_phrase is None
+
+
+def test_agent_language_policy_accepts_valid_values():
+    """Phase 3.3 (documentation/agent-conversation-improvement.md)."""
+    assert UserUpdate(agent_language_policy="hindi_first").agent_language_policy == "hindi_first"
+    assert UserUpdate(agent_language_policy="english_first").agent_language_policy == "english_first"
+
+
+def test_agent_language_policy_allows_none():
+    update = UserUpdate(agent_language_policy=None)
+    assert update.agent_language_policy is None
+
+
+def test_agent_language_policy_rejects_invalid_value():
+    with pytest.raises(ValidationError):
+        UserUpdate(agent_language_policy="klingon_first")
