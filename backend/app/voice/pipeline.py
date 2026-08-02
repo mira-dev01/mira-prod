@@ -73,6 +73,7 @@ from app.voice.repetition_guard import RepetitionGuardProcessor
 from app.voice.response_shape_guard import ResponseShapeValidatorProcessor
 from app.voice.ringing_audio import play_ringing_tone
 from app.voice.silence_watchdog import SilenceWatchdogProcessor
+from app.voice.slow_tool_filler import SlowToolFillerProcessor
 from app.voice.state_prompt_sync import StatePromptSyncProcessor
 from app.voice.tools import build_voice_tools
 from app.voice.turn_strategies import HybridCompletenessUserTurnStopStrategy
@@ -518,6 +519,14 @@ async def _run_pipeline_inner(
     # recommend_properties call whose result never actually got named to the
     # guest -- both confirmed live. See app/voice/property_recommendation_guard.py.
     property_recommendation_guard = PropertyRecommendationGuardProcessor()
+    # Speaks a short filler line ("Let me check that for you.") if
+    # recommend_properties is still running after ~1.2s -- confirmed live
+    # 2026-08-01: a ~30s silent gap between the guest's question and the
+    # spoken recommendation, with nothing telling the guest Mira was still
+    # working on it. Scoped to recommend_properties only; get_pricing/
+    # check_calendar resolve fast enough (~1.5s) that the delay timer never
+    # fires for them. See app/voice/slow_tool_filler.py.
+    slow_tool_filler = SlowToolFillerProcessor()
     # Cuts a response short, mid-stream, the moment it starts repeating
     # itself -- the deterministic guarantee max_completion_tokens alone
     # doesn't provide (a cap bounds how much garbage CAN be generated, not
@@ -632,6 +641,7 @@ async def _run_pipeline_inner(
                 redundant_context_guard,
                 state_prompt_sync,
                 llm,
+                slow_tool_filler,
                 repetition_guard,
                 meta_commentary_guard,
                 property_recommendation_guard,

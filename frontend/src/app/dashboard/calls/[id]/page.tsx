@@ -138,7 +138,7 @@ export default function CallDetailPage() {
                 <div key={i} className={cn("flex", turn.role === "mira" ? "justify-end" : "justify-start")}>
                   <div
                     className={cn(
-                      "max-w-[80%] rounded-lg px-3 py-2 text-sm leading-relaxed",
+                      "max-w-[80%] whitespace-pre-wrap rounded-lg px-3 py-2 text-sm leading-relaxed",
                       turn.role === "mira"
                         ? "bg-muted text-foreground"
                         : "bg-[var(--status-orange)] text-white"

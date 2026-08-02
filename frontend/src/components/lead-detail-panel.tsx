@@ -145,6 +145,17 @@ export function LeadDetailPanel({
         </RightPanelFooterButton>
       }
     >
+      {lead && (
+        <p className="text-xs text-muted-foreground">
+          Received {new Date(lead.created_at).toLocaleString([], {
+            month: "short",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
+        </p>
+      )}
+
       {lead?.urgency && (
         <div className="flex items-center gap-2">
           <StatusChip status={lead.urgency} tone={leadUrgencyTone[lead.urgency] ?? "neutral"} />
