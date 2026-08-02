@@ -1,7 +1,7 @@
 """add twilio voice number columns
 
 Revision ID: a1c9f4e2b6d3
-Revises: d65ddc51db7f
+Revises: a1c4e8f7b2d3
 Create Date: 2026-08-02 00:00:00.000000
 
 """
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = 'a1c9f4e2b6d3'
-down_revision: Union[str, None] = 'd65ddc51db7f'
+down_revision: Union[str, None] = 'a1c4e8f7b2d3'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
