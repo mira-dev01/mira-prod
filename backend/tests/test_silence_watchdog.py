@@ -2,6 +2,7 @@ import pytest
 from pipecat.frames.frames import BotStoppedSpeakingFrame, EndFrame, TranscriptionFrame, TTSSpeakFrame
 from pipecat.tests.utils import SleepFrame, run_test
 
+from app.voice.conversation_state import ConversationState
 from app.voice.silence_watchdog import SilenceWatchdogProcessor
 
 
@@ -129,3 +130,120 @@ async def test_guest_speaking_again_cancels_a_pending_end_call():
     speak_frames = [f for f in down_frames if isinstance(f, TTSSpeakFrame)]
     assert len(speak_frames) == 1
     assert speak_frames[0].text == "Hello?"
+
+
+# --- Phase 5 (documentation/agent-conversation-improvement.md): conversation
+# lifecycle -- ConversationState.closing_state tracked as real state through
+# the arm/reopen/close sequence, not just this processor's own hangup_pending
+# bookkeeping. ---
+
+
+@pytest.mark.asyncio
+async def test_request_end_marks_conversation_state_farewell_pending():
+    state = ConversationState()
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=5.0, conversation_state=state)
+
+    await watchdog.request_end_after_current_turn()
+
+    assert state.closing_state == "farewell_pending"
+    assert state.conversation_goal == "closing"
+
+
+@pytest.mark.asyncio
+async def test_guest_speaking_again_resets_conversation_state_to_open():
+    """Full Phase 5.1 sequence: arm end_call -> confirm farewell_pending ->
+    guest speaks again before the hangup completes -> confirm the watchdog's
+    own existing cancellation path also resets closing_state back to open."""
+    state = ConversationState()
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=0.2, conversation_state=state)
+
+    await watchdog.request_end_after_current_turn()
+    assert state.closing_state == "farewell_pending"
+
+    await run_test(
+        watchdog,
+        frames_to_send=[
+            _real_transcript("Wait, one more thing"),
+            SleepFrame(sleep=0.05),
+            BotStoppedSpeakingFrame(),
+            SleepFrame(sleep=0.3),
+        ],
+    )
+
+    assert state.closing_state == "open"
+
+
+@pytest.mark.asyncio
+async def test_premature_end_call_guard_cancellation_also_reopens_conversation_state():
+    """cancel_end_request (PrematureEndCallGuardProcessor's path, a same-turn
+    end_call + real question) must reopen state the same way a guest
+    speaking again does -- both are "the call isn't actually over yet."""
+    state = ConversationState()
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=5.0, conversation_state=state)
+
+    await watchdog.request_end_after_current_turn()
+    assert state.closing_state == "farewell_pending"
+
+    watchdog.cancel_end_request()
+
+    assert state.closing_state == "open"
+
+
+@pytest.mark.asyncio
+async def test_end_call_completing_marks_conversation_state_closed():
+    state = ConversationState()
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=5.0, conversation_state=state)
+    await watchdog.request_end_after_current_turn()
+
+    await run_test(
+        watchdog,
+        frames_to_send=[BotStoppedSpeakingFrame()],
+        send_end_frame=False,
+    )
+
+    assert state.closing_state == "closed"
+
+
+@pytest.mark.asyncio
+async def test_second_close_later_in_the_same_call_is_treated_as_a_fresh_legitimate_close():
+    """A reopened call that later closes again for real must not be treated
+    as a blocked duplicate -- reopening was explicit and genuine, so a
+    second full close-and-goodbye is a normal, fresh close."""
+    state = ConversationState()
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=0.2, conversation_state=state)
+
+    # First close attempt, then the guest reopens it.
+    await watchdog.request_end_after_current_turn()
+    assert state.closing_state == "farewell_pending"
+    watchdog.cancel_end_request()
+    assert state.closing_state == "open"
+
+    # A second, genuine close later in the same call.
+    await watchdog.request_end_after_current_turn()
+    assert state.closing_state == "farewell_pending"
+
+    down_frames, _ = await run_test(
+        watchdog,
+        frames_to_send=[BotStoppedSpeakingFrame()],
+        send_end_frame=False,
+    )
+
+    assert state.closing_state == "closed"
+    assert isinstance(down_frames[-1], EndFrame)
+    assert down_frames[-1].reason == "conversation complete"
+
+
+@pytest.mark.asyncio
+async def test_no_conversation_state_is_a_no_op_for_closing_lifecycle():
+    """Every existing call site/test that constructs this processor without
+    a ConversationState must keep working unchanged."""
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=5.0)
+
+    await watchdog.request_end_after_current_turn()
+    watchdog.cancel_end_request()
+
+    down_frames, _ = await run_test(
+        watchdog,
+        frames_to_send=[BotStoppedSpeakingFrame()],
+    )
+    assert not any(isinstance(f, EndFrame) for f in down_frames)

@@ -74,6 +74,18 @@ function leadDatesLabel(lead: LeadOut): string {
   return lead.check_in && lead.check_out ? `${lead.check_in} → ${lead.check_out}` : "—";
 }
 
+// created_at, not updated_at -- this is specifically "when did this lead
+// come in," same field the Kanban/table sort intentionally avoids (see
+// leadsForColumn's comment) because updated_at drifts on every edit.
+function leadReceivedLabel(lead: LeadOut): string {
+  return new Date(lead.created_at).toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function LeadsTable({
   leads,
   onRowClick,
@@ -95,6 +107,7 @@ function LeadsTable({
             <TableHead>Temperature</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Phone</TableHead>
+            <TableHead>Received</TableHead>
             <TableHead />
           </TableRow>
         </TableHeader>
@@ -125,6 +138,7 @@ function LeadsTable({
                 </div>
               </TableCell>
               <TableCell>{leadPhoneLabel(lead)}</TableCell>
+              <TableCell className="whitespace-nowrap text-muted-foreground">{leadReceivedLabel(lead)}</TableCell>
               <TableCell>
                 <ChevronRight className="size-4 text-muted-foreground" />
               </TableCell>
@@ -171,11 +185,16 @@ function LeadCard({
           {lead.properties_discussed.length > 0 ? lead.properties_discussed.join(", ") : "No property discussed"}
         </p>
         <p className="text-xs text-muted-foreground">{leadDatesLabel(lead)}</p>
-        {lead.urgency ? (
-          <StatusChip status={lead.urgency} tone={urgencyTone[lead.urgency] ?? "neutral"} />
-        ) : (
-          lead.escalated && <StatusChip status="escalated" tone="destructive" />
-        )}
+        <div className="flex items-center justify-between gap-2">
+          {lead.urgency ? (
+            <StatusChip status={lead.urgency} tone={urgencyTone[lead.urgency] ?? "neutral"} />
+          ) : lead.escalated ? (
+            <StatusChip status="escalated" tone="destructive" />
+          ) : (
+            <span />
+          )}
+          <span className="whitespace-nowrap text-[11px] text-muted-foreground">{leadReceivedLabel(lead)}</span>
+        </div>
       </CardContent>
     </Card>
   );

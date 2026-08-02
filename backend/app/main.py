@@ -1,11 +1,13 @@
 import asyncio
 import logging
+import sys
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from loguru import logger as _loguru_logger
 from sqlalchemy import text
 
 from app.api.v1 import (
@@ -31,6 +33,17 @@ from app.services.smart_pricing_service import refresh_live_pricing_cache, refre
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+class _PropagateToStdlib(logging.Handler):
+    def emit(self, record: logging.LogRecord) -> None:
+        stdlib_logger = logging.getLogger(record.name)
+        stdlib_logger.handle(record)
+
+
+_loguru_logger.remove()
+_loguru_logger.add(sys.stderr, level="DEBUG")
+_loguru_logger.add(_PropagateToStdlib(), level="DEBUG", format="{message}")
 
 scheduler = AsyncIOScheduler()
 

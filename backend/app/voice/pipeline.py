@@ -72,8 +72,11 @@ from app.voice.premature_end_call_guard import PrematureEndCallGuardProcessor
 from app.voice.property_recommendation_guard import PropertyRecommendationGuardProcessor
 from app.voice.redundant_context_guard import RedundantContextGuardProcessor
 from app.voice.repetition_guard import RepetitionGuardProcessor
+from app.voice.response_shape_guard import ResponseShapeValidatorProcessor
 from app.voice.ringing_audio import play_ringing_tone
 from app.voice.silence_watchdog import SilenceWatchdogProcessor
+from app.voice.slow_tool_filler import SlowToolFillerProcessor
+from app.voice.state_prompt_sync import StatePromptSyncProcessor
 from app.voice.tools import build_voice_tools
 from app.voice.turn_strategies import HybridCompletenessUserTurnStopStrategy
 from app.voice.vad import create_vad_analyzer
@@ -460,7 +463,21 @@ async def _run_pipeline_inner(
         model=settings.sarvam_stt_model,
         mode="codemix",  # transcribe Hindi/English/Hinglish as spoken, no translation
     )
-    language_sync = LanguageSyncProcessor()
+    # Moved up from just before `tools`/`context` construction (Phase 1,
+    # documentation/agent-conversation-improvement.md) -- state_prompt_sync
+    # and language_sync below both need a reference to this same instance at
+    # construction time, same as redundant_context_guard needs
+    # silence_watchdog. Nothing between here and the original construction
+    # point depended on it not existing yet.
+    conversation_state = ConversationState(
+        selected_property_id=str(property_id) if property_id else None,
+        selected_property_name=property_name,
+    )
+    # Phase 3.1: passes conversation_state so the guest's detected spoken
+    # language (the same signal that already drives the TTS switch) is also
+    # fed back into state for the prompt layer to read -- see
+    # app/voice/language_sync.py's own docstring.
+    language_sync = LanguageSyncProcessor(conversation_state)
     # Auto-cuts a call where the guest has gone silent/unresponsive: nudges
     # ("Hello? Are you still there?") after each ~9s of silence, hangs up
     # after the second nudge goes unanswered. See app/voice/silence_watchdog.py
@@ -473,7 +490,11 @@ async def _run_pipeline_inner(
     # landed 4s after the nudge already fired, mid-thought). 5s is plausible
     # for a yes/no but too tight for anything requiring the guest to actually
     # think and construct a sentence.
-    silence_watchdog = SilenceWatchdogProcessor(timeout_seconds=9.0)
+    # Phase 5 (documentation/agent-conversation-improvement.md): passes
+    # conversation_state so the closing lifecycle (armed/reopened/closed) is
+    # tracked as real state the prompt layer can read, not just this
+    # processor's own internal hangup bookkeeping.
+    silence_watchdog = SilenceWatchdogProcessor(timeout_seconds=9.0, conversation_state=conversation_state)
     # Code-level backstop for the "let me loop in the host" ban in
     # GOLDEN_RULES -- prompting alone has failed on this exact wording
     # repeatedly across real calls. See app/voice/escalation_phrase_guard.py.
@@ -487,6 +508,13 @@ async def _run_pipeline_inner(
     # turn fire after end_call/decline_irrelevant_call and kept calls from
     # actually disconnecting. See app/voice/redundant_context_guard.py.
     redundant_context_guard = RedundantContextGuardProcessor(silence_watchdog)
+    # Keeps ConversationState's slots/conversation_goal (Phase 1,
+    # documentation/agent-conversation-improvement.md) visible to the model
+    # every turn -- the system prompt is fixed at call start and can't
+    # reflect anything learned mid-call on its own. Sits right after
+    # redundant_context_guard (before llm) so it only ever touches a context
+    # that's actually about to be forwarded. See app/voice/state_prompt_sync.py.
+    state_prompt_sync = StatePromptSyncProcessor(conversation_state)
     # Separate failure mode, same symptom: the model itself (in a single
     # turn, not a spurious re-invocation) asks a real question and calls
     # end_call together -- confirmed live. Cancels the pending hangup so the
@@ -496,15 +524,38 @@ async def _run_pipeline_inner(
     # recommend_properties call whose result never actually got named to the
     # guest -- both confirmed live. See app/voice/property_recommendation_guard.py.
     property_recommendation_guard = PropertyRecommendationGuardProcessor()
+    # Speaks a short filler line ("Let me check that for you.") if
+    # recommend_properties is still running after ~1.2s -- confirmed live
+    # 2026-08-01: a ~30s silent gap between the guest's question and the
+    # spoken recommendation, with nothing telling the guest Mira was still
+    # working on it. Scoped to recommend_properties only; get_pricing/
+    # check_calendar resolve fast enough (~1.5s) that the delay timer never
+    # fires for them. See app/voice/slow_tool_filler.py.
+    slow_tool_filler = SlowToolFillerProcessor()
     # Cuts a response short, mid-stream, the moment it starts repeating
     # itself -- the deterministic guarantee max_completion_tokens alone
     # doesn't provide (a cap bounds how much garbage CAN be generated, not
-    # whether any of it repeats). See app/voice/repetition_guard.py.
-    repetition_guard = RepetitionGuardProcessor()
+    # whether any of it repeats). Phase 4.2 (documentation/
+    # agent-conversation-improvement.md) also passes conversation_state so it
+    # can catch a same-fact-different-wording repeat ACROSS turns (e.g. a
+    # quoted price restated later), not just within one response. See
+    # app/voice/repetition_guard.py.
+    repetition_guard = RepetitionGuardProcessor(conversation_state)
     # Drops narrator/stage-direction asides like "(Waiting for guest
     # response)" before they reach TTS -- confirmed live. See
     # app/voice/meta_commentary_guard.py.
     meta_commentary_guard = MetaCommentaryGuardProcessor()
+    # Final structural gate, right before tts -- catches a malformed/
+    # concatenated response SHAPE (multiple questions, multiple greetings,
+    # a duplicated safe-line, a punctuation flood, an unfinished trailing
+    # clause, more than one recommendation block) that every guard above it
+    # cannot see, since each of those targets a different, narrower failure
+    # mode (a single repeated sentence, a leaked property_id, a narrator
+    # aside). Phase 4.3 (documentation/agent-conversation-improvement.md).
+    # Sits LAST, after every rewrite above has already run, so it validates
+    # the actual final text about to be spoken. See
+    # app/voice/response_shape_guard.py.
+    response_shape_guard = ResponseShapeValidatorProcessor()
 
     async with aiohttp.ClientSession() as http_session:
         tts = SarvamTTSService(
@@ -521,14 +572,6 @@ async def _run_pipeline_inner(
         )
         llm = _build_llm()
 
-        # Tracks which property is "locked" for the rest of a Lead Agent
-        # (portfolio-wide) call once the guest names/selects one -- Guest
-        # Support calls already have a fixed property_id above and never
-        # touch this. See app/voice/conversation_state.py.
-        conversation_state = ConversationState(
-            selected_property_id=str(property_id) if property_id else None,
-            selected_property_name=property_name,
-        )
         # Browser test calls use a fixed placeholder identity (no real phone
         # number exists) -- never let that string flow through to tools as
         # if it were a real number to message/save.
@@ -601,12 +644,15 @@ async def _run_pipeline_inner(
                 language_sync,
                 user_aggregator,
                 redundant_context_guard,
+                state_prompt_sync,
                 llm,
+                slow_tool_filler,
                 repetition_guard,
                 meta_commentary_guard,
                 property_recommendation_guard,
                 escalation_guard,
                 premature_end_call_guard,
+                response_shape_guard,
                 tts,
                 transport.output(),
                 assistant_aggregator,

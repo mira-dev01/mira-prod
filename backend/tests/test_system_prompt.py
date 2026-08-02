@@ -613,3 +613,94 @@ def test_golden_rules_save_unprompted_name_via_update_lead_in_guest_support():
 def test_golden_rules_save_unprompted_name_also_present_in_lead_agent_prompt():
     prompt = build_lead_system_prompt(_user(), [_property()])
     assert "call update_lead immediately with that field" in prompt
+
+
+def test_golden_rules_covers_guest_self_correction():
+    """Phase 6.2 audit (documentation/agent-conversation-improvement.md,
+    requirement #13 Recovery Behaviour): a guest correcting an earlier value
+    ("actually, make that 6 guests") was not explicitly covered by any
+    existing rule -- only re-asking (NEVER RE-ASK) and incomplete/filler
+    turns were. state.slots' own overwrite mechanics (Phase 1.2) already
+    handle this correctly at the data layer; this confirms the PROMPT layer
+    actually tells the model to treat a correction as authoritative, not
+    just rely on the mechanics being silently correct underneath."""
+    prompt = build_system_prompt(_property(), None, _user())
+    assert "CORRECTS a value they already gave" in prompt
+    assert "re-call any tool whose result depended on the old value" in prompt
+    # Shared via GOLDEN_RULES, so present in both modes.
+    lead_prompt = build_lead_system_prompt(_user(), [_property()])
+    assert "CORRECTS a value they already gave" in lead_prompt
+
+
+def test_guest_support_has_its_own_name_phone_timing_guidance():
+    """Phase 6.1 audit (documentation/agent-conversation-improvement.md):
+    GOLDEN_RULES' conversational-warmth section and _caller_phone_section
+    both say "see the lead qualification workflow's ... timing" for exactly
+    when to ask for name/phone -- a dangling reference in Guest Support mode,
+    since LEAD_AGENT_INSTRUCTIONS (where that timing actually lives) is never
+    included in a Guest Support prompt at all. GUEST_SUPPORT_INSTRUCTIONS
+    must carry its own local equivalent instead of relying on a cross-
+    reference into a block that isn't there."""
+    prompt = build_system_prompt(_property(), None, _user())
+    assert "rarely a reason to actively ask for the" in prompt
+    assert "never as a routine opener" in prompt
+    # Confirm this guidance is NOT duplicated into the Lead Agent prompt --
+    # that mode already has its own real timing rule (step 5), this is
+    # Guest-Support-specific text.
+    lead_prompt = build_lead_system_prompt(_user(), [_property()])
+    assert "rarely a reason to actively ask for the" not in lead_prompt
+
+
+def test_lead_agent_recommends_before_asking_budget_when_other_criteria_known():
+    """Phase 2.3 (documentation/agent-conversation-improvement.md,
+    requirement #3): the dates-finalized YES branch must not gate the first
+    recommendation on asking budget first when location/purpose is already
+    known -- confirmed the sharpened wording landed, not just the original
+    'ask their budget, then use recommend_properties' sequencing."""
+    prompt = build_lead_system_prompt(_user(), [_property()])
+    assert "recommend now with what you already have" in prompt
+    assert "don't gate the first recommendation on" in prompt
+
+
+def test_golden_rules_explicit_language_request_recognized_immediately():
+    """Phase 3.3 (documentation/agent-conversation-improvement.md, catalogue
+    item C5): a guest directly asking 'can you speak Hindi?' must be
+    recognized as information worth acting on immediately (same weight as
+    stating a name/phone), not left to passive per-turn mirroring alone --
+    confirmed live, the reply stayed in English after this exact question."""
+    prompt = build_system_prompt(_property(), None, _user())
+    assert "EXPLICITLY asks you to speak a specific language" in prompt
+    assert "call update_lead with preferred_language" in prompt
+    assert "must be honored immediately, not eventually" in prompt
+
+
+def test_golden_rules_explicit_language_request_also_present_in_lead_agent_prompt():
+    prompt = build_lead_system_prompt(_user(), [_property()])
+    assert "EXPLICITLY asks you to speak a specific language" in prompt
+
+
+def test_unset_agent_language_policy_is_byte_identical_to_no_policy_field():
+    """Phase 3.3: no regression for the overwhelming majority of hosts who
+    won't set this -- an unset (None) agent_language_policy must produce a
+    prompt with no policy line at all, same as before this task existed."""
+    prompt = build_system_prompt(_property(), None, _user())
+    assert "generally prefer" not in prompt
+
+
+def test_agent_language_policy_hindi_first_adds_baseline_note():
+    host = _user(agent_language_policy="hindi_first")
+    prompt = build_system_prompt(_property(), None, host)
+    assert "guests generally prefer Hindi/Hinglish" in prompt
+    assert "still switching to whatever the guest actually uses" in prompt
+
+
+def test_agent_language_policy_english_first_adds_baseline_note():
+    host = _user(agent_language_policy="english_first")
+    prompt = build_system_prompt(_property(), None, host)
+    assert "guests generally prefer English" in prompt
+
+
+def test_agent_language_policy_present_in_lead_agent_prompt_too():
+    host = _user(agent_language_policy="hindi_first")
+    prompt = build_lead_system_prompt(host, [_property()])
+    assert "guests generally prefer Hindi/Hinglish" in prompt
