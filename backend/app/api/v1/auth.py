@@ -133,6 +133,13 @@ async def update_me(
         if existing is not None and existing.id != current_user.id:
             raise HTTPException(status.HTTP_409_CONFLICT, "That lead intake number is already in use")
 
+    if payload.twilio_lead_number is not None and payload.twilio_lead_number != current_user.twilio_lead_number:
+        existing_twilio = await db.scalar(
+            select(User).where(User.twilio_lead_number == payload.twilio_lead_number)
+        )
+        if existing_twilio is not None and existing_twilio.id != current_user.id:
+            raise HTTPException(status.HTTP_409_CONFLICT, "That Twilio lead number is already in use")
+
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(current_user, field, value)
 

@@ -31,6 +31,9 @@ class User(UUIDPkMixin, TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(32), default="active", server_default="active")
 
     lead_exophone: Mapped[str | None] = mapped_column(String(32), unique=True, index=True)
+    # Twilio equivalent of lead_exophone above -- see the comment on
+    # Property.twilio_number for why this exists as a separate field.
+    twilio_lead_number: Mapped[str | None] = mapped_column(String(32), unique=True, index=True)
 
     # Host registration profile (self-reported, no verification against Airbnb).
     business_name: Mapped[str | None] = mapped_column(String(255))

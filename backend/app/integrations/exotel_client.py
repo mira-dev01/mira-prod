@@ -35,3 +35,20 @@ async def send_sms(to: str, body: str) -> dict:
         )
         response.raise_for_status()
         return response.json()
+
+
+async def hangup_call(call_sid: str) -> dict:
+    """Force-terminates a live call via Exotel's Calls API. Closing our end
+    of the Voicebot Applet's WebSocket stream only stops the streaming
+    portion -- confirmed live, guests were left connected on a silent line
+    after Mira's own closing line finished, because nothing was actually
+    telling Exotel's platform to hang up the underlying PSTN call. Same
+    Twilio-style REST convention Exotel mirrors elsewhere (see send_sms)."""
+    if not (settings.exotel_sid and settings.exotel_api_key and settings.exotel_api_token):
+        return {"status": "skipped", "reason": "Exotel credentials not configured"}
+
+    url = f"https://{settings.exotel_subdomain}/v1/Accounts/{settings.exotel_sid}/Calls/{call_sid}.json"
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        response = await client.post(url, auth=(settings.exotel_api_key, settings.exotel_api_token), data={"Status": "completed"})
+        response.raise_for_status()
+        return response.json()

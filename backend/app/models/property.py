@@ -60,6 +60,13 @@ class Property(UUIDPkMixin, TimestampMixin, Base):
 
     city: Mapped[str | None] = mapped_column(String(120))
     exophone: Mapped[str | None] = mapped_column(String(32), unique=True, index=True)
+    # Twilio equivalent of exophone above -- a Twilio phone number routed to
+    # this property's Guest Support line, independent of and never read by
+    # any Exotel code path. Added so telephony testing can continue on
+    # Twilio's free trial when Exotel credits run out, without touching the
+    # Exotel routing/pipeline at all. See app/api/v1/voice.py's twilio_*
+    # routes and app/voice/pipeline.py's run_voice_pipeline_twilio.
+    twilio_number: Mapped[str | None] = mapped_column(String(32), unique=True, index=True)
     base_price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
     ical_url: Mapped[str | None] = mapped_column(String(1024))
 

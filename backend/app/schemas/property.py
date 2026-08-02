@@ -53,6 +53,7 @@ class PropertyCreate(BaseModel):
     name: str
     city: str | None = None
     exophone: str | None = None
+    twilio_number: str | None = None
     base_price: float = Field(ge=0)
     ical_url: str | None = None
     usp: str | None = Field(default=None, max_length=280)
@@ -67,12 +68,12 @@ class PropertyCreate(BaseModel):
     max_guests: int = 4
     minimum_nights: int = Field(default=1, ge=1)
 
-    @field_validator("exophone")
+    @field_validator("exophone", "twilio_number")
     @classmethod
     def _blank_exophone_is_none(cls, value: str | None) -> str | None:
-        # exophone is unique in the DB -- an empty string is a real value
-        # there (and would collide across properties), so treat "not set"
-        # as None rather than "".
+        # exophone/twilio_number are both unique in the DB -- an empty
+        # string is a real value there (and would collide across
+        # properties), so treat "not set" as None rather than "".
         return value or None
 
     @field_validator("ical_url")
@@ -91,6 +92,7 @@ class PropertyUpdate(BaseModel):
     bedroom_count: int | None = Field(default=None, ge=0)
     city: str | None = None
     exophone: str | None = None
+    twilio_number: str | None = None
     base_price: float | None = None
     ical_url: str | None = None
     usp: str | None = Field(default=None, max_length=280)
@@ -107,7 +109,7 @@ class PropertyUpdate(BaseModel):
     minimum_nights: int | None = Field(default=None, ge=1)
     exact_airbnb_pricing: bool | None = None
 
-    @field_validator("exophone")
+    @field_validator("exophone", "twilio_number")
     @classmethod
     def _blank_exophone_is_none(cls, value: str | None) -> str | None:
         return value or None
@@ -143,6 +145,7 @@ class PropertyOut(BaseModel):
     bedroom_count: int | None
     city: str | None
     exophone: str | None
+    twilio_number: str | None
     base_price: float
     ical_url: str | None
     usp: str | None

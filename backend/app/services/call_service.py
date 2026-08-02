@@ -30,6 +30,22 @@ async def get_user_by_lead_number(db: AsyncSession, dialed_number: str | None) -
     return await db.scalar(select(User).where(User.lead_exophone == dialed_number))
 
 
+async def get_property_by_twilio_number(db: AsyncSession, dialed_number: str | None) -> Property | None:
+    """Twilio equivalent of get_property_by_number above -- separate function
+    reading a separate column (Property.twilio_number) so nothing about the
+    Exotel routing path above is touched."""
+    if not dialed_number:
+        return None
+    return await db.scalar(select(Property).where(Property.twilio_number == dialed_number))
+
+
+async def get_user_by_twilio_lead_number(db: AsyncSession, dialed_number: str | None) -> User | None:
+    """Twilio equivalent of get_user_by_lead_number above."""
+    if not dialed_number:
+        return None
+    return await db.scalar(select(User).where(User.twilio_lead_number == dialed_number))
+
+
 def extract_caller_number(call: dict) -> str | None:
     return call.get("from") or None
 

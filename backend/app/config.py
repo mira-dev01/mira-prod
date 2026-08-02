@@ -154,6 +154,20 @@ class Settings(BaseSettings):
     # with the bare URL.
     twilio_escalation_template_sid: str | None = None
 
+    # Twilio Voice -- an entirely separate integration from the WhatsApp
+    # sandbox above and from Exotel telephony (app/api/v1/voice.py's
+    # exotel_voice_ws / app/voice/pipeline.py's run_voice_pipeline), added
+    # so real-call testing can continue on Twilio's free trial when Exotel
+    # credits run out, without touching any Exotel code path. Reuses
+    # twilio_account_sid/twilio_auth_token above -- same Twilio account, just
+    # also used for Voice now. Shared-secret path token, same pattern as
+    # exotel_webhook_token (Twilio signs webhooks with its own HMAC scheme
+    # too, but a shared-secret path segment is simpler and consistent with
+    # the rest of this codebase). See app/integrations/twilio_client.py's
+    # verify_voice_webhook_token and app/voice/pipeline.py's
+    # run_voice_pipeline_twilio.
+    twilio_voice_webhook_token: str = "change-me"
+
     # Cloudinary -- re-hosts property photos scraped via Bright Data
     # (see app/integrations/cloudinary_client.py) so listing images survive
     # even if the source Airbnb listing is edited/removed, and so MIRA can

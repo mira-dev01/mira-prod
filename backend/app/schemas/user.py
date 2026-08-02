@@ -56,6 +56,7 @@ class UserUpdate(BaseModel):
     name: str | None = None
     phone: str | None = None
     lead_exophone: str | None = None
+    twilio_lead_number: str | None = None
     business_name: str | None = None
     airbnb_host_status: AirbnbHostStatus | None = None
     property_count_estimate: int | None = Field(default=None, ge=1)
@@ -104,6 +105,7 @@ class UserOut(BaseModel):
     # UserOut built manually).
     is_internal_org: bool = False
     lead_exophone: str | None
+    twilio_lead_number: str | None
     business_name: str | None
     airbnb_host_status: str | None
     property_count_estimate: int | None

@@ -12,6 +12,20 @@ URL before connecting (every real Exotel connection arrived at plain
 `/exotel/ws` with no query string at all, while the same URL worked fine
 tested directly with curl), so a query param can never reach us from Exotel
 even though it's otherwise the more conventional place for a bearer token.
+
+Also has a completely independent Twilio Voice entrypoint (added so
+real-call testing can continue on Twilio's free trial when Exotel credits
+run out, without touching any Exotel routing/pipeline code -- see
+app/config.py's twilio_voice_webhook_token comment). Unlike Exotel, Twilio
+needs a real HTTP webhook first (Twilio's "A call comes in" console
+setting), which responds with TwiML telling Twilio where to open the media
+stream:
+  1. Set a Twilio number's Voice webhook to:
+     https://<backend_base_url>/api/v1/voice/twilio/incoming/<TWILIO_VOICE_WEBHOOK_TOKEN>
+  2. That returns TwiML pointing Twilio at:
+     wss://<backend_base_url>/api/v1/voice/twilio/ws/<TWILIO_VOICE_WEBHOOK_TOKEN>
+settings.backend_base_url must be the real public URL (not the localhost
+default) for step 1's generated wss:// URL to actually be reachable.
 """
 
 import asyncio
@@ -19,8 +33,8 @@ import json
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, WebSocket, status
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, WebSocket, status
+from fastapi.responses import HTMLResponse, Response
 from pipecat.runner.utils import parse_telephony_websocket
 from pipecat.transports.smallwebrtc.connection import IceServer, SmallWebRTCConnection
 from pydantic import BaseModel
@@ -31,9 +45,19 @@ from app.auth.dependencies import get_current_user
 from app.config import settings
 from app.database import get_db
 from app.integrations.exotel_client import verify_webhook_token
+from app.integrations.twilio_voice import (
+    build_connect_stream_twiml,
+    build_reject_twiml,
+    verify_voice_webhook_token,
+)
 from app.models.user import User
 from app.services import faq_service
-from app.voice.pipeline import run_browser_lead_pipeline, run_browser_voice_pipeline, run_voice_pipeline
+from app.voice.pipeline import (
+    run_browser_lead_pipeline,
+    run_browser_voice_pipeline,
+    run_voice_pipeline,
+    run_voice_pipeline_twilio,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/voice", tags=["voice"])
@@ -112,6 +136,43 @@ async def exotel_voice_ws(websocket: WebSocket, token: str) -> None:
     await websocket.accept()
     _transport_type, call_data = await parse_telephony_websocket(websocket)
     await run_voice_pipeline(websocket, call_data)
+
+
+@router.post("/twilio/incoming/{token}")
+async def twilio_voice_incoming(request: Request, token: str) -> Response:
+    """Twilio's "A call comes in" webhook -- see the module docstring for
+    the two-step setup this requires (unlike Exotel's single static WSS
+    URL). Twilio posts standard call params as form data; From/To are what
+    we need to pass through as TwiML <Parameter> custom stream params,
+    since Twilio's own WebSocket "start" event doesn't carry them (see
+    app/integrations/twilio_voice.py's build_connect_stream_twiml
+    docstring)."""
+    if not verify_voice_webhook_token(token):
+        logger.warning("Rejected Twilio voice webhook with invalid/missing token")
+        return Response(content=build_reject_twiml(), media_type="application/xml", status_code=403)
+
+    form = await request.form()
+    from_number = str(form.get("From", ""))
+    to_number = str(form.get("To", ""))
+
+    ws_scheme = "wss" if settings.backend_base_url.startswith("https") else "ws"
+    ws_host = settings.backend_base_url.split("://", 1)[-1].rstrip("/")
+    stream_ws_url = f"{ws_scheme}://{ws_host}/api/v1/voice/twilio/ws/{token}"
+
+    twiml = build_connect_stream_twiml(stream_ws_url, from_number, to_number)
+    return Response(content=twiml, media_type="application/xml")
+
+
+@router.websocket("/twilio/ws/{token}")
+async def twilio_voice_ws(websocket: WebSocket, token: str) -> None:
+    if not verify_voice_webhook_token(token):
+        logger.warning("Rejected Twilio voice websocket with invalid/missing token")
+        await websocket.close(code=4401)
+        return
+
+    await websocket.accept()
+    _transport_type, call_data = await parse_telephony_websocket(websocket)
+    await run_voice_pipeline_twilio(websocket, call_data)
 
 
 class BrowserOfferRequest(BaseModel):

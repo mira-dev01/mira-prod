@@ -28,6 +28,7 @@ from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair, LLMUserAggregatorParams
 from pipecat.runner.types import CallData
 from pipecat.serializers.exotel import ExotelFrameSerializer
+from pipecat.serializers.twilio import TwilioFrameSerializer
 from pipecat.services.anthropic.llm import AnthropicLLMService
 from pipecat.services.groq.llm import GroqLLMService
 from pipecat.services.openai.llm import OpenAILLMService
@@ -45,6 +46,7 @@ from sqlalchemy import select
 
 from app.config import settings
 from app.database import AsyncSessionLocal
+from app.integrations import exotel_client
 from app.models.property import Property
 from app.models.user import User
 from app.prompts.system_prompt import (
@@ -393,6 +395,7 @@ async def _run_pipeline(
     property_name: str | None = None,
     guest_profile_id: uuid.UUID | None = None,
     guest_known_name: str | None = None,
+    exotel_call_id: str | None = None,
     ringing_audio_task: asyncio.Task | None = None,
     voice_gender: str = "female",
 ) -> None:
@@ -418,6 +421,7 @@ async def _run_pipeline(
             property_name=property_name,
             guest_profile_id=guest_profile_id,
             guest_known_name=guest_known_name,
+            exotel_call_id=exotel_call_id,
             ringing_audio_task=ringing_audio_task,
             voice_gender=voice_gender,
         )
@@ -447,6 +451,7 @@ async def _run_pipeline_inner(
     property_name: str | None = None,
     guest_profile_id: uuid.UUID | None = None,
     guest_known_name: str | None = None,
+    exotel_call_id: str | None = None,
     ringing_audio_task: asyncio.Task | None = None,
     voice_gender: str = "female",
 ) -> None:
@@ -617,6 +622,21 @@ async def _run_pipeline_inner(
 
         @worker.event_handler("on_pipeline_finished")
         async def _on_finished(worker, frame):
+            # Closing our end of the Voicebot Applet's WebSocket stream only
+            # stops the audio stream -- it does NOT hang up the underlying
+            # PSTN call on Exotel's side. Confirmed live: after end_call
+            # correctly ended the pipeline, guests were left connected on a
+            # silent line because nothing was telling Exotel's platform the
+            # call itself should end. Never for browser test calls
+            # (exotel_call_id is None there -- no real telephony call to
+            # hang up), and never allowed to break the rest of teardown
+            # below if Exotel's API call fails.
+            if exotel_call_id:
+                try:
+                    await exotel_client.hangup_call(exotel_call_id)
+                except Exception:
+                    logger.exception("Failed to hang up Exotel call %s", exotel_call_id)
+
             transcript = "\n".join(
                 f"{message.get('role')}: {message.get('content')}"
                 for message in context.messages
@@ -864,6 +884,169 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
         call_session_id = session.id
 
     serializer = ExotelFrameSerializer(stream_sid=call_data.stream_id, call_sid=exotel_call_id)
+    transport = FastAPIWebsocketTransport(
+        websocket=websocket,
+        params=FastAPIWebsocketParams(
+            audio_in_enabled=True,
+            audio_out_enabled=True,
+            add_wav_header=False,
+            serializer=serializer,
+            vad_analyzer=create_vad_analyzer(_VAD_PARAMS),
+        ),
+    )
+
+    await _run_pipeline(
+        transport,
+        property_id,
+        call_session_id,
+        host_user_id,
+        system_prompt,
+        first_message,
+        caller_number=caller_number,
+        property_name=property_name,
+        guest_profile_id=guest.id if guest else None,
+        guest_known_name=guest.name if guest else None,
+        exotel_call_id=exotel_call_id,
+        ringing_audio_task=ringing_audio_task,
+        voice_gender=voice_gender,
+    )
+
+
+async def run_voice_pipeline_twilio(websocket: WebSocket, call_data: CallData) -> None:
+    """Twilio equivalent of run_voice_pipeline above -- deliberately a
+    parallel, independent function rather than a shared/refactored one, so
+    nothing about the Exotel entry point above is touched. Added purely so
+    real-call testing can continue on Twilio's free trial once Exotel
+    credits run out (see app/config.py's twilio_voice_webhook_token
+    comment for the full reasoning).
+
+    Real differences from run_voice_pipeline, all forced by how Twilio's
+    Media Streams protocol actually works (confirmed by reading pipecat's
+    parse_telephony_websocket/_create_telephony_transport):
+    - call_data.from_number/to_number come from TwiML <Parameter> custom
+      stream parameters (see app/integrations/twilio_voice.py's
+      build_connect_stream_twiml), not natively from Twilio's own "start"
+      event the way Exotel's call_data.from_number/to_number are.
+    - TwilioFrameSerializer needs account_sid/auth_token (reused from
+      settings.twilio_account_sid/twilio_auth_token -- the same Twilio
+      account already configured for WhatsApp), not just the stream/call
+      SIDs ExotelFrameSerializer needs.
+    - Property/host lookup goes through Property.twilio_number /
+      User.twilio_lead_number (call_service.get_property_by_twilio_number /
+      get_user_by_twilio_lead_number) -- separate columns from
+      Property.exophone / User.lead_exophone, so a host can have both an
+      Exotel and a Twilio number configured independently.
+    - exotel_call_id is deliberately left unset (None) below -- passing a
+      Twilio Call SID into that parameter would both mis-tag
+      CallSession.exotel_call_id (a column that means something specific:
+      an Exotel call identifier) and cause _run_pipeline_inner's call-ending
+      path to wrongly attempt an Exotel hangup API call with a Twilio SID.
+      Same as the browser-test pipelines below, which also always pass
+      exotel_call_id=None -- a Twilio call simply always creates a fresh
+      CallSession (no dedup-by-call-id), which is fine for testing and
+      avoids needing any change to call_service.get_or_create_call_session's
+      existing (Exotel-specific-by-name) parameter.
+    - No explicit hangup-via-API on call end (unlike Exotel's
+      exotel_client.hangup_call) -- not added here to avoid touching
+      _run_pipeline_inner's Exotel-specific hangup branch. Twilio's own
+      <Connect><Stream> TwiML verb already ends the call naturally once this
+      websocket closes (there's nothing after <Connect> in the TwiML), so
+      this isn't expected to leave calls hanging -- just not yet confirmed
+      against a real Twilio call the way the Exotel path has been.
+
+    The ring-tone helper (app/voice/ringing_audio.py) IS reused unchanged
+    below -- not a modification, just a call into existing code -- because
+    Twilio's own Media Streams outbound frame shape
+    ({"event": "media", "streamSid": ..., "media": {"payload": ...}}) is
+    byte-identical to Exotel's, confirmed against Twilio's own Media Streams
+    documentation.
+    """
+    call_sid = call_data.call_id
+    dialed_number = call_data.to_number
+    caller_number = call_data.from_number
+
+    ringing_audio_task = (
+        asyncio.create_task(play_ringing_tone(websocket, call_data.stream_id)) if call_data.stream_id else None
+    )
+
+    async with AsyncSessionLocal() as db:
+        property_ = await call_service.get_property_by_twilio_number(db, dialed_number)
+        lead_user = (
+            None if property_ is not None else await call_service.get_user_by_twilio_lead_number(db, dialed_number)
+        )
+
+        if property_ is None and lead_user is None:
+            logger.warning(
+                "No property or lead line configured for dialed Twilio number %s, ending call %s",
+                dialed_number,
+                call_sid,
+            )
+            if ringing_audio_task is not None:
+                ringing_audio_task.cancel()
+                try:
+                    await ringing_audio_task
+                except asyncio.CancelledError:
+                    pass
+            try:
+                await websocket.close()
+            except RuntimeError:
+                pass  # caller already disconnected
+            return
+
+        if property_ is not None:
+            host_user_id = property_.user_id
+        else:
+            host_user_id = lead_user.id
+        guest = await call_service.get_or_create_guest_profile(db, caller_number, host_user_id)
+        active_booking = await lead_service.get_active_booking(db, guest.id if guest else None, host_user_id)
+
+        if property_ is not None:
+            host = await db.get(User, property_.user_id)
+            session = await call_service.get_or_create_call_session(
+                db,
+                exotel_call_id=None,
+                property_id=property_.id,
+                guest_profile_id=guest.id if guest else None,
+                caller_number=caller_number,
+                user_id=property_.user_id,
+            )
+            verified_faq_entries = await faq_service.list_verified_property_faq(db, property_.id)
+            system_prompt = build_system_prompt(
+                property_, guest, host, active_booking, caller_phone=caller_number,
+                verified_faq_entries=verified_faq_entries,
+            )
+            first_message = first_message_for(property_, guest, host)
+            property_id = property_.id
+            property_name = property_.name
+            voice_gender = host.agent_voice_gender
+        else:
+            properties = list(
+                (await db.scalars(select(Property).where(Property.user_id == lead_user.id))).all()
+            )
+            session = await call_service.get_or_create_call_session(
+                db,
+                exotel_call_id=None,
+                property_id=None,
+                guest_profile_id=guest.id if guest else None,
+                caller_number=caller_number,
+                user_id=lead_user.id,
+            )
+            system_prompt = build_lead_system_prompt(
+                lead_user, properties, guest, active_booking, caller_phone=caller_number
+            )
+            first_message = lead_first_message_for(lead_user)
+            property_id = None
+            property_name = None
+            voice_gender = lead_user.agent_voice_gender
+
+        call_session_id = session.id
+
+    serializer = TwilioFrameSerializer(
+        stream_sid=call_data.stream_id,
+        call_sid=call_sid,
+        account_sid=settings.twilio_account_sid or "",
+        auth_token=settings.twilio_auth_token or "",
+    )
     transport = FastAPIWebsocketTransport(
         websocket=websocket,
         params=FastAPIWebsocketParams(
