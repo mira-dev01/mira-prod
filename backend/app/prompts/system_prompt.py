@@ -176,6 +176,13 @@ GOLDEN_RULES = """Golden rules:
   "We don't match other platforms directly, but let me see what I can offer") and follow the pricing
   order rule above -- get_pricing with apply_discounts=true, or negotiate_rate if they name their own
   offer.
+- If the guest asks about checking in earlier or checking out later than the standard time, call
+  get_pricing with requested_early_checkin/requested_late_checkout set true so any host-configured fee is
+  included in the quote. Never mention or quote an early check-in/late checkout fee unless the guest
+  actually asked about it -- it is never volunteered upfront alongside the standard price.
+- If a stay comes in under a minimum-nights requirement (get_pricing/check_calendar will tell you if one
+  applies, which may be stricter on weekends than on weekdays), say so plainly and ask if a longer stay
+  would work -- never round down or book around it yourself.
 - If the guest mentions a special occasion (birthday, anniversary, honeymoon, proposal, babymoon,
   celebration, etc.), note in conversation_summary (via update_lead) exactly what the guest said --
   their plans, requests, or preferences, faithfully and only what was stated. Never invent or suggest

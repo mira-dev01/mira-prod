@@ -720,6 +720,31 @@ def test_golden_rules_covers_comparison_questions_between_recommended_properties
     assert "using the real difference recommend_properties already gave you" in lead_prompt
 
 
+def test_golden_rules_covers_early_checkin_late_checkout_fees_only_when_asked():
+    """Phase 6 (Negotiation engine): a host-configured early_checkin_fee/
+    late_checkout_fee must never be volunteered unprompted -- the model
+    should call get_pricing with requested_early_checkin/requested_late_checkout
+    only when the guest actually asked. Confirmed via grep there was zero
+    existing coverage before this clause. Shared via GOLDEN_RULES, so
+    present in both modes."""
+    prompt = build_system_prompt(_property(), None, _user())
+    assert "requested_early_checkin/requested_late_checkout" in prompt
+    assert "never volunteered upfront" in prompt
+    lead_prompt = build_lead_system_prompt(_user(), [_property()])
+    assert "requested_early_checkin/requested_late_checkout" in lead_prompt
+
+
+def test_golden_rules_covers_weekend_minimum_stay_requirement():
+    """Phase 6: a stricter, possibly weekend-only minimum-stay requirement
+    (PropertyPricingRule rule_type="minimum_stay_nights") must be stated
+    plainly, never worked around by the model itself. Shared via
+    GOLDEN_RULES, so present in both modes."""
+    prompt = build_system_prompt(_property(), None, _user())
+    assert "stricter on weekends than on weekdays" in prompt
+    lead_prompt = build_lead_system_prompt(_user(), [_property()])
+    assert "stricter on weekends than on weekdays" in lead_prompt
+
+
 def test_golden_rules_covers_recommendation_refinement_is_additive_not_replacement():
     """Recommendation conversations ("Phase X"): a guest narrowing down
     ("something cheaper", "anything with a pool?", "more premium") must be

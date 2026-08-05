@@ -26,11 +26,14 @@ import type {
   NotificationOut,
   ServiceRequestOut,
   PriceBreakdown,
+  PricingPolicyParseResponse,
   PricingRuleCreate,
   PricingRuleOut,
   PropertyCreate,
   PropertyImportResult,
   PropertyOut,
+  PropertyPricingRuleOut,
+  PropertyPricingRuleUpdate,
   PropertyUpdate,
   TechnicianCreate,
   TechnicianOut,
@@ -247,6 +250,20 @@ export const api = {
     update: (id: string, data: HostDiscountRuleUpdate) =>
       request<HostDiscountRuleOut>(`/host-discount-rules/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
     remove: (id: string) => request<void>(`/host-discount-rules/${id}`, { method: "DELETE" }),
+  },
+  propertyPricingRules: {
+    list: () => request<PropertyPricingRuleOut[]>("/property-pricing-rules"),
+    parse: (pricingPolicyText: string) =>
+      request<PricingPolicyParseResponse>("/property-pricing-rules/parse", {
+        method: "POST",
+        body: JSON.stringify({ pricing_policy_text: pricingPolicyText }),
+      }),
+    update: (id: string, data: PropertyPricingRuleUpdate) =>
+      request<PropertyPricingRuleOut>(`/property-pricing-rules/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+    remove: (id: string) => request<void>(`/property-pricing-rules/${id}`, { method: "DELETE" }),
   },
   technicians: {
     list: () => request<TechnicianOut[]>("/technicians"),

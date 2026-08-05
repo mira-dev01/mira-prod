@@ -50,6 +50,14 @@ class GetPricingArgs(BaseModel):
     check_out: date
     num_guests: int
     apply_discounts: bool = True
+    # Phase 6 (Negotiation engine): only True if the GUEST explicitly asked
+    # about early check-in / late checkout -- never set proactively just
+    # because a property happens to have a fee configured for it. Quoting a
+    # fee the guest never asked about would be exactly the kind of
+    # unprompted upsell GOLDEN_RULES' pricing-order discipline already
+    # forbids for discounts; the same "only when asked" rule applies here.
+    requested_early_checkin: bool = False
+    requested_late_checkout: bool = False
 
 
 class DispatchTechnicianArgs(BaseModel):

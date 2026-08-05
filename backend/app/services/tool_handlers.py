@@ -212,6 +212,25 @@ async def handle_check_calendar(
             "Would a longer stay work?"
         )
 
+    # Phase 6 (Negotiation engine): a SECOND, host-configured minimum-stay
+    # floor (PropertyPricingRule rule_type="minimum_stay_nights"), on top of
+    # the flat Property.minimum_nights check above -- never replaces it,
+    # additive only. A host with no such rule configured sees zero change
+    # here (minimum_stay_nights_violation returns None). Most commonly used
+    # for a weekend-only floor (e.g. "Saturdays need 2 nights minimum") via
+    # condition["weekend_min_nights"], which only applies when the requested
+    # stay actually includes a Friday/Saturday night -- see that function's
+    # own docstring.
+    required_min_nights = await pricing_engine.minimum_stay_nights_violation(
+        db, host_user_id, property_.id, args.check_in, args.check_out
+    )
+    if required_min_nights is not None:
+        return (
+            f"{property_.name} needs a minimum stay of {required_min_nights} nights for those dates -- "
+            f"{nights_requested} night{'s' if nights_requested != 1 else ''} is below that. "
+            "Would a longer stay work?"
+        )
+
     if host_user_id is not None:
         await lead_service.backfill_lead_from_engagement(
             db,
@@ -275,6 +294,22 @@ async def handle_get_pricing(
     if args.check_out <= args.check_in:
         return "The check-out date needs to be after check-in. Could you confirm the dates?"
 
+    # Phase 6 (Negotiation engine) self-review fix: GOLDEN_RULES tells the
+    # model get_pricing will surface a minimum-stay requirement -- this must
+    # actually be true, not just check_calendar. Same check as
+    # handle_check_calendar's own (host-configured, additive, host-opt-in;
+    # a host with no minimum_stay_nights rule sees zero change here).
+    required_min_nights = await pricing_engine.minimum_stay_nights_violation(
+        db, host_user_id, property_.id, args.check_in, args.check_out
+    )
+    if required_min_nights is not None:
+        nights_requested = (args.check_out - args.check_in).days
+        return (
+            f"{property_.name} needs a minimum stay of {required_min_nights} nights for those dates -- "
+            f"{nights_requested} night{'s' if nights_requested != 1 else ''} is below that. "
+            "Would a longer stay work?"
+        )
+
     if host_user_id is not None:
         await lead_service.backfill_lead_from_engagement(
             db,
@@ -288,7 +323,14 @@ async def handle_get_pricing(
         )
 
     breakdown = await pricing_engine.calculate_price(
-        db, property_, args.check_in, args.check_out, apply_discounts=args.apply_discounts
+        db,
+        property_,
+        args.check_in,
+        args.check_out,
+        apply_discounts=args.apply_discounts,
+        host_id=host_user_id,
+        requested_early_checkin=args.requested_early_checkin,
+        requested_late_checkout=args.requested_late_checkout,
     )
 
     # Never quote a non-positive total as a real price -- see
@@ -319,6 +361,15 @@ async def handle_get_pricing(
             f", including a {breakdown.discount_percent:.0f}% discount of ₹{breakdown.discount_amount:,.0f} "
             f"off the base rate of ₹{breakdown.base_total:,.0f}"
         )
+    # Phase 6: only ever present when the guest explicitly asked (see
+    # GetPricingArgs.requested_early_checkin/requested_late_checkout) --
+    # never a silent addition to the total the guest didn't ask about.
+    # Stated as its own separate figure, not folded into the total above,
+    # so the guest hears exactly what they're being charged extra for.
+    if breakdown.early_checkin_fee:
+        summary += f". Early check-in is an extra ₹{breakdown.early_checkin_fee:,.0f}"
+    if breakdown.late_checkout_fee:
+        summary += f". Late checkout is an extra ₹{breakdown.late_checkout_fee:,.0f}"
     summary += "."
     if on_priced is not None:
         on_priced(property_, breakdown)

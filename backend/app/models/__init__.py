@@ -8,6 +8,7 @@ from app.models.notification import Notification
 from app.models.pricing_rule import PricingRule
 from app.models.property import Property
 from app.models.property_chunk import PropertyChunk
+from app.models.property_pricing_rule import PropertyPricingRule
 from app.models.technician import Technician
 from app.models.unanswered_question import UnansweredQuestion
 from app.models.user import User
@@ -23,6 +24,7 @@ __all__ = [
     "PricingRule",
     "Property",
     "PropertyChunk",
+    "PropertyPricingRule",
     "Technician",
     "UnansweredQuestion",
     "User",

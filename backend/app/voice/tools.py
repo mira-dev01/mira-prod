@@ -178,6 +178,8 @@ def build_voice_tools(
         check_out: str,
         num_guests: int,
         apply_discounts: bool = False,
+        requested_early_checkin: bool = False,
+        requested_late_checkout: bool = False,
     ):
         """Get total price including base rate, cleaning fee, taxes.
 
@@ -190,6 +192,13 @@ def build_voice_tools(
                 (e.g. asked for a lower rate/discount) after hearing the full-price quote.
                 Always call this first with apply_discounts left false to get the standard
                 price -- never lead with the discounted number.
+            requested_early_checkin: Set True ONLY if the guest explicitly asked about
+                checking in earlier than the standard time (e.g. "can I check in early?").
+                Never set this proactively -- if the property has an early check-in fee
+                configured, it's only quoted when the guest actually asked.
+            requested_late_checkout: Set True ONLY if the guest explicitly asked about
+                checking out later than the standard time. Same rule as
+                requested_early_checkin -- never volunteered unprompted.
         """
         async with AsyncSessionLocal() as db:
             try:
@@ -199,6 +208,8 @@ def build_voice_tools(
                     check_out=check_out,
                     num_guests=num_guests,
                     apply_discounts=apply_discounts,
+                    requested_early_checkin=requested_early_checkin,
+                    requested_late_checkout=requested_late_checkout,
                 )
 
                 state.set_slot("check_in", args.check_in)
