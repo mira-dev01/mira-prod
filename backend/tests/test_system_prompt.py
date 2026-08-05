@@ -745,6 +745,58 @@ def test_golden_rules_covers_weekend_minimum_stay_requirement():
     assert "stricter on weekends than on weekdays" in lead_prompt
 
 
+def test_golden_rules_covers_hard_close_vs_soft_close_framing():
+    """Phase 8 (Closing intelligence): the closing line must match how far
+    the guest actually got -- reassuring/concrete for a hard close (accepted
+    a property, heard a real price), open-ended/non-committal for a soft
+    close, never fabricated scarcity/urgency. Confirmed via grep there was
+    zero existing coverage before this clause. Shared via GOLDEN_RULES, so
+    present in both modes."""
+    prompt = build_system_prompt(_property(), None, _user())
+    assert "hard close" in prompt.lower()
+    assert "soft close" in prompt.lower()
+    assert "never invent urgency or scarcity" in prompt.lower()
+    lead_prompt = build_lead_system_prompt(_user(), [_property()])
+    assert "hard close" in lead_prompt.lower()
+    assert "soft close" in lead_prompt.lower()
+
+
+def test_golden_rules_hard_close_does_not_repeat_host_will_follow_up():
+    """Self-review fix: the hard-close reassurance must not tell the model
+    to say "the host will follow up soon" again -- that phrase is already
+    capped at once per call by the existing escalation rule (line ~240,
+    "Never say 'the host will be in touch' more than once"), and the most
+    common hard-close path (a guest accepting a price) already triggers
+    that phrase once via the escalate_to_host workflow. The hard-close
+    clause must explicitly defer to that existing cap, not silently
+    duplicate the phrase."""
+    prompt = build_system_prompt(_property(), None, _user())
+    assert 'do not say "the host will follow up/be in touch" again' in prompt.lower()
+    assert "capped at once per call" in prompt.lower()
+
+
+def test_golden_rules_covers_next_follow_up_must_be_a_concrete_action():
+    """Phase 8: next_follow_up must be written as a concrete next action for
+    the host, not a vague restatement -- previously unguided. Shared via
+    GOLDEN_RULES/LEAD_AGENT_INSTRUCTIONS, so present in the lead-agent mode
+    that actually calls update_lead with next_follow_up."""
+    lead_prompt = build_lead_system_prompt(_user(), [_property()])
+    assert "write next_follow_up as a concrete next" in lead_prompt.lower()
+    assert "action for the host to take" in lead_prompt.lower()
+
+
+def test_golden_rules_covers_escalation_urgency_mapping():
+    """Phase 8: escalate_to_host's urgency levels (low/medium/high/emergency)
+    had no guidance on how to choose between them -- previously the model
+    could pick arbitrarily. Shared via GOLDEN_RULES, so present in both
+    modes."""
+    prompt = build_system_prompt(_property(), None, _user())
+    assert "set urgency honestly" in prompt.lower()
+    assert "never default to high/emergency" in prompt.lower()
+    lead_prompt = build_lead_system_prompt(_user(), [_property()])
+    assert "set urgency honestly" in lead_prompt.lower()
+
+
 def test_golden_rules_covers_recommendation_refinement_is_additive_not_replacement():
     """Recommendation conversations ("Phase X"): a guest narrowing down
     ("something cheaper", "anything with a pool?", "more premium") must be

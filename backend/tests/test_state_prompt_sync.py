@@ -83,6 +83,79 @@ def test_build_state_block_content_drops_closing_hint_once_reopened():
     assert "call is closing" not in content.lower()
 
 
+def test_build_state_block_content_soft_close_when_guest_never_committed():
+    """Phase 8 (Closing intelligence): a guest who never accepted a specific
+    property or heard a real price gets soft-close framing -- never implies
+    anything is booked/confirmed."""
+    state = ConversationState()
+    state.mark_farewell_pending()
+    content = build_state_block_content(state)
+    assert "soft close" in content.lower()
+    assert "hard close" not in content.lower()
+
+
+def test_build_state_block_content_hard_close_when_guest_accepted_property_and_was_quoted():
+    """A guest who both accepted a specific property (via lock_property
+    after recommend_properties) AND was quoted a real price gets hard-close
+    framing -- both facts already tracked by ConversationState, no new
+    field. Neither fact alone is enough (see the two tests below)."""
+    state = ConversationState()
+    state.record_recommendations([{"property_id": "p1", "name": "Ocean View", "price": 6000, "guests": 4}])
+    state.lock_property("p1", "Ocean View")
+    state.record_quoted_price("Ocean View", "2026-08-10", "2026-08-12", 12000)
+    state.mark_farewell_pending()
+    content = build_state_block_content(state)
+    assert "hard close" in content.lower()
+    assert "soft close" not in content.lower()
+
+
+def test_build_state_block_content_soft_close_when_only_price_quoted_no_property_accepted():
+    """Being quoted a price alone (e.g. Guest Support mode, where a property
+    is fixed but the guest never explicitly accepted/showed interest) is
+    not enough for a hard close -- guest_accepted_property_id must also be
+    set, same discipline lock_property's own docstring already applies."""
+    state = ConversationState()
+    state.record_quoted_price("Ocean View", "2026-08-10", "2026-08-12", 12000)
+    state.mark_farewell_pending()
+    content = build_state_block_content(state)
+    assert "soft close" in content.lower()
+
+
+def test_build_state_block_content_soft_close_when_only_property_accepted_no_price_quoted():
+    """Accepting a property alone, with no price ever actually quoted, is
+    not enough for a hard close either -- both facts are required."""
+    state = ConversationState()
+    state.record_recommendations([{"property_id": "p1", "name": "Ocean View", "price": 6000, "guests": 4}])
+    state.lock_property("p1", "Ocean View")
+    state.mark_farewell_pending()
+    content = build_state_block_content(state)
+    assert "soft close" in content.lower()
+
+
+def test_build_state_block_content_soft_close_when_quote_is_stale_for_a_different_property():
+    """Self-review fix: guest_accepted_property_id and quoted_price are both
+    sticky (never cleared, only overwritten) -- a guest who accepted/was
+    quoted for Ocean View, then explicitly switched to browsing a different
+    property, must NOT read as a hard close for the stale Ocean View quote
+    just because both fields happen to still be truthy. Only a quote whose
+    own property_name matches the CURRENTLY accepted property counts."""
+    state = ConversationState()
+    state.record_recommendations([{"property_id": "p1", "name": "Ocean View", "price": 6000, "guests": 4}])
+    state.lock_property("p1", "Ocean View")
+    state.record_quoted_price("Ocean View", "2026-08-10", "2026-08-12", 12000)
+    # Guest switches to a different property -- a real, explicitly supported
+    # flow ("what about Palm Retreat instead?") -- without a new quote ever
+    # being requested for it before the call winds down.
+    state.record_recommendations(
+        [{"property_id": "p2", "name": "Palm Retreat", "price": 5000, "guests": 4}]
+    )
+    state.lock_property("p2", "Palm Retreat")
+    state.mark_farewell_pending()
+    content = build_state_block_content(state)
+    assert "soft close" in content.lower()
+    assert "hard close" not in content.lower()
+
+
 @pytest.mark.asyncio
 async def test_no_op_when_state_has_nothing_to_surface():
     state = ConversationState()

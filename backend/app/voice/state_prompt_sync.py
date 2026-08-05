@@ -86,8 +86,61 @@ _GOAL_HINTS: dict[str, str] = {
     "negotiating": "The guest is negotiating on price for the property currently under discussion.",
     "collecting_lead_contact": "The guest has shown interest -- collect name/phone if not already known.",
     "escalating": "This call has already been escalated to the host -- keep helping normally, don't escalate again for the same matter.",
-    "closing": "The call is closing -- don't reopen new topics unless the guest raises something new.",
+    # "closing" is handled separately by _closing_hint below -- a real,
+    # committed guest (accepted a property AND was quoted a real price)
+    # needs different framing from one who's still just browsing when the
+    # call winds down. Kept out of this dict (rather than one static string)
+    # since the right wording is derived from other ConversationState facts,
+    # not the goal value alone.
 }
+
+# Phase 8 (Closing intelligence): "hard close" (guest_accepted_property_id
+# AND quoted_price both set -- a real property was settled on AND a real
+# price was actually quoted for it, not just recommended) vs "soft close"
+# (neither, or only one) is derived entirely from facts ConversationState
+# already tracks -- no new field, same "hand the model a derived fact, don't
+# make it guess" discipline every other hint in this module already follows.
+# Deliberately does NOT say "last chance" / "act now" / any invented scarcity
+# claim -- this codebase has no real "N units left" signal to ground that in
+# (see calendar_service.next_available_window, which IS a real fact, already
+# surfaced directly in check_calendar's own "not available" reply text, not
+# duplicated here). Urgency here means "this guest already showed real
+# commitment, don't let the close undersell that," not fabricated pressure.
+_HARD_CLOSE_HINT = (
+    "The call is closing and the guest has already accepted a specific property and heard a real "
+    "price for it -- this is a hard close: reinforce that you've noted everything down and the host "
+    "will follow up soon to confirm, so the guest leaves the call confident their booking is actually "
+    "moving forward, not just that you were polite. Don't reopen new topics unless the guest raises "
+    "something new."
+)
+_SOFT_CLOSE_HINT = (
+    "The call is closing and the guest has not committed to a specific property/price yet -- this is a "
+    "soft close: keep the door open naturally (e.g. mention they're welcome to call back) rather than "
+    "implying anything is booked or confirmed. Don't reopen new topics unless the guest raises something new."
+)
+
+
+def _closing_hint(state: ConversationState) -> str:
+    if state.conversation_goal != "closing":
+        return ""
+    # Self-review fix: guest_accepted_property_id and quoted_price are both
+    # sticky (never cleared, only overwritten -- see their own docstrings
+    # above in this dataclass) -- a guest who accepted/was quoted for
+    # Property A, then explicitly switched to browsing Property B, leaves
+    # both fields stale-truthy for A even though nothing was confirmed for
+    # B. Comparing quoted_price's own property_name against
+    # selected_property_name (set together with guest_accepted_property_id
+    # by the same lock_property call) confirms the quote actually belongs
+    # to the CURRENTLY accepted property, not a stale one from earlier in
+    # the call.
+    if (
+        state.guest_accepted_property_id
+        and state.quoted_price
+        and state.quoted_price.get("property_name") == state.selected_property_name
+    ):
+        return _HARD_CLOSE_HINT
+    return _SOFT_CLOSE_HINT
+
 
 _SLOT_LABELS: dict[str, str] = {
     "check_in": "check-in",
@@ -138,7 +191,7 @@ def build_state_block_content(state: ConversationState) -> str:
     keeps the processor a true no-op on the common early-call case rather
     than injecting an empty or placeholder block."""
     slot_summary = _format_slots(state.slots)
-    goal_hint = _GOAL_HINTS.get(state.conversation_goal, "")
+    goal_hint = _closing_hint(state) or _GOAL_HINTS.get(state.conversation_goal, "")
     language_hint = _language_hint(state)
 
     if not slot_summary and not goal_hint and not language_hint and not state.quoted_price:
