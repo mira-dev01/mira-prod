@@ -24,6 +24,9 @@ def _card(**overrides) -> PropertyCard:
         top_amenities=["pool", "wifi"],
         usp=None,
         match_reasons=[],
+        comparison_note="",
+        is_premium=False,
+        amenity_checklist="",
     )
     defaults.update(overrides)
     return PropertyCard(**defaults)
@@ -97,6 +100,18 @@ def test_amenity_not_present_produces_no_amenity_reason():
     args = RecommendPropertiesArgs(required_amenities=["pool"])
     reasons = match_reasons_for_card(card, args)
     assert not any("pool" in r for r in reasons)
+
+
+def test_amenity_match_uses_canonical_synonym_matching():
+    """A guest asking for "pet friendly" must match a card whose top_amenities
+    entry is scraped/worded differently ("Pets Allowed") -- same
+    canonicalize_amenity normalization apply_amenity_boost/
+    amenity_checklist_note already use against amenity_tags, so this clause
+    doesn't silently stay empty for the exact same match those two report."""
+    card = _card(top_amenities=["Pets Allowed"])
+    args = RecommendPropertiesArgs(required_amenities=["pet friendly"])
+    reasons = match_reasons_for_card(card, args)
+    assert any("pet friendly" in r for r in reasons)
 
 
 def test_capped_at_two_reasons_even_with_every_criterion_matching():

@@ -420,6 +420,9 @@ def build_voice_tools(
         purpose_of_stay: str | None = None,
         required_amenities: list[str] | None = None,
         near_landmark: str | None = None,
+        cheaper_than_shown: bool = False,
+        larger_than_shown: bool = False,
+        more_premium_than_shown: bool = False,
     ):
         """Recommend properties from the portfolio matching the guest's needs.
         Do NOT call this again with the SAME criteria once the guest has
@@ -434,22 +437,54 @@ def build_voice_tools(
             preferred_location: Preferred city/area, if known.
             purpose_of_stay: e.g. family trip, couples getaway, workcation.
             required_amenities: Specific amenities the guest asked for, e.g.
-                ["pool", "projector"], if any.
+                ["pool", "projector"], if any. Accumulates across calls this
+                conversation -- if the guest already asked for a pool and now
+                also asks for pet friendly, pass BOTH here, not just the new
+                one; the guest almost always means "all of these," not "only
+                the latest one."
             near_landmark: A specific nearby place the guest asked to be
                 close to, e.g. "Thalassa", if any.
+            cheaper_than_shown: Set True ONLY if the guest asks for something
+                cheaper than what you already recommended this call (e.g.
+                "something cheaper", "anything less expensive") -- never
+                invent a rupee figure yourself for this; leave budget unset
+                and this resolves to a real number automatically. Do not set
+                this if the guest names an actual number themselves -- use
+                budget directly for that instead.
+            larger_than_shown: Set True ONLY if the guest asks for something
+                bigger than what you already recommended (e.g. "something
+                larger", "a bigger place") with no specific guest count
+                given -- never invent a guest count yourself for this; leave
+                num_guests unset and this resolves automatically. Do not set
+                this if the guest gives an actual number -- use num_guests
+                directly for that instead.
+            more_premium_than_shown: Set True if the guest asks for something
+                nicer/more premium/higher-end than what you already
+                recommended (e.g. "something more premium", "anything
+                nicer").
         """
         # A property is already locked for this call AND the guest hasn't
         # given any new distinguishing criteria (no location/budget/purpose/
-        # amenity/landmark this time) -- almost certainly a redundant
-        # re-browse rather than a genuine switch/compare request, which
-        # would come with new criteria. Block only that case; a call with
-        # new criteria goes through normally, which is what makes "compare
-        # this with Palm Retreat" / "does it have a pool" work -- the model
-        # supplies the new field and this still resolves it. This only
-        # fires if the model calls the tool anyway despite the docstring
-        # above; it's the enforced backstop, not the primary mechanism.
+        # amenity/landmark/relative-refinement this time) -- almost certainly
+        # a redundant re-browse rather than a genuine switch/compare/refine
+        # request, which would come with new criteria. Block only that case;
+        # a call with new criteria goes through normally, which is what makes
+        # "compare this with Palm Retreat" / "does it have a pool" / "anything
+        # cheaper" all work -- the model supplies the new field/flag and this
+        # still resolves it. This only fires if the model calls the tool
+        # anyway despite the docstring above; it's the enforced backstop, not
+        # the primary mechanism.
         if state.selected_property_id and not any(
-            [preferred_location, budget, purpose_of_stay, required_amenities, near_landmark]
+            [
+                preferred_location,
+                budget,
+                purpose_of_stay,
+                required_amenities,
+                near_landmark,
+                cheaper_than_shown,
+                larger_than_shown,
+                more_premium_than_shown,
+            ]
         ):
             locked_name = state.selected_property_name or "that property"
             await params.result_callback(
@@ -469,6 +504,48 @@ def build_voice_tools(
         # -- this only fills a gap, never overrides a real value just given.
         effective_num_guests = num_guests if num_guests is not None else state.slots.get("num_guests")
         effective_budget = budget if budget is not None else state.slots.get("budget")
+        # Recommendation conversations ("Phase X"): the same backfill Phase 1.4
+        # already established for num_guests/budget, extended to the three
+        # remaining filter-relevant slots -- previously these were only ever
+        # WRITTEN to state.slots, never read back, so a follow-up refinement
+        # call that omitted them (e.g. "anything with a pool?" after an
+        # earlier "properties in Goa") silently dropped the earlier location/
+        # purpose/amenity criteria instead of narrowing within them.
+        effective_location = preferred_location if preferred_location is not None else state.slots.get(
+            "preferred_location"
+        )
+        effective_purpose = purpose_of_stay if purpose_of_stay is not None else state.slots.get("purpose_of_stay")
+        # Amenities ACCUMULATE rather than backfill-on-omission like the
+        # others -- a guest listing amenities one at a time ("pool", then
+        # later "pet friendly") almost always means "all of these," per an
+        # explicit product decision, not "only whichever was mentioned most
+        # recently." Still lets the model supply the full accumulated list
+        # itself if it already tracked that from conversation history --
+        # this only adds what state already has, never drops anything the
+        # model DID pass this call.
+        previously_required = state.slots.get("required_amenities") or []
+        effective_amenities = sorted(set(previously_required) | set(required_amenities or [])) or None
+        # Relative refinement ("something cheaper"/"larger"): resolved from
+        # ConversationState.recommendations_shown (Phase 4's own already-
+        # stored price/capacity data), never an LLM-invented number. Only
+        # applies when the model didn't ALSO give an explicit absolute value
+        # this same call -- an explicit budget/num_guests is always a real,
+        # stronger signal than a relative one and must win outright.
+        #
+        # The resolved value is used for THIS search only -- it must NOT be
+        # written back to state.slots below (unlike a real guest-stated
+        # budget/num_guests), or a later, unrelated turn that omits budget/
+        # num_guests would silently backfill from a one-off "cheaper than
+        # what I showed you three turns ago" number the guest never actually
+        # stated, rather than falling back to no filter at all.
+        budget_is_derived = False
+        num_guests_is_derived = False
+        if cheaper_than_shown and effective_budget is None:
+            effective_budget = state.resolve_cheaper_budget()
+            budget_is_derived = effective_budget is not None
+        if larger_than_shown and effective_num_guests is None:
+            effective_num_guests = state.resolve_larger_num_guests()
+            num_guests_is_derived = effective_num_guests is not None
         # Phase 2.4 (documentation/agent-conversation-improvement.md): if the
         # guest's dates are already known from state.slots (set by an
         # earlier update_lead/check_calendar/get_pricing call this same
@@ -486,10 +563,13 @@ def build_voice_tools(
             args = RecommendPropertiesArgs(
                 budget=effective_budget,
                 num_guests=effective_num_guests,
-                preferred_location=preferred_location,
-                purpose_of_stay=purpose_of_stay,
-                required_amenities=required_amenities,
+                preferred_location=effective_location,
+                purpose_of_stay=effective_purpose,
+                required_amenities=effective_amenities,
                 near_landmark=near_landmark,
+                cheaper_than_shown=cheaper_than_shown,
+                larger_than_shown=larger_than_shown,
+                more_premium_than_shown=more_premium_than_shown,
             )
             structured_result = await tool_handlers.handle_recommend_properties(
                 db,
@@ -502,10 +582,13 @@ def build_voice_tools(
         rendered_result = render_recommendation_text(structured_result)
         if property_recommendation_guard is not None:
             property_recommendation_guard.record_tool_result("recommend_properties", structured_result)
-        state.set_slot("num_guests", effective_num_guests)
-        state.set_slot("budget", effective_budget)
-        state.set_slot("preferred_location", preferred_location)
-        state.set_slot("purpose_of_stay", purpose_of_stay)
+        if not num_guests_is_derived:
+            state.set_slot("num_guests", effective_num_guests)
+        if not budget_is_derived:
+            state.set_slot("budget", effective_budget)
+        state.set_slot("preferred_location", effective_location)
+        state.set_slot("purpose_of_stay", effective_purpose)
+        state.set_slot("required_amenities", effective_amenities)
         state.record_recommendations(
             [
                 {

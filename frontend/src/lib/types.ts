@@ -134,6 +134,7 @@ export type PropertyOut = {
   smart_price_sample_size: number;
   smart_price_updated_at: string | null;
   exact_airbnb_pricing: boolean;
+  is_premium: boolean;
   created_at: string;
 };
 
@@ -169,6 +170,7 @@ export type PropertyCreate = {
   max_guests?: number;
   minimum_nights?: number;
   exact_airbnb_pricing?: boolean;
+  is_premium?: boolean;
 };
 
 export type PropertyUpdate = Partial<PropertyCreate>;

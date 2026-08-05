@@ -66,6 +66,8 @@ keyword for an amenity that was never on file at all.
 
 import re
 
+from loguru import logger
+
 from pipecat.frames.frames import (
     Frame,
     FunctionCallsStartedFrame,
@@ -283,10 +285,18 @@ class PropertyRecommendationGuardProcessor(FrameProcessor):
                 await self.push_frame(frame, direction)
                 return
 
-            text = strip_property_ids(text)
+            stripped = strip_property_ids(text)
+            if stripped != text:
+                logger.warning("PropertyRecommendationGuardProcessor: stripped a leaked property_id from the reply")
+            text = stripped
 
             if armed_tool in _PRICE_FIDELITY_TOOLS and price_fact:
                 if not _amount_present(text, price_fact["total"]):
+                    logger.warning(
+                        "PropertyRecommendationGuardProcessor: overriding reply -- did not state the "
+                        "actual quoted total for {}",
+                        price_fact["property_name"],
+                    )
                     text = _fallback_price_text(price_fact["property_name"], price_fact["total"])
 
             if armed_tool == "check_calendar" and availability_fact:
@@ -303,6 +313,12 @@ class PropertyRecommendationGuardProcessor(FrameProcessor):
                     not real_available and asserts_available and not asserts_unavailable
                 )
                 if contradicts:
+                    logger.warning(
+                        "PropertyRecommendationGuardProcessor: overriding reply -- contradicted the "
+                        "actual availability ({}) for {}",
+                        real_available,
+                        availability_fact["property_name"],
+                    )
                     text = _fallback_availability_text(availability_fact["property_name"], real_available)
 
             if armed_tool == "search_faq" and faq_fact is not None:
@@ -310,6 +326,11 @@ class PropertyRecommendationGuardProcessor(FrameProcessor):
                 mentioned = {canonicalize_amenity(m) for m in _AMENITY_KEYWORD_RE.findall(text)}
                 invented = mentioned - real_amenities
                 if invented:
+                    logger.warning(
+                        "PropertyRecommendationGuardProcessor: overriding reply -- named amenity keyword(s) "
+                        "not actually on file: {}",
+                        invented,
+                    )
                     text = _FAQ_FIDELITY_FALLBACK
 
             if armed_tool == "recommend_properties" and options:
@@ -342,10 +363,18 @@ class PropertyRecommendationGuardProcessor(FrameProcessor):
                         capacity_violation = True
                         break
                 if capacity_violation:
+                    logger.warning(
+                        "PropertyRecommendationGuardProcessor: overriding reply -- stated guest-count "
+                        "didn't match a named property's real max_guests"
+                    )
                     text = _fallback_recommendation_text(options)
 
                 named = any(o["name"].lower() in text.lower() for o in options)
                 if not named:
+                    logger.warning(
+                        "PropertyRecommendationGuardProcessor: overriding reply -- did not name any of "
+                        "the properties recommend_properties actually returned"
+                    )
                     text = _fallback_recommendation_text(options)
 
             await self.push_frame(LLMFullResponseStartFrame())

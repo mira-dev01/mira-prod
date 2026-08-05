@@ -90,7 +90,32 @@ def format_property_pitch_line(card: PropertyCard, index: int) -> str:
     # a bad one); card.match_reasons is already capped at 2 by
     # match_reasons_for_card, and empty (producing no clause at all) when no
     # guest criteria were given, per that function's own no-fabrication rule.
-    reason_clause = f" -- {_join_natural(card.match_reasons)}" if card.match_reasons else ""
+    #
+    # comparison_note (Recommendation engine v2 -- "why not that one"/tradeoff
+    # reasoning) joins into the SAME clause rather than adding a second one --
+    # the existing voice-friendly discipline above applies just as much to a
+    # comparison as to a match reason. card.comparison_note (set by card.py's
+    # comparison_notes function) already caps this to one short fact
+    # ("₹1,000 more than Palm Retreat a night"), so joining it alongside
+    # match_reasons never produces more than the two-reasons-plus-one-
+    # comparison ceiling those two functions already independently enforce.
+    clause_parts = list(card.match_reasons)
+    if card.comparison_note:
+        clause_parts.append(card.comparison_note)
+    # amenity_checklist (Recommendation conversations, "Phase X"): required_
+    # amenities is a soft ranking preference now, not a hard filter, so a
+    # returned property can genuinely have some but not all of a guest's
+    # accumulated amenity requests. Per explicit product direction, this
+    # must be spoken explicitly (which it has, which it doesn't) so the
+    # guest can decide -- joins the same clause, same voice-friendly
+    # discipline as match_reasons/comparison_note above, never a second
+    # sentence. card.py's amenity_checklist_note already only produces this
+    # for a genuinely partial match (2+ requested amenities, neither
+    # all-matched nor all-missing), so it's never redundant with the
+    # existing single-amenity "has the X you asked for" match_reasons clause.
+    if card.amenity_checklist:
+        clause_parts.append(card.amenity_checklist)
+    reason_clause = f" -- {_join_natural(clause_parts)}" if clause_parts else ""
 
     return (
         f"{index}. {card.spoken_name}, a {descriptor}{amenity_phrase} in {card.city or 'unlisted city'} "

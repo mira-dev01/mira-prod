@@ -36,6 +36,8 @@ window), not a new class of cost this pipeline hasn't already accepted.
 
 import re
 
+from loguru import logger
+
 from pipecat.frames.frames import Frame, LLMFullResponseEndFrame, LLMFullResponseStartFrame, LLMTextFrame
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
@@ -211,6 +213,12 @@ class ResponseShapeValidatorProcessor(FrameProcessor):
                 return
 
             violations = validate_response_shape(text)
+            if violations:
+                logger.warning(
+                    "ResponseShapeValidatorProcessor: trimmed reply to its first clean sentence -- "
+                    "violations: {}",
+                    violations,
+                )
             final_text = first_clean_sentence_or_original(text) if violations else text
 
             await self.push_frame(LLMFullResponseStartFrame())

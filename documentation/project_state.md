@@ -8,7 +8,417 @@ Living snapshot for session continuity — not a chronological log. See `CLAUDE.
 
 ## Recent fixes
 
-Last 12 commits (on `main`):
+**2026-08-05 — Recommendation conversations ("Phase X"): support guest refinement turns ("something
+cheaper", "anything with a pool?", "closer to Candolim", "larger", "more premium", "pet friendly")
+without restarting retrieval. Two real, user-approved decisions grounded this phase, not silently
+picked in code:**
+- **`is_premium: bool` (new `Property` column, host-set only, never LLM-inferred)** grounds "something
+  more premium" in a real fact instead of an LLM guess about which property "feels" nicer -- chosen
+  over a numeric tier or a price-percentile-derived approach (explicit AskUserQuestion decision).
+  Migration `0a8ae066bf5c_add_is_premium_to_properties.py`, hand-trimmed to exclude unrelated
+  autogenerate drift (a `refresh_tokens` table drop, an `ix_host_discount_rules_host_id` index drop, a
+  `saturday_minimum_stay_enabled` column drop -- same precedent as
+  `8818413a6d0a_add_exact_airbnb_pricing_to_properties.py`). Exposed via `PropertyUpdate`/`PropertyOut`
+  (not `PropertyCreate` -- same set-after-creation precedent as `exact_airbnb_pricing`).
+- **`required_amenities` converted from a hard SQL `WHERE` filter to a soft ranking preference**
+  (`apply_amenity_boost` in `filter_builder.py`) -- an explicit, deliberate retrieval-semantics change,
+  escalated via AskUserQuestion rather than silently decided, because the old hard filter structurally
+  prevented a partial-match property from ever being returned or spoken about. Per explicit product
+  direction: if a property has a pool but isn't pet friendly, say so explicitly so the guest can decide
+  -- never silently exclude it. `sql_search.py` widens its candidate pool to 10 (from 3) whenever
+  `required_amenities` is set, since the boost has nothing to promote if the SQL query already capped
+  to the 3 cheapest before ranking ever ran; re-capped to 3 after boosting.
+- **Amenities ACCUMULATE across calls, never replace** (also an explicit, deliberate decision, not
+  silently picked): a guest asking for "pool" then later "pet friendly" almost certainly means both --
+  `tools.py`'s `recommend_properties` wrapper now merges `state.slots["required_amenities"]` with
+  whatever the model passes this call, same backfill discipline Phase 1.4 already established for
+  `num_guests`/`budget`, now also extended (backfill-on-omission, not merge) to `preferred_location`/
+  `purpose_of_stay` -- previously written to state but never read back, so a follow-up refinement call
+  omitting them silently dropped earlier criteria.
+- **`amenity_checklist_note(required_amenities, real_canonical_amenities)` in `card.py`** -- states both
+  present AND missing amenities explicitly ("has pool but not pet friendly") for a genuinely partial
+  match (2+ requested, neither all-matched nor all-missing); no-ops for a single amenity (already
+  covered by `match_reasons_for_card`'s own clause) or an all-matched/all-missing card. New
+  `PropertyCard.amenity_checklist: str` field, backfilled via `dataclasses.replace` in
+  `context_builder.py` (real full `amenity_tags` aren't available until after the base card is built),
+  joined into the same spoken clause as `match_reasons`/`comparison_note` in `pitch_formatter.py` --
+  never a second sentence.
+- **`cheaper_than_shown`/`larger_than_shown`/`more_premium_than_shown` (new `RecommendPropertiesArgs`
+  booleans)** -- relative refinement signals resolved into real numbers by two new
+  `ConversationState` methods, `resolve_cheaper_budget()` (10% below the cheapest shown) and
+  `resolve_larger_num_guests()` (one above the largest shown), never LLM-invented figures. Scoped to
+  search the FULL portfolio using the derived threshold (explicit AskUserQuestion decision), not
+  restricted to only already-shown properties. An explicit absolute value given the same call always
+  wins outright over the relative flag. `apply_premium_boost` in `filter_builder.py` ranks
+  `is_premium=True` properties first without ever dropping non-premium ones (a host with zero premium
+  properties set still gets a normal result, just no reordering).
+- **New `GOLDEN_RULES` clause** (`system_prompt.py`, shared by both modes): refinement is additive to
+  everything already established this call, never a replacement; use the relative booleans instead of
+  inventing a rupee figure or guest count; pass every accumulated amenity, not just the newest; speak
+  the amenity checklist (present vs. missing) explicitly so the guest can decide. Token cost: this
+  phase's addition alone is ~1,677 chars (**~419 tokens**) on top of the pre-phase `GOLDEN_RULES` of
+  ~34,202 chars (~8,550 tokens) -- current total 35,879 chars (~8,969 tokens), measured directly via
+  `len(GOLDEN_RULES)`, not assumed.
+- **Untouched, confirmed via `git status`**: `orchestrator.py`, `ranking.py`, `semantic_search.py`,
+  `calendar_service.py`, `StatePromptSyncProcessor`, all 7 guards, and every existing `ConversationState`
+  field/method beyond the two new resolvers. `filter_builder.py`, `sql_search.py`, and
+  `context_builder.py` WERE deliberately touched, as approved.
+- **A real pre-existing test caught encoding the OLD hard-filter behavior, fixed rather than left
+  broken**: `test_tool_handlers.py::test_recommend_properties_filters_by_required_amenity` asserted a
+  non-matching property was excluded entirely -- exactly the behavior this phase deliberately changed.
+  Renamed to `test_recommend_properties_ranks_required_amenity_match_first_without_excluding_others` and
+  updated to assert the amenity-matching property ranks first while the non-matching one is still
+  returned, not silently left red.
+- **Repeated frozen-dataclass breakage from the two new required `PropertyCard` fields
+  (`is_premium`, `amenity_checklist`)**, same class of fix as every prior phase: every direct
+  `PropertyCard(...)` construction site across `test_property_card_match_reasons.py`,
+  `test_property_card_comparison_notes.py`, `test_property_recommendation_guard.py` (shared `_card()`
+  helpers), and `test_property_card_and_pitch_formatter.py` (10 inline sites) needed both new fields
+  added.
+- 33 new tests: 4 in `test_conversation_state.py` (resolver methods), 6 in new
+  `test_property_card_amenity_checklist.py` (every branch), 7 in `test_property_retrieval_filter_builder.py`
+  (`apply_premium_boost` x3, `apply_amenity_boost` x4), 2 in `test_property_retrieval_sql_search.py`
+  (wider-pool amenity soft-match, and a baseline confirming the pool stays at 3 when no amenities are
+  requested), 10 in new `test_recommend_properties_refinement.py` (wrapper-level: location/purpose
+  backfill, amenity accumulation, amenity soft-match end-to-end, cheaper/larger/premium resolution,
+  explicit-value-wins-over-relative-flag, lock-backstop treats relative flags as new criteria), 2 in
+  `test_system_prompt.py` (new clause presence in both modes), 1 in `test_properties_api.py`
+  (`is_premium` PATCH round-trip + defaults false), 1 rewritten in `test_tool_handlers.py` (see above).
+  Full `pytest`: 657 passed (624 baseline + 33 new, one rewritten in place), same 5 pre-existing
+  failures, zero regressions.
+
+**2026-08-05 — Recommendation engine v2 ("Phase 4"): only the "why not that one?" / tradeoff-reasoning
+gap was implemented -- everything else in the original 7-item request (candidate ranking, diversity,
+explanation quality, ranking confidence) was already fully built and shipped under
+`agent-conversation-improvement.md`'s own Phase 2 (2026-08-01, 42 tests, confirmed live in the current
+code via direct grep before writing anything) -- re-touching any of it would have duplicated working,
+tested business logic and violated "do not redesign."** New, deterministic, additive:
+- **`comparison_notes(cards)` in `card.py`** -- for each PropertyCard in a `recommend_properties`
+  result, one clause naming its clearest real difference from the CHEAPEST other card in the same set
+  ("₹1,000 more than Palm Retreat a night" / "sleeps 4 more than Palm Retreat"). Same discipline
+  `match_reasons_for_card` already established: grounded only in real already-known fields, never an
+  LLM-guessed or fabricated comparison -- this is what lets the model answer a guest's own "why not the
+  other one?"/"what's the difference?" follow-up with a real fact instead of inventing or misstating
+  one, the same class of failure `property_recommendation_guard.py`'s existing price/capacity fidelity
+  checks already guard against for single-card facts. Thresholds are percentage-based for price (15%)
+  and flat for guest count (2 more) -- a trivial gap (₹200, 1 guest) isn't worth voicing. Only ONE
+  clause per card (price checked before capacity), cheapest-as-baseline (not an every-pair matrix) for
+  determinism. No-ops (returns `{}`) on fewer than 2 cards or a non-positive cheapest price (defensive;
+  `filter_builder.py` already excludes zero-price properties upstream in the real call path).
+- **`PropertyCard.comparison_note: str`** (new required field, same pattern as `match_reasons` --
+  defaults to `""` at `build_property_card`, backfilled via `dataclasses.replace` where sibling-card
+  context is actually available).
+- **`pitch_formatter.format_property_pitch_line`**: `comparison_note` joins the SAME clause
+  `match_reasons` already renders into (never a second sentence) -- the existing voice-friendly
+  discipline applies just as much to a comparison as to a match reason.
+- **`context_builder.build_recommendation_result`**: wires `comparison_notes` in at the exact point
+  `match_reasons`/`confidence_for_result` are already computed -- **deliberately skipped when
+  `combo_note` is set**, since that path's cards are smaller units meant to be booked TOGETHER
+  (`ranking.diversify_leading_candidates` already excludes this same path for the identical reason) --
+  a price/capacity comparison there would misleadingly frame two complementary units as competing
+  alternatives.
+- **New `GOLDEN_RULES` clause** (`system_prompt.py`, shared by both modes): when a guest directly asks
+  to compare already-recommended options, answer using the real difference `recommend_properties`
+  already returned, never invent one or just pick a favorite. Confirmed via grep there was zero
+  existing coverage for this before the change.
+- **Untouched, confirmed via `git status`/`git diff --stat`**: `orchestrator.py`, `filter_builder.py`,
+  `sql_search.py`, `semantic_search.py`, `ranking.py`, `calendar_service.py` (the retrieval core),
+  `ConversationState`, `StatePromptSyncProcessor` (this session added zero lines to either -- the
+  `conversation_state.py` diff in this working tree is entirely from a prior session), all 7 guards.
+- **Real pre-existing-test breakage caught and fixed, not left broken**: `PropertyCard` is a frozen
+  dataclass with every field required (same discipline `match_reasons` already established, precisely
+  to avoid a mutable-default hazard) -- adding `comparison_note` as a new required field meant every
+  test that constructs a `PropertyCard` directly (not via `build_property_card`) needed the new field
+  added at its own construction site. Found via running the affected test files immediately after
+  the dataclass change, not discovered later: `test_property_card_match_reasons.py`,
+  `test_property_recommendation_guard.py` (one shared `_card()`/`_card()` helper each, one-line fix),
+  `test_property_card_and_pitch_formatter.py` (8 separate inline construction sites, fixed
+  individually).
+- Token cost: `GOLDEN_RULES` grew 33,453 -> 34,211 chars (+758 chars, **+190 tokens, +2.3%**) -- smaller
+  than Phase 2's addition (+351) or Phase 3's (+228), a modest single-clause addition. The
+  `comparison_notes` mechanism itself adds no static system-prompt cost at all -- it only appears
+  inside a `recommend_properties` tool-result message, and only when ≥2 candidates come back with a
+  real, meaningful difference between them.
+- 15 new tests: 10 in new `tests/test_property_card_comparison_notes.py` (one per branch/edge case --
+  empty list, single card, cheapest-gets-no-note, meaningful price gap, small price gap falling through
+  to capacity, meaningful capacity gap, no-meaningful-difference-at-all, one-clause-price-before-capacity,
+  non-positive cheapest price, three-cards-all-compared-against-the-single-cheapest), 4 in
+  `test_property_card_and_pitch_formatter.py` (pitch-line rendering alone/joined-with-match-reasons,
+  end-to-end wiring through the real `build_recommendation_result` chain, the combo-note exclusion
+  specifically), 1 in `test_system_prompt.py` (new clause present in both prompt modes -- assertion
+  strings checked against the actual raw wrapped source before writing them this time, avoiding the
+  exact line-wrap-mismatch mistake caught during Phase 2/3's own self-reviews). Full `pytest`: 619
+  passed (604 baseline + 15 new), same 5 pre-existing failures, zero regressions.
+
+**2026-08-05 (same day, self-review correction) — two real correctness bugs in `comparison_notes`,
+both caught by a principal-engineer-style self-review before either reached a real call:**
+- **The capacity-comparison branch only ever checked for a POSITIVE guest-count gap, silently
+  producing no note at all whenever the pricier option was also the SMALLER one** -- a common real
+  listing shape (a large cheap family villa vs. a small pricier boutique unit). Confirmed live in the
+  review: `Family Villa (₹5,000, sleeps 8)` vs. `Boutique Suite (₹5,100, sleeps 2)` -- only a 2% price
+  gap (below the meaningful-price threshold, so it fell through to the capacity check), and the
+  capacity check produced NOTHING, despite "pricier AND sleeps 6 fewer" being arguably the single
+  clearest tradeoff this whole feature exists to surface. Every test written for this function varied
+  `max_guests` only in the direction where the pricier card had equal-or-more capacity -- none tested
+  the inverse, so this shipped past its own test suite undetected, the same class of process gap
+  flagged in a prior session's review. **Fixed**: capacity gap is now compared by `abs()` against the
+  threshold, with the spoken direction ("more"/"fewer") flipped to match reality.
+- **`comparison_notes` read `card.base_price` directly with no awareness that `exact_airbnb_pricing`
+  properties' stored `base_price` can be stale or a placeholder** (their real price comes from a live
+  SearchApi fetch at `get_pricing` time instead -- confirmed by re-reading `filter_builder.py`
+  directly, which already lets these properties through regardless of `base_price` for exactly this
+  reason). This meant a stale/placeholder number could end up spoken as a real price comparison
+  ("₹3,000 more a night") -- the exact class of failure `handle_get_pricing`/`handle_negotiate_rate`'s
+  own base_price=0 guard already exists to prevent (`docs/agents.md`'s documented 2026-07-23 incident:
+  a `base_price=0` property quoted as "free of charge"), reopened in this new code path with no
+  equivalent guard. **Fixed, deliberately without adding a new `PropertyCard` field** (which would have
+  meant touching every direct `PropertyCard(...)` test-construction site again, a bigger footprint than
+  necessary): `comparison_notes` now takes an optional `unreliable_price_ids: frozenset[uuid.UUID]`
+  parameter -- a flagged card is never used as the price baseline and never has a price claim built
+  about it (only a capacity comparison, which is trustworthy regardless of price), while `context_builder
+  .build_recommendation_result` computes this set from the real `Property.exact_airbnb_pricing` values
+  it still has in scope before the `Property` -> `PropertyCard` conversion, so no new field or
+  duplicated name-fallback logic was needed to thread the signal through.
+- Also fixed a wrong field-name reference in a `pitch_formatter.py` comment (`card.comparison_notes` ->
+  the actual field is `card.comparison_note`, singular; `comparison_notes` is the plural function name
+  in `card.py`).
+- 6 new tests: 5 in `test_property_card_comparison_notes.py` (pricier-but-smaller gets a "fewer" note;
+  an unreliable-priced card is excluded from ever being the price baseline; a flagged card never gets a
+  price claim built about itself; a flagged card can still get a capacity note; all-cards-unreliable
+  fails open to no notes at all), 1 end-to-end test in `test_property_card_and_pitch_formatter.py`
+  confirming `build_recommendation_result` actually threads `Property.exact_airbnb_pricing` through to
+  `comparison_notes`, not just the pure function in isolation. Full `pytest`: 625 passed (619 + 6 new),
+  same 5 pre-existing failures, zero regressions. Both fixes are fully backward-compatible for every
+  existing caller (`unreliable_price_ids` defaults to an empty `frozenset`) -- all 10 pre-existing
+  `comparison_notes` tests still pass unmodified.
+
+**2026-08-05 — Intelligent slot collection ("Phase 3"): extended two existing prompt mechanisms, no new
+state/mechanism.** Scope was narrowed during planning after confirming slot *extraction* is already
+entirely an LLM responsibility by design (every tool-arg schema in `schemas/tool.py` types slots as
+final structured values -- `num_guests: int`, `check_in: date`, never free text -- so there's no
+code-level NLU layer to build without duplicating what the LLM already does per turn); multi-slot
+extraction and re-asking-only-missing-info already work today via `update_lead`'s multi-field schema
+and `ConversationState`'s existing slot/goal tracking; location phrasing ("near Baga", "walking
+distance from the beach") is already handled downstream by `filter_builder.py`'s fuzzy locality/
+landmark matching, contingent only on the LLM passing the phrase through -- none of that needed
+touching. "Slot confidence" was scoped out entirely per explicit user instruction, consistent with
+this plan's own existing non-goal ("No LLM-self-reported confidence score... would itself be an
+ungrounded, hallucination-shaped output," `agent-conversation-improvement.md`'s Non-goals section) --
+dates/guest-counts have no meaningful confidence gradient once the LLM has extracted them into an
+`int`/`date`, so there was no real, groundable signal left to add.
+- **Extended the existing NEVER-RE-ASK "extract indirectly" clause** (`app/prompts/system_prompt.py`,
+  `GOLDEN_RULES`, shared by both prompt modes) -- previously covered only 3 narrow shapes ("we are 10
+  friends" -> num_guests=10, "next weekend" -> a date, "our budget is tight" -> a signal without a
+  number). Added: composite/implicit guest counts ("my wife and I" -> 2, "2 adults and a kid" -> 3,
+  with the actual arithmetic spelled out -- count everyone mentioned, +1 for "I"/"me"); explicit
+  confirmation that vague-sounding location phrasing ("near Baga", "walking distance from the beach")
+  is already a real, usable answer, not something needing a follow-up question; budget-as-ceiling
+  phrasing ("under 8k") already gives an exact number usable directly, no need to ask the guest to
+  restate it as a fixed amount.
+- **Extended `_today_anchor()`** (same file) with one more pre-computed pattern: "first weekend of
+  October"-style phrasing names a month rather than being relative to today, so it isn't covered by
+  the existing this/next-weekend pre-computation. Since which month a guest will actually name isn't
+  known at prompt-build time, the fix hands the model a worked METHOD (first Saturday of the named
+  month, roll to next year if that month already passed) plus one concrete example computed from the
+  real current date -- same "hand it a fact, don't make it calculate" reasoning the this/next-weekend
+  logic already uses, extended to the one date shape it didn't cover.
+- **Measured token cost** (Standing Rule 1's own bar, chars/4 approximation): `GOLDEN_RULES` alone grew
+  8,142 -> 8,370 tokens (+228, +2.8%); the full assembled Guest Support prompt (includes
+  `_today_anchor()`) grew 8,823 -> 9,466 tokens (+643, +7.3%); the full Lead Agent prompt grew
+  10,000 -> 10,642 tokens (+642, +6.4%). Larger than Phase 2's ~4.5% addition, driven mainly by the
+  worked date-example paragraph -- reported plainly rather than rounded down, since Standing Rule 1
+  explicitly requires measuring, not assuming acceptable.
+- **Caught and fixed during test-writing, not left in**: 3 of the first 5 new tests failed on first run
+  -- not logic bugs, but the exact same class of mistake as a prior session's own note (Phase 2's
+  "line-wrap mismatch" lesson): assertion strings written as if the source were one continuous string,
+  when the raw triple-quoted source wraps mid-phrase across lines (including once mid-quote, "my wife
+  and\n  I", which also reads worse as prose) or has case-sensitivity mismatches against a `.lower()`
+  comparison. All fixed by either adjusting the assertion to a same-line substring or, for the
+  mid-quote wrap, rewording the source itself so the phrase reads cleanly on one line either way.
+- **Untouched, confirmed via `git status`**: `ConversationState`, `StatePromptSyncProcessor`,
+  `app/services/property/retrieval/**`, all 7 guard files, `tools.py` -- nothing in this phase needed
+  a new mechanism, only more complete instructions inside two functions that already existed.
+- 5 new tests in `test_system_prompt.py`, matching the existing `test_golden_rules_covers_*` naming
+  convention plus the existing `_FixedDatetime` fixed-clock pattern for the two date-anchor tests (one
+  same-year case, one December-into-January year-rollover case -- actually exercising both branches of
+  the new year-rollover logic, not just the common case). Full `pytest`: 604 passed (599 baseline + 5
+  new), same 5 pre-existing failures, zero regressions.
+
+**2026-08-05 (same day, self-review correction) — two real bugs in the `_today_anchor()` worked example
+and the location-phrasing clause above, both caught by a principal-engineer-style self-review before
+they shipped further, not by a live call:**
+- **The month-anchor worked example never actually demonstrated the rollover rule it was teaching, for
+  11 of 12 months of the year.** The first version picked the NEXT calendar month as its example (e.g.
+  "September" when today is in August) -- but the next calendar month is, by construction, almost never
+  a month that has "already passed this year" (the one exception being December, where the next month
+  rolls into January of next year). So the prose correctly stated the rollover rule ("if that month has
+  already passed this year, it means next year"), but the one concrete example handed to the model only
+  ever showed the easy, same-year case -- for any call NOT placed in December, the model got zero worked
+  example of the actual harder arithmetic it was being told to do. Fixed: the example now picks the month
+  BEFORE today's month, resolved to NEXT year -- the real case the rule exists for (a booking date can't
+  resolve into the past, so an earlier-in-calendar month named by a guest always means next year). This
+  correctly demonstrates the rollover branch in 11 of 12 months; January is the one exception (no earlier
+  month within the same year to roll over), which now explicitly falls back to December of the same year
+  -- a real, still-useful example, just one that doesn't happen to need the rollover branch, documented
+  as such rather than left as an unexplained special case. Both fixed-clock tests rewritten to match:
+  `test_today_anchor_named_month_example_demonstrates_the_rollover_it_teaches` (June clock -> May 2027)
+  and `test_today_anchor_january_has_no_earlier_month_this_year_to_roll_over` (new, January clock ->
+  December same year, replacing the old December-clock test which is no longer the interesting case
+  under the corrected logic).
+- **"Walking distance from the beach" was asserted as a working preferred_location/near_landmark example
+  without actually being verified against the real matching code -- it doesn't reliably route anywhere.**
+  Traced through `filter_builder.py` directly: `preferred_location` matches via `ilike` against
+  `Property.city`/`neighborhood_info` (a place name, not a feature-distance description); `near_landmark`
+  matches via `matches_landmark()`'s `difflib.SequenceMatcher` fuzzy comparison against a landmark's own
+  `name` field, whose own docstring example is a specific named venue ("Thalassa") -- a generic phrase
+  like "walking distance from the beach" would score near-zero against any real landmark name, so the
+  only path it could ever match through is a coincidental verbatim substring inside a property's free-text
+  `neighborhood_info`. Since retrieval is off-limits to touch this phase, the honest fix was narrowing the
+  clause to only the example that's actually verified to work end-to-end -- "near Baga" (a real locality,
+  genuinely matched by `preferred_location`'s existing `ilike` logic) -- and dropping both "walking
+  distance from the beach" and "somewhere quiet away from town" (neither is a place name either), rather
+  than asserting two match paths that don't exist. `test_golden_rules_treats_location_phrasing_as_a_usable_answer`
+  renamed to `test_golden_rules_treats_a_named_locality_as_a_usable_answer` and rewritten to assert the
+  dropped phrase is genuinely absent, not just that the kept one is present.
+- Token cost after both fixes: `GOLDEN_RULES` 8,370 -> 8,363 tokens (-7, the dropped location examples
+  roughly offset other wording), Guest Support prompt 9,466 -> 9,458 (-8), Lead Agent 10,642 -> 10,636
+  (-6) -- net cost vs. the original pre-Phase-3 baseline essentially unchanged from before this
+  correction. Full `pytest`: 604 passed (same count -- 2 tests rewritten in place, 1 renamed, no net
+  new/removed), same 5 pre-existing failures, zero regressions.
+
+**2026-08-05 — Conversation robustness pass ("Phase 2"): topic-switch/answer-first-then-return-to-flow
+state + two GOLDEN_RULES wording clauses. Narrowed from an 8-item request after auditing what already
+existed** (interruptions/barge-in: already confirmed working, no task needed per
+`agent-conversation-improvement.md` Phase 6.4; user corrections: already fully covered by Phase 6.2's
+existing clause + `ConversationState.set_slot`'s overwrite mechanics; most of "repairs": covered by
+pre-existing filler/incomplete-sentence rules) — only genuinely uncovered ground was implemented:
+- **`interrupted_goal` field + `mark_detour()`** (`app/voice/conversation_state.py`): a guest asking
+  something tangential (routed through `search_faq`, the one tool that never itself advances
+  `conversation_goal`) while a real in-progress flow (`checking_availability`/`negotiating`/
+  `collecting_lead_contact`) is happening now records what was interrupted, so the model can be told to
+  return to it — previously `conversation_goal` was a single current-value field with no history, so a
+  detour silently overwrote what was in progress with nothing left to resume it. Same tool-call-is-the-
+  signal discipline as every other field (no new LLM classification): `mark_detour()` only records
+  anything when the *current* goal is one of the three resumable ones (a tangential question while still
+  just browsing isn't interrupting anything committed yet); cleared automatically the moment any real
+  progress resumes (`_recompute_goal`, the same place every other goal transition already happens),
+  since every tool that would resume the flow already calls `set_slot`/`lock_property` first.
+- **`search_faq` wrapper** (`app/voice/tools.py`): now calls `state.mark_detour()` after its result —
+  the only place this signal can originate, since `search_faq` is the tangential-question tool.
+- **`StatePromptSyncProcessor`** (`app/voice/state_prompt_sync.py`): surfaces `interrupted_goal` (when
+  set) as one added hint line, reusing `_GOAL_HINTS`' own phrasing so it reads consistently with the
+  existing "Current objective" line rather than introducing a second vocabulary. True no-op (zero added
+  tokens) when unset, same guarantee every other line in this block already has.
+- **Two new `GOLDEN_RULES` clauses** (`app/prompts/system_prompt.py`, shared by both prompt modes):
+  (1) answer-first-then-return-to-flow — confirmed via grep there was zero existing coverage for a guest
+  switching topics mid-flow within scope (existing "topic" rules were only about declining out-of-scope
+  topics, or bridging between *planned* steps like recommendation→pricing, neither of which covers a
+  genuine detour); (2) conversational-memory-callback wording — how to naturally reference something
+  already established (`state.slots`/`quoted_price`), distinct from the existing NEVER-RE-ASK rule
+  (which is about not re-asking a question, not about voicing a callback). Measured cost:
+  `GOLDEN_RULES` grew from 31,378 to 32,781 chars (**+1,403 chars, ~+351 tokens at chars/4, ~+4.5%**) —
+  comparable to a single prior Phase 6 addition (Phase 6.1 was ~167 tokens, Phase 6.2 ~150), not a
+  runaway addition, and Groq-prefix-cached like the rest of the static prompt.
+- **Deliberately not touched**: no guard file — none of the three new pieces of work are a factually-
+  verifiable claim a guard could check against real tool output (the pattern every existing guard uses);
+  these are stylistic/pragmatic behaviors, the same class of thing Standing Rule 3 already says stays
+  prompt-only where no code path can enforce it structurally. `app/services/property/retrieval/**`
+  untouched — confirmed via `git status` showing zero changes there.
+- 10 new tests: 4 in `test_conversation_state.py` (`mark_detour`'s own logic — records/no-ops/clears/
+  freezes-on-escalation-or-closing), 2 in `test_voice_tools.py` (the real `search_faq` wrapper actually
+  calls `mark_detour()`), 2 in `test_state_prompt_sync.py` (the hint line appears/stays absent), 2 in
+  `test_system_prompt.py` (both new clauses present in both prompt modes). Full `pytest`: 607 passed
+  (597 baseline + 10 new), same 5 pre-existing failures, zero regressions.
+
+**2026-08-05 (same day, self-review correction) — `interrupted_goal`/`mark_detour()` removed: the
+trigger signal was wrong, not just imprecise.** A principal-engineer-style self-review of the entry
+above found the `search_faq`-as-detour-signal design was built on an incorrect premise: `GOLDEN_RULES`
+itself mandates `search_faq` as the *required* first stop for any property/support question
+(`system_prompt.py:182`, Lead Agent workflow step 8) — on-topic or not — not just for tangents. A guest
+mid-negotiation asking "does it have a pool?" is directly relevant to the negotiation, but routes
+through the identical `search_faq` call as a genuine off-topic detour, and both were being flagged as
+"you were interrupted, return to X" identically. This meant the mechanism misfired on what is likely
+the *majority* of real `search_faq` calls (on-topic questions during an active flow), not an edge case.
+Confirmed no reliable replacement signal exists either — `search_faq`'s own arguments don't distinguish
+"tangential" from "relevant to the property already under discussion," since both usually resolve to
+the same locked `property_id`. Also confirmed all 6 tests added for this feature only covered the two
+cases the design *intended* to handle (resumable-goal-detour, browsing-goal-no-op) — zero coverage of
+the actual broken case, so the bug shipped past its own test suite undetected.
+- **Reverted, not patched**: `interrupted_goal`/`mark_detour()`/`_RESUMABLE_GOALS` fully removed from
+  `app/voice/conversation_state.py`; the `state.mark_detour()` call removed from `search_faq`'s wrapper
+  in `app/voice/tools.py`; the `interrupted_hint` line removed from `app/voice/state_prompt_sync.py`.
+  Considered narrowing the trigger (e.g. only count it as a detour if `search_faq` resolves to a
+  *different* property than the one locked) but rejected it — the actual failure case (an on-topic
+  question about the SAME property mid-negotiation) would still misfire under that narrower rule, so it
+  wouldn't have fixed the real bug, only a rarer one. Per Standing Rule 3's own carve-out ("where a
+  prompt change alone is genuinely sufficient... called out explicitly with the reason"), kept only the
+  `GOLDEN_RULES` answer-first-then-return-to-flow clause, which needs no state backing and doesn't
+  misfire — it's advisory prose, same class as every other GOLDEN_RULES clause with no code-level
+  guard. Also removed one dangling sentence from that clause ("If your instructions below say you were
+  in the middle of something...") that referenced the now-removed state hint.
+- 8 now-dead tests removed (4 in `test_conversation_state.py`, 2 in `test_voice_tools.py`, 2 in
+  `test_state_prompt_sync.py`, plus the now-unused `ConversationState` import in `test_voice_tools.py`).
+  The 2 tests for the surviving prompt-only clauses (`test_system_prompt.py`) were unaffected — they
+  assert on prompt text only, no state dependency. Full `pytest`: 599 passed (597 original baseline + 2
+  surviving new tests), same 5 pre-existing failures, zero regressions. Repo-wide grep confirms zero
+  remaining references to `interrupted_goal`/`mark_detour`/`_RESUMABLE_GOALS` anywhere.
+- Real lesson for next time this pattern comes up: before wiring a new `ConversationState` field to a
+  tool-call signal, explicitly check whether that tool is *exclusively* used for the triggering scenario
+  or also for the normal/legitimate case — `search_faq` looked like a clean "this must be a tangent"
+  signal by elimination (the one tool that doesn't itself advance `conversation_goal`), but "doesn't
+  advance the goal" and "only fires for detours" turned out to be different properties.
+
+**2026-08-05 — Architecture-debt cleanup pass (docs/how-it-works.md's Refactoring Plan, "Phase 1"),
+docs-only + small mechanical code changes, no feature work, no pipeline behavior change**:
+- **Groq prompt-cache section reordering** (`app/prompts/system_prompt.py`): both `build_system_prompt`
+  and `build_lead_system_prompt` previously appended per-call-unique sections (caller phone, guest
+  memory, active booking) BEFORE the static property/portfolio block, meaning no two calls to the same
+  property/host ever shared a cache-able prefix on Groq's prefix-based prompt cache. Reordered so the
+  static content comes first and per-call-unique sections are appended last — pure statement reordering,
+  zero content change. This was already scoped (not implemented) as of the 2026-07-22 entry below;
+  implemented now. `test_system_prompt.py` (74 tests) confirmed to have no order-dependent assertions
+  before the change, all still passing after.
+- **Guard intervention logging** (6 files: `repetition_guard.py`, `meta_commentary_guard.py`,
+  `property_recommendation_guard.py`, `escalation_phrase_guard.py`, `premature_end_call_guard.py`,
+  `response_shape_guard.py`): of the 7 pipeline guards, only `redundant_context_guard.py` logged when it
+  intervened — the other 6 acted silently, making "did guard X fire at all" invisible without manually
+  reading Railway logs for a specific call's timestamp window. Added one `logger.warning(...)` call at
+  each guard's actual intervention point(s), matching `redundant_context_guard.py`'s existing convention
+  exactly (guard name + what it did, via loguru; metadata only, never the raw text a guard dropped or
+  overrode — corrected during self-review, `meta_commentary_guard.py` initially logged the dropped span
+  verbatim, inconsistent with the other 5). No guard's pass-through/non-intervening behavior changed —
+  confirmed via all 85 guard tests still passing. **Partial, not full, closure of the observability gap**:
+  none of the new log calls carry `call_session_id` (the guard classes aren't constructed with one), so
+  "how often did guard X fire this week / on call Y specifically" still requires manually correlating log
+  timestamps to a call's known window — only "did it fire at all" is now answerable via a text search.
+  See `docs/how-it-works.md` Debt #6 for the full caveat.
+- **Lifecycle vocabulary cross-reference** (`app/voice/conversation_state.py`, `app/models/lead.py`):
+  `ConversationGoal` (in-call, discarded at hangup), `Lead.lead_temperature` (LLM-set via `update_lead`,
+  no validation), and `Lead.status` (host-set, dashboard-only) each track a different partial view of
+  "how far along is this booking," with nothing reconciling them. Added a documentation-only mapping
+  comment near `ConversationGoal` explaining the correspondence, plus a one-line cross-reference on
+  `Lead.lead_temperature` — no schema change, no migration, no behavior change. A genuine unified field
+  would need a real migration/backfill decision; explicitly out of scope for this pass.
+- **Phase 7 verification status re-confirmed, not advanced**: attempted to watch the local backend log
+  during a real test call specifically to make progress on `agent-conversation-improvement.md`'s Phase
+  7.1/7.4 (both blocked on live call data) — no call activity reached the monitored local process at all
+  (only the routine health-check heartbeat), most likely because the call went to Railway rather than
+  local (no ngrok tunnel running). Documented in `agent-conversation-improvement.md`'s Phase 7 section as
+  a re-confirmed-still-blocked data point, not fabricated as progress.
+- **`docs/how-it-works.md` Technical Debt table updated**: items #2 (Phase 4a — actually already closed,
+  the doc previously said "build status not confirmed"), #3 (lifecycle enum), #7 (prompt cache ordering)
+  updated to reflect what's now actually resolved vs. still genuinely open.
+- Full `pytest` suite: 597 passed before this pass, confirmed still 597 passed / same 5 pre-existing
+  failures after (`test_call_includes_duration_and_lead_name_phone`,
+  `test_escalate_to_host_also_saves_lead_so_it_isnt_left_empty`,
+  `test_search_faq_logs_gap_when_no_verified_answer`, `test_is_complete_short_but_punctuated`,
+  `test_ice_servers_stun_only_by_default`) — zero regressions.
+- **Not done in this pass, deliberately**: a DB-backed guard-event table (logging-only was chosen as the
+  smaller, lower-risk version — see `docs/how-it-works.md`'s Refactoring Plan for the tradeoff); a real
+  unified booking-lifecycle enum/migration (cross-reference comment only, per above); Phase 7.1/7.4/7.5
+  themselves (still require real call data, not achievable from this environment).
+
+Last 12 commits (on `main`) as of 2026-07-27:
 - `60e9fc4` reccoment_property() fixes
 - `07c6396` changes in escalation phrase, max completion tokens added, remove property id from recommend_properties(), added a repetition guard
 - `3bff6c6` changes lead display hierarchy

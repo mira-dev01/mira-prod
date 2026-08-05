@@ -50,6 +50,8 @@ Three independent triggers, matching the failure shapes actually seen live:
 
 import re
 
+from loguru import logger
+
 from pipecat.frames.frames import (
     Frame,
     LLMFullResponseEndFrame,
@@ -182,6 +184,10 @@ class RepetitionGuardProcessor(FrameProcessor):
         for sentence in parts[:-1]:
             if self._judge_sentence(sentence):
                 self._cutting = True
+                logger.warning(
+                    "RepetitionGuardProcessor: cutting the rest of this response short -- "
+                    "detected a near-duplicate sentence or a degenerate short-fragment flood"
+                )
                 return
 
     def _judge_sentence(self, raw_sentence: str) -> bool:

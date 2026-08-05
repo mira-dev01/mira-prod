@@ -570,7 +570,17 @@ async def test_recommend_properties_combo_fallback_keeps_all_four_units(test_use
     assert len(result.options) == 4
 
 
-async def test_recommend_properties_filters_by_required_amenity(test_user, db_session):
+async def test_recommend_properties_ranks_required_amenity_match_first_without_excluding_others(
+    test_user, db_session
+):
+    """Recommendation conversations ("Phase X"): required_amenities became a
+    soft ranking preference (filter_builder.py's apply_amenity_boost), never
+    a hard WHERE filter -- so a property lacking the requested amenity is
+    still returned (ranked after the match), not silently excluded. This
+    replaces the old hard-filter assertion this test used to make (pre-Phase
+    X, "Mocha" without a pool was excluded entirely -- that behavior was a
+    deliberate, explicit product decision to change, per the amenity-
+    checklist requirement that a partial match be spoken, not hidden)."""
     with_pool = Property(
         user_id=test_user.id, name="Nile", city="Siolim", exophone="+918011116666",
         base_price=4000, max_guests=3, amenities=["Private pool", "Wifi"],
@@ -587,7 +597,8 @@ async def test_recommend_properties_filters_by_required_amenity(test_user, db_se
     result = await tool_handlers.handle_recommend_properties(db_session, args, test_user.id)
     result_text = render_recommendation_text(result)
     assert "Nile" in result_text
-    assert "Mocha" not in result_text
+    assert "Mocha" in result_text
+    assert result_text.index("Nile") < result_text.index("Mocha")
 
 
 async def test_recommend_properties_near_landmark_boosts_matching_property(test_user, db_session):
