@@ -20,8 +20,6 @@ from app.voice.response_compliance import (
     LanguageComplianceRule,
     ResponseComplianceProcessor,
     RuleResult,
-    _devanagari_ratio,
-    _has_hinglish_token,
 )
 
 # Verbatim from the real transcript pulled from the production DB
@@ -37,49 +35,10 @@ def _response(*chunks: str) -> list:
     return [LLMFullResponseStartFrame(), *[LLMTextFrame(c) for c in chunks], LLMFullResponseEndFrame()]
 
 
-# --- Unit tests for the pure detection helpers ---
-
-
-def test_devanagari_ratio_pure_devanagari():
-    ratio, letters = _devanagari_ratio("आपका स्वागत है")
-    assert ratio == 1.0
-    assert letters > 0
-
-
-def test_devanagari_ratio_pure_latin():
-    ratio, letters = _devanagari_ratio("Welcome to our property")
-    assert ratio == 0.0
-    assert letters > 0
-
-
-def test_devanagari_ratio_ignores_digits_and_punctuation():
-    ratio, letters = _devanagari_ratio("₹12,000 / night!!")
-    assert letters == "night".__len__()  # only "night"'s letters count
-    assert ratio == 0.0
-
-
-def test_devanagari_ratio_empty_text_no_zero_division():
-    ratio, letters = _devanagari_ratio("123 -- ...")
-    assert ratio == 0.0
-    assert letters == 0
-
-
-def test_has_hinglish_token_detects_common_words():
-    assert _has_hinglish_token("Aapka check-in kal hai") is True
-
-
-def test_has_hinglish_token_does_not_false_positive_on_the():
-    """'the' must never match -- it's the single most common English word;
-    an earlier draft of this token set included 'the' intending the Hindi
-    past-tense particle and it silently broke every plain-English check."""
-    assert _has_hinglish_token("Let me check the calendar for you") is False
-
-
-def test_has_hinglish_token_no_match_on_plain_english():
-    assert _has_hinglish_token("Sure, let me check that for you right away.") is False
-
-
 # --- LanguageComplianceRule ---
+# (pure text-heuristic helpers devanagari_ratio/has_hinglish_token now live
+# in, and are tested by, test_language_heuristics.py -- shared with the
+# Style Engine)
 
 
 def test_language_rule_reproduces_real_call_regression():
@@ -211,12 +170,18 @@ async def test_processor_passes_through_all_frame_types_unchanged():
 
 @pytest.mark.asyncio
 async def test_processor_empty_response_does_not_crash():
-    """An empty-text response must still pass through untouched (all 3
-    frames forwarded) -- only rule evaluation is skipped for empty text,
-    frames are never dropped."""
+    """An empty-text response must not crash the processor -- Start/End are
+    re-emitted (this processor now buffers and re-emits its own Start frame
+    rather than forwarding the original immediately, since a later
+    regeneration may need to substitute the whole response -- see
+    process_frame's docstring comment), but no empty LLMTextFrame is
+    emitted since there's nothing to say and rule evaluation is skipped for
+    empty text."""
     processor = ResponseComplianceProcessor(ConversationState())
     down_frames, _ = await run_test(processor, frames_to_send=_response(""))
-    assert len(down_frames) == 3
+    assert len(down_frames) == 2
+    assert isinstance(down_frames[0], LLMFullResponseStartFrame)
+    assert isinstance(down_frames[-1], LLMFullResponseEndFrame)
 
 
 @pytest.mark.asyncio
@@ -309,3 +274,181 @@ def test_compliance_rule_is_a_protocol_language_rule_satisfies_it():
     rule: ComplianceRule = LanguageComplianceRule()
     assert hasattr(rule, "name")
     assert hasattr(rule, "check")
+
+
+# --- Response Validator: bounded regenerate-once path ---
+
+
+class _FakeLLMContext:
+    """Minimal stand-in for pipecat's real LLMContext -- only the
+    `.messages` property this module actually reads is needed."""
+
+    def __init__(self, messages: list[dict]):
+        self.messages = messages
+
+
+@pytest.mark.asyncio
+async def test_no_regeneration_attempted_without_llm_context():
+    """Regression guard for the pre-existing 17 tests above: omitting
+    llm_context (the default) must keep the processor's original
+    never-rewrites behavior byte-for-byte, even on a hard FAIL."""
+    state = ConversationState()
+    state.current_spoken_language = Language.HI_IN
+    processor = ResponseComplianceProcessor(state, rules=[LanguageComplianceRule()])
+
+    down_frames, _ = await run_test(processor, frames_to_send=_response(_REAL_REGRESSION_MIRA_REPLY))
+
+    assert "".join(f.text for f in down_frames if isinstance(f, LLMTextFrame)) == _REAL_REGRESSION_MIRA_REPLY
+
+
+@pytest.mark.asyncio
+async def test_regeneration_substitutes_text_when_correction_passes(monkeypatch):
+    async def _fake_regenerate(messages, stronger_instruction):
+        assert any(m.get("role") == "user" for m in messages)
+        assert "Conversation Style" in stronger_instruction or stronger_instruction
+        return "Aapka check-in 1 August ko hai, kitne guests aayenge?"
+
+    monkeypatch.setattr("app.voice.response_compliance._regenerate_once", _fake_regenerate)
+
+    state = ConversationState()
+    state.current_spoken_language = Language.HI_IN
+    llm_context = _FakeLLMContext([{"role": "system", "content": "sys"}, {"role": "user", "content": "haan"}])
+    processor = ResponseComplianceProcessor(state, rules=[LanguageComplianceRule()], llm_context=llm_context)
+
+    down_frames, _ = await run_test(processor, frames_to_send=_response(_REAL_REGRESSION_MIRA_REPLY))
+
+    spoken_text = "".join(f.text for f in down_frames if isinstance(f, LLMTextFrame))
+    assert spoken_text == "Aapka check-in 1 August ko hai, kitne guests aayenge?"
+    assert spoken_text != _REAL_REGRESSION_MIRA_REPLY
+
+
+@pytest.mark.asyncio
+async def test_regeneration_falls_back_to_original_when_correction_still_fails(monkeypatch):
+    async def _fake_regenerate(messages, stronger_instruction):
+        return "Still a plain English reply with nothing Hindi about it at all."
+
+    monkeypatch.setattr("app.voice.response_compliance._regenerate_once", _fake_regenerate)
+
+    state = ConversationState()
+    state.current_spoken_language = Language.HI_IN
+    llm_context = _FakeLLMContext([{"role": "system", "content": "sys"}])
+    processor = ResponseComplianceProcessor(state, rules=[LanguageComplianceRule()], llm_context=llm_context)
+
+    down_frames, _ = await run_test(processor, frames_to_send=_response(_REAL_REGRESSION_MIRA_REPLY))
+
+    spoken_text = "".join(f.text for f in down_frames if isinstance(f, LLMTextFrame))
+    assert spoken_text == _REAL_REGRESSION_MIRA_REPLY
+
+
+@pytest.mark.asyncio
+async def test_regeneration_falls_back_to_original_on_call_failure(monkeypatch):
+    async def _fake_regenerate(messages, stronger_instruction):
+        return None  # _regenerate_once's own contract: None on any failure/timeout
+
+    monkeypatch.setattr("app.voice.response_compliance._regenerate_once", _fake_regenerate)
+
+    state = ConversationState()
+    state.current_spoken_language = Language.HI_IN
+    llm_context = _FakeLLMContext([{"role": "system", "content": "sys"}])
+    processor = ResponseComplianceProcessor(state, rules=[LanguageComplianceRule()], llm_context=llm_context)
+
+    down_frames, _ = await run_test(processor, frames_to_send=_response(_REAL_REGRESSION_MIRA_REPLY))
+
+    spoken_text = "".join(f.text for f in down_frames if isinstance(f, LLMTextFrame))
+    assert spoken_text == _REAL_REGRESSION_MIRA_REPLY
+
+
+@pytest.mark.asyncio
+async def test_regeneration_never_attempted_on_pass():
+    call_count = 0
+
+    async def _counting_regenerate(messages, stronger_instruction):
+        nonlocal call_count
+        call_count += 1
+        return "should never be called"
+
+    state = ConversationState()
+    state.current_spoken_language = Language.EN_IN
+    llm_context = _FakeLLMContext([{"role": "system", "content": "sys"}])
+    processor = ResponseComplianceProcessor(state, rules=[LanguageComplianceRule()], llm_context=llm_context)
+    processor._regenerate_once = _counting_regenerate  # type: ignore[attr-defined]
+
+    await run_test(processor, frames_to_send=_response("Sure, let me check that for you right away."))
+
+    assert call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_regeneration_attempted_at_most_once_per_turn(monkeypatch):
+    """Hard cap: even if the corrected text STILL fails, there is no second
+    regeneration attempt -- exactly one call, ever, per turn."""
+    call_count = 0
+
+    async def _fake_regenerate(messages, stronger_instruction):
+        nonlocal call_count
+        call_count += 1
+        return "Still plain English, still failing validation on purpose."
+
+    monkeypatch.setattr("app.voice.response_compliance._regenerate_once", _fake_regenerate)
+
+    state = ConversationState()
+    state.current_spoken_language = Language.HI_IN
+    llm_context = _FakeLLMContext([{"role": "system", "content": "sys"}])
+    processor = ResponseComplianceProcessor(state, rules=[LanguageComplianceRule()], llm_context=llm_context)
+
+    await run_test(processor, frames_to_send=_response(_REAL_REGRESSION_MIRA_REPLY))
+
+    assert call_count == 1
+
+
+def test_stronger_style_instruction_includes_style_block_when_available():
+    from app.voice.conversation_style import ConversationAnalyzer, StyleEngine
+    from app.voice.response_compliance import _stronger_style_instruction
+
+    engine = StyleEngine()
+    signal = ConversationAnalyzer.analyze_turn("हाँ मुझे बुकिंग करनी है")
+    style, _ = engine.update([], signal, None, turn_index=1)
+
+    state = ConversationState()
+    state.conversation_style = style
+    instruction = _stronger_style_instruction(state)
+
+    assert "Conversation Style" in instruction
+    assert "did not follow" in instruction
+
+
+def test_stronger_style_instruction_handles_no_state():
+    from app.voice.response_compliance import _stronger_style_instruction
+
+    instruction = _stronger_style_instruction(None)
+    assert "did not follow" in instruction
+
+
+@pytest.mark.asyncio
+async def test_regeneration_speaks_a_filler_before_the_blocking_call(monkeypatch):
+    """Regression guard: a bare regeneration call (up to
+    REGENERATION_TIMEOUT_SECONDS, currently 8s) with nothing spoken first is
+    dead air on a live phone call -- the same confirmed-live failure mode
+    slow_tool_filler.py already exists to fix for slow tool calls. A filler
+    must be pushed before the blocking LLM call, not after."""
+    from pipecat.frames.frames import TTSSpeakFrame
+
+    call_order = []
+
+    async def _fake_regenerate(messages, stronger_instruction):
+        call_order.append("llm_call")
+        return "Aapka check-in 1 August ko hai, kitne guests aayenge?"
+
+    monkeypatch.setattr("app.voice.response_compliance._regenerate_once", _fake_regenerate)
+
+    state = ConversationState()
+    state.current_spoken_language = Language.HI_IN
+    llm_context = _FakeLLMContext([{"role": "system", "content": "sys"}])
+    processor = ResponseComplianceProcessor(state, rules=[LanguageComplianceRule()], llm_context=llm_context)
+
+    down_frames, _ = await run_test(processor, frames_to_send=_response(_REAL_REGRESSION_MIRA_REPLY))
+
+    filler_frames = [f for f in down_frames if isinstance(f, TTSSpeakFrame)]
+    assert len(filler_frames) == 1
+    assert filler_frames[0].append_to_context is False
+    assert call_order == ["llm_call"]  # filler was pushed (queued) before the await, not after

@@ -9,10 +9,23 @@ import pytest
 from pipecat.frames.frames import LLMContextFrame
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.tests.utils import run_test
-from pipecat.transcriptions.language import Language
 
 from app.voice.conversation_state import ConversationState
+from app.voice.conversation_style import ConversationAnalyzer, StyleEngine
 from app.voice.state_prompt_sync import StatePromptSyncProcessor, build_state_block_content
+
+
+def _style_from_turns(*turns: str):
+    """Builds a real ConversationStyle via the actual engine, same as a live
+    call would produce it -- avoids hand-constructing a ConversationStyle
+    dataclass whose shape could silently drift from the real one."""
+    engine = StyleEngine()
+    history = []
+    style = None
+    for i, text in enumerate(turns, start=1):
+        signal = ConversationAnalyzer.analyze_turn(text)
+        style, history = engine.update(history, signal, style, turn_index=i)
+    return style
 
 
 def _is_injected_state_block(message: dict, real_system_content: str) -> bool:
@@ -270,49 +283,41 @@ async def test_real_system_prompt_message_is_never_mutated():
     assert down_frames[-1].context.messages[0]["content"] == system_content
 
 
-def test_build_state_block_content_includes_passive_language_hint():
-    """Phase 3.2: passive per-turn detection (LanguageSyncProcessor writes
-    this) surfaces as a continue-in-this-language hint."""
+def test_build_state_block_content_includes_conversation_style_block():
+    """The dynamic state block now sources its language/tone text from the
+    Conversation Style Engine's own ConversationStyle (app/voice/
+    conversation_style.py), not raw current_spoken_language/
+    explicit_language_preference directly -- those two fields are unchanged
+    and still exist (still drive LanguageSyncProcessor's live TTS switch and
+    the Response Validator's own checks), but this prompt-rendering consumer
+    now reads the hysteresis-smoothed style instead of the raw single-turn
+    signal."""
     state = ConversationState()
-    state.current_spoken_language = Language.HI
+    state.conversation_style = _style_from_turns("हाँ मुझे बुकिंग करनी है", "सितंबर के पहले हफ्ते में")
     content = build_state_block_content(state)
-    assert "currently speaking Hinglish" in content
-    assert "continue replying in Hinglish" in content
+    assert "Conversation Style" in content
+    assert "Never abruptly change language." in content
 
 
-def test_build_state_block_content_english_language_hint():
+def test_build_state_block_content_english_conversation_style():
     state = ConversationState()
-    state.current_spoken_language = Language.EN_IN
+    state.conversation_style = _style_from_turns("Hello, how can I help you")
     content = build_state_block_content(state)
-    assert "currently speaking English" in content
+    assert "Language: English" in content
 
 
-def test_build_state_block_content_explicit_preference_overrides_passive_detection():
-    """Phase 3.3: an explicit, guest-stated request ('can you speak Hindi?')
-    is a stronger signal than passive code-switch detection and must win
-    when both are set -- e.g. the guest asked for Hindi but their most
-    recent utterance happened to be transcribed as English."""
-    state = ConversationState()
-    state.current_spoken_language = Language.EN
-    state.explicit_language_preference = Language.HI
-    content = build_state_block_content(state)
-    assert "asked you to speak in Hinglish" in content
-    assert "currently speaking English" not in content
-
-
-def test_build_state_block_content_no_language_hint_before_any_speech_detected():
-    """The very first turn of a call, before any guest speech has been
-    transcribed -- GOLDEN_RULES' own passive-mirroring instruction already
-    covers this case, so no hint (and no extra tokens) is injected."""
+def test_build_state_block_content_no_style_block_before_any_speech_detected():
+    """The very first turn of a call, before ConversationStyleProcessor has
+    computed anything yet -- no hint (and no extra tokens) is injected."""
     state = ConversationState()
     content = build_state_block_content(state)
     assert content == ""
 
 
 @pytest.mark.asyncio
-async def test_language_hint_flows_through_the_real_processor():
+async def test_conversation_style_block_flows_through_the_real_processor():
     state = ConversationState()
-    state.current_spoken_language = Language.HI_IN
+    state.conversation_style = _style_from_turns("हाँ मुझे बुकिंग करनी है", "सितंबर के पहले हफ्ते में")
     processor = StatePromptSyncProcessor(state)
 
     frame = _context_frame({"role": "system", "content": "sys"}, {"role": "user", "content": "bhai kya haal hai"})
@@ -320,7 +325,7 @@ async def test_language_hint_flows_through_the_real_processor():
 
     messages = down_frames[-1].context.messages
     state_block = next(m for m in messages if _is_injected_state_block(m, "sys"))
-    assert "Hinglish" in state_block["content"]
+    assert "Conversation Style" in state_block["content"]
 
 
 def test_build_state_block_content_includes_quoted_price():

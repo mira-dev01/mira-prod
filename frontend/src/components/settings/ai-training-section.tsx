@@ -124,6 +124,10 @@ export function AiTrainingSection() {
     setSelectedPropertyIds((prev) => ({ ...prev, [rule.id]: next }));
   }
 
+  function toggleAllForRule(rule: NegotiationRuleOut, allPropertyIds: string[], checked: boolean) {
+    setSelectedPropertyIds((prev) => ({ ...prev, [rule.id]: checked ? allPropertyIds : [] }));
+  }
+
   function openEdit(rule: NegotiationRuleOut) {
     setEditingRule(rule);
     setEditDiscountPercent(String(rule.discount_percent ?? 0));
@@ -281,9 +285,22 @@ export function AiTrainingSection() {
                       </ListRowHeader>
                       <ListRowBody>
                         <p className="text-sm text-muted-foreground">{ruleConditionSummary(rule)}</p>
-                        {!isDiscountTrigger(rule) && (
+                        {!isDiscountTrigger(rule) && properties && properties.length > 0 && (
                           <div className="mt-2 space-y-1">
-                            {properties?.map((property) => (
+                            <label className="flex items-center gap-2 text-sm font-medium">
+                              <Checkbox
+                                checked={selectedFor(rule).length === properties.length}
+                                onCheckedChange={(checked) =>
+                                  toggleAllForRule(
+                                    rule,
+                                    properties.map((p) => p.id),
+                                    checked === true
+                                  )
+                                }
+                              />
+                              Select all
+                            </label>
+                            {properties.map((property) => (
                               <label key={property.id} className="flex items-center gap-2 text-sm">
                                 <Checkbox
                                   checked={selectedFor(rule).includes(property.id)}

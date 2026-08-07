@@ -65,6 +65,8 @@ from app.services import (
     lead_service,
 )
 from app.voice.conversation_state import ConversationState
+from app.voice.conversation_style import ConversationStyleProcessor
+from app.voice.end_call_reliability_guard import EndCallReliabilityGuardProcessor
 from app.voice.escalation_phrase_guard import EscalationPhraseGuardProcessor
 from app.voice.language_sync import DEFAULT_TTS_LANGUAGE, LanguageSyncProcessor
 from app.voice.meta_commentary_guard import MetaCommentaryGuardProcessor
@@ -477,8 +479,20 @@ async def _run_pipeline_inner(
     # Phase 3.1: passes conversation_state so the guest's detected spoken
     # language (the same signal that already drives the TTS switch) is also
     # fed back into state for the prompt layer to read -- see
-    # app/voice/language_sync.py's own docstring.
+    # app/voice/language_sync.py's own docstring. Unmodified by the
+    # Conversation Style Engine below -- this still owns the live TTS switch
+    # and ConversationState.current_spoken_language/explicit_language_preference
+    # exactly as before.
     language_sync = LanguageSyncProcessor(conversation_state)
+    # Conversation Style Engine: computes ConversationState.conversation_style
+    # from a rolling, hysteresis-smoothed window of the guest's own turns --
+    # a higher-level, slower-moving judgment on top of language_sync's raw
+    # per-turn signal, so one ambiguous/noisy turn can't flip the LLM's
+    # language instruction mid-call. Reads the same TranscriptionFrame
+    # independently of language_sync; writes only conversation_style, never
+    # current_spoken_language/explicit_language_preference. See
+    # app/voice/conversation_style.py.
+    conversation_style_engine = ConversationStyleProcessor(conversation_state)
     # Auto-cuts a call where the guest has gone silent/unresponsive: nudges
     # ("Hello? Are you still there?") after each ~9s of silence, hangs up
     # after the second nudge goes unanswered. See app/voice/silence_watchdog.py
@@ -561,17 +575,17 @@ async def _run_pipeline_inner(
     # Response Compliance layer: a generic, rule-based quality GATE between
     # the LLM and tts, sitting after every rewriting guard above (including
     # response_shape_guard) so it inspects the actual final text about to be
-    # spoken, not a draft any earlier guard could still change. Never
-    # rewrites -- logs a structured PASS/WARNING/FAIL verdict per registered
-    # rule and pushes the frame through unchanged either way. The rule list
-    # is assembled HERE, not defaulted inside the processor class -- keeps
+    # spoken, not a draft any earlier guard could still change. On a hard
+    # FAIL (e.g. LanguageComplianceRule), attempts exactly one bounded
+    # direct-LLM regeneration (Response Validator) -- constructed below,
+    # right after `context` exists, since regeneration needs a reference to
+    # the same LLMContext llm/state_prompt_sync/the aggregators already
+    # share (read-only; never mutated here). The rule list is assembled
+    # HERE, not defaulted inside the processor class -- keeps
     # ResponseComplianceProcessor itself genuinely rule-agnostic; adding a
     # future PropertyNameRule/PricingConsistencyRule means appending to this
     # list, not touching response_compliance.py. See
     # app/voice/response_compliance.py for the full rationale.
-    response_compliance_guard = ResponseComplianceProcessor(
-        conversation_state, rules=[LanguageComplianceRule()]
-    )
 
     async with aiohttp.ClientSession() as http_session:
         tts = SarvamTTSService(
@@ -618,6 +632,18 @@ async def _run_pipeline_inner(
             ],
             tools=tools,
         )
+        response_compliance_guard = ResponseComplianceProcessor(
+            conversation_state, rules=[LanguageComplianceRule()], llm_context=context
+        )
+        # Guarantees end_call actually fires whenever the model speaks
+        # DEFAULT_CLOSING_PHRASE -- confirmed live: a guest-initiated
+        # ("thank you") close sometimes produced the closing line as plain
+        # text with no paired end_call tool call, leaving the call open
+        # indefinitely. Sits LAST, after response_compliance_guard (which can
+        # still rewrite/regenerate the response), so it checks the actual
+        # final text about to be spoken. See
+        # app/voice/end_call_reliability_guard.py.
+        end_call_reliability_guard = EndCallReliabilityGuardProcessor(silence_watchdog)
         # Pipecat defaults end-of-turn detection to a local ONNX transformer
         # model (LocalSmartTurnAnalyzerV3) running CPU inference on every
         # utterance. On a dev box also running the frontend, backend, and a
@@ -658,6 +684,7 @@ async def _run_pipeline_inner(
                 stt,
                 silence_watchdog,
                 language_sync,
+                conversation_style_engine,
                 user_aggregator,
                 redundant_context_guard,
                 state_prompt_sync,
@@ -670,6 +697,7 @@ async def _run_pipeline_inner(
                 premature_end_call_guard,
                 response_shape_guard,
                 response_compliance_guard,
+                end_call_reliability_guard,
                 tts,
                 transport.output(),
                 assistant_aggregator,
