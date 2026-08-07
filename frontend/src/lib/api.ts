@@ -13,27 +13,24 @@ import type {
   FaqGapAnalytics,
   FaqGapAnswer,
   FaqGapOut,
-  DiscountPolicyParseResponse,
   GuestProfileDetailOut,
   GuestProfileOut,
   GuestProfileUpdate,
-  HostDiscountRuleOut,
-  HostDiscountRuleUpdate,
   HostOnboarding,
   HostOnboardingResponse,
   LeadOut,
   LeadUpdate,
+  NegotiationPolicyParseResponse,
+  NegotiationRuleOut,
+  NegotiationRuleUpdate,
   NotificationOut,
   ServiceRequestOut,
   PriceBreakdown,
-  PricingPolicyParseResponse,
   PricingRuleCreate,
   PricingRuleOut,
   PropertyCreate,
   PropertyImportResult,
   PropertyOut,
-  PropertyPricingRuleOut,
-  PropertyPricingRuleUpdate,
   PropertyUpdate,
   TechnicianCreate,
   TechnicianOut,
@@ -240,30 +237,16 @@ export const api = {
     quote: (data: { property_id: string; check_in: string; check_out: string; num_guests: number }) =>
       request<PriceBreakdown>("/pricing/quote", { method: "POST", body: JSON.stringify(data) }),
   },
-  hostDiscountRules: {
-    list: () => request<HostDiscountRuleOut[]>("/host-discount-rules"),
-    parse: (discountPolicyText: string) =>
-      request<DiscountPolicyParseResponse>("/host-discount-rules/parse", {
+  negotiationRules: {
+    list: () => request<NegotiationRuleOut[]>("/negotiation-rules"),
+    parse: (policyText: string) =>
+      request<NegotiationPolicyParseResponse>("/negotiation-rules/parse", {
         method: "POST",
-        body: JSON.stringify({ discount_policy_text: discountPolicyText }),
+        body: JSON.stringify({ policy_text: policyText }),
       }),
-    update: (id: string, data: HostDiscountRuleUpdate) =>
-      request<HostDiscountRuleOut>(`/host-discount-rules/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
-    remove: (id: string) => request<void>(`/host-discount-rules/${id}`, { method: "DELETE" }),
-  },
-  propertyPricingRules: {
-    list: () => request<PropertyPricingRuleOut[]>("/property-pricing-rules"),
-    parse: (pricingPolicyText: string) =>
-      request<PricingPolicyParseResponse>("/property-pricing-rules/parse", {
-        method: "POST",
-        body: JSON.stringify({ pricing_policy_text: pricingPolicyText }),
-      }),
-    update: (id: string, data: PropertyPricingRuleUpdate) =>
-      request<PropertyPricingRuleOut>(`/property-pricing-rules/${id}`, {
-        method: "PATCH",
-        body: JSON.stringify(data),
-      }),
-    remove: (id: string) => request<void>(`/property-pricing-rules/${id}`, { method: "DELETE" }),
+    update: (id: string, data: NegotiationRuleUpdate) =>
+      request<NegotiationRuleOut>(`/negotiation-rules/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    remove: (id: string) => request<void>(`/negotiation-rules/${id}`, { method: "DELETE" }),
   },
   technicians: {
     list: () => request<TechnicianOut[]>("/technicians"),

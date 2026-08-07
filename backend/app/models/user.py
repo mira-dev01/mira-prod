@@ -94,10 +94,10 @@ class User(UUIDPkMixin, TimestampMixin, Base):
     # Host Memory: host-level negotiation/policy preferences (see
     # memory-architecture-plan.md section 4). discount_policy_text is the
     # host's own free-text paragraph describing how they usually handle
-    # discounts -- POST /auth/me/discount-policy/parse turns it into
-    # structured, host-approved HostDiscountRule rows; this text field is
-    # kept as-is for re-editing/re-parsing, not itself read by the pricing
-    # engine. negotiation_allowed/max_discount_percent_override are read by
+    # discounts -- POST /negotiation-rules/parse turns it into structured,
+    # host-approved NegotiationRule rows; this text field is kept as-is for
+    # re-editing/re-parsing, not itself read by the pricing engine.
+    # negotiation_allowed/max_discount_percent_override are read by
     # pricing_engine.negotiate_rate with a fallback to today's global
     # defaults (MAX_NEGOTIATION_DISCOUNT_PERCENT etc.) whenever unset --
     # never a behavior change for a host who hasn't configured anything.
@@ -111,9 +111,6 @@ class User(UUIDPkMixin, TimestampMixin, Base):
     properties: Mapped[list["Property"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
     leads: Mapped[list["Lead"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
     faq_entries: Mapped[list["FaqEntry"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
-    discount_rules: Mapped[list["HostDiscountRule"]] = relationship(
-        back_populates="host", cascade="all, delete-orphan"
-    )
-    property_pricing_rules: Mapped[list["PropertyPricingRule"]] = relationship(
+    negotiation_rules: Mapped[list["NegotiationRule"]] = relationship(
         back_populates="host", cascade="all, delete-orphan"
     )

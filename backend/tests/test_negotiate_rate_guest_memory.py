@@ -7,7 +7,7 @@ guest_loyalty when no guest profile is resolvable."""
 from datetime import date, timedelta
 
 from app.models.guest_profile import GuestProfile
-from app.models.host_discount_rule import HostDiscountRule
+from app.models.negotiation_rule import NegotiationRule
 from app.services.pricing_engine import negotiate_rate
 
 
@@ -18,7 +18,7 @@ def _next_weekday(start: date, weekday: int) -> date:
 
 async def _approved_repeat_guest_rule(db_session, host_id, percent=8):
     db_session.add(
-        HostDiscountRule(host_id=host_id, trigger_type="repeat_guest_same_host", discount_percent=percent, status="approved")
+        NegotiationRule(host_id=host_id, rule_type="discount_repeat_guest", discount_percent=percent, status="approved")
     )
     await db_session.commit()
 

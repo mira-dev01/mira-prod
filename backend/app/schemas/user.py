@@ -74,8 +74,8 @@ class UserUpdate(BaseModel):
     notification_email: EmailStr | None = None
     # Host Memory (see memory-architecture-plan.md section 4). Setting
     # discount_policy_text alone does NOT change pricing -- it's just the
-    # host's raw text, parsed into HostDiscountRule drafts via
-    # POST /auth/me/discount-policy/parse, which still need host approval
+    # host's raw text, parsed into NegotiationRule drafts via
+    # POST /negotiation-rules/parse, which still need host approval
     # (status="approved") before pricing_engine reads them.
     discount_policy_text: str | None = None
     negotiation_allowed: bool | None = None

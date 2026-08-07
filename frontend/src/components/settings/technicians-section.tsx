@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PropertyCombobox } from "@/components/property-combobox";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError } from "@/lib/api";
 
@@ -74,20 +75,13 @@ export function TechniciansSection() {
           <form onSubmit={handleCreate} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
             <div className="space-y-2 lg:col-span-2">
               <Label>Property</Label>
-              <Select value={propertyId} onValueChange={(v) => v && setPropertyId(v)} disabled={propertiesLoading}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select property">
-                    {(value: string) => properties?.find((p) => p.id === value)?.name ?? "Select property"}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {properties?.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <PropertyCombobox
+                properties={properties ?? []}
+                value={propertyId}
+                onChange={setPropertyId}
+                disabled={propertiesLoading}
+                placeholder="Search property"
+              />
             </div>
             <div className="space-y-2">
               <Label>Name</Label>

@@ -736,7 +736,7 @@ def test_golden_rules_covers_early_checkin_late_checkout_fees_only_when_asked():
 
 def test_golden_rules_covers_weekend_minimum_stay_requirement():
     """Phase 6: a stricter, possibly weekend-only minimum-stay requirement
-    (PropertyPricingRule rule_type="minimum_stay_nights") must be stated
+    (NegotiationRule rule_type="minimum_stay_nights") must be stated
     plainly, never worked around by the model itself. Shared via
     GOLDEN_RULES, so present in both modes."""
     prompt = build_system_prompt(_property(), None, _user())

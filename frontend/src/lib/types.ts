@@ -65,44 +65,24 @@ export type UserUpdate = {
   whatsapp_assist_enabled?: boolean | null;
 };
 
-export type HostDiscountRuleTriggerType = "no_ask" | "guest_requests" | "repeat_guest_same_host" | "custom";
-export type HostDiscountRuleStatus = "pending_validation" | "approved" | "rejected";
-
-export type HostDiscountRuleOut = {
-  id: string;
-  host_id: string;
-  trigger_type: string;
-  discount_percent: number;
-  source: string;
-  status: string;
-  raw_source_text: string | null;
-  created_at: string;
-};
-
-export type DiscountPolicyParseResponse = {
-  rules: HostDiscountRuleOut[];
-};
-
-export type HostDiscountRuleUpdate = {
-  trigger_type?: HostDiscountRuleTriggerType;
-  discount_percent?: number;
-  status?: HostDiscountRuleStatus;
-};
-
-// Phase 6 (Negotiation engine): host-authored, multi-property pricing rules
-// (minimum-stay, length-of-stay discounts, early check-in/late checkout
-// fees, freeform concessions) -- same pending_validation -> approved
-// lifecycle as HostDiscountRule above, but property-scoped via a checkbox
-// selection (property_ids) rather than applying portfolio-wide.
-export type PropertyPricingRuleType =
+// Unified negotiation/pricing training rule -- replaces what used to be two
+// separate types (HostDiscountRule's host-wide discount triggers,
+// PropertyPricingRule's stay-pricing rules). The three discount_* rule
+// types are host-wide by definition (property_ids stays [] for them); the
+// other five require an explicit, host-picked property_ids selection
+// before they take effect. See backend NegotiationRule's docstring.
+export type NegotiationRuleType =
+  | "discount_no_ask"
+  | "discount_guest_requests"
+  | "discount_repeat_guest"
   | "length_of_stay"
   | "minimum_stay_nights"
   | "early_checkin_fee"
   | "late_checkout_fee"
   | "custom";
-export type PropertyPricingRuleStatus = "pending_validation" | "approved" | "rejected";
+export type NegotiationRuleStatus = "pending_validation" | "approved" | "rejected";
 
-export type PropertyPricingRuleOut = {
+export type NegotiationRuleOut = {
   id: string;
   host_id: string;
   rule_type: string;
@@ -120,17 +100,17 @@ export type PropertyPricingRuleOut = {
   created_at: string;
 };
 
-export type PricingPolicyParseResponse = {
-  rules: PropertyPricingRuleOut[];
+export type NegotiationPolicyParseResponse = {
+  rules: NegotiationRuleOut[];
 };
 
-export type PropertyPricingRuleUpdate = {
-  rule_type?: PropertyPricingRuleType;
+export type NegotiationRuleUpdate = {
+  rule_type?: NegotiationRuleType;
   condition?: Record<string, unknown>;
   discount_percent?: number | null;
   label?: string | null;
   property_ids?: string[];
-  status?: PropertyPricingRuleStatus;
+  status?: NegotiationRuleStatus;
 };
 
 export type HostOnboarding = {
