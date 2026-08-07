@@ -3,7 +3,7 @@ from datetime import date, timedelta
 from app.integrations import redis_client
 from app.integrations.searchapi_client import nightly_rate_cache_key
 from app.models.pricing_rule import PricingRule
-from app.models.property_pricing_rule import PropertyPricingRule
+from app.models.negotiation_rule import NegotiationRule
 from app.services.pricing_engine import calculate_price, minimum_stay_nights_violation, negotiate_rate
 
 
@@ -145,16 +145,17 @@ async def test_negotiate_rate_counters_lowball_offer(test_property, db_session):
     assert result.counter_offer > 1
 
 
-# Phase 6 (Negotiation engine): PropertyPricingRule -- host-authored,
-# multi-property pricing rules (minimum-stay, length-of-stay discounts,
-# early check-in/late checkout fees, freeform concessions). A host with zero
-# approved rules must negotiate/price byte-identically to today -- same
-# fail-closed guarantee already established for HostDiscountRule.
+# Phase 6 (Negotiation engine): NegotiationRule's stay-pricing rule types --
+# host-authored, multi-property pricing rules (minimum-stay, length-of-stay
+# discounts, early check-in/late checkout fees, freeform concessions). A
+# host with zero approved rules must negotiate/price byte-identically to
+# today -- same fail-closed guarantee established for the discount_* rule
+# types in test_negotiate_rate_host_policy.py.
 
 
 async def test_no_rules_configured_is_byte_identical_to_before(test_property, db_session, test_user):
     """The single most important guarantee: a host with zero
-    PropertyPricingRule rows (every existing host, day one) sees NO change
+    NegotiationRule rows (every existing host, day one) sees NO change
     to calculate_price/minimum_stay_nights_violation at all."""
     monday = _next_weekday(date.today(), 0)
     wednesday = monday + timedelta(days=2)
@@ -173,7 +174,7 @@ async def test_length_of_stay_via_property_pricing_rule_applies(test_property, d
     PricingRule -- same rule_type, second source, resolved with the same
     "take the best" logic, never double-applied."""
     db_session.add(
-        PropertyPricingRule(
+        NegotiationRule(
             host_id=test_user.id,
             rule_type="length_of_stay",
             condition={"min_nights": 5},
@@ -198,7 +199,7 @@ async def test_length_of_stay_pending_rule_is_not_applied(test_property, db_sess
     (the default on parse, before host review) must never affect a live
     quote."""
     db_session.add(
-        PropertyPricingRule(
+        NegotiationRule(
             host_id=test_user.id,
             rule_type="length_of_stay",
             condition={"min_nights": 5},
@@ -223,7 +224,7 @@ async def test_length_of_stay_rule_not_scoped_to_this_property_is_ignored(test_p
     not leak into this property's price -- confirms property_ids scoping is
     actually enforced, not just present in the schema."""
     db_session.add(
-        PropertyPricingRule(
+        NegotiationRule(
             host_id=test_user.id,
             rule_type="length_of_stay",
             condition={"min_nights": 5},
@@ -245,7 +246,7 @@ async def test_length_of_stay_rule_not_scoped_to_this_property_is_ignored(test_p
 
 async def test_minimum_stay_nights_general_floor(test_property, db_session, test_user):
     db_session.add(
-        PropertyPricingRule(
+        NegotiationRule(
             host_id=test_user.id,
             rule_type="minimum_stay_nights",
             condition={"min_nights": 3},
@@ -271,7 +272,7 @@ async def test_minimum_stay_nights_weekend_only_floor(test_property, db_session,
     """weekend_min_nights only applies when the stay actually includes a
     Friday or Saturday night -- a purely-weekday stay must be unaffected."""
     db_session.add(
-        PropertyPricingRule(
+        NegotiationRule(
             host_id=test_user.id,
             rule_type="minimum_stay_nights",
             condition={"weekend_min_nights": 2},
@@ -296,7 +297,7 @@ async def test_minimum_stay_nights_weekend_only_floor(test_property, db_session,
 
 async def test_early_checkin_fee_only_applied_when_requested(test_property, db_session, test_user):
     db_session.add(
-        PropertyPricingRule(
+        NegotiationRule(
             host_id=test_user.id,
             rule_type="early_checkin_fee",
             condition={"fee": 1500},
@@ -329,21 +330,21 @@ async def test_malformed_condition_value_is_ignored_not_crashed_on(test_property
     every rule type that reads a condition value, not just one."""
     db_session.add_all(
         [
-            PropertyPricingRule(
+            NegotiationRule(
                 host_id=test_user.id,
                 rule_type="early_checkin_fee",
                 condition={"fee": "not a number"},
                 property_ids=[str(test_property.id)],
                 status="approved",
             ),
-            PropertyPricingRule(
+            NegotiationRule(
                 host_id=test_user.id,
                 rule_type="minimum_stay_nights",
                 condition={"weekend_min_nights": "two"},
                 property_ids=[str(test_property.id)],
                 status="approved",
             ),
-            PropertyPricingRule(
+            NegotiationRule(
                 host_id=test_user.id,
                 rule_type="length_of_stay",
                 condition={"min_nights": None},
@@ -372,7 +373,7 @@ async def test_malformed_condition_value_is_ignored_not_crashed_on(test_property
 
 async def test_late_checkout_fee_only_applied_when_requested(test_property, db_session, test_user):
     db_session.add(
-        PropertyPricingRule(
+        NegotiationRule(
             host_id=test_user.id,
             rule_type="late_checkout_fee",
             condition={"fee": 800},
@@ -396,7 +397,7 @@ async def test_custom_concession_never_lowers_the_existing_floor(test_property, 
     never overrides a MORE generous host-wide policy with a less generous
     property-specific one."""
     db_session.add(
-        PropertyPricingRule(
+        NegotiationRule(
             host_id=test_user.id,
             rule_type="custom",
             discount_percent=1,  # deliberately tiny -- must not lower the existing 10% floor below
@@ -413,7 +414,7 @@ async def test_custom_concession_never_lowers_the_existing_floor(test_property, 
     result = await negotiate_rate(
         db_session, test_property, monday, wednesday, guest_offer=1, guest_loyalty="new", host_id=test_user.id
     )
-    # guest_loyalty="new" with no HostDiscountRule configured resolves to
+    # guest_loyalty="new" with no NegotiationRule configured resolves to
     # the existing hardcoded 10% floor (see pricing_engine.negotiate_rate) --
     # the 1% custom rule must not push it below that.
     assert result.counter_offer > 1
@@ -422,12 +423,12 @@ async def test_custom_concession_never_lowers_the_existing_floor(test_property, 
 async def test_custom_concession_above_default_ceiling_actually_applies(test_property, db_session, test_user):
     """Self-review fix: a custom rule MORE generous than
     MAX_NEGOTIATION_DISCOUNT_PERCENT (15%, the default ceiling with no
-    HostDiscountRule.max_discount_percent_override set) must actually raise
+    User.max_discount_percent_override set) must actually raise
     the ceiling itself, not just the resolved discount_percent that then
     gets re-clamped back down to 15% -- the entire point of a property-
     specific concession is to exceed the portfolio-wide default."""
     db_session.add(
-        PropertyPricingRule(
+        NegotiationRule(
             host_id=test_user.id,
             rule_type="custom",
             discount_percent=30,
@@ -455,7 +456,7 @@ async def test_property_pricing_rule_lookup_failure_falls_back_to_no_rules(
     test_property, db_session, test_user, monkeypatch
 ):
     """Same fail-closed discipline as _get_host_negotiation_policy -- a DB
-    error looking up PropertyPricingRule (_approved_property_pricing_rules'
+    error looking up NegotiationRule (_approved_property_pricing_rules'
     own try/except) must never block/error a live call, just behave as if
     no rules were configured. Scoped to minimum_stay_nights_violation
     specifically, since it calls ONLY _approved_property_pricing_rules --

@@ -83,10 +83,10 @@ async def test_check_calendar_weekend_minimum_stay_rule_blocks_short_weekend_sta
     additive check alongside the existing flat Property.minimum_nights --
     only enforced when host_user_id is actually passed (so the rule can be
     looked up) and only for a stay that includes a Friday/Saturday night."""
-    from app.models.property_pricing_rule import PropertyPricingRule
+    from app.models.negotiation_rule import NegotiationRule
 
     db_session.add(
-        PropertyPricingRule(
+        NegotiationRule(
             host_id=test_user.id,
             rule_type="minimum_stay_nights",
             condition={"weekend_min_nights": 2},
@@ -115,10 +115,10 @@ async def test_check_calendar_weekend_minimum_stay_rule_ignored_without_host_use
     passed -- a caller that omits it (host_user_id=None, the existing
     default) sees zero behavior change, same fail-closed guarantee as
     every other host-policy lookup in this codebase."""
-    from app.models.property_pricing_rule import PropertyPricingRule
+    from app.models.negotiation_rule import NegotiationRule
 
     db_session.add(
-        PropertyPricingRule(
+        NegotiationRule(
             host_id=test_user.id,
             rule_type="minimum_stay_nights",
             condition={"weekend_min_nights": 2},
@@ -154,10 +154,10 @@ async def test_get_pricing_early_checkin_fee_only_surfaced_when_requested(test_p
     """Phase 6: a host-configured early_checkin_fee is only ever included in
     the spoken summary when the guest explicitly asked (requested_early_checkin
     set true) -- never volunteered as part of a normal price quote."""
-    from app.models.property_pricing_rule import PropertyPricingRule
+    from app.models.negotiation_rule import NegotiationRule
 
     db_session.add(
-        PropertyPricingRule(
+        NegotiationRule(
             host_id=test_user.id,
             rule_type="early_checkin_fee",
             condition={"fee": 1200},
@@ -192,10 +192,10 @@ async def test_get_pricing_weekend_minimum_stay_rule_blocks_short_quote(test_pro
     handle_get_pricing actually enforces the same host-configured
     minimum_stay_nights rule as handle_check_calendar, rather than quoting
     a full price for a stay that's actually too short."""
-    from app.models.property_pricing_rule import PropertyPricingRule
+    from app.models.negotiation_rule import NegotiationRule
 
     db_session.add(
-        PropertyPricingRule(
+        NegotiationRule(
             host_id=test_user.id,
             rule_type="minimum_stay_nights",
             condition={"weekend_min_nights": 2},

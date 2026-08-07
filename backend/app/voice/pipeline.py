@@ -72,6 +72,7 @@ from app.voice.premature_end_call_guard import PrematureEndCallGuardProcessor
 from app.voice.property_recommendation_guard import PropertyRecommendationGuardProcessor
 from app.voice.redundant_context_guard import RedundantContextGuardProcessor
 from app.voice.repetition_guard import RepetitionGuardProcessor
+from app.voice.response_compliance import LanguageComplianceRule, ResponseComplianceProcessor
 from app.voice.response_shape_guard import ResponseShapeValidatorProcessor
 from app.voice.ringing_audio import play_ringing_tone
 from app.voice.silence_watchdog import SilenceWatchdogProcessor
@@ -557,6 +558,21 @@ async def _run_pipeline_inner(
     # app/voice/response_shape_guard.py.
     response_shape_guard = ResponseShapeValidatorProcessor()
 
+    # Response Compliance layer: a generic, rule-based quality GATE between
+    # the LLM and tts, sitting after every rewriting guard above (including
+    # response_shape_guard) so it inspects the actual final text about to be
+    # spoken, not a draft any earlier guard could still change. Never
+    # rewrites -- logs a structured PASS/WARNING/FAIL verdict per registered
+    # rule and pushes the frame through unchanged either way. The rule list
+    # is assembled HERE, not defaulted inside the processor class -- keeps
+    # ResponseComplianceProcessor itself genuinely rule-agnostic; adding a
+    # future PropertyNameRule/PricingConsistencyRule means appending to this
+    # list, not touching response_compliance.py. See
+    # app/voice/response_compliance.py for the full rationale.
+    response_compliance_guard = ResponseComplianceProcessor(
+        conversation_state, rules=[LanguageComplianceRule()]
+    )
+
     async with aiohttp.ClientSession() as http_session:
         tts = SarvamTTSService(
             api_key=settings.sarvam_api_key,
@@ -653,6 +669,7 @@ async def _run_pipeline_inner(
                 escalation_guard,
                 premature_end_call_guard,
                 response_shape_guard,
+                response_compliance_guard,
                 tts,
                 transport.output(),
                 assistant_aggregator,

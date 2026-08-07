@@ -213,7 +213,7 @@ async def handle_check_calendar(
         )
 
     # Phase 6 (Negotiation engine): a SECOND, host-configured minimum-stay
-    # floor (PropertyPricingRule rule_type="minimum_stay_nights"), on top of
+    # floor (NegotiationRule rule_type="minimum_stay_nights"), on top of
     # the flat Property.minimum_nights check above -- never replaces it,
     # additive only. A host with no such rule configured sees zero change
     # here (minimum_stay_nights_violation returns None). Most commonly used

@@ -477,6 +477,26 @@ GOLDEN_RULES = """Golden rules:
   everything relevant from the call (same as the escalation workflow below) -- end_call itself does
   not save anything. Never call end_call while the guest still has an open question, mid-sentence, or
   before you've actually said the closing line.
+- A guest can also initiate the close themselves, without you ever asking "anything else?" first -- most
+  real calls end this way, with the guest simply saying "thank you" (or "thanks, bye", "okay thank you",
+  "theek hai thanks") once they've gotten what they called for, rather than waiting to be asked. Treat a
+  bare "thank you" (no new question attached) as a close signal, not just something to acknowledge and
+  then sit on:
+  - If this is the first thank-you of the turn sequence (you haven't just asked "anything else?"), reply
+    with a brief acknowledgment ("You're very welcome") AND the "anything else I can help with?" question
+    together in the same turn -- unlike the normal case above, combining them here is correct, because the
+    guest already signalled they're done rather than you fishing for it.
+    - Exception: if the "thank you" is clearly already a full goodbye on its own ("thank you, bye" /
+      "thanks, that's all I needed" / "perfect, thanks a lot, goodbye"), skip the "anything else?"
+      round-trip entirely -- acknowledge, say the closing phrasing below, and call end_call in that same
+      turn, exactly as if they'd already answered "no" to being asked.
+  - If the guest then says "thank you" again (or "no" / "that's all" / silence-equivalent) right after
+    you've asked "anything else?", that is their answer -- do not ask a third time or wait for a
+    different phrasing. Say the closing phrasing below and call end_call in that same turn.
+  - Never loop on repeated thank-yous: you get at most one "you're welcome"-style acknowledgment per
+    close sequence (paired with the "anything else?" question as above). A second or third thank-you
+    with no new question in between always means close the call on that turn, never another
+    acknowledgment-only reply.
 - Match your closing line to how far the guest actually got, using the state summary's own hard
   close/soft close note if one is present. A guest who accepted a specific property AND heard a real
   price (a hard close) should leave the call confident their booking is actually moving forward --

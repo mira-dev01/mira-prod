@@ -19,10 +19,9 @@ from app.integrations.searchapi_client import (
     nightly_rate_cache_key,
 )
 from app.models.guest_profile import GuestProfile
-from app.models.host_discount_rule import HostDiscountRule
+from app.models.negotiation_rule import NegotiationRule
 from app.models.pricing_rule import PricingRule
 from app.models.property import Property
-from app.models.property_pricing_rule import PropertyPricingRule
 from app.models.user import User
 
 logger = logging.getLogger(__name__)
@@ -52,37 +51,53 @@ class PriceBreakdown:
     late_checkout_fee: float = 0.0
 
 
-async def _approved_property_pricing_rules(
-    db: AsyncSession, host_id: uuid.UUID | None, property_id: uuid.UUID
-) -> list[PropertyPricingRule]:
+async def _approved_negotiation_rules(db: AsyncSession, host_id: uuid.UUID | None) -> list[NegotiationRule]:
     """Fail-closed, same discipline as _get_host_negotiation_policy below --
     any lookup failure (no host_id, DB error) returns an empty list rather
     than blocking/erroring calculate_price/negotiate_rate, which run live
-    mid-call. Filters property_ids in Python once fetched (not a JSONB
-    containment WHERE clause) -- same reasoning filter_builder.matches_landmark
-    already documents for its own small-per-host-candidate-set matching:
-    no performance reason to push this into fragile JSONB-path SQL when the
-    candidate set (one host's approved pricing rules) is tiny."""
+    mid-call."""
     if host_id is None:
         return []
     try:
-        rules = (
-            await db.scalars(
-                select(PropertyPricingRule).where(
-                    PropertyPricingRule.host_id == host_id,
-                    PropertyPricingRule.status == "approved",
+        return list(
+            (
+                await db.scalars(
+                    select(NegotiationRule).where(
+                        NegotiationRule.host_id == host_id,
+                        NegotiationRule.status == "approved",
+                    )
                 )
-            )
-        ).all()
+            ).all()
+        )
     except Exception:
-        logger.exception("Property pricing rule lookup failed for host_id=%s -- ignoring", host_id)
+        logger.exception("Negotiation rule lookup failed for host_id=%s -- ignoring", host_id)
         return []
+
+
+async def _approved_property_pricing_rules(
+    db: AsyncSession, host_id: uuid.UUID | None, property_id: uuid.UUID
+) -> list[NegotiationRule]:
+    """The stay-pricing subset of a host's approved negotiation rules that
+    apply to this specific property. Filters property_ids in Python once
+    fetched (not a JSONB containment WHERE clause) -- same reasoning
+    filter_builder.matches_landmark already documents for its own
+    small-per-host-candidate-set matching: no performance reason to push
+    this into fragile JSONB-path SQL when the candidate set (one host's
+    approved rules) is tiny. Unlike the host-wide discount_* trigger types
+    (see _get_host_negotiation_policy), stay-pricing rule types always
+    require an explicit, host-picked property match -- an empty
+    property_ids here means "matches nothing yet," not "matches everything."
+    """
     property_id_str = str(property_id)
-    return [rule for rule in rules if property_id_str in (rule.property_ids or [])]
+    return [
+        rule
+        for rule in await _approved_negotiation_rules(db, host_id)
+        if property_id_str in (rule.property_ids or [])
+    ]
 
 
 def _condition_number(condition: dict, key: str) -> float | None:
-    """Safely reads a numeric value out of a PropertyPricingRule/PricingRule's
+    """Safely reads a numeric value out of a NegotiationRule/PricingRule's
     free-form JSONB condition -- condition is host-editable (directly via
     PATCH, not just LLM-parsed), so a malformed value (e.g. condition={"fee":
     "free"} from a bad client/edit) must never reach a bare float()/comparison
@@ -116,12 +131,12 @@ async def _length_of_stay_discount_percent(
         if min_nights is not None and nights >= min_nights:
             best = max(best, float(rule.discount_percent))
 
-    # Phase 6: the host-authored, multi-property PropertyPricingRule is a
-    # SECOND source for this same rule_type (see that model's docstring for
-    # why it's a separate table from PricingRule, not a replacement) -- read
-    # alongside the existing per-property PricingRule rows above, same
-    # "take the best/max applicable discount" resolution, never double-counted
-    # or preferred over the other by ordering.
+    # The host-authored, multi-property NegotiationRule is a SECOND source
+    # for this same rule_type (see that model's docstring for why it's a
+    # separate table from PricingRule, not a replacement) -- read alongside
+    # the existing per-property PricingRule rows above, same "take the
+    # best/max applicable discount" resolution, never double-counted or
+    # preferred over the other by ordering.
     for rule in await _approved_property_pricing_rules(db, host_id, property_id):
         if rule.rule_type != "length_of_stay" or rule.discount_percent is None or not isinstance(rule.condition, dict):
             continue
@@ -219,8 +234,8 @@ async def calculate_price(
     existing call site (the /pricing/quote dashboard endpoint, negotiate_rate
     below) keeps its exact current behavior unless it explicitly opts in.
     host_id is required for length_of_stay/early_checkin_fee/late_checkout_fee
-    to read PropertyPricingRule at all (see _approved_property_pricing_rules)
-    -- omitting it simply means "no host-authored rules apply," never an
+    to read NegotiationRule at all (see _approved_property_pricing_rules) --
+    omitting it simply means "no host-authored rules apply," never an
     error, matching this module's existing fail-closed discipline."""
     nights = (check_out - check_in).days
     base_price = float(property_.base_price)
@@ -313,9 +328,9 @@ class NegotiationResult:
 @dataclass
 class HostNegotiationPolicy:
     """Resolved, ready-to-use negotiation policy for one host -- either
-    derived from their approved HostDiscountRule rows, or the untouched
-    global defaults if the host has none / the lookup fails. Never
-    constructed with a status other than "approved" rows -- see
+    derived from their approved discount_* NegotiationRule rows, or the
+    untouched global defaults if the host has none / the lookup fails.
+    Never constructed with a status other than "approved" rows -- see
     _get_host_negotiation_policy."""
 
     negotiation_allowed: bool
@@ -325,9 +340,15 @@ class HostNegotiationPolicy:
 
 
 async def _get_host_negotiation_policy(db: AsyncSession, host_id: uuid.UUID | None) -> HostNegotiationPolicy:
-    """Derive-on-read from the host's approved HostDiscountRule rows
-    (memory-architecture-plan.md section 4.4) -- never materialized per
-    property, so editing a host-level rule applies everywhere immediately.
+    """Derive-on-read from the host's approved discount_* NegotiationRule
+    rows (rule_type="discount_guest_requests"/"discount_repeat_guest" --
+    formerly a separate HostDiscountRule table's trigger_type, merged into
+    NegotiationRule) -- never materialized per property, so editing a
+    host-level rule applies everywhere immediately. These three discount_*
+    types are host-wide by definition (see NegotiationRule's docstring) --
+    read via _approved_negotiation_rules directly, not the property-scoped
+    _approved_property_pricing_rules, since there's no property to scope by
+    here.
 
     Mandatory fallback: any failure here (no host_id, DB error, no approved
     rows) returns today's exact pre-existing global-constant behavior.
@@ -347,17 +368,10 @@ async def _get_host_negotiation_policy(db: AsyncSession, host_id: uuid.UUID | No
 
     try:
         host = await db.get(User, host_id)
-        rules = (
-            await db.scalars(
-                select(HostDiscountRule).where(
-                    HostDiscountRule.host_id == host_id,
-                    HostDiscountRule.status == "approved",
-                )
-            )
-        ).all()
     except Exception:
         logger.exception("Host negotiation policy lookup failed for host_id=%s -- using global defaults", host_id)
         return default_policy
+    rules = await _approved_negotiation_rules(db, host_id)
 
     # host.negotiation_allowed is only ever None for an in-memory User that
     # was never flushed through the DB (server_default populates real rows)
@@ -372,10 +386,12 @@ async def _get_host_negotiation_policy(db: AsyncSession, host_id: uuid.UUID | No
     guest_requests_percent = None
     repeat_guest_percent = None
     for rule in rules:
+        if rule.discount_percent is None:
+            continue
         percent = float(rule.discount_percent)
-        if rule.trigger_type == "guest_requests":
+        if rule.rule_type == "discount_guest_requests":
             guest_requests_percent = percent if guest_requests_percent is None else max(guest_requests_percent, percent)
-        elif rule.trigger_type == "repeat_guest_same_host":
+        elif rule.rule_type == "discount_repeat_guest":
             repeat_guest_percent = percent if repeat_guest_percent is None else max(repeat_guest_percent, percent)
 
     return HostNegotiationPolicy(
@@ -454,12 +470,12 @@ async def negotiate_rate(
         loyalty_bonus_percent = {"new": 0.0, "returning": 5.0, "frequent": 10.0}.get(guest_loyalty, 0.0)
         discount_percent = loyalty_bonus_percent + 10.0
 
-    # Phase 6: a "custom" PropertyPricingRule is a host-authored, per-property
+    # A rule_type="custom" NegotiationRule is a host-authored, per-property
     # freeform concession (e.g. "for this villa specifically, I can go to
     # 20% for a returning guest") -- takes priority over the chain above ONLY
     # if it's MORE generous, never less; a property-specific concession the
     # host explicitly approved should never leave the guest worse off than
-    # the host-wide HostDiscountRule policy would already give them. Also
+    # the host-wide discount_* policy would already give them. Also
     # raises the CEILING (policy.max_discount_percent) itself, not just the
     # resolved discount_percent -- self-review fix: without this, an
     # approved 20% custom rule was silently re-clamped back down to the
