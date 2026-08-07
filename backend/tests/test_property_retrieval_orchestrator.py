@@ -203,6 +203,47 @@ async def test_recommend_properties_no_call_session_id_uses_stable_default_order
     assert result.options[0].spoken_name == "A"
 
 
+async def test_more_premium_than_shown_boost_survives_diversify_rotation(test_user, db_session):
+    """Recommendation conversations ("Phase X") self-review fix:
+    diversify_leading_candidates rotates purely by price within a
+    comparable-price band, with no awareness of apply_premium_boost's own
+    ordering -- without orchestrator.py explicitly skipping diversification
+    when more_premium_than_shown is set, a premium property that
+    sql_search.py already boosted to the front could get silently rotated
+    back behind a cheaper, non-premium option that happens to fall in the
+    same price band, undoing the exact thing the guest asked for. "session-a"
+    is a call_session_id confirmed (via the same rotation-seed hash
+    diversify_leading_candidates uses) to rotate a 2-item comparable band --
+    if the fix regresses, this test starts flaking/failing on that seed."""
+    regular = Property(
+        user_id=test_user.id, name="Regular", base_price=5000, max_guests=2,
+        exophone="+918011129401", is_premium=False,
+    )
+    premium = Property(
+        user_id=test_user.id, name="Premium", base_price=5100, max_guests=2,
+        exophone="+918011129402", is_premium=True,
+    )
+    db_session.add_all([regular, premium])
+    await db_session.commit()
+
+    args = RecommendPropertiesArgs(more_premium_than_shown=True)
+    # No call_session_id is the simplest case.
+    result = await orchestrator.recommend_properties(db_session, args, test_user.id)
+    assert result.options[0].spoken_name == "Premium"
+
+    # This specific call_session_id is confirmed (via the same rotation-seed
+    # hash diversify_leading_candidates uses) to rotate a 2-item comparable
+    # band -- with the fix, diversification is skipped entirely whenever
+    # more_premium_than_shown is set, so Premium stays first regardless of
+    # which call_session_id is passed.
+    import uuid as uuid_module
+
+    result_with_session = await orchestrator.recommend_properties(
+        db_session, args, test_user.id, call_session_id=uuid_module.UUID(int=1)
+    )
+    assert result_with_session.options[0].spoken_name == "Premium"
+
+
 async def test_recommend_properties_availability_check_fails_open_on_error(test_user, db_session, monkeypatch):
     """Must fail open -- an availability pre-check erroring/timing out is
     never a reason a recommendation should be blocked entirely."""

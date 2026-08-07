@@ -89,6 +89,50 @@ export type HostDiscountRuleUpdate = {
   status?: HostDiscountRuleStatus;
 };
 
+// Phase 6 (Negotiation engine): host-authored, multi-property pricing rules
+// (minimum-stay, length-of-stay discounts, early check-in/late checkout
+// fees, freeform concessions) -- same pending_validation -> approved
+// lifecycle as HostDiscountRule above, but property-scoped via a checkbox
+// selection (property_ids) rather than applying portfolio-wide.
+export type PropertyPricingRuleType =
+  | "length_of_stay"
+  | "minimum_stay_nights"
+  | "early_checkin_fee"
+  | "late_checkout_fee"
+  | "custom";
+export type PropertyPricingRuleStatus = "pending_validation" | "approved" | "rejected";
+
+export type PropertyPricingRuleOut = {
+  id: string;
+  host_id: string;
+  rule_type: string;
+  // unknown, not number -- a "custom" rule's condition is freeform (LLM
+  // extraction is instructed to produce "whatever the host described, in
+  // your own best structured guess"), so it can legitimately hold
+  // non-numeric values. Matches PricingRuleOut.condition's own typing below.
+  condition: Record<string, unknown>;
+  discount_percent: number | null;
+  label: string | null;
+  property_ids: string[];
+  source: string;
+  status: string;
+  raw_source_text: string | null;
+  created_at: string;
+};
+
+export type PricingPolicyParseResponse = {
+  rules: PropertyPricingRuleOut[];
+};
+
+export type PropertyPricingRuleUpdate = {
+  rule_type?: PropertyPricingRuleType;
+  condition?: Record<string, unknown>;
+  discount_percent?: number | null;
+  label?: string | null;
+  property_ids?: string[];
+  status?: PropertyPricingRuleStatus;
+};
+
 export type HostOnboarding = {
   name: string;
   phone?: string | null;
@@ -134,6 +178,7 @@ export type PropertyOut = {
   smart_price_sample_size: number;
   smart_price_updated_at: string | null;
   exact_airbnb_pricing: boolean;
+  is_premium: boolean;
   created_at: string;
 };
 
@@ -169,6 +214,7 @@ export type PropertyCreate = {
   max_guests?: number;
   minimum_nights?: number;
   exact_airbnb_pricing?: boolean;
+  is_premium?: boolean;
 };
 
 export type PropertyUpdate = Partial<PropertyCreate>;

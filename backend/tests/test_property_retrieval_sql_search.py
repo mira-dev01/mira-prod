@@ -96,6 +96,72 @@ async def test_zero_price_property_with_exact_airbnb_pricing_is_not_excluded(tes
     assert [p.name for p in results] == ["Live Priced Villa"]
 
 
+async def test_run_sql_search_widens_pool_for_amenity_match_beyond_three_cheapest(test_user, db_session):
+    """Recommendation conversations ("Phase X"): required_amenities is now a
+    soft boost (apply_amenity_boost), not a hard WHERE filter -- so a
+    property that matches the requested amenity but isn't among the 3
+    cheapest must still be able to surface in the final, still-3-item
+    result. Without widening the candidate pool past 3 before boosting,
+    the boost would have nothing to promote -- the cheapest 3 would already
+    be fetched and capped before amenity ranking ever ran."""
+    cheap_no_match = Property(
+        user_id=test_user.id, name="Cheap1", base_price=1000, max_guests=2,
+        exophone="+918011110010", amenity_tags=[],
+    )
+    cheap_no_match_2 = Property(
+        user_id=test_user.id, name="Cheap2", base_price=1100, max_guests=2,
+        exophone="+918011110011", amenity_tags=[],
+    )
+    cheap_no_match_3 = Property(
+        user_id=test_user.id, name="Cheap3", base_price=1200, max_guests=2,
+        exophone="+918011110012", amenity_tags=[],
+    )
+    pricier_with_pool = Property(
+        user_id=test_user.id, name="PoolVilla", base_price=2000, max_guests=2,
+        exophone="+918011110013", amenity_tags=["pool"],
+    )
+    db_session.add_all([cheap_no_match, cheap_no_match_2, cheap_no_match_3, pricier_with_pool])
+    await db_session.commit()
+
+    args = RecommendPropertiesArgs(required_amenities=["pool"])
+    base_stmt = filter_builder.build_base_filters(args, test_user.id)
+    results, _ = await sql_search.run_sql_search(db_session, base_stmt, args)
+
+    assert len(results) == 3
+    assert results[0].name == "PoolVilla"
+
+
+async def test_run_sql_search_without_amenities_uses_normal_pool_of_three(test_user, db_session):
+    """Baseline: no required_amenities means no widened pool and no boost --
+    the 4th-cheapest property (which happens to have every amenity) must NOT
+    appear, confirming the widening is conditional on required_amenities
+    actually being set, not always-on."""
+    cheap1 = Property(
+        user_id=test_user.id, name="Cheap1", base_price=1000, max_guests=2,
+        exophone="+918011110014", amenity_tags=[],
+    )
+    cheap2 = Property(
+        user_id=test_user.id, name="Cheap2", base_price=1100, max_guests=2,
+        exophone="+918011110015", amenity_tags=[],
+    )
+    cheap3 = Property(
+        user_id=test_user.id, name="Cheap3", base_price=1200, max_guests=2,
+        exophone="+918011110016", amenity_tags=[],
+    )
+    pricier_with_pool = Property(
+        user_id=test_user.id, name="PoolVilla", base_price=2000, max_guests=2,
+        exophone="+918011110017", amenity_tags=["pool"],
+    )
+    db_session.add_all([cheap1, cheap2, cheap3, pricier_with_pool])
+    await db_session.commit()
+
+    args = RecommendPropertiesArgs()
+    base_stmt = filter_builder.build_base_filters(args, test_user.id)
+    results, _ = await sql_search.run_sql_search(db_session, base_stmt, args)
+
+    assert {p.name for p in results} == {"Cheap1", "Cheap2", "Cheap3"}
+
+
 async def test_zero_price_property_excluded_even_with_budget_filter_active(test_user, db_session):
     """base_price=0 trivially passes ANY budget<= check, so the exclusion
     must be its own unconditional clause, not folded into the budget

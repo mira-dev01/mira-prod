@@ -164,6 +164,18 @@ class Property(UUIDPkMixin, TimestampMixin, Base):
     # configured discount, not a markup.
     exact_airbnb_pricing: Mapped[bool] = mapped_column(default=False, server_default="false")
 
+    # Recommendation conversations ("Phase X"): host-set, never LLM-inferred --
+    # same discipline as every other guest-facing fact in this codebase (no
+    # LLM-self-reported judgment, per agent-conversation-improvement.md's own
+    # Non-goals). Grounds a guest's relative "something more premium" request
+    # in a real, deterministic fact (recommend_properties can filter/prefer
+    # is_premium=True) instead of asking the model to guess which of a host's
+    # properties feels nicer. A host toggles this per property, same UI
+    # pattern as the "Quote exact Airbnb price" switch already does for
+    # exact_airbnb_pricing. Defaults false -- an existing property never
+    # silently becomes "premium" just because this column now exists.
+    is_premium: Mapped[bool] = mapped_column(default=False, server_default="false")
+
     # GPS coordinates for this exact Airbnb listing, fetched once via
     # SearchApi's airbnb_property engine and cached here permanently (a
     # listing's location doesn't change) -- pricing_engine.calculate_price

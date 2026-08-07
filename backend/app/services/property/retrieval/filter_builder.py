@@ -98,13 +98,19 @@ def build_base_filters(args: RecommendPropertiesArgs, host_user_id: uuid.UUID) -
             location_filter = or_(Property.city.ilike(loc), Property.neighborhood_info.ilike(loc))
         stmt = stmt.where(location_filter)
 
-    if args.required_amenities:
-        # JSONB `@>` containment against the canonical amenity_tags column
-        # (not the free-text `amenities` display list) -- canonicalize the
-        # query the same way tags were derived at import time so "pool" and
-        # "swimming pool" both match a property tagged "pool".
-        canonical_required = canonicalize_amenities(args.required_amenities)
-        stmt = stmt.where(Property.amenity_tags.contains(canonical_required))
+    # required_amenities is a SOFT ranking preference (see apply_amenity_boost
+    # below), not a hard WHERE filter -- deliberately changed from an earlier
+    # hard `amenity_tags.contains()` clause. Recommendation conversations
+    # ("Phase X"): once a guest has accumulated more than one requested
+    # amenity across a conversation ("pool" then, later, "pet friendly"), a
+    # property matching the first but not the second used to be excluded
+    # from results entirely, with no way to tell the guest it was a close
+    # partial match -- they'd just never hear about it. A soft boost (same
+    # "rank first, never exclude to zero" pattern apply_landmark_boost and
+    # apply_premium_boost already use) surfaces it, and card.py's
+    # amenity_checklist_note tells the guest explicitly which of the
+    # requested amenities it does/doesn't have, so they can decide for
+    # themselves rather than the filter silently deciding for them.
 
     return stmt
 
@@ -158,3 +164,37 @@ def apply_landmark_boost(properties: list[Property], near_landmark: str | None) 
     if not near_landmark:
         return properties
     return sorted(properties, key=lambda p: not matches_landmark(p, near_landmark))
+
+
+def apply_amenity_boost(properties: list[Property], required_amenities: list[str] | None) -> list[Property]:
+    """Soft rank signal, same shape as apply_landmark_boost/apply_premium_boost
+    -- ranks by how MANY of the requested amenities each property actually
+    has (most matches first), never excludes a property for lacking one.
+    Deliberately replaced an earlier hard `amenity_tags.contains()` WHERE
+    filter (see build_base_filters above) so a property matching some but
+    not all of an accumulated multi-amenity request still surfaces instead
+    of silently disappearing -- card.py's amenity_checklist_note is what
+    tells the guest explicitly which requested amenities each result does
+    and doesn't have, so a partial match is a real, informed choice for the
+    guest rather than a filter deciding for them."""
+    if not required_amenities:
+        return properties
+    canonical_required = set(canonicalize_amenities(required_amenities))
+    return sorted(
+        properties,
+        key=lambda p: -len(canonical_required & set(p.amenity_tags or [])),
+    )
+
+
+def apply_premium_boost(properties: list[Property], more_premium_than_shown: bool) -> list[Property]:
+    """Same soft-rank-not-hard-filter shape as apply_landmark_boost above --
+    a guest asking for "something more premium" gets Property.is_premium
+    properties ranked first, but a host with zero is_premium properties set
+    (the default, since it's opt-in) still gets a normal, non-empty result
+    rather than nothing. Grounded in a real host-set fact, never an
+    LLM-guessed judgment of which property "feels" nicer -- the same
+    discipline this codebase already applies everywhere else a guest-facing
+    quality claim is made (comparison_notes, match_reasons)."""
+    if not more_premium_than_shown:
+        return properties
+    return sorted(properties, key=lambda p: not p.is_premium)

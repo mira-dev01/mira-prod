@@ -22,6 +22,7 @@ from app.api.v1 import (
     notifications,
     pricing,
     properties,
+    property_pricing_rules,
     technicians,
     voice,
 )
@@ -250,6 +251,7 @@ app.include_router(notifications.router, prefix=API_PREFIX)
 app.include_router(leads.router, prefix=API_PREFIX)
 app.include_router(faq.router, prefix=API_PREFIX)
 app.include_router(host_discount_rules.router, prefix=API_PREFIX)
+app.include_router(property_pricing_rules.router, prefix=API_PREFIX)
 app.include_router(voice.router, prefix=API_PREFIX)
 app.include_router(exotel.router, prefix=API_PREFIX)
 

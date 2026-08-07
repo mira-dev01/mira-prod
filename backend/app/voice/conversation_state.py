@@ -41,6 +41,43 @@ ConversationGoal = Literal[
     "closing",
 ]
 
+# Lifecycle vocabulary cross-reference (architecture-cleanup pass, see
+# docs/how-it-works.md's Technical Debt #3). Three fields, in three different
+# places, each track a different partial view of "how far along is this
+# booking" -- ConversationGoal (above) is the only one this task extends, not
+# a new unified field: no schema change, no migration, no behavior change.
+# This comment documents how the three relate so a reader doesn't have to
+# rediscover it by reading three files independently:
+#
+#   ConversationGoal (here)         -- in-call only, discarded at hangup.
+#                                       Derived by _recompute_goal() below
+#                                       from which tool last ran / which
+#                                       slots are still unset. Never written
+#                                       by the LLM directly.
+#   Lead.lead_temperature (models/lead.py) -- "hot"/"warm"/"cold". Set by the
+#                                       LLM via the update_lead tool, per
+#                                       LEAD_AGENT_INSTRUCTIONS step 3/6
+#                                       (system_prompt.py). Persists across
+#                                       the call and across future calls from
+#                                       the same guest. Not validated against
+#                                       ConversationGoal in code -- the two
+#                                       can disagree (e.g. goal="negotiating"
+#                                       with temperature still "warm").
+#   Lead.status (models/lead.py)    -- "open"/"booked"/"closed" etc. Host-set
+#                                       only, from the dashboard Kanban
+#                                       (PATCH /leads/{id}). The voice agent
+#                                       never writes this field -- there is
+#                                       no code path from ConversationGoal or
+#                                       lead_temperature into status.
+#
+# Rough correspondence (informal, not enforced): ConversationGoal values up
+# through "collecting_lead_contact" correspond to Lead.status="open" with a
+# temperature climbing cold->warm->hot; "escalating" corresponds to
+# Lead.escalated=True being set; "closing" has no Lead.status counterpart at
+# all -- a call can close without the host ever having confirmed a booking.
+# A genuine shared enum spanning all three (proposed, not built here) would
+# need a real migration and a decision on backfilling existing Lead rows --
+# out of scope for this pass; see docs/how-it-works.md's Refactoring Plan.
 ClosingState = Literal["open", "farewell_pending", "closed"]
 
 # Priority order for deriving a goal from which slots are still unset, absent
@@ -158,6 +195,48 @@ class ConversationState:
     def record_recommendations(self, options: list[dict[str, Any]]) -> None:
         self.recommendations_shown = options
         self._recompute_goal(after_tool="recommend_properties")
+
+    # Recommendation conversations ("Phase X"): "something cheaper"/"larger"
+    # is a RELATIVE instruction -- the guest is comparing against what was
+    # ALREADY shown, never naming a new absolute number themselves. The LLM
+    # only has to recognize that relative intent (RecommendPropertiesArgs.
+    # cheaper_than_shown/larger_than_shown); these two resolve it into a
+    # real threshold derived from recommendations_shown, the same "hand it
+    # a fact, don't make it guess" discipline _today_anchor() and
+    # comparison_notes already use elsewhere in this codebase. Both return
+    # None when there's nothing yet to be relative TO (recommendations_shown
+    # empty) -- the tool wrapper (app/voice/tools.py) falls back to treating
+    # the call as a normal, non-relative search in that case rather than
+    # erroring, since a guest can technically say "something cheaper" as
+    # their very first utterance with nothing shown yet to compare against.
+    def resolve_cheaper_budget(self) -> float | None:
+        """A real ceiling BELOW the cheapest property already shown --
+        cheapest, not average, since "cheaper" means cheaper than the best
+        price already seen, not cheaper than the middle of the pack. 20%
+        below the cheapest shown, not 10% -- filter_builder.build_base_filters'
+        own budget filter re-adds 15% headroom on top of whatever this
+        returns (`base_price <= budget * 1.15`), so the discount here must
+        net BELOW 1.0 after that multiply or the cheapest-shown property
+        (or something even pricier) can still pass the filter and re-match
+        itself. 0.8 * 1.15 = 0.92 -- genuinely excludes the cheapest shown."""
+        prices = [o["price"] for o in self.recommendations_shown if o.get("price") is not None]
+        if not prices:
+            return None
+        return min(prices) * 0.8
+
+    def resolve_larger_num_guests(self) -> int | None:
+        """A real floor ABOVE the largest capacity already shown -- largest,
+        not average, for the same reason resolve_cheaper_budget anchors on
+        the cheapest: "larger" means larger than the biggest one already
+        seen, not larger than the middle of the pack. +1 is enough to
+        exclude every already-shown property from apply_guest_count_filter's
+        own >= check while still finding the very next size up, not
+        over-shooting to a much bigger property than the guest likely
+        wants."""
+        guest_counts = [o["guests"] for o in self.recommendations_shown if o.get("guests") is not None]
+        if not guest_counts:
+            return None
+        return max(guest_counts) + 1
 
     def record_quoted_price(self, property_name: str, check_in: str, check_out: str, total: float) -> None:
         """Phase 4.1 -- always overwrites, never merges: a later quote (a

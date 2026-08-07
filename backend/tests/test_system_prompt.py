@@ -91,6 +91,52 @@ def test_today_anchor_precomputes_correct_weekend_dates(monkeypatch):
     assert "Tomorrow is 2026-07-01" in prompt
 
 
+def test_today_anchor_named_month_example_demonstrates_the_rollover_it_teaches(monkeypatch):
+    """Intelligent slot collection ("Phase 3"): "first weekend of October"
+    names a month rather than being relative to today, so this/next
+    weekend's pre-computed dates don't cover it -- confirmed via grep that
+    no month-name date pattern existed before this change.
+
+    The worked example is deliberately a month EARLIER in the calendar than
+    today's month, resolved to NEXT year -- self-review caught that picking
+    the NEXT calendar month (the first version of this fix) would almost
+    always land in the current year and never actually demonstrate the
+    "already passed this year -> means next year" rule stated right next to
+    it, for 11 of 12 months a real call could be placed in. An earlier
+    month always needs the rollover (a booking can't resolve into the
+    past), so the example now genuinely matches the rule it's teaching.
+    Fixed clock: Tuesday, 2026-06-30 -- May (the month before June) has
+    already passed this year, so it means May 2027, whose first Saturday is
+    2027-05-01."""
+    monkeypatch.setattr(system_prompt, "datetime", _FixedDatetime)
+    prompt = build_system_prompt(_property(), None, _user())
+    assert "the first weekend of a month is its first saturday" in prompt.lower()
+    assert "first weekend of May 2027 is 2027-05-01 (Saturday) to 2027-05-02 (Sunday)" in prompt
+
+
+def test_today_anchor_january_has_no_earlier_month_this_year_to_roll_over(monkeypatch):
+    """January is the one month with no earlier month within the same
+    year to demonstrate the rollover rule with -- falls back to December
+    of THIS year instead (still a real, useful, forward-looking example;
+    just one that doesn't happen to need the rollover branch). Confirms
+    this fallback lands on a sensible date rather than erroring or
+    resolving into the past."""
+
+    class _JanuaryFixedDatetime(datetime):
+        _fixed = datetime(2026, 1, 15, 19, 0, tzinfo=system_prompt.IST)
+
+        @classmethod
+        def now(cls, tz=None):
+            return cls._fixed
+
+    monkeypatch.setattr(system_prompt, "datetime", _JanuaryFixedDatetime)
+    prompt = build_system_prompt(_property(), None, _user())
+    assert "first weekend of December is 2026-12-05 (Saturday) to 2026-12-06 (Sunday)" in prompt
+    # Same-year example: the year must NOT be spelled out (would read as
+    # oddly formal for a guest asking about a month later this same year).
+    assert "December 2026" not in prompt
+
+
 def test_first_message_uses_host_template_with_placeholders():
     host = _user(name="Asha", agent_first_message="Hi from {host_name} at {property_name} in {city}!")
     msg = first_message_for(_property(name="Sea View Villa", city="Goa"), None, host)
@@ -630,6 +676,203 @@ def test_golden_rules_covers_guest_self_correction():
     # Shared via GOLDEN_RULES, so present in both modes.
     lead_prompt = build_lead_system_prompt(_user(), [_property()])
     assert "CORRECTS a value they already gave" in lead_prompt
+
+
+def test_golden_rules_covers_answer_first_then_return_to_flow():
+    """Conversation-robustness pass ("answer-first-then-return-to-flow"):
+    a guest asking something unrelated mid-flow (mid-availability-check,
+    mid-pricing, mid-negotiation) was not explicitly covered by any existing
+    rule -- the closest existing clauses were about declining out-of-scope
+    topics (a different kind of "topic") and reaction-warmth bridging
+    between PLANNED steps, neither of which addresses a genuine guest-
+    initiated detour. Shared via GOLDEN_RULES, so present in both modes."""
+    prompt = build_system_prompt(_property(), None, _user())
+    assert "UNRELATED to what you were just doing" in prompt
+    assert "bridge back naturally" in prompt
+    lead_prompt = build_lead_system_prompt(_user(), [_property()])
+    assert "UNRELATED to what you were just doing" in lead_prompt
+
+
+def test_golden_rules_covers_conversational_memory_callback_wording():
+    """Conversation-robustness pass: distinct from the existing NEVER-RE-ASK
+    rule (which is about not asking a question again) -- this is about HOW
+    to voice a reference to something already known when it naturally helps,
+    which had zero existing coverage. Shared via GOLDEN_RULES, so present in
+    both modes."""
+    prompt = build_system_prompt(_property(), None, _user())
+    assert "refer back to something already established in this call" in prompt
+    lead_prompt = build_lead_system_prompt(_user(), [_property()])
+    assert "refer back to something already established in this call" in lead_prompt
+
+
+def test_golden_rules_covers_comparison_questions_between_recommended_properties():
+    """Recommendation engine v2 ("why not that one?" / tradeoff reasoning):
+    confirmed via grep there was zero existing coverage for a guest directly
+    asking to compare options already recommended -- the model must answer
+    using the real difference recommend_properties already returned
+    (card.py's new comparison_notes), never invent one or just pick a
+    favorite. Shared via GOLDEN_RULES, so present in both modes."""
+    prompt = build_system_prompt(_property(), None, _user())
+    assert "what's the difference?" in prompt
+    assert "using the real difference recommend_properties already gave you" in prompt
+    assert "never guess at or invent a difference" in prompt
+    lead_prompt = build_lead_system_prompt(_user(), [_property()])
+    assert "using the real difference recommend_properties already gave you" in lead_prompt
+
+
+def test_golden_rules_covers_early_checkin_late_checkout_fees_only_when_asked():
+    """Phase 6 (Negotiation engine): a host-configured early_checkin_fee/
+    late_checkout_fee must never be volunteered unprompted -- the model
+    should call get_pricing with requested_early_checkin/requested_late_checkout
+    only when the guest actually asked. Confirmed via grep there was zero
+    existing coverage before this clause. Shared via GOLDEN_RULES, so
+    present in both modes."""
+    prompt = build_system_prompt(_property(), None, _user())
+    assert "requested_early_checkin/requested_late_checkout" in prompt
+    assert "never volunteered upfront" in prompt
+    lead_prompt = build_lead_system_prompt(_user(), [_property()])
+    assert "requested_early_checkin/requested_late_checkout" in lead_prompt
+
+
+def test_golden_rules_covers_weekend_minimum_stay_requirement():
+    """Phase 6: a stricter, possibly weekend-only minimum-stay requirement
+    (PropertyPricingRule rule_type="minimum_stay_nights") must be stated
+    plainly, never worked around by the model itself. Shared via
+    GOLDEN_RULES, so present in both modes."""
+    prompt = build_system_prompt(_property(), None, _user())
+    assert "stricter on weekends than on weekdays" in prompt
+    lead_prompt = build_lead_system_prompt(_user(), [_property()])
+    assert "stricter on weekends than on weekdays" in lead_prompt
+
+
+def test_golden_rules_covers_hard_close_vs_soft_close_framing():
+    """Phase 8 (Closing intelligence): the closing line must match how far
+    the guest actually got -- reassuring/concrete for a hard close (accepted
+    a property, heard a real price), open-ended/non-committal for a soft
+    close, never fabricated scarcity/urgency. Confirmed via grep there was
+    zero existing coverage before this clause. Shared via GOLDEN_RULES, so
+    present in both modes."""
+    prompt = build_system_prompt(_property(), None, _user())
+    assert "hard close" in prompt.lower()
+    assert "soft close" in prompt.lower()
+    assert "never invent urgency or scarcity" in prompt.lower()
+    lead_prompt = build_lead_system_prompt(_user(), [_property()])
+    assert "hard close" in lead_prompt.lower()
+    assert "soft close" in lead_prompt.lower()
+
+
+def test_golden_rules_hard_close_does_not_repeat_host_will_follow_up():
+    """Self-review fix: the hard-close reassurance must not tell the model
+    to say "the host will follow up soon" again -- that phrase is already
+    capped at once per call by the existing escalation rule (line ~240,
+    "Never say 'the host will be in touch' more than once"), and the most
+    common hard-close path (a guest accepting a price) already triggers
+    that phrase once via the escalate_to_host workflow. The hard-close
+    clause must explicitly defer to that existing cap, not silently
+    duplicate the phrase."""
+    prompt = build_system_prompt(_property(), None, _user())
+    assert 'do not say "the host will follow up/be in touch" again' in prompt.lower()
+    assert "capped at once per call" in prompt.lower()
+
+
+def test_golden_rules_covers_next_follow_up_must_be_a_concrete_action():
+    """Phase 8: next_follow_up must be written as a concrete next action for
+    the host, not a vague restatement -- previously unguided. Shared via
+    GOLDEN_RULES/LEAD_AGENT_INSTRUCTIONS, so present in the lead-agent mode
+    that actually calls update_lead with next_follow_up."""
+    lead_prompt = build_lead_system_prompt(_user(), [_property()])
+    assert "write next_follow_up as a concrete next" in lead_prompt.lower()
+    assert "action for the host to take" in lead_prompt.lower()
+
+
+def test_golden_rules_covers_escalation_urgency_mapping():
+    """Phase 8: escalate_to_host's urgency levels (low/medium/high/emergency)
+    had no guidance on how to choose between them -- previously the model
+    could pick arbitrarily. Shared via GOLDEN_RULES, so present in both
+    modes."""
+    prompt = build_system_prompt(_property(), None, _user())
+    assert "set urgency honestly" in prompt.lower()
+    assert "never default to high/emergency" in prompt.lower()
+    lead_prompt = build_lead_system_prompt(_user(), [_property()])
+    assert "set urgency honestly" in lead_prompt.lower()
+
+
+def test_golden_rules_covers_recommendation_refinement_is_additive_not_replacement():
+    """Recommendation conversations ("Phase X"): a guest narrowing down
+    ("something cheaper", "anything with a pool?", "more premium") must be
+    told to call recommend_properties with the new criterion ADDED to
+    everything already established, never as a replacement -- and to use
+    cheaper_than_shown/larger_than_shown rather than inventing a number.
+    Confirmed via grep there was zero existing coverage before this clause.
+    Shared via GOLDEN_RULES, so present in both modes."""
+    prompt = build_system_prompt(_property(), None, _user())
+    assert "ADDED to everything already established this call" in prompt
+    assert "cheaper_than_shown/larger_than_shown to true" in prompt
+    assert "rupee figure or a guest count yourself" in prompt
+    lead_prompt = build_lead_system_prompt(_user(), [_property()])
+    assert "ADDED to everything already established this call" in lead_prompt
+    assert "cheaper_than_shown/larger_than_shown to true" in lead_prompt
+
+
+def test_golden_rules_covers_amenity_checklist_must_state_present_and_missing():
+    """Recommendation conversations ("Phase X"): required_amenities became a
+    soft ranking preference (never a hard filter, see filter_builder.py's
+    apply_amenity_boost), so a returned property can genuinely have only
+    SOME of what the guest asked for -- per explicit product direction, both
+    what's present AND what's missing must be spoken so the guest can
+    decide. Shared via GOLDEN_RULES, so present in both modes."""
+    prompt = build_system_prompt(_property(), None, _user())
+    assert "say both explicitly" in prompt
+    assert "it has the pool you wanted, but isn't pet friendly" in prompt
+    lead_prompt = build_lead_system_prompt(_user(), [_property()])
+    assert "say both explicitly" in lead_prompt
+
+
+def test_golden_rules_extracts_composite_and_implicit_guest_counts():
+    """Intelligent slot collection ("Phase 3"): the existing extract-
+    indirectly guidance only covered a direct number stated in words
+    ("we are 10 friends"). Guest counts are just as often implicit ("my
+    wife and I") or composite ("2 adults and a kid") -- neither was
+    previously covered, confirmed by grep finding zero matches for either
+    shape before this change. Shared via GOLDEN_RULES, so present in both
+    modes."""
+    prompt = build_system_prompt(_property(), None, _user())
+    assert "\"my wife and I\"" in prompt
+    assert "num_guests=2" in prompt
+    assert "\"2 adults and a kid\"" in prompt
+    assert "num_guests=3" in prompt
+    lead_prompt = build_lead_system_prompt(_user(), [_property()])
+    assert "\"my wife and I\"" in lead_prompt
+
+
+def test_golden_rules_treats_a_named_locality_as_a_usable_answer():
+    """Intelligent slot collection: "near Baga" is already handled correctly
+    downstream once passed through as preferred_location (filter_builder.py's
+    fuzzy locality matching against Property.city/neighborhood_info) -- the
+    previously-missing piece was telling the model this IS a usable answer,
+    not a vague one needing a follow-up.
+
+    Self-review caught that the first version of this clause also listed
+    "walking distance from the beach" as an equivalent example -- but that
+    phrase doesn't reliably map to EITHER preferred_location (it's not a
+    place name, so filter_builder.py's ilike locality match wouldn't find
+    it) or near_landmark (matches_landmark's fuzzy match compares against a
+    specific named place like "Thalassa", not a generic feature-distance
+    description -- confirmed by reading the actual matching code, not
+    assumed). Narrowed to only the example that's actually verified to work
+    end-to-end, rather than asserting a match path that doesn't exist."""
+    prompt = build_system_prompt(_property(), None, _user())
+    assert "\"near Baga\"" in prompt
+    assert "walking distance from the beach" not in prompt
+
+
+def test_golden_rules_treats_under_x_budget_as_an_exact_ceiling():
+    """Intelligent slot collection: "under 8k" already gives an exact
+    number (8000) usable directly as budget -- the model shouldn't ask the
+    guest to restate it as a fixed amount first."""
+    prompt = build_system_prompt(_property(), None, _user())
+    assert "\"under 8k\"" in prompt
+    assert "already gives you an exact ceiling to search with" in prompt
 
 
 def test_guest_support_has_its_own_name_phone_timing_guidance():

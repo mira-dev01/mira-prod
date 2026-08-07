@@ -47,6 +47,10 @@ class Lead(UUIDPkMixin, TimestampMixin, Base):
     questions_asked: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
     support_requests: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
 
+    # See app/voice/conversation_state.py's lifecycle-vocabulary cross-reference
+    # (near ConversationGoal) for how this relates to Lead.status below and to
+    # the in-call ConversationState.conversation_goal -- three separate,
+    # unreconciled views of "how far along is this booking," not one field.
     lead_temperature: Mapped[str | None] = mapped_column(String(16))
     lead_source: Mapped[str] = mapped_column(String(64), default="voice_call", server_default="voice_call")
     conversation_summary: Mapped[str | None] = mapped_column(Text)

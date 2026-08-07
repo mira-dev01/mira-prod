@@ -114,3 +114,6 @@ class User(UUIDPkMixin, TimestampMixin, Base):
     discount_rules: Mapped[list["HostDiscountRule"]] = relationship(
         back_populates="host", cascade="all, delete-orphan"
     )
+    property_pricing_rules: Mapped[list["PropertyPricingRule"]] = relationship(
+        back_populates="host", cascade="all, delete-orphan"
+    )

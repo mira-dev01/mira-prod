@@ -108,21 +108,34 @@ async def _call_openrouter(prompt: str) -> str:
     return response.choices[0].message.content or ""
 
 
+async def call_configured_llm_for_json(prompt: str, no_provider_error: Exception) -> str:
+    """Shared one-shot JSON-extraction call, same provider-selection order
+    used by this module's own parse_discount_policy_text -- also used by
+    pricing_policy_service.parse_pricing_policy_text (Phase 6), which needs
+    the identical "call whichever provider is configured, no pipecat
+    pipeline" shape for its own free-text extraction. Kept here rather than
+    a third new file, since this module already owns this exact plumbing and
+    is the only other caller. Raises no_provider_error (the caller's own
+    exception type) when nothing is configured, so each caller's error
+    message/type stays specific to what it was trying to do."""
+    if settings.llm_provider == "anthropic" and settings.anthropic_api_key:
+        return await _call_anthropic(prompt)
+    if settings.groq_api_key:
+        return await _call_groq(prompt)
+    if settings.openrouter_api_key:
+        return await _call_openrouter(prompt)
+    raise no_provider_error
+
+
 async def parse_discount_policy_text(discount_policy_text: str) -> list[dict]:
     """Returns a list of {"trigger_type": str, "discount_percent": float}
     dicts -- never writes to the DB itself, callers turn these into
     HostDiscountRule rows with status="pending_validation"."""
     prompt = _EXTRACTION_PROMPT + discount_policy_text
-
-    if settings.llm_provider == "anthropic" and settings.anthropic_api_key:
-        raw = await _call_anthropic(prompt)
-    elif settings.groq_api_key:
-        raw = await _call_groq(prompt)
-    elif settings.openrouter_api_key:
-        raw = await _call_openrouter(prompt)
-    else:
-        raise DiscountPolicyParseError("No LLM provider is configured (GROQ_API_KEY/ANTHROPIC_API_KEY/OPENROUTER_API_KEY)")
-
+    raw = await call_configured_llm_for_json(
+        prompt,
+        DiscountPolicyParseError("No LLM provider is configured (GROQ_API_KEY/ANTHROPIC_API_KEY/OPENROUTER_API_KEY)"),
+    )
     return _extract_json_rules(raw)
 
 

@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { PricingRulesSection } from "@/components/settings/ai-training-section";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError } from "@/lib/api";
 import type { PriceBreakdown } from "@/lib/types";
@@ -202,6 +203,8 @@ function PricingPageContent() {
           )}
         </CardContent>
       </Card>
+
+      <PricingRulesSection />
     </div>
   );
 }

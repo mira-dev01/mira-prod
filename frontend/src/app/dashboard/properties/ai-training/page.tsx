@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DictationTextarea } from "@/components/ui/dictation-textarea";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AiTrainingSection } from "@/components/settings/ai-training-section";
+import { AiTrainingSection, PricingRulesSection } from "@/components/settings/ai-training-section";
 import { ApiError, api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { cn } from "@/lib/utils";
@@ -145,6 +145,8 @@ export default function AiTrainingPage() {
       </Card>
 
       <AiTrainingSection />
+
+      <PricingRulesSection />
     </div>
   );
 }
