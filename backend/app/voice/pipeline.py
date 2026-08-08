@@ -64,6 +64,7 @@ from app.services import (
     guest_memory_service,
     lead_service,
 )
+from app.voice.conversation_quality import ConversationQuality
 from app.voice.conversation_state import ConversationState
 from app.voice.conversation_style import ConversationStyleProcessor
 from app.voice.end_call_reliability_guard import EndCallReliabilityGuardProcessor
@@ -74,12 +75,12 @@ from app.voice.premature_end_call_guard import PrematureEndCallGuardProcessor
 from app.voice.property_recommendation_guard import PropertyRecommendationGuardProcessor
 from app.voice.redundant_context_guard import RedundantContextGuardProcessor
 from app.voice.repetition_guard import RepetitionGuardProcessor
-from app.voice.response_compliance import LanguageComplianceRule, ResponseComplianceProcessor
 from app.voice.response_shape_guard import ResponseShapeValidatorProcessor
 from app.voice.ringing_audio import play_ringing_tone
 from app.voice.silence_watchdog import SilenceWatchdogProcessor
 from app.voice.slow_tool_filler import SlowToolFillerProcessor
 from app.voice.state_prompt_sync import StatePromptSyncProcessor
+from app.voice.style_compliance_monitor import StyleComplianceMonitor
 from app.voice.tools import build_voice_tools
 from app.voice.turn_strategies import HybridCompletenessUserTurnStopStrategy
 from app.voice.vad import create_vad_analyzer
@@ -476,6 +477,13 @@ async def _run_pipeline_inner(
         selected_property_id=str(property_id) if property_id else None,
         selected_property_name=property_name,
     )
+    # Response output architecture redesign: the analytics-only home for
+    # validator output (StyleComplianceMonitor, ResponseShapeValidatorProcessor
+    # on a shape violation) -- constructed fresh per call, same lifetime as
+    # conversation_state, never read by anything except state_prompt_sync's
+    # one narrow pending_style_correction bridge. See
+    # app/voice/conversation_quality.py for the full architecture boundary.
+    conversation_quality = ConversationQuality()
     # Phase 3.1: passes conversation_state so the guest's detected spoken
     # language (the same signal that already drives the TTS switch) is also
     # fed back into state for the prompt layer to read -- see
@@ -528,8 +536,13 @@ async def _run_pipeline_inner(
     # every turn -- the system prompt is fixed at call start and can't
     # reflect anything learned mid-call on its own. Sits right after
     # redundant_context_guard (before llm) so it only ever touches a context
-    # that's actually about to be forwarded. See app/voice/state_prompt_sync.py.
-    state_prompt_sync = StatePromptSyncProcessor(conversation_state)
+    # that's actually about to be forwarded. Also passes conversation_quality
+    # so a confirmed style-compliance FAIL from the previous turn (recorded
+    # by StyleComplianceMonitor, below) can render one turn's worth of
+    # emphasized style instruction -- the one permitted, one-directional
+    # bridge from ConversationQuality back to conversational behavior. See
+    # app/voice/state_prompt_sync.py.
+    state_prompt_sync = StatePromptSyncProcessor(conversation_state, conversation_quality)
     # Separate failure mode, same symptom: the model itself (in a single
     # turn, not a spurious re-invocation) asks a real question and calls
     # end_call together -- confirmed live. Cancels the pending hangup so the
@@ -560,6 +573,20 @@ async def _run_pipeline_inner(
     # response)" before they reach TTS -- confirmed live. See
     # app/voice/meta_commentary_guard.py.
     meta_commentary_guard = MetaCommentaryGuardProcessor()
+    # Response output architecture redesign: a streaming OBSERVER, not a
+    # blocker -- every LLMTextFrame is forwarded immediately and
+    # unconditionally, regardless of what this monitor observes. Scores the
+    # model's OWN original wording (placed here, before the tool-fidelity
+    # guards below, deliberately -- it must never score a guard-substituted
+    # safe line). Replaces the old ResponseComplianceProcessor entirely:
+    # that processor buffered the whole response and, on a FAIL, made a
+    # second direct LLM call to regenerate it (up to 8s of dead air) --
+    # both removed. A confirmed FAIL here only ever sets
+    # conversation_quality.pending_style_correction, read by
+    # state_prompt_sync on the NEXT turn to ask ConversationStyle for a
+    # more emphatic rendering of the SAME style -- never a rewrite of THIS
+    # turn's audio. See app/voice/style_compliance_monitor.py.
+    style_compliance_monitor = StyleComplianceMonitor(conversation_state, conversation_quality)
     # Final structural gate, right before tts -- catches a malformed/
     # concatenated response SHAPE (multiple questions, multiple greetings,
     # a duplicated safe-line, a punctuation flood, an unfinished trailing
@@ -568,24 +595,16 @@ async def _run_pipeline_inner(
     # mode (a single repeated sentence, a leaked property_id, a narrator
     # aside). Phase 4.3 (documentation/agent-conversation-improvement.md).
     # Sits LAST, after every rewrite above has already run, so it validates
-    # the actual final text about to be spoken. See
-    # app/voice/response_shape_guard.py.
-    response_shape_guard = ResponseShapeValidatorProcessor()
-
-    # Response Compliance layer: a generic, rule-based quality GATE between
-    # the LLM and tts, sitting after every rewriting guard above (including
-    # response_shape_guard) so it inspects the actual final text about to be
-    # spoken, not a draft any earlier guard could still change. On a hard
-    # FAIL (e.g. LanguageComplianceRule), attempts exactly one bounded
-    # direct-LLM regeneration (Response Validator) -- constructed below,
-    # right after `context` exists, since regeneration needs a reference to
-    # the same LLMContext llm/state_prompt_sync/the aggregators already
-    # share (read-only; never mutated here). The rule list is assembled
-    # HERE, not defaulted inside the processor class -- keeps
-    # ResponseComplianceProcessor itself genuinely rule-agnostic; adding a
-    # future PropertyNameRule/PricingConsistencyRule means appending to this
-    # list, not touching response_compliance.py. See
-    # app/voice/response_compliance.py for the full rationale.
+    # the actual final text about to be spoken.
+    #
+    # Response output architecture redesign: rewritten internally from
+    # unconditional whole-response buffering to per-sentence streaming --
+    # every LLMTextFrame is forwarded the instant its sentence completes;
+    # only on an actual structural violation does it stop forwarding the
+    # remainder of that one response (same accepted tradeoff
+    # repetition_guard.py already uses). See app/voice/response_shape_guard.py
+    # for the full mechanism and why it stays one processor, not split.
+    response_shape_guard = ResponseShapeValidatorProcessor(conversation_quality)
 
     async with aiohttp.ClientSession() as http_session:
         tts = SarvamTTSService(
@@ -632,17 +651,13 @@ async def _run_pipeline_inner(
             ],
             tools=tools,
         )
-        response_compliance_guard = ResponseComplianceProcessor(
-            conversation_state, rules=[LanguageComplianceRule()], llm_context=context
-        )
         # Guarantees end_call actually fires whenever the model speaks
         # DEFAULT_CLOSING_PHRASE -- confirmed live: a guest-initiated
         # ("thank you") close sometimes produced the closing line as plain
         # text with no paired end_call tool call, leaving the call open
-        # indefinitely. Sits LAST, after response_compliance_guard (which can
-        # still rewrite/regenerate the response), so it checks the actual
-        # final text about to be spoken. See
-        # app/voice/end_call_reliability_guard.py.
+        # indefinitely. Sits LAST, after response_shape_guard (which can
+        # still trim a violating response), so it checks the actual final
+        # text about to be spoken. See app/voice/end_call_reliability_guard.py.
         end_call_reliability_guard = EndCallReliabilityGuardProcessor(silence_watchdog)
         # Pipecat defaults end-of-turn detection to a local ONNX transformer
         # model (LocalSmartTurnAnalyzerV3) running CPU inference on every
@@ -692,11 +707,11 @@ async def _run_pipeline_inner(
                 slow_tool_filler,
                 repetition_guard,
                 meta_commentary_guard,
+                style_compliance_monitor,
                 property_recommendation_guard,
                 escalation_guard,
                 premature_end_call_guard,
                 response_shape_guard,
-                response_compliance_guard,
                 end_call_reliability_guard,
                 tts,
                 transport.output(),

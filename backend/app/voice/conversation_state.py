@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING, Any, Literal
 if TYPE_CHECKING:
     from pipecat.transcriptions.language import Language
 
-    from app.voice.conversation_style import ConversationStyle, TurnSignal
+    from app.voice.conversation_style import ConversationStyle
 
 ConversationGoal = Literal[
     "greeting",
@@ -163,22 +163,19 @@ class ConversationState:
 
     # Conversation Style Engine (app/voice/conversation_style.py) -- a
     # higher-level, hysteresis-smoothed judgment of how Mira should
-    # currently speak, computed from a rolling window of the guest's OWN
-    # turns (style_history below), on top of current_spoken_language's
-    # single-turn, unconditionally-overwritten signal above. Deliberately a
-    # SEPARATE pair of fields, not a replacement -- current_spoken_language/
+    # currently speak, on top of current_spoken_language's single-turn,
+    # unconditionally-overwritten signal above. Deliberately a SEPARATE pair
+    # of fields, not a replacement -- current_spoken_language/
     # explicit_language_preference keep driving the live TTS-language switch
-    # (LanguageSyncProcessor) and the Response Validator's own checks
-    # exactly as before; conversation_style is additive, read by
-    # StatePromptSyncProcessor to build the LLM-facing style block. Typed
+    # (LanguageSyncProcessor) exactly as before; conversation_style is
+    # additive, read by StatePromptSyncProcessor to build the LLM-facing
+    # style block. This is a REFERENCE ONLY (the current computed
+    # ConversationStyle snapshot) -- the engine's own rolling-window working
+    # memory (style_history) lives inside StyleEngine itself (see
+    # conversation_style.py), never here: ConversationState holds
+    # conversation facts, not another module's internal mechanism. Typed
     # under TYPE_CHECKING for the same reason current_spoken_language is.
     conversation_style: "ConversationStyle | None" = None
-    # Bounded (StyleEngine.update trims to its own rolling_window) list of
-    # per-turn TurnSignal facts the engine needs to recompute a weighted
-    # score -- owned here, not inside StyleEngine itself, so the engine
-    # stays a stateless pure function (see its own docstring) and this
-    # dataclass remains the single place ALL per-call state lives.
-    style_history: "list[TurnSignal]" = field(default_factory=list)
 
     # Phase 4.1 (documentation/agent-conversation-improvement.md) -- the
     # real total get_pricing last quoted, keyed to the property/dates it was

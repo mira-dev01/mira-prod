@@ -9,6 +9,7 @@ import pytest
 from pipecat.frames.frames import LLMFullResponseEndFrame, LLMFullResponseStartFrame, LLMTextFrame
 from pipecat.tests.utils import run_test
 
+from app.voice.conversation_quality import ConversationQuality
 from app.voice.response_shape_guard import (
     ResponseShapeValidatorProcessor,
     count_greeting_openers,
@@ -143,15 +144,33 @@ def test_first_clean_sentence_falls_back_to_original_when_unsplittable():
 @pytest.mark.asyncio
 async def test_processor_reproduces_and_fixes_real_c3_shape():
     """Reproduces catalogue item C3 verbatim and confirms the validator
-    resolves it to a single clean question rather than the concatenated
-    wall of text."""
+    cuts the response before the concatenated wall of text finishes.
+
+    Streaming-first rewrite behavior, deliberately different from the old
+    whole-buffer version's exact output: has_multiple_unconnected_questions
+    mathematically cannot fire until 3 question-bearing segments exist in
+    the accumulated text, so a genuinely streaming validator (which forwards
+    each sentence the instant it completes, never holding the whole
+    response back to look ahead) cannot detect this violation before
+    sentence index 3 -- sentences 0-2 have already been forwarded (and, in
+    a live call, already reached tts) by the time the guard has enough text
+    to know a violation exists at all. This is the real, accepted tradeoff
+    of true streaming for a check that inherently needs multi-sentence
+    context, confirmed correct rather than a regression -- more real
+    content reaches the guest than the old version ever forwarded, and the
+    cut still happens as early as it is mathematically possible to detect."""
     guard = ResponseShapeValidatorProcessor()
 
     down_frames, _ = await run_test(guard, frames_to_send=_response(_C3_TEXT))
 
     text = _spoken_text(down_frames)
-    assert text == "Which one sounds interesting?"
-    assert count_questions(text) == 1
+    assert text == (
+        "Which one sounds interesting?Got it, Abhaya. "
+        "Which of those two would you like to explore further?"
+    )
+    assert count_questions(text) == 2
+    assert "We'll check availability" not in text
+    assert "Which property would you like to go ahead with?" not in text
 
 
 @pytest.mark.asyncio
@@ -224,3 +243,94 @@ async def test_processor_never_leaves_the_guest_with_nothing():
 
     text = _spoken_text(down_frames)
     assert text.strip() != ""
+
+
+# --- Streaming behavior: the actual architectural requirement ---
+
+
+@pytest.mark.asyncio
+async def test_first_sentence_is_forwarded_before_the_response_ends():
+    """The core streaming claim: a clean, completed sentence must reach
+    downstream (tts) the moment it completes, not only once the whole
+    response has finished generating -- proven by pushing frames directly
+    (not via run_test's own harness) and inspecting what the processor has
+    already forwarded BEFORE LLMFullResponseEndFrame is even sent."""
+    forwarded: list[LLMTextFrame] = []
+
+    class _CollectingProcessor(ResponseShapeValidatorProcessor):
+        async def push_frame(self, frame, direction=None):
+            if isinstance(frame, LLMTextFrame):
+                forwarded.append(frame)
+
+    guard = _CollectingProcessor()
+    from pipecat.processors.frame_processor import FrameDirection
+
+    await guard.process_frame(LLMFullResponseStartFrame(), FrameDirection.DOWNSTREAM)
+    await guard.process_frame(LLMTextFrame("First sentence done. "), FrameDirection.DOWNSTREAM)
+
+    # The response has NOT ended yet -- confirm the completed sentence's
+    # own CONTENT already went out, proving it wasn't held back until
+    # teardown. Its trailing separator space is deliberately still pending
+    # (not yet forwarded) at this point -- see process_frame's own comment
+    # on _pending_separator: it's only released once proven real content
+    # follows it, which hasn't happened yet.
+    assert "".join(f.text for f in forwarded) == "First sentence done."
+
+    await guard.process_frame(LLMTextFrame("Still talking"), FrameDirection.DOWNSTREAM)
+    await guard.process_frame(LLMFullResponseEndFrame(), FrameDirection.DOWNSTREAM)
+    assert "".join(f.text for f in forwarded) == "First sentence done. Still talking"
+
+
+@pytest.mark.asyncio
+async def test_multi_chunk_streaming_reconstructs_text_exactly():
+    """Real LLM output arrives as many small token-level chunks, not one
+    whole string -- confirms the sentence-boundary accumulation logic
+    handles arbitrary chunk boundaries (including mid-word splits) and
+    still reconstructs the exact original text when nothing violates."""
+    guard = ResponseShapeValidatorProcessor()
+    chunks = ["Sure, the", " Cabana 1BHK", " sleeps two", " guests.", " Interested", "?"]
+
+    down_frames, _ = await run_test(guard, frames_to_send=_response(*chunks))
+
+    text = _spoken_text(down_frames)
+    assert text == "Sure, the Cabana 1BHK sleeps two guests. Interested?"
+
+
+# --- ConversationQuality integration ---
+
+
+@pytest.mark.asyncio
+async def test_records_validation_result_on_shape_violation():
+    quality = ConversationQuality()
+    guard = ResponseShapeValidatorProcessor(quality)
+
+    await run_test(guard, frames_to_send=_response(_C3_TEXT))
+
+    assert len(quality.validations) == 1
+    result = quality.validations[0]
+    assert result.rule == "shape_compliance"
+    assert result.severity == "WARNING"
+    assert "multiple_unconnected_questions" in result.metadata["violations"]
+    assert result.processing_time_ms >= 0
+
+
+@pytest.mark.asyncio
+async def test_no_validation_result_recorded_for_a_clean_response():
+    quality = ConversationQuality()
+    guard = ResponseShapeValidatorProcessor(quality)
+
+    await run_test(guard, frames_to_send=_response("How many guests will be staying with you?"))
+
+    assert quality.validations == []
+
+
+@pytest.mark.asyncio
+async def test_processor_works_without_a_quality_object():
+    """quality is optional -- every existing call site/test that constructs
+    this processor without one (the vast majority in this file) must keep
+    working unchanged, no-op rather than erroring."""
+    guard = ResponseShapeValidatorProcessor()
+
+    down_frames, _ = await run_test(guard, frames_to_send=_response(_C3_TEXT))
+
+    assert _spoken_text(down_frames) != ""

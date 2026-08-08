@@ -1,11 +1,10 @@
 """Shared, deterministic text-language heuristics -- no NLP, no embeddings,
 no LLM call. Single source of truth for both directions that need this:
 app/voice/conversation_style.py (analyzing the GUEST's transcribed speech to
-drive the Style Engine) and app/voice/response_compliance.py (validating the
-LLM's own generated reply against the expected style). Extracted from
-response_compliance.py's original implementation with zero behavior change --
-both call sites now share one set of thresholds/token lists instead of two
-copies silently drifting apart.
+drive the Style Engine) and app/voice/style_compliance_monitor.py (validating
+the LLM's own generated reply against the expected style). Both call sites
+share one set of thresholds/token lists instead of two copies silently
+drifting apart.
 """
 
 from __future__ import annotations

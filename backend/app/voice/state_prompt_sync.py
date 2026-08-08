@@ -57,6 +57,7 @@ goal) -- the common case for the first turn or two of any call.
 from pipecat.frames.frames import Frame, LLMContextFrame
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
+from app.voice.conversation_quality import ConversationQuality
 from app.voice.conversation_state import ConversationState
 from app.voice.conversation_style import render_style_block
 
@@ -150,34 +151,49 @@ def _format_slots(slots: dict) -> str:
     return ", ".join(parts)
 
 
-def _language_hint(state: ConversationState) -> str:
+def _language_hint(state: ConversationState, quality: "ConversationQuality | None") -> str:
     """Renders the Conversation Style Engine's own structured block
     (app/voice/conversation_style.py's render_style_block) once
     state.conversation_style exists -- this REPLACES the earlier single-line
     passive/explicit language hint that used to read
     current_spoken_language/explicit_language_preference directly (those two
     fields are unchanged and still exist, still drive LanguageSyncProcessor's
-    live TTS switch and the Response Validator's own checks; only THIS
-    prompt-rendering consumer now sources the LLM-facing text from the
-    hysteresis-smoothed ConversationStyle instead of the raw single-turn
-    signal, since a raw signal flipping every turn was exactly the
-    inconsistent-style regression this engine exists to fix). Falls back to
-    "" (no hint at all) before ConversationStyleProcessor has computed
-    anything yet, e.g. the very first turn of a call before any guest speech
-    has been transcribed."""
-    if state.conversation_style is not None:
-        return render_style_block(state.conversation_style)
-    return ""
+    live TTS switch; only THIS prompt-rendering consumer now sources the
+    LLM-facing text from the hysteresis-smoothed ConversationStyle instead
+    of the raw single-turn signal, since a raw signal flipping every turn
+    was exactly the inconsistent-style regression this engine exists to
+    fix). Falls back to "" (no hint at all) before ConversationStyleProcessor
+    has computed anything yet, e.g. the very first turn of a call before any
+    guest speech has been transcribed.
+
+    Response output architecture redesign: if ConversationQuality reports a
+    pending style correction (StyleComplianceMonitor detected a confirmed
+    language mismatch on the previous turn), this asks render_style_block
+    for a more emphatic rendering of the SAME style -- this is the one
+    permitted, one-directional bridge from quality back to conversational
+    behavior (see conversation_quality.py's own module docstring): a
+    quality signal can make ConversationStyle speak louder, but no
+    validator ever writes prompt text itself. The flag is cleared
+    immediately after being consumed here so the emphasis is a one-turn
+    nudge, not a permanent state."""
+    if state.conversation_style is None:
+        return ""
+    emphasized = quality is not None and quality.pending_style_correction
+    if emphasized:
+        quality.clear_pending_style_correction()
+    return render_style_block(state.conversation_style, emphasized=emphasized)
 
 
-def build_state_block_content(state: ConversationState) -> str:
+def build_state_block_content(state: ConversationState, quality: "ConversationQuality | None" = None) -> str:
     """Returns "" when there's nothing worth surfacing yet (no slots known,
     still at the default greeting goal, no language detected yet) -- this
     keeps the processor a true no-op on the common early-call case rather
-    than injecting an empty or placeholder block."""
+    than injecting an empty or placeholder block. quality is optional and
+    read ONLY for the one narrow pending_style_correction bridge -- see
+    _language_hint's own docstring."""
     slot_summary = _format_slots(state.slots)
     goal_hint = _closing_hint(state) or _GOAL_HINTS.get(state.conversation_goal, "")
-    language_hint = _language_hint(state)
+    language_hint = _language_hint(state, quality)
 
     if not slot_summary and not goal_hint and not language_hint and not state.quoted_price:
         return ""
@@ -211,9 +227,14 @@ class StatePromptSyncProcessor(FrameProcessor):
     right before the system prompt's fixed content stops mattering and the
     live conversation state starts mattering more."""
 
-    def __init__(self, conversation_state: ConversationState):
+    def __init__(self, conversation_state: ConversationState, quality: ConversationQuality | None = None):
         super().__init__()
         self._state = conversation_state
+        # Optional -- only needed to consume a pending style correction
+        # signal (see build_state_block_content/_language_hint). None is a
+        # genuine no-op, same optional-dependency pattern every other
+        # processor in this codebase already uses.
+        self._quality = quality
         # The exact dict object last inserted into context.messages by this
         # processor, tracked by Python object identity (see module docstring
         # for why a marker FIELD on the message itself is unsafe -- it leaks
@@ -225,7 +246,7 @@ class StatePromptSyncProcessor(FrameProcessor):
         await super().process_frame(frame, direction)
 
         if isinstance(frame, LLMContextFrame):
-            content = build_state_block_content(self._state)
+            content = build_state_block_content(self._state, self._quality)
             messages = frame.context.messages
 
             existing_index = next(

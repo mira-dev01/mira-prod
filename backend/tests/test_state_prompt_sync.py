@@ -10,6 +10,7 @@ from pipecat.frames.frames import LLMContextFrame
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.tests.utils import run_test
 
+from app.voice.conversation_quality import ConversationQuality, ValidationResult
 from app.voice.conversation_state import ConversationState
 from app.voice.conversation_style import ConversationAnalyzer, StyleEngine
 from app.voice.state_prompt_sync import StatePromptSyncProcessor, build_state_block_content
@@ -20,11 +21,10 @@ def _style_from_turns(*turns: str):
     call would produce it -- avoids hand-constructing a ConversationStyle
     dataclass whose shape could silently drift from the real one."""
     engine = StyleEngine()
-    history = []
     style = None
     for i, text in enumerate(turns, start=1):
         signal = ConversationAnalyzer.analyze_turn(text)
-        style, history = engine.update(history, signal, style, turn_index=i)
+        style = engine.update(signal, style, turn_index=i)
     return style
 
 
@@ -344,3 +344,76 @@ def test_build_state_block_content_no_quoted_price_line_when_unset():
     state.set_slot("num_guests", 4)
     content = build_state_block_content(state)
     assert "already quoted" not in content
+
+
+# --- ConversationQuality bridge: the one permitted quality -> behavior path ---
+
+
+def test_pending_style_correction_renders_emphasized_block():
+    state = ConversationState()
+    state.conversation_style = _style_from_turns("हाँ मुझे बुकिंग करनी है")
+    quality = ConversationQuality()
+    quality.pending_style_correction = True
+
+    content = build_state_block_content(state, quality)
+
+    assert "did not match this" in content
+
+
+def test_no_pending_correction_renders_plain_block():
+    state = ConversationState()
+    state.conversation_style = _style_from_turns("हाँ मुझे बुकिंग करनी है")
+    quality = ConversationQuality()
+
+    content = build_state_block_content(state, quality)
+
+    assert "did not match this" not in content
+
+
+def test_consuming_pending_correction_clears_the_flag():
+    """The emphasis is a one-turn nudge, not a permanent state -- reading it
+    once must clear it so the next turn (assuming no new FAIL) renders the
+    plain block again."""
+    state = ConversationState()
+    state.conversation_style = _style_from_turns("हाँ मुझे बुकिंग करनी है")
+    quality = ConversationQuality()
+    quality.pending_style_correction = True
+
+    build_state_block_content(state, quality)
+
+    assert quality.pending_style_correction is False
+
+
+def test_no_quality_object_is_a_no_op_not_an_error():
+    state = ConversationState()
+    state.conversation_style = _style_from_turns("हाँ मुझे बुकिंग करनी है")
+    content = build_state_block_content(state)
+    assert "did not match this" not in content
+
+
+def test_validator_never_writes_prompt_text_directly():
+    """Architecture requirement: only render_style_block (owned by
+    conversation_style.py) ever produces the correction sentence text --
+    ConversationQuality itself carries only a boolean, never free text a
+    validator might have authored."""
+    quality = ConversationQuality()
+    quality.record(ValidationResult(rule="style_compliance", severity="FAIL", confidence=0.9))
+    assert isinstance(quality.pending_style_correction, bool)
+    assert not hasattr(quality, "correction_text")
+
+
+@pytest.mark.asyncio
+async def test_pending_correction_flows_through_the_real_processor():
+    state = ConversationState()
+    state.conversation_style = _style_from_turns("हाँ मुझे बुकिंग करनी है")
+    quality = ConversationQuality()
+    quality.pending_style_correction = True
+    processor = StatePromptSyncProcessor(state, quality)
+
+    frame = _context_frame({"role": "system", "content": "sys"}, {"role": "user", "content": "bhai kya haal hai"})
+    down_frames, _ = await run_test(processor, frames_to_send=[frame])
+
+    messages = down_frames[-1].context.messages
+    state_block = next(m for m in messages if _is_injected_state_block(m, "sys"))
+    assert "did not match this" in state_block["content"]
+    assert quality.pending_style_correction is False

@@ -17,7 +17,6 @@ from app.voice.conversation_style import (
     ConversationStyleProcessor,
     MIN_TURNS_TO_SWITCH,
     StyleEngine,
-    TurnSignal,
     render_style_block,
 )
 
@@ -28,12 +27,11 @@ def _transcription(text: str) -> TranscriptionFrame:
 
 def _run(turns: list[str], rolling_window: int = 6) -> list[ConversationStyle]:
     engine = StyleEngine(rolling_window=rolling_window)
-    history: list[TurnSignal] = []
     style = None
     results = []
     for i, text in enumerate(turns, start=1):
         signal = ConversationAnalyzer.analyze_turn(text)
-        style, history = engine.update(history, signal, style, turn_index=i)
+        style = engine.update(signal, style, turn_index=i)
         results.append(style)
     return results
 
@@ -140,23 +138,30 @@ def test_confidence_decreases_when_a_switch_is_held_off():
 
 
 def test_rolling_window_bounds_history_length():
-    turns = ["Hello"] * 10
+    """StyleEngine now owns its history internally (architecture boundary:
+    this is the engine's own working memory, not a ConversationState field)
+    -- verified via its private _history rather than an externally-threaded
+    list, since there is no longer an external list to inspect."""
     engine = StyleEngine(rolling_window=3)
-    history: list[TurnSignal] = []
     style = None
-    for i, text in enumerate(turns, start=1):
-        signal = ConversationAnalyzer.analyze_turn(text)
-        style, history = engine.update(history, signal, style, turn_index=i)
-    assert len(history) == 3
+    for i in range(1, 11):
+        signal = ConversationAnalyzer.analyze_turn("Hello")
+        style = engine.update(signal, style, turn_index=i)
+    assert len(engine._history) == 3
 
 
-def test_history_is_never_mutated_in_place():
+def test_each_update_returns_a_fresh_immutable_style():
+    """Every ConversationStyle returned is its own frozen snapshot -- calling
+    update() again must never retroactively change an earlier snapshot
+    already handed to a caller (e.g. state_prompt_sync holding a reference
+    from a prior turn)."""
     engine = StyleEngine()
-    history: list[TurnSignal] = []
     signal = ConversationAnalyzer.analyze_turn("Hello")
-    _style, new_history = engine.update(history, signal, None, turn_index=1)
-    assert history == []  # original list untouched
-    assert len(new_history) == 1
+    first_style = engine.update(signal, None, turn_index=1)
+    second_style = engine.update(signal, first_style, turn_index=2)
+    assert first_style.turn_index == 1
+    assert second_style.turn_index == 2
+    assert first_style is not second_style
 
 
 # --- Script detection ---
@@ -253,6 +258,11 @@ async def test_processor_no_conversation_state_is_a_no_op_not_an_error():
 
 @pytest.mark.asyncio
 async def test_processor_accumulates_history_across_multiple_turns():
+    """History accumulation is now internal to the processor's own
+    StyleEngine instance (architecture boundary: ConversationState no
+    longer holds style_history) -- verified via the observable effect
+    (turn_index advancing, confidence building) rather than reaching into
+    ConversationState for a field that no longer lives there."""
     state = ConversationState()
     processor = ConversationStyleProcessor(state)
 
@@ -264,5 +274,6 @@ async def test_processor_accumulates_history_across_multiple_turns():
         ],
     )
 
-    assert len(state.style_history) == 2
+    assert not hasattr(state, "style_history")
     assert state.conversation_style.turn_index == 2
+    assert processor._engine._history and len(processor._engine._history) == 2
