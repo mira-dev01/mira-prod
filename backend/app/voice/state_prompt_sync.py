@@ -56,24 +56,9 @@ goal) -- the common case for the first turn or two of any call.
 
 from pipecat.frames.frames import Frame, LLMContextFrame
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
-from pipecat.transcriptions.language import Language
 
 from app.voice.conversation_state import ConversationState
-
-# Phase 3.2 (documentation/agent-conversation-improvement.md): Sarvam tags
-# codemixed Hindi/English speech as Hindi (same fallback language_sync.py's
-# own _HINDI_LANGUAGES set already relies on) -- from the LLM's reply-
-# language perspective this reads as "Hinglish", not "Hindi", since
-# GOLDEN_RULES already asks for casual Hinglish (never pure/shuddh Hindi)
-# whenever the guest is in this language family. Named "English" rather
-# than "en-IN" for the same reason every other value in this module is
-# plain English words, not enum/locale codes.
-_LANGUAGE_DISPLAY_NAMES: dict[Language, str] = {
-    Language.EN: "English",
-    Language.EN_IN: "English",
-    Language.HI: "Hinglish",
-    Language.HI_IN: "Hinglish",
-}
+from app.voice.conversation_style import render_style_block
 
 _GOAL_HINTS: dict[str, str] = {
     "greeting": "",
@@ -166,22 +151,22 @@ def _format_slots(slots: dict) -> str:
 
 
 def _language_hint(state: ConversationState) -> str:
-    """Phase 3.2/3.3: an explicit, guest-stated preference (Phase 3.3) always
-    wins over passive per-turn detection (Phase 3.1) -- a guest saying
-    "can you speak Hindi?" is a stronger, more deliberate signal than
-    whatever code-switching happened to be detected on their last utterance.
-    Falls back to "" (no hint at all) when neither is set, e.g. the very
-    first turn of a call before any guest speech has been transcribed yet --
-    GOLDEN_RULES' own passive-mirroring instruction already covers that case."""
-    if state.explicit_language_preference is not None:
-        name = _LANGUAGE_DISPLAY_NAMES.get(state.explicit_language_preference)
-        if name:
-            return f"The guest has asked you to speak in {name} -- honor this for the rest of the call."
-        return ""
-    if state.current_spoken_language is not None:
-        name = _LANGUAGE_DISPLAY_NAMES.get(state.current_spoken_language)
-        if name:
-            return f"The guest is currently speaking {name} -- continue replying in {name} unless they switch."
+    """Renders the Conversation Style Engine's own structured block
+    (app/voice/conversation_style.py's render_style_block) once
+    state.conversation_style exists -- this REPLACES the earlier single-line
+    passive/explicit language hint that used to read
+    current_spoken_language/explicit_language_preference directly (those two
+    fields are unchanged and still exist, still drive LanguageSyncProcessor's
+    live TTS switch and the Response Validator's own checks; only THIS
+    prompt-rendering consumer now sources the LLM-facing text from the
+    hysteresis-smoothed ConversationStyle instead of the raw single-turn
+    signal, since a raw signal flipping every turn was exactly the
+    inconsistent-style regression this engine exists to fix). Falls back to
+    "" (no hint at all) before ConversationStyleProcessor has computed
+    anything yet, e.g. the very first turn of a call before any guest speech
+    has been transcribed."""
+    if state.conversation_style is not None:
+        return render_style_block(state.conversation_style)
     return ""
 
 
