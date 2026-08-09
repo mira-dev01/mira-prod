@@ -12,7 +12,7 @@ Two passes:
 2. normalize_property_name_llm_fallback() -- optional second pass, only
    invoked by callers when the heuristic pass reports confidence="low"
    (no recognizable delimiter or property-type word at all). Mirrors
-   discount_policy_service.parse_discount_policy_text's one-shot
+   negotiation_policy_service.parse_negotiation_policy_text's one-shot
    Anthropic -> Groq -> OpenRouter fallback chain. Import-time only (never
    on the live voice-call path); returns None (never raises) on any
    failure or missing provider, same fail-open discipline as

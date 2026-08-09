@@ -45,6 +45,7 @@ const emptyForm: PropertyCreate = {
   max_guests: 4,
   minimum_nights: 1,
   exact_airbnb_pricing: false,
+  is_premium: false,
 };
 
 function normalizeForSubmit(form: PropertyCreate): PropertyCreate {
@@ -81,6 +82,7 @@ function propertyToForm(property: PropertyOut): PropertyCreate {
     max_guests: property.max_guests,
     minimum_nights: property.minimum_nights,
     exact_airbnb_pricing: property.exact_airbnb_pricing,
+    is_premium: property.is_premium,
   };
 }
 

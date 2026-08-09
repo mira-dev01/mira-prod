@@ -24,7 +24,7 @@ async def get_notifications(
     current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ):
     property_ids = await owned_property_ids(db, current_user)
-    return await list_notifications(db, user_property_ids=property_ids)
+    return await list_notifications(db, user_property_ids=property_ids, user_id=current_user.id)
 
 
 @router.post("/{notification_id}/read", response_model=NotificationOut)
@@ -54,7 +54,7 @@ async def stream_notifications(
 
             async with AsyncSessionLocal() as stream_db:
                 new_notifications = await list_notifications(
-                    stream_db, user_property_ids=property_ids, since=last_seen
+                    stream_db, user_property_ids=property_ids, user_id=current_user.id, since=last_seen
                 )
 
             for notification in reversed(new_notifications):

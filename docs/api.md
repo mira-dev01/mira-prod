@@ -88,6 +88,7 @@ See [research-flow.md](research-flow.md) for how these rules feed `negotiate_rat
 |---|---|---|
 | `GET /analytics/summary` | Dashboard stat cards: total/completed/escalated calls, open notifications, pipeline value, open leads, answer rate. Params: `days` (default 30), `start_date`/`end_date` (override `days`), `include_test_calls` | required |
 | `GET /analytics/timeseries` | Bucketed time series for one metric: `total_calls`, `completed_calls`, `escalated_calls`, `pipeline_value`, `open_leads`. Params: `metric`, `start_date`, `end_date`, `include_test_calls` | required |
+| `GET /analytics/recovery` | Busy Call Recovery funnel/KPIs (Opportunities page's Recovery Analytics card): `busy_calls` (one per rejected call attempt, from `Notification(channel="busy_recovery")` — not `Lead`, which dedups repeat attempts from the same guest), `recovered` (distinct leads with a `busy_recovery_reply` notification), `converted`/`lost` (recovery leads with `status="booked"`/`"closed"`), `avg_recovery_time_seconds` (first rejection → guest's first reply, per lead, averaged), `avg_host_response_seconds` (notification created → first marked read, via `Notification.responded_at`), `recovery_rate`/`conversion_rate`, and a `funnel` array (`busy_calls`→`recovered`→`converted`). Scoped by `Lead.user_id` (not `property_id.in_(owned_property_ids)`) since a reply notification can have `property_id=NULL`. Params: `days` (default 30), `start_date`/`end_date` (override `days`) | required |
 
 ## `notifications.py` — `/notifications`
 
@@ -135,6 +136,12 @@ See [agents.md](agents.md) for what runs behind these endpoints.
 | Method & path | Purpose | Auth |
 |---|---|---|
 | `POST /webhooks/exotel/call-status` | Exotel's call-status/passthru callback (call lifecycle: busy/no-answer/failed, recording URL). Independent of the live voice websocket — used for `call_sessions` logging via `call_service.attach_exotel_call` | `token` query param (`EXOTEL_WEBHOOK_TOKEN`), verified via `verify_webhook_token` |
+
+## `webhooks/whatsapp.py` — `/webhooks/whatsapp`
+
+| Method & path | Purpose | Auth |
+|---|---|---|
+| `POST /webhooks/whatsapp/inbound` | Twilio's inbound-message callback for a guest replying to the Busy Recovery menu (see `app/services/recovery_service.py`). Routes the reply via `app/services/whatsapp_reply_service.py` — resolves the guest's existing recovery `Lead` by phone (reuses `GuestProfile`/`Lead` identity, never creates a second Lead for the same guest) and answers Property/Pricing/FAQs/Photos directly, or notifies the host for "talk to host"/free-text replies | `token` query param (`TWILIO_WHATSAPP_WEBHOOK_TOKEN`), verified via `verify_whatsapp_webhook_token` |
 
 ## `GET /health` and `GET /api/v1/health/llm`
 

@@ -1,11 +1,12 @@
 """Covers negotiate_rate's Host Memory wiring (memory-architecture-plan.md
-section 4.4/4.6) -- approved HostDiscountRule rows changing negotiation
-behavior, and the mandatory fallback to today's exact pre-existing
-global-constant behavior when no host policy exists or the lookup fails."""
+section 4.4/4.6) -- approved discount_* NegotiationRule rows changing
+negotiation behavior, and the mandatory fallback to today's exact
+pre-existing global-constant behavior when no host policy exists or the
+lookup fails."""
 
 from datetime import date, timedelta
 
-from app.models.host_discount_rule import HostDiscountRule
+from app.models.negotiation_rule import NegotiationRule
 from app.services.pricing_engine import MAX_NEGOTIATION_DISCOUNT_PERCENT, negotiate_rate
 
 
@@ -28,10 +29,10 @@ async def test_no_host_id_falls_back_to_global_defaults(test_property, db_sessio
 
 
 async def test_host_with_no_approved_rules_falls_back_to_global_defaults(test_property, test_user, db_session):
-    """A host_id that exists but has zero approved HostDiscountRule rows
-    (the common case right after Phase 1 shipped, before any host has used
-    AI Training yet) must also fall back exactly as before -- this is the
-    single most important behavior-preservation guarantee in this whole
+    """A host_id that exists but has zero approved discount_* NegotiationRule
+    rows (the common case right after Phase 1 shipped, before any host has
+    used AI Training yet) must also fall back exactly as before -- this is
+    the single most important behavior-preservation guarantee in this whole
     change, since every existing host is in this state today."""
     monday = _next_weekday(date.today(), 0)
     wednesday = monday + timedelta(days=2)
@@ -49,9 +50,9 @@ async def test_pending_validation_rule_is_not_used(test_property, test_user, db_
     negotiation -- this is the core safety guarantee of the whole Host
     Memory validation flow."""
     db_session.add(
-        HostDiscountRule(
+        NegotiationRule(
             host_id=test_user.id,
-            trigger_type="guest_requests",
+            rule_type="discount_guest_requests",
             discount_percent=50,  # deliberately extreme so a leak would be obvious
             status="pending_validation",
         )
@@ -69,9 +70,9 @@ async def test_pending_validation_rule_is_not_used(test_property, test_user, db_
 
 async def test_approved_guest_requests_rule_sets_discount_ceiling(test_property, test_user, db_session):
     db_session.add(
-        HostDiscountRule(
+        NegotiationRule(
             host_id=test_user.id,
-            trigger_type="guest_requests",
+            rule_type="discount_guest_requests",
             discount_percent=5,
             status="approved",
         )
@@ -89,17 +90,17 @@ async def test_approved_guest_requests_rule_sets_discount_ceiling(test_property,
 
 async def test_approved_repeat_guest_rule_applies_only_for_returning_loyalty(test_property, test_user, db_session):
     db_session.add(
-        HostDiscountRule(
+        NegotiationRule(
             host_id=test_user.id,
-            trigger_type="repeat_guest_same_host",
+            rule_type="discount_repeat_guest",
             discount_percent=8,
             status="approved",
         )
     )
     db_session.add(
-        HostDiscountRule(
+        NegotiationRule(
             host_id=test_user.id,
-            trigger_type="guest_requests",
+            rule_type="discount_guest_requests",
             discount_percent=5,
             status="approved",
         )
@@ -140,9 +141,9 @@ async def test_negotiation_allowed_false_refuses_without_erroring(test_property,
 async def test_max_discount_percent_override_caps_negotiation(test_property, test_user, db_session):
     test_user.max_discount_percent_override = 3
     db_session.add(
-        HostDiscountRule(
+        NegotiationRule(
             host_id=test_user.id,
-            trigger_type="guest_requests",
+            rule_type="discount_guest_requests",
             discount_percent=20,  # would exceed the host's own override cap
             status="approved",
         )
@@ -159,7 +160,7 @@ async def test_max_discount_percent_override_caps_negotiation(test_property, tes
 
 
 async def test_lookup_failure_falls_back_to_global_defaults_never_errors(test_property, test_user, db_session, monkeypatch):
-    """Simulates the HostDiscountRule DB query itself failing (e.g. a
+    """Simulates the NegotiationRule DB query itself failing (e.g. a
     transient error) inside _get_host_negotiation_policy's own try/except --
     negotiate_rate must still complete using global defaults, never raise,
     per the mandatory fallback rule in section 0.1."""

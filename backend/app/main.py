@@ -17,15 +17,15 @@ from app.api.v1 import (
     calls,
     faq,
     guests,
-    host_discount_rules,
     leads,
+    negotiation_rules,
     notifications,
     pricing,
     properties,
     technicians,
     voice,
 )
-from app.api.v1.webhooks import exotel
+from app.api.v1.webhooks import exotel, whatsapp
 from app.config import settings
 from app.database import AsyncSessionLocal
 from app.services.calendar_service import sync_all_properties
@@ -249,9 +249,10 @@ app.include_router(analytics.router, prefix=API_PREFIX)
 app.include_router(notifications.router, prefix=API_PREFIX)
 app.include_router(leads.router, prefix=API_PREFIX)
 app.include_router(faq.router, prefix=API_PREFIX)
-app.include_router(host_discount_rules.router, prefix=API_PREFIX)
+app.include_router(negotiation_rules.router, prefix=API_PREFIX)
 app.include_router(voice.router, prefix=API_PREFIX)
 app.include_router(exotel.router, prefix=API_PREFIX)
+app.include_router(whatsapp.router, prefix=API_PREFIX)
 
 
 @app.get("/health")

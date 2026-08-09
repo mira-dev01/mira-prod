@@ -11,10 +11,10 @@ twilio_client.py's own docstring) -- TwiML here is simple enough to build as
 a plain string.
 """
 
-import hmac
 from xml.sax.saxutils import escape
 
 from app.config import settings
+from app.utils.webhook_auth import verify_shared_secret_token
 
 
 def verify_voice_webhook_token(token: str | None) -> bool:
@@ -22,9 +22,7 @@ def verify_voice_webhook_token(token: str | None) -> bool:
     -- simpler than implementing Twilio's own X-Twilio-Signature HMAC scheme,
     and consistent with how this codebase already secures the Exotel
     callback."""
-    if not token:
-        return False
-    return hmac.compare_digest(token, settings.twilio_voice_webhook_token)
+    return verify_shared_secret_token(token, settings.twilio_voice_webhook_token)
 
 
 def build_connect_stream_twiml(stream_ws_url: str, from_number: str, to_number: str) -> str:

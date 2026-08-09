@@ -13,16 +13,16 @@ import type {
   FaqGapAnalytics,
   FaqGapAnswer,
   FaqGapOut,
-  DiscountPolicyParseResponse,
   GuestProfileDetailOut,
   GuestProfileOut,
   GuestProfileUpdate,
-  HostDiscountRuleOut,
-  HostDiscountRuleUpdate,
   HostOnboarding,
   HostOnboardingResponse,
   LeadOut,
   LeadUpdate,
+  NegotiationPolicyParseResponse,
+  NegotiationRuleOut,
+  NegotiationRuleUpdate,
   NotificationOut,
   ServiceRequestOut,
   PriceBreakdown,
@@ -32,6 +32,7 @@ import type {
   PropertyImportResult,
   PropertyOut,
   PropertyUpdate,
+  RecoveryAnalytics,
   TechnicianCreate,
   TechnicianOut,
   UserOut,
@@ -237,16 +238,16 @@ export const api = {
     quote: (data: { property_id: string; check_in: string; check_out: string; num_guests: number }) =>
       request<PriceBreakdown>("/pricing/quote", { method: "POST", body: JSON.stringify(data) }),
   },
-  hostDiscountRules: {
-    list: () => request<HostDiscountRuleOut[]>("/host-discount-rules"),
-    parse: (discountPolicyText: string) =>
-      request<DiscountPolicyParseResponse>("/host-discount-rules/parse", {
+  negotiationRules: {
+    list: () => request<NegotiationRuleOut[]>("/negotiation-rules"),
+    parse: (policyText: string) =>
+      request<NegotiationPolicyParseResponse>("/negotiation-rules/parse", {
         method: "POST",
-        body: JSON.stringify({ discount_policy_text: discountPolicyText }),
+        body: JSON.stringify({ policy_text: policyText }),
       }),
-    update: (id: string, data: HostDiscountRuleUpdate) =>
-      request<HostDiscountRuleOut>(`/host-discount-rules/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
-    remove: (id: string) => request<void>(`/host-discount-rules/${id}`, { method: "DELETE" }),
+    update: (id: string, data: NegotiationRuleUpdate) =>
+      request<NegotiationRuleOut>(`/negotiation-rules/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    remove: (id: string) => request<void>(`/negotiation-rules/${id}`, { method: "DELETE" }),
   },
   technicians: {
     list: () => request<TechnicianOut[]>("/technicians"),
@@ -280,6 +281,14 @@ export const api = {
           start_date: params.startDate,
           end_date: params.endDate,
           include_test_calls: params.includeTestCalls ?? false,
+        })}`
+      ),
+    recovery: (params?: { days?: number; startDate?: string; endDate?: string }) =>
+      request<RecoveryAnalytics>(
+        `/analytics/recovery${buildQuery({
+          days: params?.startDate || params?.endDate ? undefined : (params?.days ?? 30),
+          start_date: params?.startDate,
+          end_date: params?.endDate,
         })}`
       ),
   },

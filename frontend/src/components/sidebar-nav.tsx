@@ -16,6 +16,7 @@ import {
   Settings,
   Menu,
   X,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -37,6 +38,7 @@ const links: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/dashboard/calendar", label: "Calendar", icon: Calendar },
   { href: "/dashboard/calls", label: "Calls", icon: Phone },
   { href: "/dashboard/leads", label: "Live Requests", icon: Users },
+  { href: "/dashboard/opportunities", label: "Opportunities", icon: Zap },
   { href: "/dashboard/guests", label: "Guests", icon: UserRound },
   { href: "/dashboard/faq", label: "FAQ", icon: HelpCircle },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },

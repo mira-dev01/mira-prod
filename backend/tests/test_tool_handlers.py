@@ -131,6 +131,69 @@ async def test_check_calendar_saturday_rule_does_not_block_non_saturday_one_nigh
     assert "AVAILABLE" in result
 
 
+async def test_check_calendar_weekend_minimum_stay_rule_blocks_short_weekend_stay(
+    test_property, db_session, test_user
+):
+    """Phase 6 (Negotiation engine): a host-configured minimum_stay_nights
+    rule (via the new AI Training/Pricing pricing-rules flow) is a SECOND,
+    additive check alongside the existing flat Property.minimum_nights --
+    only enforced when host_user_id is actually passed (so the rule can be
+    looked up) and only for a stay that includes a Friday/Saturday night."""
+    from app.models.negotiation_rule import NegotiationRule
+
+    db_session.add(
+        NegotiationRule(
+            host_id=test_user.id,
+            rule_type="minimum_stay_nights",
+            condition={"weekend_min_nights": 2},
+            property_ids=[str(test_property.id)],
+            status="approved",
+        )
+    )
+    await db_session.commit()
+
+    def _next_weekday(start: date, weekday: int) -> date:
+        delta = (weekday - start.weekday()) % 7
+        return start + timedelta(days=delta or 7)
+
+    friday = _next_weekday(date.today(), 4)
+    args = CheckCalendarArgs(
+        property_id=str(test_property.id), check_in=friday, check_out=friday + timedelta(days=1)
+    )
+    result = await tool_handlers.handle_check_calendar(db_session, args, host_user_id=test_user.id)
+    assert "minimum stay of 2 nights" in result
+
+
+async def test_check_calendar_weekend_minimum_stay_rule_ignored_without_host_user_id(
+    test_property, db_session, test_user
+):
+    """Confirms the rule lookup is genuinely gated on host_user_id being
+    passed -- a caller that omits it (host_user_id=None, the existing
+    default) sees zero behavior change, same fail-closed guarantee as
+    every other host-policy lookup in this codebase."""
+    from app.models.negotiation_rule import NegotiationRule
+
+    db_session.add(
+        NegotiationRule(
+            host_id=test_user.id,
+            rule_type="minimum_stay_nights",
+            condition={"weekend_min_nights": 2},
+            property_ids=[str(test_property.id)],
+            status="approved",
+        )
+    )
+    await db_session.commit()
+
+    def _next_weekday(start: date, weekday: int) -> date:
+        delta = (weekday - start.weekday()) % 7
+        return start + timedelta(days=delta or 7)
+
+    friday = _next_weekday(date.today(), 4)
+    args = CheckCalendarArgs(
+        property_id=str(test_property.id), check_in=friday, check_out=friday + timedelta(days=1)
+    )
+    result = await tool_handlers.handle_check_calendar(db_session, args)
+    assert "AVAILABLE" in result
 async def test_get_pricing_includes_total(test_property, db_session):
     today = date.today()
     args = GetPricingArgs(
@@ -139,6 +202,74 @@ async def test_get_pricing_includes_total(test_property, db_session):
     result = await tool_handlers.handle_get_pricing(db_session, args)
     assert "total" in result.lower()
     assert test_property.name in result
+
+
+async def test_get_pricing_early_checkin_fee_only_surfaced_when_requested(test_property, db_session, test_user):
+    """Phase 6: a host-configured early_checkin_fee is only ever included in
+    the spoken summary when the guest explicitly asked (requested_early_checkin
+    set true) -- never volunteered as part of a normal price quote."""
+    from app.models.negotiation_rule import NegotiationRule
+
+    db_session.add(
+        NegotiationRule(
+            host_id=test_user.id,
+            rule_type="early_checkin_fee",
+            condition={"fee": 1200},
+            property_ids=[str(test_property.id)],
+            status="approved",
+        )
+    )
+    await db_session.commit()
+
+    today = date.today()
+    not_requested = GetPricingArgs(
+        property_id=str(test_property.id), check_in=today + timedelta(days=1), check_out=today + timedelta(days=3), num_guests=2
+    )
+    result_not_requested = await tool_handlers.handle_get_pricing(db_session, not_requested, host_user_id=test_user.id)
+    assert "early check-in" not in result_not_requested.lower()
+
+    requested = GetPricingArgs(
+        property_id=str(test_property.id),
+        check_in=today + timedelta(days=1),
+        check_out=today + timedelta(days=3),
+        num_guests=2,
+        requested_early_checkin=True,
+    )
+    result_requested = await tool_handlers.handle_get_pricing(db_session, requested, host_user_id=test_user.id)
+    assert "early check-in" in result_requested.lower()
+    assert "1,200" in result_requested
+
+
+async def test_get_pricing_weekend_minimum_stay_rule_blocks_short_quote(test_property, db_session, test_user):
+    """Self-review fix: GOLDEN_RULES tells the model get_pricing (not just
+    check_calendar) will surface a minimum-stay requirement -- confirms
+    handle_get_pricing actually enforces the same host-configured
+    minimum_stay_nights rule as handle_check_calendar, rather than quoting
+    a full price for a stay that's actually too short."""
+    from app.models.negotiation_rule import NegotiationRule
+
+    db_session.add(
+        NegotiationRule(
+            host_id=test_user.id,
+            rule_type="minimum_stay_nights",
+            condition={"weekend_min_nights": 2},
+            property_ids=[str(test_property.id)],
+            status="approved",
+        )
+    )
+    await db_session.commit()
+
+    def _next_weekday(start: date, weekday: int) -> date:
+        delta = (weekday - start.weekday()) % 7
+        return start + timedelta(days=delta or 7)
+
+    friday = _next_weekday(date.today(), 4)
+    args = GetPricingArgs(
+        property_id=str(test_property.id), check_in=friday, check_out=friday + timedelta(days=1), num_guests=2
+    )
+    result = await tool_handlers.handle_get_pricing(db_session, args, host_user_id=test_user.id)
+    assert "minimum stay of 2 nights" in result
+    assert "total" not in result.lower()
 
 
 async def test_get_pricing_on_priced_fires_with_real_property_and_breakdown(test_property, db_session):
@@ -626,7 +757,17 @@ async def test_recommend_properties_combo_fallback_keeps_all_four_units(test_use
     assert len(result.options) == 4
 
 
-async def test_recommend_properties_filters_by_required_amenity(test_user, db_session):
+async def test_recommend_properties_ranks_required_amenity_match_first_without_excluding_others(
+    test_user, db_session
+):
+    """Recommendation conversations ("Phase X"): required_amenities became a
+    soft ranking preference (filter_builder.py's apply_amenity_boost), never
+    a hard WHERE filter -- so a property lacking the requested amenity is
+    still returned (ranked after the match), not silently excluded. This
+    replaces the old hard-filter assertion this test used to make (pre-Phase
+    X, "Mocha" without a pool was excluded entirely -- that behavior was a
+    deliberate, explicit product decision to change, per the amenity-
+    checklist requirement that a partial match be spoken, not hidden)."""
     with_pool = Property(
         user_id=test_user.id, name="Nile", city="Siolim", exophone="+918011116666",
         base_price=4000, max_guests=3, amenities=["Private pool", "Wifi"],
@@ -643,7 +784,8 @@ async def test_recommend_properties_filters_by_required_amenity(test_user, db_se
     result = await tool_handlers.handle_recommend_properties(db_session, args, test_user.id)
     result_text = render_recommendation_text(result)
     assert "Nile" in result_text
-    assert "Mocha" not in result_text
+    assert "Mocha" in result_text
+    assert result_text.index("Nile") < result_text.index("Mocha")
 
 
 async def test_recommend_properties_near_landmark_boosts_matching_property(test_user, db_session):

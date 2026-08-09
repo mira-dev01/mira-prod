@@ -1,7 +1,7 @@
 import asyncio
 import json
 
-from app.voice.ringing_audio import _CHUNK_BYTES, _RINGING_TONE_PCM, play_ringing_tone
+from app.voice.ringing_audio import _BUSY_MESSAGE_PCM, _CHUNK_BYTES, _RINGING_TONE_PCM, play_busy_message, play_ringing_tone
 
 
 class _FakeWebSocket:
@@ -91,3 +91,37 @@ async def test_send_failure_is_swallowed_not_raised(monkeypatch):
     # Should return (not raise) once the underlying error propagates out of
     # the loop via the broad except clause.
     await play_ringing_tone(_FailingWebSocket(), "stream-fail")
+
+
+async def test_busy_message_plays_once_and_returns_without_looping():
+    # Unlike the ring tone, this must complete on its own -- no cancellation
+    # needed -- since BUSY_RECOVERY never hands the socket to a real
+    # transport afterward (see pipeline.py's BUSY_RECOVERY branch).
+    ws = _FakeWebSocket()
+
+    await play_busy_message(ws, "stream-busy")
+
+    frames_in_clip = len(range(0, len(_BUSY_MESSAGE_PCM), _CHUNK_BYTES))
+    assert len(ws.sent) == frames_in_clip
+
+
+async def test_busy_message_frames_are_well_formed_exotel_media_events():
+    ws = _FakeWebSocket()
+
+    await play_busy_message(ws, "stream-busy-abc")
+
+    assert ws.sent
+    first = json.loads(ws.sent[0])
+    assert first["event"] == "media"
+    assert first["streamSid"] == "stream-busy-abc"
+    assert "payload" in first["media"]
+
+
+async def test_busy_message_send_failure_is_swallowed_not_raised():
+    # Same contract as the ring tone: a busy-recovery call still needs to
+    # proceed to hangup even if playback itself fails partway through.
+    class _FailingWebSocket:
+        async def send_text(self, data: str):
+            raise RuntimeError("socket already closing")
+
+    await play_busy_message(_FailingWebSocket(), "stream-busy-fail")

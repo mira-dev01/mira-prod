@@ -47,8 +47,35 @@ class Lead(UUIDPkMixin, TimestampMixin, Base):
     questions_asked: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
     support_requests: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
 
+    # See app/voice/conversation_state.py's lifecycle-vocabulary cross-reference
+    # (near ConversationGoal) for how this relates to Lead.status below and to
+    # the in-call ConversationState.conversation_goal -- three separate,
+    # unreconciled views of "how far along is this booking," not one field.
     lead_temperature: Mapped[str | None] = mapped_column(String(16))
+
+    # --- Recovery/entry metadata (documentation/architecture: Phase 4) ---
+    # Three separate axes, deliberately not merged into one field or reusing
+    # lead_source for more than its original meaning:
+    #   lead_source     -- WHAT SUBSYSTEM/FLOW created this row (voice_call,
+    #                       manual entry, import, ...). Existed before this
+    #                       phase; unchanged in meaning.
+    #   entry_channel   -- HOW the guest reached Mira (phone_call today; a
+    #                       future WhatsApp-inbound or web-widget lead would
+    #                       set this to "whatsapp"/"web" while lead_source
+    #                       stays whatever internal flow created the row).
+    #   recovery_reason -- WHY this lead needed recovery/backfill instead of
+    #                       coming from a normal completed conversation. Null
+    #                       for the common case (a normal answered call that
+    #                       captured its own lead data) -- only set when a
+    #                       system-driven flow (not the live conversation
+    #                       itself) is what produced/touched this lead.
+    # None of these duplicate Lead.status: status is the sales-pipeline stage
+    # (open/contacted/booked/closed), host-managed, and never describes how
+    # or why a lead entered -- see the model's own status field below.
     lead_source: Mapped[str] = mapped_column(String(64), default="voice_call", server_default="voice_call")
+    entry_channel: Mapped[str] = mapped_column(String(32), default="phone_call", server_default="phone_call")
+    recovery_reason: Mapped[str | None] = mapped_column(String(32))
+
     conversation_summary: Mapped[str | None] = mapped_column(Text)
     next_follow_up: Mapped[str | None] = mapped_column(String(255))
     escalated: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")

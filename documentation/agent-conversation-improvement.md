@@ -1483,6 +1483,19 @@ applicable, e.g. Phase 4.3's C3 reproduction; direct code reads for audit-only f
 make sense once the combined system has been live for some period, which is a natural, expected
 stopping point for an implementation pass, not a shortcut taken to avoid them.
 
+**Re-confirmed still blocked (2026-08-05, architecture-cleanup pass)**: attempted to watch the local
+backend log during a real test call this session, specifically to make progress on 7.1/7.4 — no call
+activity reached the monitored local process at all (only the routine 60s LLM-health/3-min DB-health
+scheduler heartbeat, no `run_voice_pipeline`/WebSocket/`CallSession` lines), most likely because the
+call went to the deployed Railway backend rather than local (no ngrok tunnel was running locally to
+make the local process reachable from Exotel). 7.1/7.4/7.5 remain genuinely open for the same reason
+recorded above, now with one additional confirmed data point: verifying them requires either a real
+call placed against whichever backend is actually reachable from Exotel, with that backend's own log
+stream (Railway, not local) watched at the time, or a browser-test call against a locally reachable
+instance. Not re-attempted in this same pass — this cleanup pass's own scope (prompt-cache reordering,
+guard observability logging, this doc's own status bookkeeping) doesn't touch pipeline behavior, so it
+carries no risk of having changed 7.1/7.4/7.5's answers either way.
+
 ---
 
 ## Requirement coverage map

@@ -6,7 +6,7 @@ PostgreSQL via SQLAlchemy async (asyncpg driver). All models live in `backend/ap
 
 Migrations live in `backend/alembic/versions/`. Apply with `alembic upgrade head` (run from `backend/`, needs `DATABASE_URL` resolvable).
 
-Current head: **`6aa03c77c36f` — add airbnb_latitude/longitude to properties**.
+Current head: **`7a236ad1ffd1` — index notification lead_id and channel**.
 
 Full history, oldest to newest:
 
@@ -30,7 +30,34 @@ d4f7a91c3e5b -> e91a3f5c8d2b   add question_embedding to faq_entries and unanswe
 e91a3f5c8d2b -> f3a8c1d7e4b6   add seasonal_notes to properties
 f3a8c1d7e4b6 -> baf955ef4370   add smart pricing fields to properties
 baf955ef4370 -> 8818413a6d0a   add exact_airbnb_pricing to properties
-8818413a6d0a -> 6aa03c77c36f   add airbnb_latitude/longitude to properties (HEAD)
+8818413a6d0a -> b3f6a1d8c9e2   add call_type classification to call_sessions
+b3f6a1d8c9e2 -> 6aa03c77c36f   add airbnb coordinates to properties
+6aa03c77c36f -> d8a1f47c2b6e   add lead_id to call_sessions
+d8a1f47c2b6e -> 5161e38a221b   add minimum_nights to properties
+5161e38a221b -> 50f60d900d25   add clerk_user_id to users
+50f60d900d25 -> c09a22f820ff   make hashed_password nullable for Clerk cutover
+c09a22f820ff -> 7a7297081aaa   migrate legacy property.faq to faq_entries
+7a7297081aaa -> a1c9e6f4d2b7   convert call_sessions.ai_summary to jsonb
+a1c9e6f4d2b7 -> b2d7f5a1e3c9   add call_sessions.dismissed_at
+b2d7f5a1e3c9 -> cc04e38bed6f   add agent_voice_gender to users
+7a7297081aaa -> fb704d3f696c   add host photo and whatsapp assist toggle
+fb704d3f696c -> 0c9b52d0cbd8   add host banner_url
+('0c9b52d0cbd8', 'cc04e38bed6f') -> 5e62da6e4f7d   merge host profile and voice-gender/dismissed-at branches
+5e62da6e4f7d -> 833b55b32b84   add canonical name fields to properties
+833b55b32b84 -> d16066a213c6   add landmarks and amenity_tags to properties
+d16066a213c6 -> 810e248aba2c   add bedroom_count to properties
+810e248aba2c -> d65ddc51db7f   add property_chunks
+d65ddc51db7f -> a1c4e8f7b2d3   add agent_language_policy to users
+a1c4e8f7b2d3 -> a1c9f4e2b6d3   add twilio voice number columns
+a1c9f4e2b6d3 -> 0a8ae066bf5c   add is_premium to properties
+0a8ae066bf5c -> 66f90a703525   add property pricing rules
+66f90a703525 -> c22483e0853a   add host intelligence fields
+c22483e0853a -> 054ea268d326   add index on notification property_id
+054ea268d326 -> 9c3f2a7e5d41   merge host_discount_rules and property_pricing_rules into negotiation_rules
+9c3f2a7e5d41 -> 6384600c83f2   add call_leases
+6384600c83f2 -> 356d5c923c77   add lead recovery metadata (entry_channel, recovery_reason)
+356d5c923c77 -> 3fae82f7b3d0   add notification lead_id and responded_at
+3fae82f7b3d0 -> 7a236ad1ffd1   index notification lead_id and channel (HEAD)
 ```
 
 If a session ever fails with demo-login 500s or a missing-column error, check `alembic heads` against the running DB first — a DB left behind on an old revision is a common cause (see `project_state.md` at the repo root for the 2026-07-15 incident).
@@ -120,6 +147,19 @@ Unique on `(property_id, source_uid)`. iCal-synced calendar data — **no price 
 
 Computed properties (not columns): `duration_minutes`, `guest_name` (prefers `Lead.guest_name`, falls back to `GuestProfile.name`), `guest_phone` (prefers `Lead.phone`, falls back to `caller_number`). Note the `property` relationship shadows Python's `@property` builtin within the class body — the module aliases `from builtins import property as python_property` to work around it.
 
+### `call_leases` (`CallLease`, `app/models/call_lease.py`) — STAGED FOR REMOVAL, NOT WRITTEN TO
+
+**As of the Redis migration, no production code writes to this table anymore.** `CallCoordinator` (`app/services/call_coordinator.py`) — the single authority on "does this host/property already have a live call?" — now runs entirely on Redis (see [agents.md](agents.md)'s CallCoordinator section for the current design: one Redis key per `(host_user_id, property_id)` pair, native TTL expiry, atomic Lua scripts for renew/release/transfer). This table and its migration (`6384600c83f2`) are kept only as a deliberate staging step, to be dropped in a later cleanup phase once the Redis-backed implementation has run in production long enough to trust. The column reference below describes the pre-migration Postgres design, retained for historical/removal-planning context:
+
+| Column | Type | Notes |
+|---|---|---|
+| `host_user_id` | UUID FK → users, cascade delete | |
+| `property_id` | UUID, not null, no FK | `NIL_PROPERTY_ID` sentinel (`00000000-0000-0000-0000-000000000000`), not a nullable FK — Postgres treats every `NULL` distinct from every other `NULL` in a unique index, which would defeat the partial-uniqueness guarantee for Lead Agent calls (`property_id=None`); the sentinel lets those still collide correctly. The same sentinel/value is reused in the Redis key format for continuity. |
+| `holder_type` | String, default `pipeline` | which kind of caller holds this lease — currently only one value is ever issued |
+| `holder_ref` | String | opaque identifier the holder threads back into `renew()`/`release()` — `exotel_call_id`/Twilio `call_sid`, not a new identifier invented for this |
+| `expires_at` | DateTime(timezone=True) | lazy expiry — a lease past this is simply treated as not-active the next time it's read; no sweep job |
+| `released_at` | DateTime(timezone=True), nullable | `NULL` while the lease is active; set once the call ends (or reclaimed lazily via `expires_at` if a holder crashed without releasing) |
+
 ### `leads` (`Lead`, `app/models/lead.py`)
 
 `call_session_id` is unique — at most one lead was ever *created by* a given call session. This no longer means "the only call associated with this lead", though: a returning guest's follow-up call, while this lead is still `status` `open`/`contacted`, reuses this same row via `CallSession.lead_id` (see above) instead of creating a new one — `call_session_id` just records where it was born. Once the host marks a lead `booked`/`closed`, it's no longer reusable; the next call from that guest starts a fresh `Lead`. See `lead_service._get_or_create_lead_for_call` for the full lookup/reuse/safety-guard logic (including the name-conflict guard for a shared/family phone).
@@ -137,7 +177,9 @@ Computed properties (not columns): `duration_minutes`, `guest_name` (prefers `Le
 | `preferred_location` | String(255), nullable | |
 | `properties_discussed`, `questions_asked`, `support_requests` | JSONB list, default `[]` | `properties_discussed` stores human-readable **names**, never raw property IDs (resolved server-side in `tool_handlers._resolve_property_names` if the model echoes a UUID) |
 | `lead_temperature` | String(16), nullable | `hot`/`warm`/`cold` — **qualification**, set by the voice agent only |
-| `lead_source` | String(64), default `voice_call` | |
+| `lead_source` | String(64), default `voice_call` | which subsystem/flow created the row (voice call, manual entry, import, ...) |
+| `entry_channel` | String(32), default `phone_call` | how the guest reached Mira — every lead today is `phone_call`, the field exists for future non-voice entry points (WhatsApp-inbound, web widget) |
+| `recovery_reason` | String(32), nullable | why this lead needed system-driven recovery instead of coming from a normal completed conversation — `NULL` for the common case. Values (Pydantic-validated, not DB-constrained — see `schemas/lead.py`'s `RecoveryReason`): `BUSY_CALL` (set by `recovery_service.py` when `CallCoordinator` rejects a call as busy), `AFTER_HOURS`, `HOST_CALLBACK`, `GUEST_CALLBACK` (reserved, no producer yet). Deliberately separate from `lead_source`/`status` — see the model's own comment for the full three-field split |
 | `conversation_summary` | Text, nullable | |
 | `next_follow_up` | String(255), nullable | |
 | `escalated`, `transferred_to_host` | Boolean, default `false` | |
@@ -238,10 +280,12 @@ Backs the dashboard's Live Requests feed (polled/streamed via `GET /notification
 |---|---|---|
 | `property_id` | UUID FK → properties, cascade delete, nullable | `NULL` for Lead Agent-originated notifications |
 | `call_session_id` | UUID FK → call_sessions, cascade delete, nullable | |
-| `channel` | String(32), not null | `whatsapp` \| `escalation` \| `system` |
+| `lead_id` | UUID FK → leads, set null on delete, nullable, **indexed** | Only set by `recovery_service.py`/`whatsapp_reply_service.py`'s `busy_recovery`/`busy_recovery_reply` notifications — Recovery Analytics' (`GET /analytics/recovery`) join key back to the recovery `Lead`. `NULL` for every other channel. |
+| `channel` | String(32), not null, **indexed** | `whatsapp` \| `escalation` \| `system` \| `busy_recovery` \| `busy_recovery_reply` |
 | `urgency` | String(16), default `low` | |
 | `message` | Text, not null | |
 | `status` | String(16), default `new` | |
+| `responded_at` | DateTime(timezone=True), nullable | Set once, the first time this notification is marked read (`notification_service.mark_read`) — never overwritten by a later read. The "host responded" signal `GET /analytics/recovery`'s `avg_host_response_seconds` reads; deliberately not derived from `updated_at`, which is a generic mixin field. |
 
 Computed property `property_name` (not a column) — requires eager-loading the `property` relationship since it can run after the fetching session has closed.
 

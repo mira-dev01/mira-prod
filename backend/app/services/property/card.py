@@ -12,7 +12,7 @@ context builder) gets identical fallback behavior instead of reimplementing
 import uuid
 from dataclasses import dataclass
 
-from app.services.amenity_taxonomy import rank_amenities_for_pitch
+from app.services.amenity_taxonomy import canonicalize_amenity, rank_amenities_for_pitch
 
 
 @dataclass(frozen=True)
@@ -38,6 +38,30 @@ class PropertyCard:
     # itself, since it needs the guest's RecommendPropertiesArgs, which
     # build_property_card's own signature intentionally doesn't take.
     match_reasons: list[str]
+    # How this card differs from the cheapest other card in the SAME result
+    # set -- "" when there's nothing to compare (fewer than 2 cards, or no
+    # meaningful difference from the cheapest). Same reasoning as
+    # match_reasons: populated by comparison_notes below (needs sibling
+    # cards, which build_property_card's per-property signature doesn't
+    # have access to), a REQUIRED field for the same frozen-dataclass
+    # mutable-default reason match_reasons is.
+    comparison_note: str
+    # Recommendation conversations ("Phase X"): host-set fact (Property.is_premium),
+    # never LLM-inferred -- grounds a guest's "something more premium" request
+    # in a real signal instead of asking the model to judge which property
+    # feels nicer. Unlike match_reasons/comparison_note above, this is a
+    # plain column already present on `property_` at construction time (not
+    # derived from guest args or sibling cards), so it's populated directly
+    # here rather than backfilled later via dataclasses.replace.
+    is_premium: bool
+    # "has pool but not pet friendly" -- "" when there's nothing partial to
+    # report (fewer than 2 requested amenities, or an all-matched/all-missing
+    # case). Same reasoning as match_reasons/comparison_note: populated by
+    # amenity_checklist_note below, which needs both the guest's accumulated
+    # required_amenities AND the property's REAL full amenity_tags (never
+    # top_amenities, which is truncated) -- neither is available at
+    # build_property_card's own per-property construction time.
+    amenity_checklist: str
 
 
 def build_property_card(property_) -> PropertyCard:
@@ -55,6 +79,9 @@ def build_property_card(property_) -> PropertyCard:
         top_amenities=rank_amenities_for_pitch(property_.amenities) if property_.amenities else [],
         usp=property_.usp,
         match_reasons=[],
+        comparison_note="",
+        is_premium=bool(property_.is_premium),
+        amenity_checklist="",
     )
 
 
@@ -96,9 +123,16 @@ def match_reasons_for_card(card: PropertyCard, args) -> list[str]:
     reasons: list[str] = []
 
     if args.required_amenities:
-        canonical_top = {a.lower() for a in card.top_amenities}
+        # Canonicalized on both sides -- same synonym normalization
+        # apply_amenity_boost/amenity_checklist_note already use against the
+        # property's real amenity_tags. A raw .lower() substring match here
+        # (the previous behavior) missed a synonym like "pet friendly" vs a
+        # top_amenities entry scraped as "Pets Allowed", producing a card
+        # whose amenity_checklist correctly said "has ... pet friendly" while
+        # this clause stayed silent about the same match.
+        canonical_top = {canonicalize_amenity(a) for a in card.top_amenities}
         for requested in args.required_amenities:
-            if requested.lower() in canonical_top:
+            if canonicalize_amenity(requested) in canonical_top:
                 reasons.append(f"has the {requested.lower()} you asked for")
                 break
 
@@ -121,3 +155,137 @@ def match_reasons_for_card(card: PropertyCard, args) -> list[str]:
             reasons.append("comfortably within budget")
 
     return reasons[:_MAX_MATCH_REASONS]
+
+
+def amenity_checklist_note(required_amenities: list[str] | None, real_canonical_amenities: list[str]) -> str:
+    """Recommendation conversations ("Phase X"): required_amenities is now a
+    SOFT ranking preference (filter_builder.apply_amenity_boost), not a hard
+    filter -- a returned property can genuinely have SOME but not ALL of a
+    guest's accumulated amenity requests (e.g. "pool" then, later, "pet
+    friendly"). Per explicit product direction: when that happens, state
+    BOTH which requested amenities the property has AND which it doesn't,
+    explicitly, so the guest can decide for themselves rather than the
+    filter silently deciding for them. Only returns a note (non-"") when
+    there are 2+ requested amenities AND the match is genuinely partial --
+    a single requested amenity is already covered by match_reasons_for_card's
+    own "has the X you asked for" clause above (no need to duplicate it),
+    and an all-matched or all-missing case needs no explicit checklist
+    either (all-matched already reads as a clean fit via the existing
+    reason clause; all-missing is already rare now that the boost still
+    ranks a zero-match property last, and stating a checklist of nothing
+    present would read oddly). real_canonical_amenities is the property's
+    REAL, FULL amenity_tags list (never PropertyCard.top_amenities, which
+    is deliberately truncated to 2 for pitch brevity and would produce a
+    false "doesn't have it" for an amenity outside that top-2).
+    """
+    if not required_amenities or len(required_amenities) < 2:
+        return ""
+
+    canonical_real = set(real_canonical_amenities)
+    present = []
+    missing = []
+    for requested in required_amenities:
+        canonical = canonicalize_amenity(requested)
+        if canonical in canonical_real:
+            present.append(requested)
+        else:
+            missing.append(requested)
+
+    if not present or not missing:
+        return ""
+
+    # Deliberately a plain " and "-join here rather than importing
+    # pitch_formatter._join_natural -- pitch_formatter already imports FROM
+    # card.py (PropertyCard itself), so importing back the other way would
+    # create a cross-module coupling for one trivial join, not worth it for
+    # a helper this small.
+    present_text = " and ".join(p.lower() for p in present)
+    missing_text = " and ".join(m.lower() for m in missing)
+    return f"has {present_text} but not {missing_text}"
+
+
+# "Meaningfully" different, not any nonzero gap -- a ₹200 price difference or
+# a 1-guest capacity difference isn't worth voicing as a reason to pick one
+# over another; these thresholds keep the note reserved for a difference a
+# guest would actually care about. Percentage-based for price (a flat rupee
+# threshold would be wrong at both a ₹2,000/night and a ₹20,000/night
+# property); flat for guest count (capacity differences are already small,
+# discrete numbers -- a percentage would misfire between e.g. 2 and 3 guests).
+_MEANINGFUL_PRICE_GAP_RATIO = 0.15
+_MEANINGFUL_GUEST_GAP = 2
+
+
+def comparison_notes(
+    cards: list[PropertyCard], unreliable_price_ids: frozenset[uuid.UUID] = frozenset()
+) -> dict[uuid.UUID, str]:
+    """For each card, one clause naming the clearest way it differs from the
+    CHEAPEST other card in the same result set -- grounded in real
+    already-known PropertyCard fields, never a fabricated or LLM-guessed
+    comparison, same discipline as match_reasons_for_card above. This is
+    what answers a guest's own follow-up ("why not the other one?", "what's
+    the difference?") with a real fact instead of leaving the model to
+    invent or misstate one -- the exact class of failure
+    property_recommendation_guard.py's existing price/capacity fidelity
+    checks already guard against for single-card facts.
+
+    unreliable_price_ids: property_ids whose Property.exact_airbnb_pricing is
+    True -- filter_builder.build_base_filters deliberately lets these through
+    regardless of their stored base_price (their real price comes from a live
+    SearchApi fetch at get_pricing time instead, so base_price can be stale,
+    a placeholder, or 0 -- confirmed by reading that filter directly). A card
+    in this set is NEVER used for a price comparison, as either the cheapest
+    baseline or the other side of a gap -- only its capacity may be compared.
+    Comparing against an unverified stored price is exactly the class of
+    failure this codebase has already been burned by once (a base_price=0
+    property spoken as "free of charge," project_state.md's 2026-07-23 entry)
+    and already built a dedicated guard against for get_pricing/negotiate_rate
+    -- this function must not reopen the same failure shape in a new place.
+
+    Returns {} (no notes at all) when there's nothing real to compare: fewer
+    than 2 cards with a usable price (nothing to differ from), or every
+    remaining candidate's price is unusable (non-positive or flagged
+    unreliable) -- the same zero-price properties are already excluded
+    upstream by filter_builder.build_base_filters, but this stays defensive
+    rather than assuming that guarantee holds for every future caller.
+
+    Cheapest-as-baseline (not e.g. every pair): deterministic and matches
+    how a guest naturally anchors when comparing options out loud -- "how
+    does this one compare to the cheapest?" rather than an every-pair
+    matrix, which would also risk multiple, possibly conflicting clauses
+    per card. Only ONE clause per card (price OR capacity, price checked
+    first as the more universally-relevant fact) -- same voice-friendly
+    "one clause, never a second sentence" discipline match_reasons_for_card
+    and its own reason_clause wiring in pitch_formatter.py already use.
+    """
+    if len(cards) < 2:
+        return {}
+
+    priced_cards = [c for c in cards if c.property_id not in unreliable_price_ids and c.base_price > 0]
+    cheapest = min(priced_cards, key=lambda c: c.base_price) if priced_cards else None
+
+    notes: dict[uuid.UUID, str] = {}
+    for card in cards:
+        if cheapest is not None and card.property_id == cheapest.property_id:
+            continue
+
+        if cheapest is not None and card.property_id not in unreliable_price_ids:
+            price_gap_ratio = (card.base_price - cheapest.base_price) / cheapest.base_price
+            if price_gap_ratio >= _MEANINGFUL_PRICE_GAP_RATIO:
+                extra = card.base_price - cheapest.base_price
+                notes[card.property_id] = f"₹{extra:,.0f} more than {cheapest.spoken_name} a night"
+                continue
+
+        if cheapest is None:
+            continue
+
+        # Capacity difference in EITHER direction is worth voicing -- a
+        # pricier-but-smaller option (a common real shape: a large cheap
+        # family villa vs. a small pricier boutique unit) is just as
+        # relevant a tradeoff as a pricier-and-bigger one. Phrasing flips
+        # to match the real direction rather than only ever saying "more."
+        guest_gap = card.max_guests - cheapest.max_guests
+        if abs(guest_gap) >= _MEANINGFUL_GUEST_GAP:
+            direction = "more" if guest_gap > 0 else "fewer"
+            notes[card.property_id] = f"sleeps {abs(guest_gap)} {direction} than {cheapest.spoken_name}"
+
+    return notes

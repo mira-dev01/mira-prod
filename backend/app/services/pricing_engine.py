@@ -19,7 +19,7 @@ from app.integrations.searchapi_client import (
     nightly_rate_cache_key,
 )
 from app.models.guest_profile import GuestProfile
-from app.models.host_discount_rule import HostDiscountRule
+from app.models.negotiation_rule import NegotiationRule
 from app.models.pricing_rule import PricingRule
 from app.models.property import Property
 from app.models.user import User
@@ -37,9 +37,84 @@ class PriceBreakdown:
     discount_amount: float
     total: float
     per_night_avg: float
+    # Phase 6 (Negotiation engine): flat rupee fees, quoted only when the
+    # guest explicitly asked for early check-in/late checkout (see
+    # tool_handlers.handle_get_pricing) -- never volunteered, and never
+    # folded into base_total/discount_amount/total above, since those three
+    # fields are read by existing callers (e.g. the /pricing/quote dashboard
+    # endpoint, tests) that must keep seeing exactly today's stay-price math
+    # regardless of whether a fee applies. 0.0 (not None) when no fee
+    # applies/was requested, so callers can always do arithmetic on this
+    # without a None-check -- same "additive field, harmless default"
+    # discipline as every other PriceBreakdown field.
+    early_checkin_fee: float = 0.0
+    late_checkout_fee: float = 0.0
 
 
-async def _length_of_stay_discount_percent(db: AsyncSession, property_id: uuid.UUID, nights: int) -> float:
+async def _approved_negotiation_rules(db: AsyncSession, host_id: uuid.UUID | None) -> list[NegotiationRule]:
+    """Fail-closed, same discipline as _get_host_negotiation_policy below --
+    any lookup failure (no host_id, DB error) returns an empty list rather
+    than blocking/erroring calculate_price/negotiate_rate, which run live
+    mid-call."""
+    if host_id is None:
+        return []
+    try:
+        return list(
+            (
+                await db.scalars(
+                    select(NegotiationRule).where(
+                        NegotiationRule.host_id == host_id,
+                        NegotiationRule.status == "approved",
+                    )
+                )
+            ).all()
+        )
+    except Exception:
+        logger.exception("Negotiation rule lookup failed for host_id=%s -- ignoring", host_id)
+        return []
+
+
+async def _approved_property_pricing_rules(
+    db: AsyncSession, host_id: uuid.UUID | None, property_id: uuid.UUID
+) -> list[NegotiationRule]:
+    """The stay-pricing subset of a host's approved negotiation rules that
+    apply to this specific property. Filters property_ids in Python once
+    fetched (not a JSONB containment WHERE clause) -- same reasoning
+    filter_builder.matches_landmark already documents for its own
+    small-per-host-candidate-set matching: no performance reason to push
+    this into fragile JSONB-path SQL when the candidate set (one host's
+    approved rules) is tiny. Unlike the host-wide discount_* trigger types
+    (see _get_host_negotiation_policy), stay-pricing rule types always
+    require an explicit, host-picked property match -- an empty
+    property_ids here means "matches nothing yet," not "matches everything."
+    """
+    property_id_str = str(property_id)
+    return [
+        rule
+        for rule in await _approved_negotiation_rules(db, host_id)
+        if property_id_str in (rule.property_ids or [])
+    ]
+
+
+def _condition_number(condition: dict, key: str) -> float | None:
+    """Safely reads a numeric value out of a NegotiationRule/PricingRule's
+    free-form JSONB condition -- condition is host-editable (directly via
+    PATCH, not just LLM-parsed), so a malformed value (e.g. condition={"fee":
+    "free"} from a bad client/edit) must never reach a bare float()/comparison
+    call on the live calculate_price/negotiate_rate/check_calendar path.
+    Returns None (treated as "this rule doesn't apply") on anything
+    non-numeric, same fail-closed discipline _approved_property_pricing_rules
+    already applies to the DB lookup itself, extended to cover the values
+    once fetched."""
+    value = condition.get(key)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
+async def _length_of_stay_discount_percent(
+    db: AsyncSession, property_id: uuid.UUID, nights: int, host_id: uuid.UUID | None = None
+) -> float:
     rules = (
         await db.scalars(
             select(PricingRule).where(
@@ -55,6 +130,72 @@ async def _length_of_stay_discount_percent(db: AsyncSession, property_id: uuid.U
         min_nights = rule.condition.get("min_nights") if isinstance(rule.condition, dict) else None
         if min_nights is not None and nights >= min_nights:
             best = max(best, float(rule.discount_percent))
+
+    # The host-authored, multi-property NegotiationRule is a SECOND source
+    # for this same rule_type (see that model's docstring for why it's a
+    # separate table from PricingRule, not a replacement) -- read alongside
+    # the existing per-property PricingRule rows above, same "take the
+    # best/max applicable discount" resolution, never double-counted or
+    # preferred over the other by ordering.
+    for rule in await _approved_property_pricing_rules(db, host_id, property_id):
+        if rule.rule_type != "length_of_stay" or rule.discount_percent is None or not isinstance(rule.condition, dict):
+            continue
+        min_nights = _condition_number(rule.condition, "min_nights")
+        if min_nights is not None and nights >= min_nights:
+            best = max(best, float(rule.discount_percent))
+    return best
+
+
+def _stay_includes_weekend_night(check_in: date, check_out: date) -> bool:
+    """A stay "includes a weekend" if any night actually slept (check_in
+    inclusive, check_out exclusive -- the same [check_in, check_out) range
+    every other date-range check in this codebase uses) is a Friday or
+    Saturday. Friday=4, Saturday=5 (date.weekday()'s Monday=0 convention)."""
+    nights = (check_out - check_in).days
+    return any((check_in + timedelta(days=i)).weekday() in (4, 5) for i in range(nights))
+
+
+async def minimum_stay_nights_violation(
+    db: AsyncSession, host_id: uuid.UUID | None, property_id: uuid.UUID, check_in: date, check_out: date
+) -> int | None:
+    """Returns the strictest applicable minimum-nights requirement if the
+    requested stay is below it, else None. Read by tool_handlers.
+    handle_check_calendar ALONGSIDE its existing flat Property.minimum_nights
+    check (this never replaces that check -- it only adds a second,
+    conditional floor a host can configure via the AI Training/Pricing page,
+    same "additive, host-opt-in, zero rules configured = zero behavior
+    change" guarantee every other rule type in this module follows).
+    weekend_min_nights only applies when the stay actually includes a Friday
+    or Saturday night -- a host with no such rule, or a guest whose stay is
+    purely weekday, sees no change at all."""
+    nights = (check_out - check_in).days
+    strictest: float | None = None
+    for rule in await _approved_property_pricing_rules(db, host_id, property_id):
+        if rule.rule_type != "minimum_stay_nights" or not isinstance(rule.condition, dict):
+            continue
+        general_min = _condition_number(rule.condition, "min_nights")
+        if general_min is not None and nights < general_min:
+            strictest = general_min if strictest is None else max(strictest, general_min)
+        weekend_min = _condition_number(rule.condition, "weekend_min_nights")
+        if weekend_min is not None and nights < weekend_min and _stay_includes_weekend_night(check_in, check_out):
+            strictest = weekend_min if strictest is None else max(strictest, weekend_min)
+    return int(strictest) if strictest is not None else None
+
+
+async def _flat_fee(
+    db: AsyncSession, host_id: uuid.UUID | None, property_id: uuid.UUID, rule_type: str
+) -> float:
+    """early_checkin_fee/late_checkout_fee -- flat rupee amounts, condition
+    shape {"fee": N}. Takes the max if a host somehow has more than one
+    approved rule of the same type for a property (shouldn't normally
+    happen via the UI, but never silently pick an arbitrary one)."""
+    best = 0.0
+    for rule in await _approved_property_pricing_rules(db, host_id, property_id):
+        if rule.rule_type != rule_type or not isinstance(rule.condition, dict):
+            continue
+        fee = _condition_number(rule.condition, "fee")
+        if fee is not None:
+            best = max(best, fee)
     return best
 
 
@@ -84,7 +225,18 @@ async def calculate_price(
     check_in: date,
     check_out: date,
     apply_discounts: bool = True,
+    host_id: uuid.UUID | None = None,
+    requested_early_checkin: bool = False,
+    requested_late_checkout: bool = False,
 ) -> PriceBreakdown:
+    """host_id/requested_early_checkin/requested_late_checkout (Phase 6,
+    Negotiation engine) are all optional and default to no-ops -- every
+    existing call site (the /pricing/quote dashboard endpoint, negotiate_rate
+    below) keeps its exact current behavior unless it explicitly opts in.
+    host_id is required for length_of_stay/early_checkin_fee/late_checkout_fee
+    to read NegotiationRule at all (see _approved_property_pricing_rules) --
+    omitting it simply means "no host-authored rules apply," never an
+    error, matching this module's existing fail-closed discipline."""
     nights = (check_out - check_in).days
     base_price = float(property_.base_price)
 
@@ -135,10 +287,22 @@ async def calculate_price(
 
     discount_percent = 0.0
     if apply_discounts:
-        discount_percent = await _length_of_stay_discount_percent(db, property_.id, nights)
+        discount_percent = await _length_of_stay_discount_percent(db, property_.id, nights, host_id=host_id)
     discount_amount = round(base_total * discount_percent / 100, 2)
 
     total = round(base_total - discount_amount, 2)
+
+    # Fees are looked up (fail-closed, defaults to 0.0 on any failure/no
+    # rule) only when the guest actually asked -- tool_handlers.py never
+    # sets requested_early_checkin/requested_late_checkout True unless the
+    # guest explicitly requested it this call, so a host with such a rule
+    # configured never has it volunteered unprompted (see GOLDEN_RULES).
+    early_checkin_fee = 0.0
+    if requested_early_checkin:
+        early_checkin_fee = await _flat_fee(db, host_id, property_.id, "early_checkin_fee")
+    late_checkout_fee = 0.0
+    if requested_late_checkout:
+        late_checkout_fee = await _flat_fee(db, host_id, property_.id, "late_checkout_fee")
 
     return PriceBreakdown(
         nights=nights,
@@ -146,6 +310,8 @@ async def calculate_price(
         discount_percent=discount_percent,
         discount_amount=discount_amount,
         total=total,
+        early_checkin_fee=early_checkin_fee,
+        late_checkout_fee=late_checkout_fee,
         per_night_avg=round(total / nights, 2) if nights else base_price,
     )
 
@@ -162,9 +328,9 @@ class NegotiationResult:
 @dataclass
 class HostNegotiationPolicy:
     """Resolved, ready-to-use negotiation policy for one host -- either
-    derived from their approved HostDiscountRule rows, or the untouched
-    global defaults if the host has none / the lookup fails. Never
-    constructed with a status other than "approved" rows -- see
+    derived from their approved discount_* NegotiationRule rows, or the
+    untouched global defaults if the host has none / the lookup fails.
+    Never constructed with a status other than "approved" rows -- see
     _get_host_negotiation_policy."""
 
     negotiation_allowed: bool
@@ -174,9 +340,15 @@ class HostNegotiationPolicy:
 
 
 async def _get_host_negotiation_policy(db: AsyncSession, host_id: uuid.UUID | None) -> HostNegotiationPolicy:
-    """Derive-on-read from the host's approved HostDiscountRule rows
-    (memory-architecture-plan.md section 4.4) -- never materialized per
-    property, so editing a host-level rule applies everywhere immediately.
+    """Derive-on-read from the host's approved discount_* NegotiationRule
+    rows (rule_type="discount_guest_requests"/"discount_repeat_guest" --
+    formerly a separate HostDiscountRule table's trigger_type, merged into
+    NegotiationRule) -- never materialized per property, so editing a
+    host-level rule applies everywhere immediately. These three discount_*
+    types are host-wide by definition (see NegotiationRule's docstring) --
+    read via _approved_negotiation_rules directly, not the property-scoped
+    _approved_property_pricing_rules, since there's no property to scope by
+    here.
 
     Mandatory fallback: any failure here (no host_id, DB error, no approved
     rows) returns today's exact pre-existing global-constant behavior.
@@ -196,17 +368,10 @@ async def _get_host_negotiation_policy(db: AsyncSession, host_id: uuid.UUID | No
 
     try:
         host = await db.get(User, host_id)
-        rules = (
-            await db.scalars(
-                select(HostDiscountRule).where(
-                    HostDiscountRule.host_id == host_id,
-                    HostDiscountRule.status == "approved",
-                )
-            )
-        ).all()
     except Exception:
         logger.exception("Host negotiation policy lookup failed for host_id=%s -- using global defaults", host_id)
         return default_policy
+    rules = await _approved_negotiation_rules(db, host_id)
 
     # host.negotiation_allowed is only ever None for an in-memory User that
     # was never flushed through the DB (server_default populates real rows)
@@ -221,10 +386,12 @@ async def _get_host_negotiation_policy(db: AsyncSession, host_id: uuid.UUID | No
     guest_requests_percent = None
     repeat_guest_percent = None
     for rule in rules:
+        if rule.discount_percent is None:
+            continue
         percent = float(rule.discount_percent)
-        if rule.trigger_type == "guest_requests":
+        if rule.rule_type == "discount_guest_requests":
             guest_requests_percent = percent if guest_requests_percent is None else max(guest_requests_percent, percent)
-        elif rule.trigger_type == "repeat_guest_same_host":
+        elif rule.rule_type == "discount_repeat_guest":
             repeat_guest_percent = percent if repeat_guest_percent is None else max(repeat_guest_percent, percent)
 
     return HostNegotiationPolicy(
@@ -303,7 +470,25 @@ async def negotiate_rate(
         loyalty_bonus_percent = {"new": 0.0, "returning": 5.0, "frequent": 10.0}.get(guest_loyalty, 0.0)
         discount_percent = loyalty_bonus_percent + 10.0
 
-    max_discount_percent = min(policy.max_discount_percent, discount_percent)
+    # A rule_type="custom" NegotiationRule is a host-authored, per-property
+    # freeform concession (e.g. "for this villa specifically, I can go to
+    # 20% for a returning guest") -- takes priority over the chain above ONLY
+    # if it's MORE generous, never less; a property-specific concession the
+    # host explicitly approved should never leave the guest worse off than
+    # the host-wide discount_* policy would already give them. Also
+    # raises the CEILING (policy.max_discount_percent) itself, not just the
+    # resolved discount_percent -- self-review fix: without this, an
+    # approved 20% custom rule was silently re-clamped back down to the
+    # default 15% ceiling two lines below, making the concession a no-op
+    # for any value above MAX_NEGOTIATION_DISCOUNT_PERCENT/the host's own
+    # override, exactly the case this rule type exists for.
+    custom_ceiling = policy.max_discount_percent
+    for rule in await _approved_property_pricing_rules(db, host_id, property_.id):
+        if rule.rule_type == "custom" and rule.discount_percent is not None:
+            discount_percent = max(discount_percent, float(rule.discount_percent))
+            custom_ceiling = max(custom_ceiling, float(rule.discount_percent))
+
+    max_discount_percent = min(custom_ceiling, discount_percent)
     floor_price = round(asking_price * (1 - max_discount_percent / 100), 2)
 
     if guest_offer is None:

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { CallSummaryCard } from "@/components/call-summary-card";
+import { CloseLeadDialog } from "@/components/close-lead-dialog";
 import { DictationTextarea } from "@/components/ui/dictation-textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -79,6 +80,7 @@ export function LeadDetailPanel({
   const [summary, setSummary] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
+  const [confirmingClose, setConfirmingClose] = useState(false);
 
   // Same call fetch as the calls detail page, so the AI summary rendered
   // here (via CallSummaryCard) is identical rather than just a link out.
@@ -100,6 +102,13 @@ export function LeadDetailPanel({
 
   async function handleStatusChange(newStatus: LeadStatus) {
     if (!lead || lead.status === newStatus) return;
+    // Closing is gated behind CloseLeadDialog's confirmation (it also
+    // creates the calendar block), so it doesn't go through the plain PATCH
+    // below -- see the "Closed" button in the stepper JSX.
+    if (newStatus === "closed") {
+      setConfirmingClose(true);
+      return;
+    }
     try {
       await api.leads.update(lead.id, { status: newStatus });
       toast.success(`Moved to ${newStatus}`);
@@ -202,6 +211,15 @@ export function LeadDetailPanel({
           <DictationTextarea id="summary" value={summary} onValueChange={setSummary} />
         </div>
       </form>
+
+      <CloseLeadDialog
+        lead={confirmingClose ? lead : null}
+        onOpenChange={(open) => setConfirmingClose(open)}
+        onConfirmed={() => {
+          setStatus("closed");
+          onSaved();
+        }}
+      />
     </RightPanel>
   );
 }

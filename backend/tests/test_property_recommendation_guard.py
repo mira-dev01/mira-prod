@@ -31,6 +31,9 @@ def _card(name: str, price: float = 3500, guests: int = 2, **overrides) -> Prope
         top_amenities=[],
         usp=None,
         match_reasons=[],
+        comparison_note="",
+        is_premium=False,
+        amenity_checklist="",
     )
     defaults.update(overrides)
     return PropertyCard(**defaults)

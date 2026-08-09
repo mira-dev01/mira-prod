@@ -14,6 +14,8 @@ from app.models.notification import Notification
 from app.models.user import User
 from app.schemas.call_classification import QUALIFIED_CALL_TYPES
 from app.services.call_service import BROWSER_TEST_CALLER_NUMBER
+from app.services.recovery_service import NOTIFICATION_CHANNEL_BUSY_RECOVERY
+from app.services.whatsapp_reply_service import NOTIFICATION_CHANNEL_BUSY_RECOVERY_REPLY
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
@@ -261,3 +263,170 @@ async def analytics_timeseries(
         cursor += timedelta(days=1)
 
     return {"metric": metric, "points": points}
+
+
+@router.get("/recovery")
+async def analytics_recovery(
+    days: int = Query(default=30, ge=1, le=365),
+    date_range: DateRange = Depends(date_range_query),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Busy Call Recovery funnel/KPIs (documentation/architecture: Phase 7).
+    Read-only aggregate queries over rows Phase 3/6 already write during a
+    live call/WhatsApp reply -- nothing here writes anything, subscribes to
+    anything, or sits anywhere near the voice pipeline or webhook request
+    path, so this can never add latency or behavior change to a real call or
+    WhatsApp reply. Same query style as analytics_summary/analytics_timeseries
+    above (inline ORM aggregates, no service layer -- this file has never had
+    one, see its own module-level precedent).
+
+    Every recovery row is scoped by Lead.user_id (a join through Lead), not
+    property_id.in_(owned_property_ids) like escalated_calls/open_notifications
+    above -- a busy_recovery_reply notification can have property_id=NULL
+    when the guest's property couldn't be resolved (see
+    whatsapp_reply_service._resolve_property), which would silently
+    undercount under an IN-list filter the same way Notification.property_id
+    IS NULL already does for Lead Agent escalations (analytics_summary's own
+    comment flags this as a pre-existing gap). Lead.user_id has no such
+    nullability gap -- every recovery Lead always belongs to exactly the host
+    whose line was busy.
+    """
+    if date_range.since is not None:
+        since = date_range.since
+    else:
+        since = datetime.now(timezone.utc) - timedelta(days=days)
+    until = date_range.until
+
+    window_filters = [Notification.created_at >= since]
+    if until is not None:
+        window_filters.append(Notification.created_at < until)
+
+    # Busy Calls: one row per rejected call attempt (recovery_service.py
+    # creates a fresh Notification every time, unlike Lead, which reuses an
+    # existing open/contacted lead across repeat attempts from the same
+    # guest -- see recovery_service.py's own docstring). Counting Lead rows
+    # instead would undercount repeat-caller volume.
+    busy_calls = await db.scalar(
+        select(func.count())
+        .select_from(Notification)
+        .join(Lead, Notification.lead_id == Lead.id)
+        .where(
+            Notification.channel == NOTIFICATION_CHANNEL_BUSY_RECOVERY,
+            Lead.user_id == current_user.id,
+            *window_filters,
+        )
+    )
+
+    # Recovered: the guest engaged back on WhatsApp at least once. Counted
+    # per distinct Lead (not per reply row) -- a guest who replies twice to
+    # the same busy-rejection thread is one recovered guest, not two.
+    recovered = await db.scalar(
+        select(func.count(func.distinct(Notification.lead_id)))
+        .select_from(Notification)
+        .join(Lead, Notification.lead_id == Lead.id)
+        .where(
+            Notification.channel == NOTIFICATION_CHANNEL_BUSY_RECOVERY_REPLY,
+            Lead.user_id == current_user.id,
+            *window_filters,
+        )
+    )
+
+    # Converted / Lost: Lead.status is the one and only sales-pipeline
+    # signal in this codebase (host-set via PATCH /leads/{id}, see
+    # docs/api.md's leads.py entry) -- "booked"/"closed" on a recovery lead
+    # (recovery_reason IS NOT NULL) is exactly what these mean, same
+    # convention analytics_summary's open_leads/pipeline_value already use
+    # for the general Lead funnel, filtered additionally to recovery leads.
+    # Windowed by Lead.created_at (when the recovery lead was born), not
+    # Notification.created_at, since a lead can convert well after the
+    # window that produced the original busy_recovery notification.
+    lead_window_filters = [Lead.created_at >= since]
+    if until is not None:
+        lead_window_filters.append(Lead.created_at < until)
+    converted = await db.scalar(
+        select(func.count()).where(
+            Lead.user_id == current_user.id,
+            Lead.recovery_reason.is_not(None),
+            Lead.status == "booked",
+            *lead_window_filters,
+        )
+    )
+    lost = await db.scalar(
+        select(func.count()).where(
+            Lead.user_id == current_user.id,
+            Lead.recovery_reason.is_not(None),
+            Lead.status == "closed",
+            *lead_window_filters,
+        )
+    )
+
+    # Average Recovery Time: time from the busy-rejection notification to
+    # this guest's FIRST reply, per lead, then averaged across leads.
+    # func.min() on each side collapses repeat busy-rejections/repeat
+    # replies for the same lead down to first-attempt -> first-reply, which
+    # is the "how long until the guest re-engaged" question this KPI asks --
+    # not every possible attempt/reply pairing.
+    busy_first = (
+        select(Notification.lead_id, func.min(Notification.created_at).label("busy_at"))
+        .where(Notification.channel == NOTIFICATION_CHANNEL_BUSY_RECOVERY, Notification.lead_id.is_not(None))
+        .group_by(Notification.lead_id)
+        .subquery()
+    )
+    reply_first = (
+        select(Notification.lead_id, func.min(Notification.created_at).label("reply_at"))
+        .where(Notification.channel == NOTIFICATION_CHANNEL_BUSY_RECOVERY_REPLY, Notification.lead_id.is_not(None))
+        .group_by(Notification.lead_id)
+        .subquery()
+    )
+    avg_recovery_seconds = await db.scalar(
+        select(func.avg(func.extract("epoch", reply_first.c.reply_at - busy_first.c.busy_at)))
+        .select_from(busy_first)
+        .join(reply_first, reply_first.c.lead_id == busy_first.c.lead_id)
+        .join(Lead, Lead.id == busy_first.c.lead_id)
+        .where(Lead.user_id == current_user.id, busy_first.c.busy_at >= since)
+    )
+
+    # Average Host Response: time from the busy_recovery notification being
+    # created to the host first marking it read (Notification.responded_at,
+    # set once by notification_service.mark_read -- see that field's own
+    # comment on why updated_at isn't reused for this).
+    avg_response_seconds = await db.scalar(
+        select(func.avg(func.extract("epoch", Notification.responded_at - Notification.created_at)))
+        .select_from(Notification)
+        .join(Lead, Notification.lead_id == Lead.id)
+        .where(
+            Notification.channel == NOTIFICATION_CHANNEL_BUSY_RECOVERY,
+            Notification.responded_at.is_not(None),
+            Lead.user_id == current_user.id,
+            *window_filters,
+        )
+    )
+
+    busy_calls = busy_calls or 0
+    recovered = recovered or 0
+    converted = converted or 0
+    lost = lost or 0
+
+    return {
+        "window_days": days,
+        "start_date": date_range.start_date.isoformat() if date_range.start_date else None,
+        "end_date": date_range.end_date.isoformat() if date_range.end_date else None,
+        "busy_calls": busy_calls,
+        "recovered": recovered,
+        "converted": converted,
+        "lost": lost,
+        # float(), not bare round() -- func.avg(func.extract(...)) comes
+        # back as a Decimal, same as pipeline_value's func.sum() above; a
+        # bare round(Decimal, 1) stays a Decimal, which this app's JSON
+        # encoding renders as a string rather than a number.
+        "avg_recovery_time_seconds": round(float(avg_recovery_seconds), 1) if avg_recovery_seconds is not None else None,
+        "avg_host_response_seconds": round(float(avg_response_seconds), 1) if avg_response_seconds is not None else None,
+        "recovery_rate": round(recovered / busy_calls, 3) if busy_calls else None,
+        "conversion_rate": round(converted / busy_calls, 3) if busy_calls else None,
+        "funnel": [
+            {"stage": "busy_calls", "label": "Busy Calls", "value": busy_calls},
+            {"stage": "recovered", "label": "Recovered", "value": recovered},
+            {"stage": "converted", "label": "Converted", "value": converted},
+        ],
+    }

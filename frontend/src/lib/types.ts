@@ -65,28 +65,52 @@ export type UserUpdate = {
   whatsapp_assist_enabled?: boolean | null;
 };
 
-export type HostDiscountRuleTriggerType = "no_ask" | "guest_requests" | "repeat_guest_same_host" | "custom";
-export type HostDiscountRuleStatus = "pending_validation" | "approved" | "rejected";
+// Unified negotiation/pricing training rule -- replaces what used to be two
+// separate types (HostDiscountRule's host-wide discount triggers,
+// PropertyPricingRule's stay-pricing rules). The three discount_* rule
+// types are host-wide by definition (property_ids stays [] for them); the
+// other five require an explicit, host-picked property_ids selection
+// before they take effect. See backend NegotiationRule's docstring.
+export type NegotiationRuleType =
+  | "discount_no_ask"
+  | "discount_guest_requests"
+  | "discount_repeat_guest"
+  | "length_of_stay"
+  | "minimum_stay_nights"
+  | "early_checkin_fee"
+  | "late_checkout_fee"
+  | "custom";
+export type NegotiationRuleStatus = "pending_validation" | "approved" | "rejected";
 
-export type HostDiscountRuleOut = {
+export type NegotiationRuleOut = {
   id: string;
   host_id: string;
-  trigger_type: string;
-  discount_percent: number;
+  rule_type: string;
+  // unknown, not number -- a "custom" rule's condition is freeform (LLM
+  // extraction is instructed to produce "whatever the host described, in
+  // your own best structured guess"), so it can legitimately hold
+  // non-numeric values. Matches PricingRuleOut.condition's own typing below.
+  condition: Record<string, unknown>;
+  discount_percent: number | null;
+  label: string | null;
+  property_ids: string[];
   source: string;
   status: string;
   raw_source_text: string | null;
   created_at: string;
 };
 
-export type DiscountPolicyParseResponse = {
-  rules: HostDiscountRuleOut[];
+export type NegotiationPolicyParseResponse = {
+  rules: NegotiationRuleOut[];
 };
 
-export type HostDiscountRuleUpdate = {
-  trigger_type?: HostDiscountRuleTriggerType;
-  discount_percent?: number;
-  status?: HostDiscountRuleStatus;
+export type NegotiationRuleUpdate = {
+  rule_type?: NegotiationRuleType;
+  condition?: Record<string, unknown>;
+  discount_percent?: number | null;
+  label?: string | null;
+  property_ids?: string[];
+  status?: NegotiationRuleStatus;
 };
 
 export type HostOnboarding = {
@@ -134,6 +158,7 @@ export type PropertyOut = {
   smart_price_sample_size: number;
   smart_price_updated_at: string | null;
   exact_airbnb_pricing: boolean;
+  is_premium: boolean;
   created_at: string;
 };
 
@@ -169,6 +194,7 @@ export type PropertyCreate = {
   max_guests?: number;
   minimum_nights?: number;
   exact_airbnb_pricing?: boolean;
+  is_premium?: boolean;
 };
 
 export type PropertyUpdate = Partial<PropertyCreate>;
@@ -395,6 +421,27 @@ export type AnalyticsTimeseries = {
   points: AnalyticsTimeseriesPoint[];
 };
 
+export type RecoveryFunnelStage = {
+  stage: "busy_calls" | "recovered" | "converted";
+  label: string;
+  value: number;
+};
+
+export type RecoveryAnalytics = {
+  window_days: number;
+  start_date: string | null;
+  end_date: string | null;
+  busy_calls: number;
+  recovered: number;
+  converted: number;
+  lost: number;
+  avg_recovery_time_seconds: number | null;
+  avg_host_response_seconds: number | null;
+  recovery_rate: number | null;
+  conversion_rate: number | null;
+  funnel: RecoveryFunnelStage[];
+};
+
 export type LeadOut = {
   id: string;
   user_id: string;
@@ -413,6 +460,17 @@ export type LeadOut = {
   support_requests: string[];
   lead_temperature: string | null;
   lead_source: string;
+  // How the guest reached Mira (phone_call today; a future WhatsApp-inbound
+  // or web-widget lead would use a different value here).
+  entry_channel: string;
+  // Why this lead needed system-driven recovery instead of coming from a
+  // normal completed conversation -- null for the common case. See
+  // backend/app/models/lead.py's own comment for the full lead_source/
+  // entry_channel/recovery_reason split (deliberately not a Lead.status
+  // value). "BUSY_CALL" | "AFTER_HOURS" | "HOST_CALLBACK" | "GUEST_CALLBACK"
+  // when set, kept as `string` here (not a union) to match how this file
+  // already treats every other enum-like Lead field (status, lead_temperature).
+  recovery_reason: string | null;
   conversation_summary: string | null;
   next_follow_up: string | null;
   escalated: boolean;

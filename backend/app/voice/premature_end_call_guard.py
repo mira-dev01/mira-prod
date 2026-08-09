@@ -23,6 +23,8 @@ of ending the instant that line finishes playing, giving the guest an
 actual chance to reply.
 """
 
+from loguru import logger
+
 from pipecat.frames.frames import (
     Frame,
     FunctionCallsStartedFrame,
@@ -67,6 +69,10 @@ class PrematureEndCallGuardProcessor(FrameProcessor):
         if self._watching_for_question and isinstance(frame, LLMFullResponseEndFrame):
             self._watching_for_question = False
             if "?" in "".join(self._buffer):
+                logger.warning(
+                    "PrematureEndCallGuardProcessor: cancelling the pending hangup -- this turn also "
+                    "asked the guest a real question"
+                )
                 self._silence_watchdog.cancel_end_request()
             await self.push_frame(frame, direction)
             return

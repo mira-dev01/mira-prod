@@ -121,21 +121,6 @@ async def _send_escalation_email(to_email: str, subject: str, body: str, html_bo
         logger.exception("Failed to send escalation email to %s", to_email)
 
 
-async def _send_whatsapp_message(to_phone: str, body: str) -> None:
-    # Same detached/best-effort pattern as _send_escalation_email above --
-    # never blocks the tool result on a live call for a slow/failed Twilio
-    # request. "skipped" covers both Twilio not being configured and the
-    # far more common sandbox case (63015: recipient never texted "join
-    # <code>" to the sandbox number), which surfaces as a TwilioError, not
-    # a "skipped" status -- both are logged, neither raises past here.
-    try:
-        result = await twilio_client.send_whatsapp_message(to_phone, body)
-        if result.get("status") == "skipped":
-            logger.info("WhatsApp message to %s skipped: %s", to_phone, result.get("reason"))
-    except twilio_client.TwilioError:
-        logger.exception("Failed to send WhatsApp message to %s", to_phone)
-
-
 async def _send_escalation_whatsapp(
     to_phone: str, urgency: str, property_name: str, reason: str, call_summary: str | None, guest_phone: str | None, dashboard_url: str
 ) -> None:
@@ -143,31 +128,31 @@ async def _send_escalation_whatsapp(
     # Dashboard" button, no raw URL, no link-preview card) when it's been
     # created -- see scripts/create_escalation_template.py. Falls back to
     # a plain-text message with a bare URL if the template hasn't been set
-    # up yet, so escalations still reach the host either way.
+    # up yet, so escalations still reach the host either way. The actual
+    # fire-and-forget "log skip/failure, never raise" contract lives in
+    # twilio_client.send_whatsapp_template_best_effort/send_whatsapp_best_effort
+    # (cleanup pass: this used to reimplement that contract locally --
+    # consolidated to the same wrapper recovery_service.py already uses, so
+    # there is exactly one place that contract is implemented).
     emoji = _URGENCY_EMOJI.get(urgency, "⚪")
-    try:
-        if settings.twilio_escalation_template_sid:
-            result = await twilio_client.send_whatsapp_template(
-                to_phone,
-                settings.twilio_escalation_template_sid,
-                {
-                    "1": emoji,
-                    "2": urgency.upper(),
-                    "3": property_name,
-                    "4": reason,
-                    "5": call_summary or "Not provided",
-                    "6": guest_phone or "Not captured",
-                },
-            )
-        else:
-            result = await twilio_client.send_whatsapp_message(
-                to_phone,
-                _build_escalation_whatsapp_text(urgency, property_name, reason, call_summary, guest_phone, dashboard_url),
-            )
-        if result.get("status") == "skipped":
-            logger.info("Escalation WhatsApp to %s skipped: %s", to_phone, result.get("reason"))
-    except twilio_client.TwilioError:
-        logger.exception("Failed to send escalation WhatsApp to %s", to_phone)
+    if settings.twilio_escalation_template_sid:
+        await twilio_client.send_whatsapp_template_best_effort(
+            to_phone,
+            settings.twilio_escalation_template_sid,
+            {
+                "1": emoji,
+                "2": urgency.upper(),
+                "3": property_name,
+                "4": reason,
+                "5": call_summary or "Not provided",
+                "6": guest_phone or "Not captured",
+            },
+        )
+    else:
+        await twilio_client.send_whatsapp_best_effort(
+            to_phone,
+            _build_escalation_whatsapp_text(urgency, property_name, reason, call_summary, guest_phone, dashboard_url),
+        )
 
 
 async def _get_property(db: AsyncSession, property_id: str) -> Property | None:
@@ -218,7 +203,10 @@ async def handle_check_calendar(
     # multi-night stay that happens to include a Saturday (e.g. Fri-Sun) is
     # unaffected since it's already 2+ nights. "Includes a Saturday night"
     # means any of the stayed nights (check_in through check_out - 1 day)
-    # falls on a Saturday -- Python's date.weekday() == 5.
+    # falls on a Saturday -- Python's date.weekday() == 5. This is a simple,
+    # always-on-if-toggled property-level rule -- see the note on the
+    # rule-engine check right below for how this relates to that more
+    # general mechanism (both are kept; neither replaces the other).
     if property_.saturday_minimum_stay_enabled and nights_requested < 2:
         stayed_nights = [args.check_in + timedelta(days=i) for i in range(nights_requested)]
         if any(night.weekday() == 5 for night in stayed_nights):
@@ -226,6 +214,24 @@ async def handle_check_calendar(
                 f"{property_.name} requires a two-night minimum for stays that include a Saturday -- "
                 "a Saturday-only night isn't bookable on its own. Would Saturday and Sunday together work?"
             )
+
+    # Phase 6 (Negotiation engine): a SEPARATE, host-configured minimum-stay
+    # floor (NegotiationRule rule_type="minimum_stay_nights"), on top of the
+    # flat Property.minimum_nights check above and the simple Saturday
+    # toggle above -- additive, never replaces either. A host with no such
+    # rule configured sees zero change here (minimum_stay_nights_violation
+    # returns None). Covers a more general case than the toggle above (any
+    # min-nights floor, or a Friday-or-Saturday-inclusive weekend floor via
+    # condition["weekend_min_nights"], not just "exactly Saturday").
+    required_min_nights = await pricing_engine.minimum_stay_nights_violation(
+        db, host_user_id, property_.id, args.check_in, args.check_out
+    )
+    if required_min_nights is not None:
+        return (
+            f"{property_.name} needs a minimum stay of {required_min_nights} nights for those dates -- "
+            f"{nights_requested} night{'s' if nights_requested != 1 else ''} is below that. "
+            "Would a longer stay work?"
+        )
 
     if host_user_id is not None:
         await lead_service.backfill_lead_from_engagement(
@@ -290,6 +296,22 @@ async def handle_get_pricing(
     if args.check_out <= args.check_in:
         return "The check-out date needs to be after check-in. Could you confirm the dates?"
 
+    # Phase 6 (Negotiation engine) self-review fix: GOLDEN_RULES tells the
+    # model get_pricing will surface a minimum-stay requirement -- this must
+    # actually be true, not just check_calendar. Same check as
+    # handle_check_calendar's own (host-configured, additive, host-opt-in;
+    # a host with no minimum_stay_nights rule sees zero change here).
+    required_min_nights = await pricing_engine.minimum_stay_nights_violation(
+        db, host_user_id, property_.id, args.check_in, args.check_out
+    )
+    if required_min_nights is not None:
+        nights_requested = (args.check_out - args.check_in).days
+        return (
+            f"{property_.name} needs a minimum stay of {required_min_nights} nights for those dates -- "
+            f"{nights_requested} night{'s' if nights_requested != 1 else ''} is below that. "
+            "Would a longer stay work?"
+        )
+
     if host_user_id is not None:
         await lead_service.backfill_lead_from_engagement(
             db,
@@ -303,7 +325,14 @@ async def handle_get_pricing(
         )
 
     breakdown = await pricing_engine.calculate_price(
-        db, property_, args.check_in, args.check_out, apply_discounts=args.apply_discounts
+        db,
+        property_,
+        args.check_in,
+        args.check_out,
+        apply_discounts=args.apply_discounts,
+        host_id=host_user_id,
+        requested_early_checkin=args.requested_early_checkin,
+        requested_late_checkout=args.requested_late_checkout,
     )
 
     # Never quote a non-positive total as a real price -- see
@@ -334,6 +363,15 @@ async def handle_get_pricing(
             f", including a {breakdown.discount_percent:.0f}% discount of ₹{breakdown.discount_amount:,.0f} "
             f"off the base rate of ₹{breakdown.base_total:,.0f}"
         )
+    # Phase 6: only ever present when the guest explicitly asked (see
+    # GetPricingArgs.requested_early_checkin/requested_late_checkout) --
+    # never a silent addition to the total the guest didn't ask about.
+    # Stated as its own separate figure, not folded into the total above,
+    # so the guest hears exactly what they're being charged extra for.
+    if breakdown.early_checkin_fee:
+        summary += f". Early check-in is an extra ₹{breakdown.early_checkin_fee:,.0f}"
+    if breakdown.late_checkout_fee:
+        summary += f". Late checkout is an extra ₹{breakdown.late_checkout_fee:,.0f}"
     summary += "."
     if on_priced is not None:
         on_priced(property_, breakdown)
@@ -407,7 +445,7 @@ async def handle_send_whatsapp(
         urgency="low",
         message=f"To {args.phone}: {args.message}",
     )
-    asyncio.create_task(_send_whatsapp_message(args.phone, args.message))
+    asyncio.create_task(twilio_client.send_whatsapp_best_effort(args.phone, args.message))
     return f"Got it, I've queued a WhatsApp message to {args.phone}." + _phone_confirmation_warning(args.phone)
 
 
@@ -438,7 +476,7 @@ async def handle_send_photos(
     # Real WhatsApp send via Twilio sandbox (only reaches numbers that have
     # joined the sandbox -- see twilio_account_sid's docstring in config.py).
     asyncio.create_task(
-        _send_whatsapp_message(args.guest_phone, f"Here are photos of {property_.name} -- {gallery_url}")
+        twilio_client.send_whatsapp_best_effort(args.guest_phone, f"Here are photos of {property_.name} -- {gallery_url}")
     )
 
     # Email stays as a parallel channel (not a fallback) so this is testable

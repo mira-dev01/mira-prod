@@ -110,6 +110,7 @@ class PropertyUpdate(BaseModel):
     minimum_nights: int | None = Field(default=None, ge=1)
     saturday_minimum_stay_enabled: bool | None = None
     exact_airbnb_pricing: bool | None = None
+    is_premium: bool | None = None
 
     @field_validator("exophone", "twilio_number")
     @classmethod
@@ -169,6 +170,7 @@ class PropertyOut(BaseModel):
     smart_price_sample_size: int
     smart_price_updated_at: datetime | None
     exact_airbnb_pricing: bool
+    is_premium: bool
     created_at: datetime
 
     model_config = {"from_attributes": True}

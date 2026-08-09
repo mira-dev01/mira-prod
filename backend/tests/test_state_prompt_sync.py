@@ -9,10 +9,23 @@ import pytest
 from pipecat.frames.frames import LLMContextFrame
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.tests.utils import run_test
-from pipecat.transcriptions.language import Language
 
+from app.voice.conversation_quality import ConversationQuality, ValidationResult
 from app.voice.conversation_state import ConversationState
+from app.voice.conversation_style import ConversationAnalyzer, StyleEngine
 from app.voice.state_prompt_sync import StatePromptSyncProcessor, build_state_block_content
+
+
+def _style_from_turns(*turns: str):
+    """Builds a real ConversationStyle via the actual engine, same as a live
+    call would produce it -- avoids hand-constructing a ConversationStyle
+    dataclass whose shape could silently drift from the real one."""
+    engine = StyleEngine()
+    style = None
+    for i, text in enumerate(turns, start=1):
+        signal = ConversationAnalyzer.analyze_turn(text)
+        style = engine.update(signal, style, turn_index=i)
+    return style
 
 
 def _is_injected_state_block(message: dict, real_system_content: str) -> bool:
@@ -81,6 +94,79 @@ def test_build_state_block_content_drops_closing_hint_once_reopened():
     state.mark_reopened()
     content = build_state_block_content(state)
     assert "call is closing" not in content.lower()
+
+
+def test_build_state_block_content_soft_close_when_guest_never_committed():
+    """Phase 8 (Closing intelligence): a guest who never accepted a specific
+    property or heard a real price gets soft-close framing -- never implies
+    anything is booked/confirmed."""
+    state = ConversationState()
+    state.mark_farewell_pending()
+    content = build_state_block_content(state)
+    assert "soft close" in content.lower()
+    assert "hard close" not in content.lower()
+
+
+def test_build_state_block_content_hard_close_when_guest_accepted_property_and_was_quoted():
+    """A guest who both accepted a specific property (via lock_property
+    after recommend_properties) AND was quoted a real price gets hard-close
+    framing -- both facts already tracked by ConversationState, no new
+    field. Neither fact alone is enough (see the two tests below)."""
+    state = ConversationState()
+    state.record_recommendations([{"property_id": "p1", "name": "Ocean View", "price": 6000, "guests": 4}])
+    state.lock_property("p1", "Ocean View")
+    state.record_quoted_price("Ocean View", "2026-08-10", "2026-08-12", 12000)
+    state.mark_farewell_pending()
+    content = build_state_block_content(state)
+    assert "hard close" in content.lower()
+    assert "soft close" not in content.lower()
+
+
+def test_build_state_block_content_soft_close_when_only_price_quoted_no_property_accepted():
+    """Being quoted a price alone (e.g. Guest Support mode, where a property
+    is fixed but the guest never explicitly accepted/showed interest) is
+    not enough for a hard close -- guest_accepted_property_id must also be
+    set, same discipline lock_property's own docstring already applies."""
+    state = ConversationState()
+    state.record_quoted_price("Ocean View", "2026-08-10", "2026-08-12", 12000)
+    state.mark_farewell_pending()
+    content = build_state_block_content(state)
+    assert "soft close" in content.lower()
+
+
+def test_build_state_block_content_soft_close_when_only_property_accepted_no_price_quoted():
+    """Accepting a property alone, with no price ever actually quoted, is
+    not enough for a hard close either -- both facts are required."""
+    state = ConversationState()
+    state.record_recommendations([{"property_id": "p1", "name": "Ocean View", "price": 6000, "guests": 4}])
+    state.lock_property("p1", "Ocean View")
+    state.mark_farewell_pending()
+    content = build_state_block_content(state)
+    assert "soft close" in content.lower()
+
+
+def test_build_state_block_content_soft_close_when_quote_is_stale_for_a_different_property():
+    """Self-review fix: guest_accepted_property_id and quoted_price are both
+    sticky (never cleared, only overwritten) -- a guest who accepted/was
+    quoted for Ocean View, then explicitly switched to browsing a different
+    property, must NOT read as a hard close for the stale Ocean View quote
+    just because both fields happen to still be truthy. Only a quote whose
+    own property_name matches the CURRENTLY accepted property counts."""
+    state = ConversationState()
+    state.record_recommendations([{"property_id": "p1", "name": "Ocean View", "price": 6000, "guests": 4}])
+    state.lock_property("p1", "Ocean View")
+    state.record_quoted_price("Ocean View", "2026-08-10", "2026-08-12", 12000)
+    # Guest switches to a different property -- a real, explicitly supported
+    # flow ("what about Palm Retreat instead?") -- without a new quote ever
+    # being requested for it before the call winds down.
+    state.record_recommendations(
+        [{"property_id": "p2", "name": "Palm Retreat", "price": 5000, "guests": 4}]
+    )
+    state.lock_property("p2", "Palm Retreat")
+    state.mark_farewell_pending()
+    content = build_state_block_content(state)
+    assert "soft close" in content.lower()
+    assert "hard close" not in content.lower()
 
 
 @pytest.mark.asyncio
@@ -197,49 +283,41 @@ async def test_real_system_prompt_message_is_never_mutated():
     assert down_frames[-1].context.messages[0]["content"] == system_content
 
 
-def test_build_state_block_content_includes_passive_language_hint():
-    """Phase 3.2: passive per-turn detection (LanguageSyncProcessor writes
-    this) surfaces as a continue-in-this-language hint."""
+def test_build_state_block_content_includes_conversation_style_block():
+    """The dynamic state block now sources its language/tone text from the
+    Conversation Style Engine's own ConversationStyle (app/voice/
+    conversation_style.py), not raw current_spoken_language/
+    explicit_language_preference directly -- those two fields are unchanged
+    and still exist (still drive LanguageSyncProcessor's live TTS switch and
+    the Response Validator's own checks), but this prompt-rendering consumer
+    now reads the hysteresis-smoothed style instead of the raw single-turn
+    signal."""
     state = ConversationState()
-    state.current_spoken_language = Language.HI
+    state.conversation_style = _style_from_turns("हाँ मुझे बुकिंग करनी है", "सितंबर के पहले हफ्ते में")
     content = build_state_block_content(state)
-    assert "currently speaking Hinglish" in content
-    assert "continue replying in Hinglish" in content
+    assert "Conversation Style" in content
+    assert "Never abruptly change language." in content
 
 
-def test_build_state_block_content_english_language_hint():
+def test_build_state_block_content_english_conversation_style():
     state = ConversationState()
-    state.current_spoken_language = Language.EN_IN
+    state.conversation_style = _style_from_turns("Hello, how can I help you")
     content = build_state_block_content(state)
-    assert "currently speaking English" in content
+    assert "Language: English" in content
 
 
-def test_build_state_block_content_explicit_preference_overrides_passive_detection():
-    """Phase 3.3: an explicit, guest-stated request ('can you speak Hindi?')
-    is a stronger signal than passive code-switch detection and must win
-    when both are set -- e.g. the guest asked for Hindi but their most
-    recent utterance happened to be transcribed as English."""
-    state = ConversationState()
-    state.current_spoken_language = Language.EN
-    state.explicit_language_preference = Language.HI
-    content = build_state_block_content(state)
-    assert "asked you to speak in Hinglish" in content
-    assert "currently speaking English" not in content
-
-
-def test_build_state_block_content_no_language_hint_before_any_speech_detected():
-    """The very first turn of a call, before any guest speech has been
-    transcribed -- GOLDEN_RULES' own passive-mirroring instruction already
-    covers this case, so no hint (and no extra tokens) is injected."""
+def test_build_state_block_content_no_style_block_before_any_speech_detected():
+    """The very first turn of a call, before ConversationStyleProcessor has
+    computed anything yet -- no hint (and no extra tokens) is injected."""
     state = ConversationState()
     content = build_state_block_content(state)
     assert content == ""
 
 
 @pytest.mark.asyncio
-async def test_language_hint_flows_through_the_real_processor():
+async def test_conversation_style_block_flows_through_the_real_processor():
     state = ConversationState()
-    state.current_spoken_language = Language.HI_IN
+    state.conversation_style = _style_from_turns("हाँ मुझे बुकिंग करनी है", "सितंबर के पहले हफ्ते में")
     processor = StatePromptSyncProcessor(state)
 
     frame = _context_frame({"role": "system", "content": "sys"}, {"role": "user", "content": "bhai kya haal hai"})
@@ -247,7 +325,7 @@ async def test_language_hint_flows_through_the_real_processor():
 
     messages = down_frames[-1].context.messages
     state_block = next(m for m in messages if _is_injected_state_block(m, "sys"))
-    assert "Hinglish" in state_block["content"]
+    assert "Conversation Style" in state_block["content"]
 
 
 def test_build_state_block_content_includes_quoted_price():
@@ -266,3 +344,76 @@ def test_build_state_block_content_no_quoted_price_line_when_unset():
     state.set_slot("num_guests", 4)
     content = build_state_block_content(state)
     assert "already quoted" not in content
+
+
+# --- ConversationQuality bridge: the one permitted quality -> behavior path ---
+
+
+def test_pending_style_correction_renders_emphasized_block():
+    state = ConversationState()
+    state.conversation_style = _style_from_turns("हाँ मुझे बुकिंग करनी है")
+    quality = ConversationQuality()
+    quality.pending_style_correction = True
+
+    content = build_state_block_content(state, quality)
+
+    assert "did not match this" in content
+
+
+def test_no_pending_correction_renders_plain_block():
+    state = ConversationState()
+    state.conversation_style = _style_from_turns("हाँ मुझे बुकिंग करनी है")
+    quality = ConversationQuality()
+
+    content = build_state_block_content(state, quality)
+
+    assert "did not match this" not in content
+
+
+def test_consuming_pending_correction_clears_the_flag():
+    """The emphasis is a one-turn nudge, not a permanent state -- reading it
+    once must clear it so the next turn (assuming no new FAIL) renders the
+    plain block again."""
+    state = ConversationState()
+    state.conversation_style = _style_from_turns("हाँ मुझे बुकिंग करनी है")
+    quality = ConversationQuality()
+    quality.pending_style_correction = True
+
+    build_state_block_content(state, quality)
+
+    assert quality.pending_style_correction is False
+
+
+def test_no_quality_object_is_a_no_op_not_an_error():
+    state = ConversationState()
+    state.conversation_style = _style_from_turns("हाँ मुझे बुकिंग करनी है")
+    content = build_state_block_content(state)
+    assert "did not match this" not in content
+
+
+def test_validator_never_writes_prompt_text_directly():
+    """Architecture requirement: only render_style_block (owned by
+    conversation_style.py) ever produces the correction sentence text --
+    ConversationQuality itself carries only a boolean, never free text a
+    validator might have authored."""
+    quality = ConversationQuality()
+    quality.record(ValidationResult(rule="style_compliance", severity="FAIL", confidence=0.9))
+    assert isinstance(quality.pending_style_correction, bool)
+    assert not hasattr(quality, "correction_text")
+
+
+@pytest.mark.asyncio
+async def test_pending_correction_flows_through_the_real_processor():
+    state = ConversationState()
+    state.conversation_style = _style_from_turns("हाँ मुझे बुकिंग करनी है")
+    quality = ConversationQuality()
+    quality.pending_style_correction = True
+    processor = StatePromptSyncProcessor(state, quality)
+
+    frame = _context_frame({"role": "system", "content": "sys"}, {"role": "user", "content": "bhai kya haal hai"})
+    down_frames, _ = await run_test(processor, frames_to_send=[frame])
+
+    messages = down_frames[-1].context.messages
+    state_block = next(m for m in messages if _is_injected_state_block(m, "sys"))
+    assert "did not match this" in state_block["content"]
+    assert quality.pending_style_correction is False
