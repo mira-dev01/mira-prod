@@ -44,6 +44,7 @@ const emptyForm: PropertyCreate = {
   check_out_time: "11:00",
   max_guests: 4,
   minimum_nights: 1,
+  saturday_minimum_stay_enabled: false,
   exact_airbnb_pricing: false,
 };
 
@@ -80,6 +81,7 @@ function propertyToForm(property: PropertyOut): PropertyCreate {
     check_out_time: property.check_out_time,
     max_guests: property.max_guests,
     minimum_nights: property.minimum_nights,
+    saturday_minimum_stay_enabled: property.saturday_minimum_stay_enabled,
     exact_airbnb_pricing: property.exact_airbnb_pricing,
   };
 }

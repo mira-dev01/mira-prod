@@ -120,6 +120,28 @@ export function PropertyFormFields({
             onChange={(e) => onChange({ ...form, minimum_nights: Number(e.target.value) })}
           />
         </div>
+        <div
+          className="col-span-2 flex items-center justify-between rounded-lg border p-3"
+          onClick={(e) => {
+            // Same base-ui Switch click fallback as exact_airbnb_pricing above.
+            if (e.defaultPrevented || (e.target as HTMLElement).closest("label")) return;
+            onChange({ ...form, saturday_minimum_stay_enabled: !(form.saturday_minimum_stay_enabled ?? false) });
+          }}
+        >
+          <div className="space-y-0.5">
+            <Label htmlFor="saturday_minimum_stay_enabled">Require 2-night minimum on Saturdays</Label>
+            <p className="text-micro text-muted-foreground">
+              Off: a guest can book a single Saturday night on its own. On: any stay that includes a Saturday night
+              must be at least 2 nights — a lone Saturday-only booking is turned down. Independent of the minimum
+              stay above.
+            </p>
+          </div>
+          <Switch
+            id="saturday_minimum_stay_enabled"
+            checked={form.saturday_minimum_stay_enabled ?? false}
+            onCheckedChange={(checked) => onChange({ ...form, saturday_minimum_stay_enabled: checked })}
+          />
+        </div>
         <div className="space-y-2">
           <Label htmlFor="ical_url">iCal URL</Label>
           <Input

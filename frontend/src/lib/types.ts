@@ -129,6 +129,7 @@ export type PropertyOut = {
   check_out_time: string;
   max_guests: number;
   minimum_nights: number;
+  saturday_minimum_stay_enabled: boolean;
   airbnb_listing_id: string | null;
   smart_price_estimate: number | null;
   smart_price_sample_size: number;
@@ -168,6 +169,7 @@ export type PropertyCreate = {
   check_out_time?: string;
   max_guests?: number;
   minimum_nights?: number;
+  saturday_minimum_stay_enabled?: boolean;
   exact_airbnb_pricing?: boolean;
 };
 
