@@ -75,6 +75,62 @@ async def test_check_calendar_exceeds_max_guests(test_property, db_session):
     assert "sleeps up to" in result
 
 
+def _next_saturday(from_date: date) -> date:
+    return from_date + timedelta(days=(5 - from_date.weekday()) % 7 or 7)
+
+
+async def test_check_calendar_rejects_saturday_only_when_rule_enabled(test_property, db_session):
+    test_property.saturday_minimum_stay_enabled = True
+    await db_session.commit()
+
+    saturday = _next_saturday(date.today())
+    args = CheckCalendarArgs(
+        property_id=str(test_property.id), check_in=saturday, check_out=saturday + timedelta(days=1)
+    )
+    result = await tool_handlers.handle_check_calendar(db_session, args)
+    assert "two-night minimum" in result.lower()
+    assert "saturday" in result.lower()
+
+
+async def test_check_calendar_allows_saturday_sunday_when_rule_enabled(test_property, db_session):
+    test_property.saturday_minimum_stay_enabled = True
+    await db_session.commit()
+
+    saturday = _next_saturday(date.today())
+    args = CheckCalendarArgs(
+        property_id=str(test_property.id), check_in=saturday, check_out=saturday + timedelta(days=2)
+    )
+    result = await tool_handlers.handle_check_calendar(db_session, args)
+    assert "AVAILABLE" in result
+
+
+async def test_check_calendar_allows_saturday_only_when_rule_disabled(test_property, db_session):
+    # saturday_minimum_stay_enabled defaults to False -- a lone Saturday
+    # night is only rejected for hosts who explicitly opt in.
+    assert test_property.saturday_minimum_stay_enabled is False
+
+    saturday = _next_saturday(date.today())
+    args = CheckCalendarArgs(
+        property_id=str(test_property.id), check_in=saturday, check_out=saturday + timedelta(days=1)
+    )
+    result = await tool_handlers.handle_check_calendar(db_session, args)
+    assert "AVAILABLE" in result
+
+
+async def test_check_calendar_saturday_rule_does_not_block_non_saturday_one_night_stay(test_property, db_session):
+    test_property.saturday_minimum_stay_enabled = True
+    await db_session.commit()
+
+    # A 1-night stay that doesn't touch a Saturday at all (e.g. a Tuesday
+    # night) must be unaffected by this rule.
+    saturday = _next_saturday(date.today())
+    tuesday = saturday + timedelta(days=3)  # Saturday + 3 = Tuesday
+    assert tuesday.weekday() == 1
+    args = CheckCalendarArgs(property_id=str(test_property.id), check_in=tuesday, check_out=tuesday + timedelta(days=1))
+    result = await tool_handlers.handle_check_calendar(db_session, args)
+    assert "AVAILABLE" in result
+
+
 async def test_get_pricing_includes_total(test_property, db_session):
     today = date.today()
     args = GetPricingArgs(

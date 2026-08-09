@@ -67,6 +67,7 @@ class PropertyCreate(BaseModel):
     check_out_time: str = "11:00"
     max_guests: int = 4
     minimum_nights: int = Field(default=1, ge=1)
+    saturday_minimum_stay_enabled: bool = False
 
     @field_validator("exophone", "twilio_number")
     @classmethod
@@ -107,6 +108,7 @@ class PropertyUpdate(BaseModel):
     check_out_time: str | None = None
     max_guests: int | None = None
     minimum_nights: int | None = Field(default=None, ge=1)
+    saturday_minimum_stay_enabled: bool | None = None
     exact_airbnb_pricing: bool | None = None
 
     @field_validator("exophone", "twilio_number")
@@ -161,6 +163,7 @@ class PropertyOut(BaseModel):
     check_out_time: str
     max_guests: int
     minimum_nights: int
+    saturday_minimum_stay_enabled: bool
     airbnb_listing_id: str | None
     smart_price_estimate: float | None
     smart_price_sample_size: int

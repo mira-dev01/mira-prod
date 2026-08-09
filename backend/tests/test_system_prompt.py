@@ -523,6 +523,17 @@ def test_golden_rules_forbid_inventing_tool_call_arguments():
     assert "never invent a plausible-sounding placeholder date or number" in prompt
 
 
+def test_golden_rules_saturday_minimum_stay_asks_before_declining():
+    # A Saturday-only request when Property.saturday_minimum_stay_enabled is
+    # on shouldn't be treated as a flat refusal on the first ask -- the
+    # policy should be relayed and the guest asked about Saturday+Sunday
+    # first, only actually declined if they insist on Saturday alone.
+    prompt = build_system_prompt(_property(), None, _user())
+    assert "Saturday-minimum-stay policy" in prompt
+    assert "don't treat that as a flat" in prompt
+    assert "insists on Saturday alone should you tell them" in prompt
+
+
 def test_golden_rules_forbid_narrator_meta_text():
     # Regression: "---This is the end.---" got spoken directly to a guest,
     # appended after a real sentence (confirmed live, 2026-07-21).

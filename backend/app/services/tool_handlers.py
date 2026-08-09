@@ -8,7 +8,7 @@ for that, not as raw JSON.
 import asyncio
 import logging
 import uuid
-from datetime import date
+from datetime import date, timedelta
 from typing import Callable
 
 from sqlalchemy import select
@@ -211,6 +211,21 @@ async def handle_check_calendar(
             f"{nights_requested} night{'s' if nights_requested != 1 else ''} is below that. "
             "Would a longer stay work?"
         )
+
+    # Weekend/Saturday minimum-stay rule -- independent of minimum_nights
+    # above. Only kicks in when the requested stay actually includes a
+    # Saturday night; a lone 1-night Saturday-only booking is rejected, a
+    # multi-night stay that happens to include a Saturday (e.g. Fri-Sun) is
+    # unaffected since it's already 2+ nights. "Includes a Saturday night"
+    # means any of the stayed nights (check_in through check_out - 1 day)
+    # falls on a Saturday -- Python's date.weekday() == 5.
+    if property_.saturday_minimum_stay_enabled and nights_requested < 2:
+        stayed_nights = [args.check_in + timedelta(days=i) for i in range(nights_requested)]
+        if any(night.weekday() == 5 for night in stayed_nights):
+            return (
+                f"{property_.name} requires a two-night minimum for stays that include a Saturday -- "
+                "a Saturday-only night isn't bookable on its own. Would Saturday and Sunday together work?"
+            )
 
     if host_user_id is not None:
         await lead_service.backfill_lead_from_engagement(

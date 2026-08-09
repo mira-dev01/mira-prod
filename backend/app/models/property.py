@@ -124,6 +124,17 @@ class Property(UUIDPkMixin, TimestampMixin, Base):
     # constraint, matching every property that predates this field.
     minimum_nights: Mapped[int] = mapped_column(default=1, server_default="1")
 
+    # Weekend/Saturday minimum-stay rule -- independent of minimum_nights
+    # above (that one applies to every stay; this one only kicks in when the
+    # requested stay includes a Saturday night). When True, a stay that
+    # covers a Saturday night must be at least 2 nights -- a lone
+    # Saturday-only 1-night booking is rejected, same as many real Airbnb
+    # hosts' own "Require Saturday-Sunday" weekend policy. Checked in
+    # handle_check_calendar (app/services/tool_handlers.py), same place
+    # minimum_nights is enforced, not duplicated into pricing/negotiation --
+    # matching that field's existing precedent.
+    saturday_minimum_stay_enabled: Mapped[bool] = mapped_column(default=False, server_default="false")
+
     # Property Memory (memory-architecture-plan.md section 5) -- the one
     # genuinely new piece beyond consolidating existing fields (house_rules/
     # neighborhood_info/amenities/faq already cover everything else).
