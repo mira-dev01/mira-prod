@@ -57,6 +57,24 @@ async def test_update_property_all_fields(client, auth_headers, test_property):
     assert body["check_in_time"] == "15:00"
 
 
+async def test_update_property_is_premium_round_trips_and_defaults_false(client, auth_headers, test_property):
+    """Recommendation conversations ("Phase X"): is_premium is host-set via
+    the property editor (PropertyUpdate), never LLM-inferred -- grounds
+    "something more premium" requests in a real fact. Defaults False (an
+    opt-in flag), and a PATCH toggling it must round-trip through PropertyOut."""
+    get_resp = await client.get(f"/api/v1/properties/{test_property.id}", headers=auth_headers)
+    assert get_resp.json()["is_premium"] is False
+
+    resp = await client.patch(
+        f"/api/v1/properties/{test_property.id}", json={"is_premium": True}, headers=auth_headers
+    )
+    assert resp.status_code == 200
+    assert resp.json()["is_premium"] is True
+
+    get_resp_2 = await client.get(f"/api/v1/properties/{test_property.id}", headers=auth_headers)
+    assert get_resp_2.json()["is_premium"] is True
+
+
 async def test_renormalize_property_name_derives_clean_fields(client, auth_headers, db_session, test_user):
     from app.models.property import Property
 

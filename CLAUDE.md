@@ -10,6 +10,64 @@ Detailed docs live in `docs/`:
 - [docs/api.md](docs/api.md) — REST endpoint reference, grouped by domain.
 - [docs/how-it-works.md](docs/how-it-works.md) — function-level walkthrough: two full traces (property search, host escalation), a complete logging/observability map, every guardrail mechanically explained, and a file-by-file reference for all of `backend/app/`.
 
+And in `documentation/`:
+- [documentation/current_architecture.md](documentation/current_architecture.md) — the single clearest technical picture of how Mira works **today**: call flow diagram, CallCoordinator/Redis lease contract, Busy Call Recovery, conversation architecture, database boundaries, invariants. Read this first for anything touching concurrency, recovery, or the conversation-state/style/quality trio.
+- [documentation/project_state.md](documentation/project_state.md) — living snapshot: what's implemented vs. uncommitted vs. planned, known limitations/risks, next priorities. Its "Status summary" section at the top is the current authoritative status; everything below it is a historical log.
+
+---
+
+## Architecture overview
+
+MIRA has two halves that share almost nothing except the database: the **live voice pipeline**
+(a call in progress — pipecat, real-time, latency-sensitive) and the **dashboard/REST API** (host
+management, async, not latency-sensitive). A third, newer piece — **Busy Call Recovery** — sits
+between them: it's triggered by the live-call path (a rejected call) but runs entirely outside it
+(WhatsApp, async, no LLM). See [documentation/current_architecture.md](documentation/current_architecture.md)
+for the full diagram and every layer's responsibility boundary — this section only calls out the
+invariants a coding session must not violate.
+
+### Critical invariants
+
+- **A genuine guest opportunity must not silently disappear.** Three independent mechanisms exist
+  for this reason — in-call `update_lead`/`escalate_to_host`, the `ensure_lead_for_engagement`
+  system-level safety net (fires on `get_pricing`/`negotiate_rate`/`check_calendar` regardless of
+  whether the LLM ever calls `update_lead`), and Busy Call Recovery's own lead creation for calls
+  that never even reach the LLM. Do not remove or bypass any of the three without replacing what it
+  guarantees.
+- **Call ownership must be concurrency-safe.** `CallCoordinator` (`app/services/call_coordinator.py`)
+  is the single authority on "does this host/property already have a live call?" — Redis-backed,
+  atomic `SET NX`/Lua-script operations, no check-then-act race window. Never add a second place
+  that decides this.
+- **The pipeline must not contain business logic for concurrency coordination.**
+  `app/voice/pipeline.py` only ever sees `CallCoordinator.acquire_or_reject`'s two-value
+  `Decision` (`START_PIPELINE`/`BUSY_RECOVERY`) — never lease internals, never a reason code.
+- **Redis cache semantics and Redis lease semantics are separate.** `app/integrations/redis_client.py`
+  (optional TTL cache, fails open/no-ops silently) and `app/integrations/redis_lease_client.py`
+  (CallCoordinator's correctness-bearing lease operations, explicit fail-open policy owned one
+  layer up in `call_coordinator.py`) are deliberately different modules with different failure
+  contracts — do not merge them or add lease-specific behavior to the cache module.
+- **Validators must not introduce hidden LLM regeneration.** Every corrective mechanism in the
+  pipeline (7 guards + `StyleComplianceMonitor`) either deterministically rewrites/truncates
+  already-generated text, or nudges the *next* turn's prompt. Nothing calls the LLM a second time
+  mid-turn to "fix" a response — the old `ResponseComplianceProcessor` did this and was removed for
+  exactly that reason (multi-second dead air on a live call). If a genuinely new regeneration need
+  arises, that's a deliberate architectural decision, not something to add quietly inside a guard.
+- **`ConversationStyle` is responsible for *how* Mira speaks** (language, script, tone) —
+  hysteresis-smoothed over a rolling window of guest turns, computed by `StyleEngine`.
+- **`ConversationState` is responsible for conversation facts/state** (locked property, slots,
+  recommendations shown, escalation flag, closing state, conversation goal).
+- **`ConversationQuality` is observational/quality data** and must not silently become a
+  behavioral feedback loop — the one exception (`pending_style_correction`, read by
+  `StatePromptSyncProcessor` to ask `ConversationStyle` for a more emphatic rendering of the same
+  style) is deliberate and narrow; do not add a second such bridge without equally explicit
+  justification.
+- **External dependency failures must not unnecessarily terminate a live guest call.** Every
+  optional integration (Redis, SMTP, WhatsApp/Twilio, SearchApi, Bright Data) fails open or no-ops
+  rather than raising into the call path — match this discipline for any new integration.
+- **Do not duplicate existing services.** Busy Call Recovery deliberately reuses
+  `get_or_create_guest_profile`/`upsert_lead`/`create_notification`/the Twilio WhatsApp sender
+  rather than inventing parallel versions — follow the same instinct for new work.
+
 ---
 
 ## Repo layout
@@ -87,7 +145,11 @@ See [docs/architecture.md](docs/architecture.md) for deployment (Render) details
 | `TURN_DETECTION_STRATEGY` | `vad_fixed` (default) / `hybrid_experimental`. Local-only experiment — see [docs/agents.md](docs/agents.md). Not in `render.yaml`. |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USERNAME` / `SMTP_PASSWORD` / `SMTP_FROM_EMAIL` | Escalation email summaries. Any SMTP provider works. Unset = escalations still create the in-app notification, just skip the email. |
 | `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_WHATSAPP_FROM` | Real WhatsApp send for `send_whatsapp`/`send_photos` via Twilio's Sandbox — see [docs/agents.md](docs/agents.md). Sandbox only reaches numbers that texted "join `<code>`" to the sandbox number first; unset = falls back to the in-app notification only. |
-| `TWILIO_ESCALATION_TEMPLATE_SID` | ContentSid of the `mira_escalation` WhatsApp template (`scripts/create_escalation_template.py`) — gives escalations a real "Go to Dashboard" button. Unset = falls back to a plain-text message with a bare URL. |
+| `TWILIO_ESCALATION_TEMPLATE_SID` | ContentSid of the `mira_escalation` WhatsApp template (`scripts/create_escalation_template.py`) — gives escalations a real "Go to Dashboard" button. Unset = falls back to a plain-text message with a bare URL. Also reused for RecoveryService's host-facing "missed call" WhatsApp (`app/services/recovery_service.py`) — same shape, not a separate template. |
+| `TWILIO_BUSY_RECOVERY_TEMPLATE_SID` | ContentSid of the `mira_busy_recovery` WhatsApp template (`scripts/create_busy_recovery_template.py`) — the numbered Property/Pricing/FAQs/Photos/Talk-to-host menu RecoveryService sends a guest whose call was rejected as busy. Unset = falls back to an equivalent plain-text message. |
+| `TWILIO_WHATSAPP_WEBHOOK_TOKEN` | Shared-secret path token for the inbound WhatsApp webhook (`POST /api/v1/webhooks/whatsapp/inbound`, `app/services/whatsapp_reply_service.py`) that routes a guest's reply to the busy-recovery menu — same convention as `EXOTEL_WEBHOOK_TOKEN`. Configure as this account's WhatsApp Sandbox "WHEN A MESSAGE COMES IN" webhook URL in the Twilio console. |
+| `TWILIO_VOICE_WEBHOOK_TOKEN` | Shared-secret path token for Twilio Voice (`app/integrations/twilio_voice.py`, `run_voice_pipeline_twilio` in `app/voice/pipeline.py`) — an entirely separate integration from Exotel telephony and from the WhatsApp Sandbox above, added purely so real-call testing can continue on Twilio's free trial when Exotel credits run out. Reuses `TWILIO_ACCOUNT_SID`/`TWILIO_AUTH_TOKEN`. |
+| `REDIS_URL` | Two independent uses (see `app/integrations/redis_client.py`'s own docstring — deliberately not merged into one module): (1) optional TTL cache for SearchApi.io pricing responses, fails open/no-ops if unset or unreachable; (2) **CallCoordinator's active-call ownership/lease mechanism** (`app/services/call_coordinator.py`, `app/integrations/redis_lease_client.py`) — Redis is the sole source of truth for "is this host/property already on a live call," Postgres no longer participates. Unlike use (1), a Redis outage here is not a silent no-op: `acquire_or_reject` fails open (the call still proceeds) but logs loudly (`lease_redis_unavailable`) as a degraded-protection signal; `renew`/`release` always fail open silently. `CallLease`/`call_leases` (the pre-migration Postgres table) still exists but is staged for removal — nothing writes to it anymore. |
 
 ---
 
@@ -118,3 +180,4 @@ DATABASE_URL="postgresql://…" python3 seed_demo.py   # additive; doesn't touch
 - **Banning a specific bad LLM phrasing via regex is whack-a-mole, not a fix** — a guard that only rewrites text matching a known-bad pattern (e.g. `loop...host`) will keep missing new phrasing variants of the same underlying failure ("let me open the host" never matched a `loop...host` regex) indefinitely; each "fix" only ever covers wording already observed live. When the safe replacement text is fixed and known regardless of context (e.g. escalation acknowledgements), the durable fix is to stop detecting altogether and unconditionally replace the reply after the triggering event — no detection step means no coverage gap. See `app/voice/escalation_phrase_guard.py`.
 - **Joining a list of items with a delimiter that can also appear inside an individual item silently corrupts round-trip parsing** — `handle_recommend_properties` joined multiple properties with `" | "`, but real (Airbnb-imported) property names routinely contain a literal `|` themselves, so splitting the combined string back apart tore names in half at every internal `|`, not just between properties (confirmed live: a shared brand-name suffix got read back as if it were the property name). Before picking a join delimiter for machine-parsed output, confirm it can't appear in the data being joined — a newline is almost always safer than a punctuation character for free-text fields.
 - **A substring match against a free-text field can true-positive on the wrong reason** — `recommend_properties`' Goa region filter matched the literal phrase "South Goa" against `neighborhood_info`, which incidentally mentions "Dabolim (South Goa airport)" as a travel-time reference on nearly every North Goa property's listing — a real North Goa property matched a South Goa query for a reason that has nothing to do with its actual location. When matching a category/region query against a free-text description field, prefer matching against a controlled list of expected values (a locality list, an enum) over a raw substring match against prose that can mention the term for unrelated reasons.
+- **A fully implemented, tested function with no production caller is a silent functional gap, not just dead code** — `call_coordinator.renew()` (Busy Call Recovery's lease-keepalive) had a real regression test and a docstring describing a periodic renewal loop, but nothing in `app/voice/pipeline.py` ever actually called it. `DEFAULT_LEASE_TTL` is 45s, so every real call longer than 45s was silently losing its busy-recovery lease mid-call — a second incoming call after that point would wrongly get `START_PIPELINE` instead of `BUSY_RECOVERY`, defeating the feature for most real calls, with no error, no log line, and passing tests throughout (the tests exercised `renew()` directly, never the absence of a caller). Found only by a cross-file "who actually calls this" audit, not by running the test suite. Fixed by wiring a periodic `_renew_call_lease_periodically` background task into `_run_pipeline`'s existing lease-lifecycle `finally` block (`app/voice/pipeline.py`) — see [docs/agents.md](docs/agents.md)'s "Busy Call Recovery" section. When a function's own docstring describes behavior ("renewed roughly every N seconds by a caller") that no other file's code actually performs, treat that as a bug report, not documentation.

@@ -8,6 +8,7 @@ from app.services.property.pitch_formatter import (
     format_property_pitch_line,
     render_recommendation_text,
 )
+from app.services.property.retrieval.context_builder import build_recommendation_result
 
 
 def _property(**overrides) -> Property:
@@ -67,6 +68,9 @@ def test_format_property_pitch_line_reads_naturally():
         top_amenities=["bathtub"],
         usp=None,
         match_reasons=[],
+        comparison_note="",
+        is_premium=False,
+        amenity_checklist="",
     )
     line = format_property_pitch_line(card, 1)
     assert line.startswith("1. Pine, a one-bedroom glasshouse suite with bathtub in Siolim")
@@ -83,6 +87,9 @@ def test_format_property_pitch_line_appends_match_reason_clause():
         city="Goa", property_type="villa", bedroom_count=3, base_price=12000, max_guests=6,
         top_amenities=["pool", "parking"], usp=None,
         match_reasons=["fits your group of 6", "has the pool you asked for"],
+        comparison_note="",
+        is_premium=False,
+        amenity_checklist="",
     )
     line = format_property_pitch_line(card, 1)
     assert "-- fits your group of 6 and has the pool you asked for" in line
@@ -108,6 +115,9 @@ def test_format_property_pitch_line_word_count_matches_golden_rules_guidance():
         city="Goa", property_type="villa", bedroom_count=3, base_price=12000, max_guests=6,
         top_amenities=["pool", "parking"], usp=None,
         match_reasons=["fits your group of 6", "has the pool you asked for"],
+        comparison_note="",
+        is_premium=False,
+        amenity_checklist="",
     )
     line = format_property_pitch_line(card, 1)
     spoken_part = line.split("(property_id:")[0]
@@ -127,11 +137,45 @@ def test_format_property_pitch_line_no_reason_clause_when_none_given():
     card = PropertyCard(
         property_id=uuid.uuid4(), spoken_name="Ocean View", display_name="Ocean View",
         city="Goa", property_type="villa", bedroom_count=3, base_price=12000, max_guests=6,
-        top_amenities=["pool"], usp=None, match_reasons=[],
+        top_amenities=["pool"], usp=None, match_reasons=[], comparison_note="", is_premium=False,
+        amenity_checklist="",
     )
     line = format_property_pitch_line(card, 1)
     assert "--" not in line
     assert "sleeps 6. (property_id:" in line
+
+
+def test_format_property_pitch_line_appends_comparison_note_alone():
+    """Recommendation engine v2 ("why not that one" / tradeoff reasoning):
+    comparison_note renders as its own clause even with no match_reasons at
+    all -- confirms the two fields don't depend on each other to render."""
+    card = PropertyCard(
+        property_id=uuid.uuid4(), spoken_name="Ocean View", display_name="Ocean View",
+        city="Goa", property_type="villa", bedroom_count=3, base_price=12000, max_guests=6,
+        top_amenities=["pool"], usp=None, match_reasons=[],
+        comparison_note="₹2,000 more than Palm Retreat a night", is_premium=False,
+        amenity_checklist="",
+    )
+    line = format_property_pitch_line(card, 1)
+    assert "-- ₹2,000 more than Palm Retreat a night" in line
+
+
+def test_format_property_pitch_line_joins_match_reasons_and_comparison_note_in_one_clause():
+    """Both fields present must land in the SAME clause, not a second
+    sentence -- the same voice-friendly discipline match_reasons already
+    follows on its own applies just as much once a comparison note joins
+    it."""
+    card = PropertyCard(
+        property_id=uuid.uuid4(), spoken_name="Ocean View", display_name="Ocean View",
+        city="Goa", property_type="villa", bedroom_count=3, base_price=12000, max_guests=6,
+        top_amenities=["pool"], usp=None, match_reasons=["fits your group of 6"],
+        comparison_note="₹2,000 more than Palm Retreat a night", is_premium=False,
+        amenity_checklist="",
+    )
+    line = format_property_pitch_line(card, 1)
+    assert "-- fits your group of 6 and ₹2,000 more than Palm Retreat a night" in line
+    # Exactly one reason-clause dash, never two separate clauses.
+    assert line.count(" -- ") == 1
 
 
 def test_render_recommendation_text_not_found():
@@ -145,11 +189,17 @@ def test_render_recommendation_text_joins_options_by_newline_not_pipe():
         property_id=uuid.uuid4(), spoken_name="Azure", display_name="Azure",
         city="Colva", property_type=None, bedroom_count=None,
         base_price=3500, max_guests=2, top_amenities=[], usp=None, match_reasons=[],
+        comparison_note="",
+        is_premium=False,
+        amenity_checklist="",
     )
     card_b = PropertyCard(
         property_id=uuid.uuid4(), spoken_name="Cabana", display_name="Cabana",
         city="Colva", property_type=None, bedroom_count=None,
         base_price=4000, max_guests=2, top_amenities=[], usp=None, match_reasons=[],
+        comparison_note="",
+        is_premium=False,
+        amenity_checklist="",
     )
     text = render_recommendation_text(RecommendationResult(options=[card_a, card_b]))
     assert text.count("\n") >= 2
@@ -161,6 +211,9 @@ def test_render_recommendation_text_includes_combo_note():
         property_id=uuid.uuid4(), spoken_name="Unit A", display_name="Unit A",
         city="Siolim", property_type=None, bedroom_count=None,
         base_price=3000, max_guests=3, top_amenities=[], usp=None, match_reasons=[],
+        comparison_note="",
+        is_premium=False,
+        amenity_checklist="",
     )
     result = RecommendationResult(options=[card], combo_note=" Book two together.")
     text = render_recommendation_text(result)
@@ -172,6 +225,9 @@ def _confidence_card(name: str = "Unit A") -> PropertyCard:
         property_id=uuid.uuid4(), spoken_name=name, display_name=name,
         city="Goa", property_type=None, bedroom_count=None,
         base_price=3000, max_guests=3, top_amenities=[], usp=None, match_reasons=[],
+        comparison_note="",
+        is_premium=False,
+        amenity_checklist="",
     )
 
 
@@ -229,3 +285,53 @@ def test_confidence_tier_never_changes_the_underlying_facts_spoken():
     strong_body = strong_text.split("\n", 1)[1]
     moderate_body = moderate_text.split("\n", 1)[1]
     assert strong_body == moderate_body
+
+
+def test_build_recommendation_result_wires_comparison_notes_across_real_cards():
+    """Recommendation engine v2: confirms build_recommendation_result (the
+    actual assembly point orchestrator.recommend_properties calls) computes
+    and attaches comparison_notes the same way it already wires in
+    match_reasons/recommendation_confidence -- an end-to-end check through
+    the real Property -> PropertyCard chain, not just the pure function in
+    isolation (test_property_card_comparison_notes.py)."""
+    cheap = _property(name="Palm Retreat", base_price=5000, max_guests=4)
+    pricier = _property(name="Ocean View", base_price=6500, max_guests=4)
+    result = build_recommendation_result([cheap, pricier])
+    cards_by_name = {c.spoken_name: c for c in result.options}
+    assert cards_by_name["Palm Retreat"].comparison_note == ""
+    assert "Palm Retreat" in cards_by_name["Ocean View"].comparison_note
+
+
+def test_build_recommendation_result_skips_comparison_notes_on_combo_fallback_path():
+    """comparison_notes must NOT run when combo_note is set -- those cards
+    are smaller units meant to be booked TOGETHER (ranking.py's
+    diversify_leading_candidates already excludes this same path for the
+    identical reason), so a "this one's pricier" comparison would
+    misleadingly frame two complementary units as competing alternatives."""
+    unit_a = _property(name="Unit A", base_price=3000, max_guests=2)
+    unit_b = _property(name="Unit B", base_price=4500, max_guests=2)
+    result = build_recommendation_result([unit_a, unit_b], combo_note=" Book two together.")
+    assert all(card.comparison_note == "" for card in result.options)
+
+
+def test_build_recommendation_result_never_builds_a_price_comparison_from_an_exact_airbnb_pricing_property():
+    """Regression: exact_airbnb_pricing properties' real price comes from a
+    live SearchApi fetch at get_pricing time, not the stored base_price
+    (which can be stale or a placeholder -- confirmed by reading
+    filter_builder.build_base_filters directly, which lets these through
+    regardless of base_price for exactly this reason). Confirms
+    build_recommendation_result actually threads Property.exact_airbnb_pricing
+    through to comparison_notes' unreliable_price_ids, end-to-end through the
+    real Property -> PropertyCard chain, not just the pure function in
+    isolation (test_property_card_comparison_notes.py)."""
+    stale = _property(
+        name="Stale Listing", base_price=100, max_guests=4, exact_airbnb_pricing=True
+    )
+    real = _property(name="Ocean View", base_price=6000, max_guests=4)
+    result = build_recommendation_result([stale, real])
+    cards_by_name = {c.spoken_name: c for c in result.options}
+    # Neither card ends up with a price claim built from the stale ₹100 --
+    # real.base_price becomes the only trustworthy baseline (nothing left
+    # to compare IT against), and stale's own price is never spoken either.
+    assert "₹" not in cards_by_name["Stale Listing"].comparison_note
+    assert "₹" not in cards_by_name["Ocean View"].comparison_note

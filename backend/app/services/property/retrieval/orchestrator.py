@@ -77,6 +77,19 @@ async def recommend_properties(
 
     merged = ranking.merge_and_rank(sql_results, semantic_results)
 
+    # Recommendation conversations ("Phase X"): diversify_leading_candidates
+    # rotates purely by price within a comparable-price band -- it has no
+    # awareness of is_premium/amenity-match ranking. sql_search.py already
+    # ran apply_premium_boost/apply_amenity_boost when more_premium_than_shown
+    # or required_amenities was set, and that order carries real meaning (the
+    # guest's own "more premium"/amenity request), not an arbitrary
+    # price-ascending tie among otherwise-equivalent options -- rotating it
+    # for variety would undo the exact boost the guest just asked for (e.g.
+    # a premium pick silently rotated to 2nd place because a cheaper,
+    # non-premium option happens to fall in the same price band). Same
+    # "skip diversification, this order already means something" reasoning
+    # as the combo_note branch below.
+    boost_ordering_active = bool(args.more_premium_than_shown or args.required_amenities)
     if combo_note:
         # sql_search deliberately over-fetches to 4 on this path (no single
         # property sleeps the full group, so all 4 smaller units are worth
@@ -88,6 +101,8 @@ async def recommend_properties(
         # already carries its own meaning (which units to pair up), not a
         # ranked "pick one" recommendation.
         properties_to_show = merged
+    elif boost_ordering_active:
+        properties_to_show = merged[:3]
     else:
         # Phase 2.5 (documentation/agent-conversation-improvement.md):
         # rotate which property leads among a comparable-price band at the

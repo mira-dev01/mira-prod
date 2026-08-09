@@ -8,12 +8,13 @@ its definition to _CLASSIFICATION_PROMPT below -- nothing else in the
 codebase needs to change.
 
 Deliberately NOT built on app/voice/pipeline.py's _build_llm()/pipecat
-services, for the same reason app/services/discount_policy_service.py isn't:
-those are wired for the streaming, function-calling voice pipeline and
-aren't a fit for a single one-shot JSON-extraction call after the call has
-already ended. This copies discount_policy_service.py's pattern -- the same
-provider SDKs directly, one-model-then-fallback -- since a low-frequency,
-per-call classification call needs exactly the same shape of thing.
+services, for the same reason app/services/negotiation_policy_service.py
+isn't: those are wired for the streaming, function-calling voice pipeline
+and aren't a fit for a single one-shot JSON-extraction call after the call
+has already ended. This copies negotiation_policy_service.py's pattern --
+the same provider SDKs directly, one-model-then-fallback -- since a
+low-frequency, per-call classification call needs exactly the same shape of
+thing.
 """
 
 import asyncio

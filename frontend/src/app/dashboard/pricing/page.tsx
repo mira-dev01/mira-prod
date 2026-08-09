@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { AiTrainingSection } from "@/components/settings/ai-training-section";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError } from "@/lib/api";
 import type { PriceBreakdown } from "@/lib/types";
@@ -31,8 +32,15 @@ function PricingPageContent() {
   const scopedPropertyId = searchParams.get("property_id");
 
   const { data: properties, loading: propertiesLoading } = useAsync(() => api.properties.list(), []);
-  const { data: discountRules } = useAsync(() => api.hostDiscountRules.list(), []);
-  const approvedDiscountRulesCount = discountRules?.filter((r) => r.status === "approved").length ?? 0;
+  const { data: negotiationRules } = useAsync(() => api.negotiationRules.list(), []);
+  const approvedDiscountRulesCount =
+    negotiationRules?.filter(
+      (r) =>
+        r.status === "approved" &&
+        (r.rule_type === "discount_no_ask" ||
+          r.rule_type === "discount_guest_requests" ||
+          r.rule_type === "discount_repeat_guest")
+    ).length ?? 0;
 
   const [quoteProperty, setQuoteProperty] = useState<string>(scopedPropertyId ?? "");
   const [checkIn, setCheckIn] = useState("");
@@ -202,6 +210,8 @@ function PricingPageContent() {
           )}
         </CardContent>
       </Card>
+
+      <AiTrainingSection />
     </div>
   );
 }

@@ -13,6 +13,7 @@ import { api } from "@/lib/api";
 import { CallsTable } from "@/components/calls-table";
 import { LeadDetailPanel } from "@/components/lead-detail-panel";
 import { LiveRequestsCard } from "@/components/live-requests-card";
+import { OpportunitiesCard } from "@/components/opportunities-card";
 import { StatCard } from "@/components/stat-card";
 import { DateRangePicker } from "@/components/date-range-picker";
 import { UnansweredQuestionsCard } from "@/components/unanswered-questions-card";
@@ -136,6 +137,16 @@ export default function OverviewPage() {
           <UnansweredQuestionsCard limit={2} linkToFaqPage />
         </div>
       </div>
+
+      {/* Own row, not folded into the 3-card row above -- keeps that row's
+          documented wrap-behavior tuning (1366x768/1440x900 laptop widths)
+          untouched. Reuses the same `leads` fetch/refetch/editingLead state
+          already on this page -- no separate data fetch for this card. */}
+      {leadsLoading ? (
+        <Skeleton className="h-40 w-full" />
+      ) : (
+        <OpportunitiesCard leads={leads ?? []} onRefetch={refetchLeads} onCardClick={setEditingLead} limit={3} />
+      )}
 
       <LeadDetailPanel
         lead={editingLead}

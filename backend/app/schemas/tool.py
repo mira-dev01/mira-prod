@@ -50,6 +50,14 @@ class GetPricingArgs(BaseModel):
     check_out: date
     num_guests: int
     apply_discounts: bool = True
+    # Phase 6 (Negotiation engine): only True if the GUEST explicitly asked
+    # about early check-in / late checkout -- never set proactively just
+    # because a property happens to have a fee configured for it. Quoting a
+    # fee the guest never asked about would be exactly the kind of
+    # unprompted upsell GOLDEN_RULES' pricing-order discipline already
+    # forbids for discounts; the same "only when asked" rule applies here.
+    requested_early_checkin: bool = False
+    requested_late_checkout: bool = False
 
 
 class DispatchTechnicianArgs(BaseModel):
@@ -104,6 +112,25 @@ class RecommendPropertiesArgs(BaseModel):
     purpose_of_stay: str | None = None
     required_amenities: list[str] | None = None
     near_landmark: str | None = None
+    # Recommendation conversations ("Phase X"): a guest saying "something
+    # cheaper"/"larger"/"more premium" is a RELATIVE instruction, not a new
+    # absolute number -- the model signals which direction, never invents a
+    # rupee/guest-count figure itself (that would be exactly the kind of
+    # LLM-guessed fact this codebase's tool-arg schemas otherwise avoid).
+    # cheaper_than_shown/larger_than_shown are turned into a real budget/
+    # num_guests ceiling by ConversationState.resolve_cheaper_budget/
+    # resolve_larger_num_guests (app/voice/conversation_state.py), derived
+    # from ConversationState.recommendations_shown -- the same "hand it a
+    # fact, don't make it guess" discipline _today_anchor() and
+    # comparison_notes already use elsewhere. more_premium_than_shown has no
+    # equivalent resolver -- it's a ranking signal, not a threshold, consumed
+    # directly by filter_builder.apply_premium_boost. Only ever set True when
+    # the guest actually asked for a change in that direction; never set
+    # alongside an explicit budget/num_guests in the SAME call (that would
+    # be a real, absolute value already -- no resolution needed).
+    cheaper_than_shown: bool = False
+    larger_than_shown: bool = False
+    more_premium_than_shown: bool = False
 
 
 class UpdateLeadArgs(BaseModel):

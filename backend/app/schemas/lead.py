@@ -7,6 +7,15 @@ from pydantic import BaseModel
 LeadTemperature = Literal["hot", "warm", "cold"]
 LeadStatus = Literal["open", "contacted", "booked", "closed"]
 
+# Recovery/entry metadata -- see app/models/lead.py's own comment for the
+# full three-field design (lead_source / entry_channel / recovery_reason).
+# recovery_reason is Pydantic-validated only, same as LeadTemperature/
+# LeadStatus above -- the DB column is a plain unconstrained String(32) (see
+# the model), matching this codebase's existing convention of validating
+# free-text-like Lead fields at the API boundary, not with a DB CHECK
+# constraint, so a new reason value later needs no migration.
+RecoveryReason = Literal["BUSY_CALL", "AFTER_HOURS", "HOST_CALLBACK", "GUEST_CALLBACK"]
+
 
 class LeadOut(BaseModel):
     id: uuid.UUID
@@ -26,6 +35,8 @@ class LeadOut(BaseModel):
     support_requests: list
     lead_temperature: str | None
     lead_source: str
+    entry_channel: str
+    recovery_reason: str | None
     conversation_summary: str | None
     next_follow_up: str | None
     escalated: bool

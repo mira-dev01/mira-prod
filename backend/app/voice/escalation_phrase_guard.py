@@ -36,6 +36,8 @@ flow through this exact position, in order, with no cross-stream timing
 involved.
 """
 
+from loguru import logger
+
 from pipecat.frames.frames import (
     Frame,
     FunctionCallsStartedFrame,
@@ -99,6 +101,10 @@ class EscalationPhraseGuardProcessor(FrameProcessor):
             # No detection step -- see module docstring. Every reply here
             # becomes SAFE_REPLACEMENT_TEXT, regardless of what the model
             # actually said.
+            logger.warning(
+                "EscalationPhraseGuardProcessor: unconditionally replaced the reply following "
+                "escalate_to_host with the fixed safe line"
+            )
             self._armed = False
             await self.push_frame(LLMFullResponseStartFrame())
             await self.push_frame(LLMTextFrame(SAFE_REPLACEMENT_TEXT))

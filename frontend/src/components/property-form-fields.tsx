@@ -100,6 +100,26 @@ export function PropertyFormFields({
             onCheckedChange={(checked) => onChange({ ...form, exact_airbnb_pricing: checked })}
           />
         </div>
+        <div
+          className="col-span-2 flex items-center justify-between rounded-lg border p-3"
+          onClick={(e) => {
+            if (e.defaultPrevented || (e.target as HTMLElement).closest("label")) return;
+            onChange({ ...form, is_premium: !(form.is_premium ?? false) });
+          }}
+        >
+          <div className="space-y-0.5">
+            <Label htmlFor="is_premium">Premium property</Label>
+            <p className="text-micro text-muted-foreground">
+              Mark this as one of your nicer/higher-end properties — Mira uses this to recommend it first when a
+              guest asks for something more premium.
+            </p>
+          </div>
+          <Switch
+            id="is_premium"
+            checked={form.is_premium ?? false}
+            onCheckedChange={(checked) => onChange({ ...form, is_premium: checked })}
+          />
+        </div>
         <div className="space-y-2">
           <Label htmlFor="max_guests">Max guests</Label>
           <Input

@@ -23,6 +23,8 @@ parenthetical content (e.g. a price aside) is untouched.
 
 import re
 
+from loguru import logger
+
 from pipecat.frames.frames import (
     Frame,
     LLMFullResponseEndFrame,
@@ -105,7 +107,12 @@ class MetaCommentaryGuardProcessor(FrameProcessor):
             span = self._held[: close_idx + 1]
             rest = self._held[close_idx + 1 :]
             self._held = None
-            if not _META_COMMENTARY_RE.search(span):
+            if _META_COMMENTARY_RE.search(span):
+                logger.warning(
+                    "MetaCommentaryGuardProcessor: dropped a narrator/stage-direction "
+                    "parenthetical before TTS"
+                )
+            else:
                 await self.push_frame(LLMTextFrame(span))
 
             if not rest:

@@ -124,6 +124,17 @@ class Property(UUIDPkMixin, TimestampMixin, Base):
     # constraint, matching every property that predates this field.
     minimum_nights: Mapped[int] = mapped_column(default=1, server_default="1")
 
+    # Weekend/Saturday minimum-stay rule -- independent of minimum_nights
+    # above (that one applies to every stay; this one only kicks in when the
+    # requested stay includes a Saturday night). When True, a stay that
+    # covers a Saturday night must be at least 2 nights -- a lone
+    # Saturday-only 1-night booking is rejected, same as many real Airbnb
+    # hosts' own "Require Saturday-Sunday" weekend policy. Checked in
+    # handle_check_calendar (app/services/tool_handlers.py), same place
+    # minimum_nights is enforced, not duplicated into pricing/negotiation --
+    # matching that field's existing precedent.
+    saturday_minimum_stay_enabled: Mapped[bool] = mapped_column(default=False, server_default="false")
+
     # Property Memory (memory-architecture-plan.md section 5) -- the one
     # genuinely new piece beyond consolidating existing fields (house_rules/
     # neighborhood_info/amenities/faq already cover everything else).
@@ -163,6 +174,18 @@ class Property(UUIDPkMixin, TimestampMixin, Base):
     # of-stay discounts still apply either way -- those are a host-
     # configured discount, not a markup.
     exact_airbnb_pricing: Mapped[bool] = mapped_column(default=False, server_default="false")
+
+    # Recommendation conversations ("Phase X"): host-set, never LLM-inferred --
+    # same discipline as every other guest-facing fact in this codebase (no
+    # LLM-self-reported judgment, per agent-conversation-improvement.md's own
+    # Non-goals). Grounds a guest's relative "something more premium" request
+    # in a real, deterministic fact (recommend_properties can filter/prefer
+    # is_premium=True) instead of asking the model to guess which of a host's
+    # properties feels nicer. A host toggles this per property, same UI
+    # pattern as the "Quote exact Airbnb price" switch already does for
+    # exact_airbnb_pricing. Defaults false -- an existing property never
+    # silently becomes "premium" just because this column now exists.
+    is_premium: Mapped[bool] = mapped_column(default=False, server_default="false")
 
     # GPS coordinates for this exact Airbnb listing, fetched once via
     # SearchApi's airbnb_property engine and cached here permanently (a

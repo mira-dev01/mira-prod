@@ -57,6 +57,12 @@ export default function CalendarPage() {
   const [unblockTarget, setUnblockTarget] = useState<{ booking: BookingOut; propertyName: string } | null>(null);
   const [unblocking, setUnblocking] = useState(false);
 
+  // Clicking a legend entry filters the grid down to just that source --
+  // click again (or the same entry) to clear back to showing both. Lets a
+  // host isolate e.g. just Airbnb bookings before going to update Airbnb's
+  // own calendar, without hiding manual blocks from the grid permanently.
+  const [sourceFilter, setSourceFilter] = useState<"airbnb" | "manual" | null>(null);
+
   const year = cursor.getFullYear();
   const month = cursor.getMonth();
   const numDays = daysInMonth(year, month);
@@ -64,17 +70,17 @@ export default function CalendarPage() {
 
   const monthLabel = cursor.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
 
-  function bookingsForDay(propertyId: string, day: number): BookingOut[] {
+  // Compare as YYYY-MM-DD strings, NOT Date objects. `new Date("2026-08-01")`
+  // parses as UTC midnight, while `new Date(year, month, day)` is local
+  // midnight -- in IST (UTC+5:30) those differ, so a booking's checkout day
+  // (Aug 1, meant to be free) would flip to blocked because the local-
+  // constructed cell Date landed before the UTC-parsed checkOut Date.
+  // Confirmed live: Aug 1/11/17/23 for Olive all showed blocked despite
+  // being the checkout days of preceding bookings. String comparison
+  // sidesteps timezones entirely since check_in/check_out come from the
+  // backend as plain YYYY-MM-DD.
+  function allBookingsForDay(propertyId: string, day: number): BookingOut[] {
     if (!bookings) return [];
-    // Compare as YYYY-MM-DD strings, NOT Date objects. `new Date("2026-08-01")`
-    // parses as UTC midnight, while `new Date(year, month, day)` is local
-    // midnight -- in IST (UTC+5:30) those differ, so a booking's checkout day
-    // (Aug 1, meant to be free) would flip to blocked because the local-
-    // constructed cell Date landed before the UTC-parsed checkOut Date.
-    // Confirmed live: Aug 1/11/17/23 for Olive all showed blocked despite
-    // being the checkout days of preceding bookings. String comparison
-    // sidesteps timezones entirely since check_in/check_out come from the
-    // backend as plain YYYY-MM-DD.
     const mm = String(month + 1).padStart(2, "0");
     const dd = String(day).padStart(2, "0");
     const cellIso = `${year}-${mm}-${dd}`;
@@ -82,6 +88,17 @@ export default function CalendarPage() {
       if (b.property_id !== propertyId || b.status !== "confirmed") return false;
       return cellIso >= b.check_in && cellIso < b.check_out;
     });
+  }
+
+  // sourceFilter only changes what's *shown* -- click/block eligibility
+  // below still checks allBookingsForDay so a booking hidden by the filter
+  // can't be mistaken for a free day and get double-booked.
+  function bookingsForDay(propertyId: string, day: number): BookingOut[] {
+    return allBookingsForDay(propertyId, day).filter((b) => !sourceFilter || b.platform === sourceFilter);
+  }
+
+  function toggleSourceFilter(source: "airbnb" | "manual") {
+    setSourceFilter((current) => (current === source ? null : source));
   }
 
   function openBlockDialog(propertyId?: string, day?: number) {
@@ -163,14 +180,37 @@ export default function CalendarPage() {
           →
         </Button>
         <div className="flex items-center gap-4 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => toggleSourceFilter("airbnb")}
+            title="Filter the grid to only Airbnb bookings — handy before updating Airbnb's own calendar"
+            className={cn(
+              "flex items-center gap-1 rounded-md px-1.5 py-0.5 transition-colors hover:bg-accent",
+              sourceFilter === "airbnb" && "bg-accent font-medium text-foreground",
+              sourceFilter === "manual" && "opacity-50"
+            )}
+          >
             <span className="inline-block h-3 w-3 rounded-sm" style={{ background: bookingSourceColor.airbnb }} />
             Airbnb
-          </span>
-          <span className="flex items-center gap-1">
+          </button>
+          <button
+            type="button"
+            onClick={() => toggleSourceFilter("manual")}
+            title="Filter the grid to only manual blocks — handy before updating Airbnb's own calendar"
+            className={cn(
+              "flex items-center gap-1 rounded-md px-1.5 py-0.5 transition-colors hover:bg-accent",
+              sourceFilter === "manual" && "bg-accent font-medium text-foreground",
+              sourceFilter === "airbnb" && "opacity-50"
+            )}
+          >
             <span className="inline-block h-3 w-3 rounded-sm" style={{ background: bookingSourceColor.manual }} />
             Manual block
-          </span>
+          </button>
+          {sourceFilter && (
+            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setSourceFilter(null)}>
+              Clear filter
+            </Button>
+          )}
         </div>
       </div>
 
@@ -179,7 +219,7 @@ export default function CalendarPage() {
       ) : !properties || properties.length === 0 ? (
         <p className="text-sm text-muted-foreground">No properties yet — add one to see its calendar here.</p>
       ) : (
-        <div className="max-h-[calc(100vh-20rem)] w-full overflow-auto rounded-lg border">
+        <div className="max-h-[calc(100vh-7rem)] w-full overflow-auto rounded-lg border">
           {/* table-layout: fixed + w-full ties the table's rendered width to
               this box explicitly -- an auto-layout table has no contract
               with its container's width, which is what produced the
@@ -215,26 +255,32 @@ export default function CalendarPage() {
                     {property.name}
                   </td>
                   {days.map((day) => {
-                    const dayBookings = bookingsForDay(property.id, day);
-                    const booking = dayBookings[0];
-                    const tone = booking
-                      ? booking.platform === "airbnb"
+                    // Visible (filtered) booking drives color; the real,
+                    // unfiltered occupancy drives click behavior so a
+                    // booking hidden by sourceFilter can't be mistaken for a
+                    // free day and get double-booked.
+                    const visibleBooking = bookingsForDay(property.id, day)[0];
+                    const actualBooking = allBookingsForDay(property.id, day)[0];
+                    const tone = visibleBooking
+                      ? visibleBooking.platform === "airbnb"
                         ? bookingSourceColor.airbnb
                         : bookingSourceColor.manual
                       : undefined;
+                    const hiddenByFilter = !visibleBooking && !!actualBooking;
                     return (
                       <td
                         key={day}
                         title={
-                          booking
-                            ? `${booking.platform} -- ${booking.guest_name ?? "no name"} (${booking.check_in} → ${booking.check_out}) -- click to unblock`
-                            : "Available -- click to block"
+                          visibleBooking
+                            ? `${visibleBooking.platform} -- ${visibleBooking.guest_name ?? "no name"} (${visibleBooking.check_in} → ${visibleBooking.check_out}) -- click to unblock`
+                            : hiddenByFilter
+                              ? "Booking hidden by the source filter above"
+                              : "Available -- click to block"
                         }
-                        onClick={() =>
-                          booking
-                            ? setUnblockTarget({ booking, propertyName: property.name })
-                            : openBlockDialog(property.id, day)
-                        }
+                        onClick={() => {
+                          if (visibleBooking) setUnblockTarget({ booking: visibleBooking, propertyName: property.name });
+                          else if (!hiddenByFilter) openBlockDialog(property.id, day);
+                        }}
                         style={tone ? { background: `color-mix(in srgb, ${tone} 70%, transparent)` } : undefined}
                         onMouseEnter={(e) => {
                           if (tone) e.currentTarget.style.background = tone;
@@ -242,7 +288,11 @@ export default function CalendarPage() {
                         onMouseLeave={(e) => {
                           if (tone) e.currentTarget.style.background = `color-mix(in srgb, ${tone} 70%, transparent)`;
                         }}
-                        className={cn("h-7 cursor-pointer border-b border-l", !booking && "hover:bg-accent")}
+                        className={cn(
+                          "h-7 border-b border-l",
+                          hiddenByFilter ? "cursor-not-allowed opacity-30" : "cursor-pointer",
+                          !visibleBooking && !hiddenByFilter && "hover:bg-accent"
+                        )}
                       />
                     );
                   })}

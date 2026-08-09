@@ -171,6 +171,55 @@ def test_second_farewell_after_reopen_is_a_fresh_legitimate_close():
     assert state.conversation_goal == "closing"
 
 
+def test_resolve_cheaper_budget_returns_20_percent_below_cheapest_shown():
+    """Recommendation conversations ("Phase X"): "something cheaper" must
+    resolve to a real number derived from what was already shown, never an
+    LLM-invented figure. Anchors on the CHEAPEST already shown (not the
+    average). 20%, not 10% -- self-review fix: filter_builder's own 15%
+    budget headroom (`base_price <= budget * 1.15`) is re-applied ON TOP of
+    whatever this returns, so the discount here must net below 1.0 after
+    that multiply or the cheapest-shown property re-matches itself (a 10%
+    discount nets 0.9 * 1.15 = 1.035, ABOVE 1.0 -- the bug this test used to
+    encode). 0.8 * 1.15 = 0.92, genuinely below the cheapest shown."""
+    state = ConversationState()
+    state.record_recommendations(
+        [
+            {"property_id": "a", "name": "Palm Retreat", "price": 5000, "guests": 4},
+            {"property_id": "b", "name": "Ocean View", "price": 6500, "guests": 6},
+        ]
+    )
+    assert state.resolve_cheaper_budget() == 4000.0
+
+
+def test_resolve_cheaper_budget_none_when_nothing_shown_yet():
+    """A guest can technically say "something cheaper" as their very first
+    utterance with nothing shown yet -- must fail open to None (the tool
+    wrapper falls back to a normal, non-relative search) rather than
+    erroring or fabricating a number with nothing real to derive it from."""
+    state = ConversationState()
+    assert state.resolve_cheaper_budget() is None
+
+
+def test_resolve_larger_num_guests_returns_one_above_largest_shown():
+    """"Something larger" resolves to a real floor derived from the LARGEST
+    already shown (not the average) -- +1 is enough to exclude every
+    already-shown property from apply_guest_count_filter's own >= check
+    while still finding the next size up, not over-shooting."""
+    state = ConversationState()
+    state.record_recommendations(
+        [
+            {"property_id": "a", "name": "Palm Retreat", "price": 5000, "guests": 4},
+            {"property_id": "b", "name": "Ocean View", "price": 6500, "guests": 6},
+        ]
+    )
+    assert state.resolve_larger_num_guests() == 7
+
+
+def test_resolve_larger_num_guests_none_when_nothing_shown_yet():
+    state = ConversationState()
+    assert state.resolve_larger_num_guests() is None
+
+
 def test_two_conversation_states_are_independent_instances():
     """Confirms no shared/global state -- two concurrent calls must never
     leak into each other (same check memory-architecture-plan.md already ran

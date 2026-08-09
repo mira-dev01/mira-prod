@@ -3,6 +3,15 @@ import os
 os.environ["DATABASE_URL"] = "postgresql+asyncpg://mira:mira@localhost:5432/mira_test"
 os.environ["ENVIRONMENT"] = "test"
 os.environ["EXOTEL_WEBHOOK_TOKEN"] = "test-token"
+os.environ["TWILIO_WHATSAPP_WEBHOOK_TOKEN"] = "test-token"
+# Real Redis, same "no mocking, hit the real dependency" convention as
+# DATABASE_URL above -- CallCoordinator's lease mechanism is now
+# correctness-bearing Redis, not Postgres (see app/services/
+# call_coordinator.py), so a fake/mocked client would not actually exercise
+# the atomic Lua scripts this suite needs to prove correct. Requires a local
+# `redis-server` running on the default port before running this suite,
+# same requirement DATABASE_URL already has for Postgres.
+os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 
 import uuid
 
@@ -13,6 +22,7 @@ from sqlalchemy import select
 
 from app.auth.dependencies import get_current_user
 from app.database import AsyncSessionLocal, Base, engine, get_db
+from app.integrations import redis_client
 from app.main import app
 from app.models.call_session import CallSession
 from app.models.property import Property
@@ -56,6 +66,25 @@ async def _clean_tables():
         for table in reversed(Base.metadata.sorted_tables):
             await conn.execute(table.delete())
     yield
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _clean_call_leases():
+    # Only call_lease:* keys, not FLUSHDB -- scoped the same way
+    # _clean_tables above only deletes rows from this app's own tables,
+    # never wipes the whole database. Runs before AND after each test: a
+    # crashed prior test run could leave stale keys with a real (short) TTL
+    # that would otherwise bleed into the next test's assertions.
+    client = redis_client.get_client()
+    if client is not None:
+        keys = await client.keys("call_lease:*")
+        if keys:
+            await client.delete(*keys)
+    yield
+    if client is not None:
+        keys = await client.keys("call_lease:*")
+        if keys:
+            await client.delete(*keys)
 
 
 @pytest_asyncio.fixture
