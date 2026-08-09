@@ -58,12 +58,15 @@ from app.prompts.system_prompt import (
 from app.schemas.call_classification import QUALIFIED_CALL_TYPES
 from app.services import (
     call_classification_service,
+    call_coordinator,
     call_service,
     call_summary_service,
     faq_service,
     guest_memory_service,
     lead_service,
+    recovery_service,
 )
+from app.voice.conversation_quality import ConversationQuality
 from app.voice.conversation_state import ConversationState
 from app.voice.conversation_style import ConversationStyleProcessor
 from app.voice.end_call_reliability_guard import EndCallReliabilityGuardProcessor
@@ -74,12 +77,12 @@ from app.voice.premature_end_call_guard import PrematureEndCallGuardProcessor
 from app.voice.property_recommendation_guard import PropertyRecommendationGuardProcessor
 from app.voice.redundant_context_guard import RedundantContextGuardProcessor
 from app.voice.repetition_guard import RepetitionGuardProcessor
-from app.voice.response_compliance import LanguageComplianceRule, ResponseComplianceProcessor
 from app.voice.response_shape_guard import ResponseShapeValidatorProcessor
-from app.voice.ringing_audio import play_ringing_tone
+from app.voice.ringing_audio import play_busy_message, play_ringing_tone
 from app.voice.silence_watchdog import SilenceWatchdogProcessor
 from app.voice.slow_tool_filler import SlowToolFillerProcessor
 from app.voice.state_prompt_sync import StatePromptSyncProcessor
+from app.voice.style_compliance_monitor import StyleComplianceMonitor
 from app.voice.tools import build_voice_tools
 from app.voice.turn_strategies import HybridCompletenessUserTurnStopStrategy
 from app.voice.vad import create_vad_analyzer
@@ -390,6 +393,54 @@ def _build_openrouter_llm():
     )
 
 
+# Matches call_coordinator.renew()'s own long-standing docstring ("Renewed
+# roughly every 20-30s"); DEFAULT_LEASE_TTL is 45s, so this cadence leaves a
+# wide safety margin against a single missed tick.
+_LEASE_RENEWAL_INTERVAL_SECONDS = 20
+
+
+async def _renew_call_lease_periodically(
+    host_user_id: uuid.UUID, property_id: uuid.UUID | None, token: str
+) -> None:
+    """Keeps a CallCoordinator lease alive for the duration of a live call.
+    Runs as a background task started alongside the pipeline and cancelled
+    in _run_pipeline's finally block, same lifecycle as ringing_audio_task.
+
+    Redis migration: no DB session at all anymore -- call_coordinator.renew()
+    is a single Redis round trip (one atomic Lua EVAL), not a Postgres
+    UPDATE, so there is no per-tick session to open/close the way the old
+    Postgres-backed version needed. token is the fencing credential
+    call_coordinator.acquire() issued; renewal only succeeds if it still
+    matches the currently-stored lease (see call_coordinator.py's module
+    docstring on why this must be token-checked, not just holder_ref-keyed).
+
+    Fails open: a renewal failure (Redis outage, or the lease already
+    reclaimed by a different caller because it genuinely expired) is logged
+    and this loop simply stops -- it must never raise into the live call.
+    Losing lease protection mid-call is a real but bounded downside (a
+    subsequent busy-rejection could wrongly fall through to START_PIPELINE);
+    crashing the guest's live call to protect a lease would be strictly
+    worse.
+    """
+    try:
+        while True:
+            await asyncio.sleep(_LEASE_RENEWAL_INTERVAL_SECONDS)
+            new_expiry = await call_coordinator.renew(host_user_id, property_id, token)
+            if new_expiry is None:
+                logger.warning(
+                    "CallCoordinator lease renewal found no active lease for host_user_id=%s property_id=%s",
+                    host_user_id,
+                    property_id,
+                )
+                return
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        logger.exception(
+            "CallCoordinator lease renewal failed for host_user_id=%s property_id=%s", host_user_id, property_id
+        )
+
+
 async def _run_pipeline(
     transport: BaseTransport,
     property_id: uuid.UUID | None,
@@ -404,6 +455,7 @@ async def _run_pipeline(
     exotel_call_id: str | None = None,
     ringing_audio_task: asyncio.Task | None = None,
     voice_gender: str = "female",
+    call_lease_token: str | None = None,
 ) -> None:
     # NOTE: we deliberately do NOT create a Lead row up front. Doing so gave
     # every connection attempt its own empty lead, and a browser/ICE
@@ -415,6 +467,21 @@ async def _run_pipeline(
     # exactly one row per session), and the caller's phone / the property
     # discussed are backfilled onto it at call end (see on_pipeline_finished).
     # A call where the agent captured nothing simply leaves no lead behind.
+    #
+    # Cleanup-pass fix: call_coordinator.DEFAULT_LEASE_TTL is 45s, and
+    # nothing previously renewed the lease during a live call -- any real
+    # call longer than 45s silently lost its CallCoordinator lease mid-call,
+    # so a second incoming call to the same host/property after that point
+    # was wrongly given START_PIPELINE instead of BUSY_RECOVERY. This starts
+    # the same periodic renewal call_coordinator.renew()'s own docstring
+    # always assumed existed ("Renewed roughly every 20-30s by a caller
+    # during a live call"); cancelled in the finally block below alongside
+    # the existing release() call.
+    renewal_task = (
+        asyncio.create_task(_renew_call_lease_periodically(host_user_id, property_id, call_lease_token))
+        if call_lease_token is not None
+        else None
+    )
     try:
         await _run_pipeline_inner(
             transport,
@@ -432,6 +499,13 @@ async def _run_pipeline(
             voice_gender=voice_gender,
         )
     finally:
+        if renewal_task is not None and not renewal_task.done():
+            renewal_task.cancel()
+            try:
+                await renewal_task
+            except asyncio.CancelledError:
+                pass
+
         # Guarantees the ringing-tone task (see app/voice/ringing_audio.py)
         # is always stopped, even if _run_pipeline_inner raises before
         # reaching its own cancel point (e.g. SarvamTTSService/_build_llm
@@ -444,6 +518,31 @@ async def _run_pipeline(
                 await ringing_audio_task
             except asyncio.CancelledError:
                 pass
+
+        # Guarantees the CallCoordinator lease acquired in run_voice_pipeline
+        # (see app/services/call_coordinator.py) is always released here too,
+        # not just on the happy path through on_pipeline_finished -- same
+        # reasoning as the ringing-tone cleanup above: _run_pipeline_inner
+        # can raise before ever reaching on_pipeline_finished's registration
+        # (e.g. SarvamTTSService/_build_llm construction failing), and
+        # without this, that lease would sit held until its TTL lazily
+        # expires (Redis TTL now, not a Postgres lazy-reclaim check), wrongly
+        # blocking a real subsequent call to the same host/property. None on
+        # the BUSY_RECOVERY / fail-open-without-lease paths (see
+        # run_voice_pipeline) -- release() is idempotent and a no-op for a
+        # token with no active lease either way, but the None check avoids
+        # an unnecessary Redis round trip. Redis migration: no DB session
+        # here anymore -- release() is a single atomic Lua call, not a
+        # Postgres UPDATE.
+        if call_lease_token is not None:
+            try:
+                await call_coordinator.release(host_user_id, property_id, call_lease_token)
+            except Exception:
+                logger.exception(
+                    "Failed to release CallCoordinator lease for host_user_id=%s property_id=%s",
+                    host_user_id,
+                    property_id,
+                )
 
 
 async def _run_pipeline_inner(
@@ -476,6 +575,13 @@ async def _run_pipeline_inner(
         selected_property_id=str(property_id) if property_id else None,
         selected_property_name=property_name,
     )
+    # Response output architecture redesign: the analytics-only home for
+    # validator output (StyleComplianceMonitor, ResponseShapeValidatorProcessor
+    # on a shape violation) -- constructed fresh per call, same lifetime as
+    # conversation_state, never read by anything except state_prompt_sync's
+    # one narrow pending_style_correction bridge. See
+    # app/voice/conversation_quality.py for the full architecture boundary.
+    conversation_quality = ConversationQuality()
     # Phase 3.1: passes conversation_state so the guest's detected spoken
     # language (the same signal that already drives the TTS switch) is also
     # fed back into state for the prompt layer to read -- see
@@ -528,8 +634,13 @@ async def _run_pipeline_inner(
     # every turn -- the system prompt is fixed at call start and can't
     # reflect anything learned mid-call on its own. Sits right after
     # redundant_context_guard (before llm) so it only ever touches a context
-    # that's actually about to be forwarded. See app/voice/state_prompt_sync.py.
-    state_prompt_sync = StatePromptSyncProcessor(conversation_state)
+    # that's actually about to be forwarded. Also passes conversation_quality
+    # so a confirmed style-compliance FAIL from the previous turn (recorded
+    # by StyleComplianceMonitor, below) can render one turn's worth of
+    # emphasized style instruction -- the one permitted, one-directional
+    # bridge from ConversationQuality back to conversational behavior. See
+    # app/voice/state_prompt_sync.py.
+    state_prompt_sync = StatePromptSyncProcessor(conversation_state, conversation_quality)
     # Separate failure mode, same symptom: the model itself (in a single
     # turn, not a spurious re-invocation) asks a real question and calls
     # end_call together -- confirmed live. Cancels the pending hangup so the
@@ -560,6 +671,20 @@ async def _run_pipeline_inner(
     # response)" before they reach TTS -- confirmed live. See
     # app/voice/meta_commentary_guard.py.
     meta_commentary_guard = MetaCommentaryGuardProcessor()
+    # Response output architecture redesign: a streaming OBSERVER, not a
+    # blocker -- every LLMTextFrame is forwarded immediately and
+    # unconditionally, regardless of what this monitor observes. Scores the
+    # model's OWN original wording (placed here, before the tool-fidelity
+    # guards below, deliberately -- it must never score a guard-substituted
+    # safe line). Replaces the old ResponseComplianceProcessor entirely:
+    # that processor buffered the whole response and, on a FAIL, made a
+    # second direct LLM call to regenerate it (up to 8s of dead air) --
+    # both removed. A confirmed FAIL here only ever sets
+    # conversation_quality.pending_style_correction, read by
+    # state_prompt_sync on the NEXT turn to ask ConversationStyle for a
+    # more emphatic rendering of the SAME style -- never a rewrite of THIS
+    # turn's audio. See app/voice/style_compliance_monitor.py.
+    style_compliance_monitor = StyleComplianceMonitor(conversation_state, conversation_quality)
     # Final structural gate, right before tts -- catches a malformed/
     # concatenated response SHAPE (multiple questions, multiple greetings,
     # a duplicated safe-line, a punctuation flood, an unfinished trailing
@@ -568,24 +693,16 @@ async def _run_pipeline_inner(
     # mode (a single repeated sentence, a leaked property_id, a narrator
     # aside). Phase 4.3 (documentation/agent-conversation-improvement.md).
     # Sits LAST, after every rewrite above has already run, so it validates
-    # the actual final text about to be spoken. See
-    # app/voice/response_shape_guard.py.
-    response_shape_guard = ResponseShapeValidatorProcessor()
-
-    # Response Compliance layer: a generic, rule-based quality GATE between
-    # the LLM and tts, sitting after every rewriting guard above (including
-    # response_shape_guard) so it inspects the actual final text about to be
-    # spoken, not a draft any earlier guard could still change. On a hard
-    # FAIL (e.g. LanguageComplianceRule), attempts exactly one bounded
-    # direct-LLM regeneration (Response Validator) -- constructed below,
-    # right after `context` exists, since regeneration needs a reference to
-    # the same LLMContext llm/state_prompt_sync/the aggregators already
-    # share (read-only; never mutated here). The rule list is assembled
-    # HERE, not defaulted inside the processor class -- keeps
-    # ResponseComplianceProcessor itself genuinely rule-agnostic; adding a
-    # future PropertyNameRule/PricingConsistencyRule means appending to this
-    # list, not touching response_compliance.py. See
-    # app/voice/response_compliance.py for the full rationale.
+    # the actual final text about to be spoken.
+    #
+    # Response output architecture redesign: rewritten internally from
+    # unconditional whole-response buffering to per-sentence streaming --
+    # every LLMTextFrame is forwarded the instant its sentence completes;
+    # only on an actual structural violation does it stop forwarding the
+    # remainder of that one response (same accepted tradeoff
+    # repetition_guard.py already uses). See app/voice/response_shape_guard.py
+    # for the full mechanism and why it stays one processor, not split.
+    response_shape_guard = ResponseShapeValidatorProcessor(conversation_quality)
 
     async with aiohttp.ClientSession() as http_session:
         tts = SarvamTTSService(
@@ -632,17 +749,13 @@ async def _run_pipeline_inner(
             ],
             tools=tools,
         )
-        response_compliance_guard = ResponseComplianceProcessor(
-            conversation_state, rules=[LanguageComplianceRule()], llm_context=context
-        )
         # Guarantees end_call actually fires whenever the model speaks
         # DEFAULT_CLOSING_PHRASE -- confirmed live: a guest-initiated
         # ("thank you") close sometimes produced the closing line as plain
         # text with no paired end_call tool call, leaving the call open
-        # indefinitely. Sits LAST, after response_compliance_guard (which can
-        # still rewrite/regenerate the response), so it checks the actual
-        # final text about to be spoken. See
-        # app/voice/end_call_reliability_guard.py.
+        # indefinitely. Sits LAST, after response_shape_guard (which can
+        # still trim a violating response), so it checks the actual final
+        # text about to be spoken. See app/voice/end_call_reliability_guard.py.
         end_call_reliability_guard = EndCallReliabilityGuardProcessor(silence_watchdog)
         # Pipecat defaults end-of-turn detection to a local ONNX transformer
         # model (LocalSmartTurnAnalyzerV3) running CPU inference on every
@@ -692,11 +805,11 @@ async def _run_pipeline_inner(
                 slow_tool_filler,
                 repetition_guard,
                 meta_commentary_guard,
+                style_compliance_monitor,
                 property_recommendation_guard,
                 escalation_guard,
                 premature_end_call_guard,
                 response_shape_guard,
-                response_compliance_guard,
                 end_call_reliability_guard,
                 tts,
                 transport.output(),
@@ -886,10 +999,54 @@ async def _run_pipeline_inner(
         await runner.run()
 
 
+async def _reject_call_as_busy(
+    websocket: WebSocket,
+    call_data: CallData,
+    ringing_audio_task: asyncio.Task | None,
+    exotel_call_id: str | None,
+) -> None:
+    """The guest-facing side of a BUSY_RECOVERY decision: stop the ring
+    tone, play the placeholder clip, hang up, close the socket. Pulled out
+    of run_voice_pipeline (principal-review cleanup) so the busy-check in
+    that function reads as one clear early gate ("if busy: reject and
+    return") instead of a large inline block straddling the middle of what
+    is otherwise pure "resolve and build a normal call" logic. Nothing here
+    is new behavior -- same steps, same order, same fail-open exception
+    handling as before this was extracted.
+    """
+    if ringing_audio_task is not None:
+        ringing_audio_task.cancel()
+        try:
+            await ringing_audio_task
+        except asyncio.CancelledError:
+            pass
+    if call_data.stream_id:
+        await play_busy_message(websocket, call_data.stream_id)
+    if exotel_call_id:
+        try:
+            await exotel_client.hangup_call(exotel_call_id)
+        except Exception:
+            logger.exception("Failed to hang up busy-recovery call %s", exotel_call_id)
+    try:
+        await websocket.close()
+    except RuntimeError:
+        pass  # caller already disconnected
+
+
 async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
     exotel_call_id = call_data.call_id
     dialed_number = call_data.to_number
     caller_number = call_data.from_number
+    # Set only on the BUSY_RECOVERY exit -- fires recovery_service AFTER the
+    # `async with AsyncSessionLocal() as db:` block below has fully closed,
+    # not from inside it. Keeps the two DB lifetimes (this call's own `db`,
+    # and recovery_service's separate AsyncSessionLocal()) strictly
+    # sequential rather than overlapping -- good hygiene on its own, and
+    # avoids any doubt about the two interacting, on top of the specific,
+    # already-fixed hazard documented at busy_recovery_property_id below
+    # (reading an ORM attribute on an object from THIS session after this
+    # session's own commit).
+    busy_recovery_args: dict | None = None
 
     # Plays a looping ring tone directly on the raw websocket (see
     # app/voice/ringing_audio.py) while everything below -- DB lookups, then
@@ -930,49 +1087,130 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
             host_user_id = property_.user_id
         else:
             host_user_id = lead_user.id
-        guest = await call_service.get_or_create_guest_profile(db, caller_number, host_user_id)
-        active_booking = await lead_service.get_active_booking(db, guest.id if guest else None, host_user_id)
+        # Captured as a plain value here (not read again later off property_
+        # directly) mainly for readability/reuse across this block --
+        # historically also worked around a MissingGreenlet hazard from
+        # reading property_.id after a same-session Postgres commit, which
+        # no longer applies now that acquire_or_reject touches Redis, not
+        # this `db` session, at all.
+        busy_recovery_property_id = property_.id if property_ is not None else None
 
-        if property_ is not None:
-            host = await db.get(User, property_.user_id)
-            session = await call_service.get_or_create_call_session(
-                db,
-                exotel_call_id=exotel_call_id,
-                property_id=property_.id,
-                guest_profile_id=guest.id if guest else None,
-                caller_number=caller_number,
-                user_id=property_.user_id,
+        # CallCoordinator is the single authority on "is this host/property
+        # already on a live call" -- see app/services/call_coordinator.py.
+        # This pipeline only ever branches on the two-value Decision it
+        # returns; it never sees lease internals beyond the Lease dataclass
+        # (token/holder_ref/expires_at) -- renewal/release/transfer logic
+        # stays entirely inside CallCoordinator. holder_ref is
+        # exotel_call_id, the same identifier this call is already keyed by
+        # everywhere else (CallSession.exotel_call_id) -- no new identifier
+        # invented for this. Redis migration: acquire_or_reject no longer
+        # takes `db` -- lease state lives in Redis now, not this Postgres
+        # session (see call_coordinator.py's module docstring).
+        #
+        # Fails open (treated as START_PIPELINE) on any error beyond the
+        # "someone else already holds this" case acquire() itself handles --
+        # a Redis outage here must never turn away a real guest with no
+        # actual conflicting call. Matches this codebase's existing
+        # discipline for every other optional/best-effort dependency
+        # (SearchApi, SMTP, Twilio all fail open rather than blocking the
+        # guest -- see CLAUDE.md/docs/agents.md); unlike those, this failure
+        # is logged loudly by call_coordinator.acquire_or_reject itself
+        # (lease_redis_unavailable) as an explicit operational signal that
+        # busy-call protection is degraded, not silently swallowed.
+        try:
+            decision, lease = await call_coordinator.acquire_or_reject(
+                host_user_id, busy_recovery_property_id, holder_ref=exotel_call_id
             )
-            verified_faq_entries = await faq_service.list_verified_property_faq(db, property_.id)
-            system_prompt = build_system_prompt(
-                property_, guest, host, active_booking, caller_phone=caller_number,
-                verified_faq_entries=verified_faq_entries,
+        except Exception:
+            logger.exception(
+                "CallCoordinator.acquire_or_reject failed for host %s, call %s; failing open (call proceeds)",
+                host_user_id,
+                exotel_call_id,
             )
-            first_message = first_message_for(property_, guest, host)
-            property_id = property_.id
-            property_name = property_.spoken_name or property_.display_name or property_.name
-            voice_gender = host.agent_voice_gender
+            decision, lease = call_coordinator.Decision.START_PIPELINE, None
+        if decision is call_coordinator.Decision.BUSY_RECOVERY:
+            logger.warning(
+                "Host/property %s already on a live call; rejecting call %s as BUSY_RECOVERY",
+                host_user_id,
+                exotel_call_id,
+            )
+            # Placeholder clip + hang up first -- the rejected caller's own
+            # experience (short message, quick disconnect) must never wait
+            # on anything below. Reuses the exact same raw-websocket audio
+            # machinery as the ringing tone above (app/voice/ringing_audio.py)
+            # -- both write Exotel's wire protocol directly because no
+            # pipecat transport exists at this point in the call.
+            await _reject_call_as_busy(websocket, call_data, ringing_audio_task, exotel_call_id)
+
+            # RecoveryService (app/services/recovery_service.py) is the
+            # consumer of BUSY_RECOVERY -- CallCoordinator itself knows
+            # nothing about Leads/Notifications/WhatsApp (see its module
+            # docstring). NOT fired from here: recorded and handed off to
+            # the caller instead, which fires it as a detached task only
+            # after `db` (this `async with` block) has fully closed -- see
+            # busy_recovery_args' own comment for why firing it from inside
+            # this block races the connection pool.
+            busy_recovery_args = {
+                "host_user_id": host_user_id,
+                "property_id": busy_recovery_property_id,
+                "caller_number": caller_number,
+                "dialed_number": dialed_number,
+            }
         else:
-            properties = list(
-                (await db.scalars(select(Property).where(Property.user_id == lead_user.id))).all()
-            )
-            session = await call_service.get_or_create_call_session(
-                db,
-                exotel_call_id=exotel_call_id,
-                property_id=None,
-                guest_profile_id=guest.id if guest else None,
-                caller_number=caller_number,
-                user_id=lead_user.id,
-            )
-            system_prompt = build_lead_system_prompt(
-                lead_user, properties, guest, active_booking, caller_phone=caller_number
-            )
-            first_message = lead_first_message_for(lead_user)
-            property_id = None
-            property_name = None
-            voice_gender = lead_user.agent_voice_gender
+            guest = await call_service.get_or_create_guest_profile(db, caller_number, host_user_id)
+            active_booking = await lead_service.get_active_booking(db, guest.id if guest else None, host_user_id)
 
-        call_session_id = session.id
+            if property_ is not None:
+                host = await db.get(User, property_.user_id)
+                session = await call_service.get_or_create_call_session(
+                    db,
+                    exotel_call_id=exotel_call_id,
+                    property_id=property_.id,
+                    guest_profile_id=guest.id if guest else None,
+                    caller_number=caller_number,
+                    user_id=property_.user_id,
+                )
+                verified_faq_entries = await faq_service.list_verified_property_faq(db, property_.id)
+                system_prompt = build_system_prompt(
+                    property_, guest, host, active_booking, caller_phone=caller_number,
+                    verified_faq_entries=verified_faq_entries,
+                )
+                first_message = first_message_for(property_, guest, host)
+                property_id = property_.id
+                property_name = property_.spoken_name or property_.display_name or property_.name
+                voice_gender = host.agent_voice_gender
+            else:
+                properties = list(
+                    (await db.scalars(select(Property).where(Property.user_id == lead_user.id))).all()
+                )
+                session = await call_service.get_or_create_call_session(
+                    db,
+                    exotel_call_id=exotel_call_id,
+                    property_id=None,
+                    guest_profile_id=guest.id if guest else None,
+                    caller_number=caller_number,
+                    user_id=lead_user.id,
+                )
+                system_prompt = build_lead_system_prompt(
+                    lead_user, properties, guest, active_booking, caller_phone=caller_number
+                )
+                first_message = lead_first_message_for(lead_user)
+                property_id = None
+                property_name = None
+                voice_gender = lead_user.agent_voice_gender
+
+            call_session_id = session.id
+
+    # RecoveryService is fired here -- strictly after `db` (the async with
+    # block above) has fully closed, not from inside it (see
+    # busy_recovery_args' own comment near the top of this function).
+    # Detached, same fire-and-forget pattern as every WhatsApp/email send in
+    # tool_handlers.py -- the caller has already been disconnected inside
+    # the BUSY_RECOVERY branch above, so nothing here can add latency to
+    # their experience.
+    if busy_recovery_args is not None:
+        asyncio.create_task(recovery_service.handle_busy_recovery(**busy_recovery_args))
+        return
 
     serializer = ExotelFrameSerializer(stream_sid=call_data.stream_id, call_sid=exotel_call_id)
     transport = FastAPIWebsocketTransport(
@@ -1000,6 +1238,7 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
         exotel_call_id=exotel_call_id,
         ringing_audio_task=ringing_audio_task,
         voice_gender=voice_gender,
+        call_lease_token=lease.token if lease is not None else None,
     )
 
 
@@ -1051,6 +1290,15 @@ async def run_voice_pipeline_twilio(websocket: WebSocket, call_data: CallData) -
     ({"event": "media", "streamSid": ..., "media": {"payload": ...}}) is
     byte-identical to Exotel's, confirmed against Twilio's own Media Streams
     documentation.
+
+    CallCoordinator IS wired here too (cleanup-pass fix -- this was missing
+    entirely, an undocumented gap, not a deliberate omission like the ones
+    above): same acquire_or_reject/BUSY_RECOVERY/RecoveryService shape as
+    run_voice_pipeline, with call_sid (Twilio's own call identifier) as
+    holder_ref instead of exotel_call_id. Without this, two simultaneous
+    Twilio calls to the same host/property would both start a full
+    pipeline -- exactly the double-booking scenario Busy Call Recovery
+    exists to prevent, silently unprotected on this path only.
     """
     call_sid = call_data.call_id
     dialed_number = call_data.to_number
@@ -1059,6 +1307,8 @@ async def run_voice_pipeline_twilio(websocket: WebSocket, call_data: CallData) -
     ringing_audio_task = (
         asyncio.create_task(play_ringing_tone(websocket, call_data.stream_id)) if call_data.stream_id else None
     )
+
+    busy_recovery_args: dict | None = None
 
     async with AsyncSessionLocal() as db:
         property_ = await call_service.get_property_by_twilio_number(db, dialed_number)
@@ -1088,49 +1338,86 @@ async def run_voice_pipeline_twilio(websocket: WebSocket, call_data: CallData) -
             host_user_id = property_.user_id
         else:
             host_user_id = lead_user.id
-        guest = await call_service.get_or_create_guest_profile(db, caller_number, host_user_id)
-        active_booking = await lead_service.get_active_booking(db, guest.id if guest else None, host_user_id)
+        busy_recovery_property_id = property_.id if property_ is not None else None
 
-        if property_ is not None:
-            host = await db.get(User, property_.user_id)
-            session = await call_service.get_or_create_call_session(
-                db,
-                exotel_call_id=None,
-                property_id=property_.id,
-                guest_profile_id=guest.id if guest else None,
-                caller_number=caller_number,
-                user_id=property_.user_id,
+        try:
+            decision, lease = await call_coordinator.acquire_or_reject(
+                host_user_id, busy_recovery_property_id, holder_ref=call_sid
             )
-            verified_faq_entries = await faq_service.list_verified_property_faq(db, property_.id)
-            system_prompt = build_system_prompt(
-                property_, guest, host, active_booking, caller_phone=caller_number,
-                verified_faq_entries=verified_faq_entries,
+        except Exception:
+            logger.exception(
+                "CallCoordinator.acquire_or_reject failed for host %s, call %s; failing open (call proceeds)",
+                host_user_id,
+                call_sid,
             )
-            first_message = first_message_for(property_, guest, host)
-            property_id = property_.id
-            property_name = property_.name
-            voice_gender = host.agent_voice_gender
+            decision, lease = call_coordinator.Decision.START_PIPELINE, None
+        if decision is call_coordinator.Decision.BUSY_RECOVERY:
+            logger.warning(
+                "Host/property %s already on a live call; rejecting Twilio call %s as BUSY_RECOVERY",
+                host_user_id,
+                call_sid,
+            )
+            # exotel_call_id=None here (never set on this path) -- same
+            # helper run_voice_pipeline (Exotel) uses, correctly skips the
+            # Exotel-specific hangup step: Twilio's <Connect><Stream> TwiML
+            # ends the call once this websocket closes, there is nothing
+            # Exotel-hangup-shaped to call.
+            await _reject_call_as_busy(websocket, call_data, ringing_audio_task, exotel_call_id=None)
+
+            busy_recovery_args = {
+                "host_user_id": host_user_id,
+                "property_id": busy_recovery_property_id,
+                "caller_number": caller_number,
+                "dialed_number": dialed_number,
+            }
         else:
-            properties = list(
-                (await db.scalars(select(Property).where(Property.user_id == lead_user.id))).all()
-            )
-            session = await call_service.get_or_create_call_session(
-                db,
-                exotel_call_id=None,
-                property_id=None,
-                guest_profile_id=guest.id if guest else None,
-                caller_number=caller_number,
-                user_id=lead_user.id,
-            )
-            system_prompt = build_lead_system_prompt(
-                lead_user, properties, guest, active_booking, caller_phone=caller_number
-            )
-            first_message = lead_first_message_for(lead_user)
-            property_id = None
-            property_name = None
-            voice_gender = lead_user.agent_voice_gender
+            guest = await call_service.get_or_create_guest_profile(db, caller_number, host_user_id)
+            active_booking = await lead_service.get_active_booking(db, guest.id if guest else None, host_user_id)
 
-        call_session_id = session.id
+            if property_ is not None:
+                host = await db.get(User, property_.user_id)
+                session = await call_service.get_or_create_call_session(
+                    db,
+                    exotel_call_id=None,
+                    property_id=property_.id,
+                    guest_profile_id=guest.id if guest else None,
+                    caller_number=caller_number,
+                    user_id=property_.user_id,
+                )
+                verified_faq_entries = await faq_service.list_verified_property_faq(db, property_.id)
+                system_prompt = build_system_prompt(
+                    property_, guest, host, active_booking, caller_phone=caller_number,
+                    verified_faq_entries=verified_faq_entries,
+                )
+                first_message = first_message_for(property_, guest, host)
+                property_id = property_.id
+                property_name = property_.name
+                voice_gender = host.agent_voice_gender
+            else:
+                properties = list(
+                    (await db.scalars(select(Property).where(Property.user_id == lead_user.id))).all()
+                )
+                session = await call_service.get_or_create_call_session(
+                    db,
+                    exotel_call_id=None,
+                    property_id=None,
+                    guest_profile_id=guest.id if guest else None,
+                    caller_number=caller_number,
+                    user_id=lead_user.id,
+                )
+                system_prompt = build_lead_system_prompt(
+                    lead_user, properties, guest, active_booking, caller_phone=caller_number
+                )
+                first_message = lead_first_message_for(lead_user)
+                property_id = None
+                property_name = None
+                voice_gender = lead_user.agent_voice_gender
+
+            call_session_id = session.id
+
+    if busy_recovery_args is not None:
+        asyncio.create_task(recovery_service.handle_busy_recovery(**busy_recovery_args))
+        return
 
     serializer = TwilioFrameSerializer(
         stream_sid=call_data.stream_id,
@@ -1162,6 +1449,7 @@ async def run_voice_pipeline_twilio(websocket: WebSocket, call_data: CallData) -
         guest_known_name=guest.name if guest else None,
         ringing_audio_task=ringing_audio_task,
         voice_gender=voice_gender,
+        call_lease_token=lease.token if lease is not None else None,
     )
 
 

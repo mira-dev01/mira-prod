@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ExpandableText } from "@/components/expandable-text";
@@ -11,7 +10,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { StatusChip, type StatusTone } from "@/components/status-chip";
 import { useAsync } from "@/hooks/use-async";
 import { api } from "@/lib/api";
-import { cn } from "@/lib/utils";
 import type { ServiceRequestOut } from "@/lib/types";
 
 // Same urgency vocabulary as calls-table.tsx's callUrgencyTone -- Notification
@@ -31,18 +29,20 @@ function formatTimestamp(value: string): string {
  * Shared row rendering for both the live (unresolved) and completed
  * (dismissed, reference-only) Service Request lists -- structured like
  * calls-table.tsx's CallsTable. `selectable` controls whether the leading
- * checkbox column renders; the completed/"recycle bin" view is read-only.
+ * checkbox column renders; checking it dismisses that request immediately
+ * (no bulk-select/confirm step). The completed/"recycle bin" view is
+ * read-only, so it never renders the column.
  */
 function ServiceRequestsList({
   requests,
   selectable,
-  selected,
-  onToggle,
+  completing,
+  onComplete,
 }: {
   requests: ServiceRequestOut[];
   selectable: boolean;
-  selected?: Set<string>;
-  onToggle?: (callSessionId: string, checked: boolean) => void;
+  completing?: Set<string>;
+  onComplete?: (callSessionId: string) => void;
 }) {
   const router = useRouter();
 
@@ -51,7 +51,7 @@ function ServiceRequestsList({
       <Table>
         <TableHeader>
           <TableRow>
-            {selectable && <TableHead className="w-8" />}
+            {selectable && <TableHead className="w-12">Done</TableHead>}
             <TableHead>Logged at</TableHead>
             <TableHead>Property</TableHead>
             <TableHead>Room</TableHead>
@@ -64,11 +64,18 @@ function ServiceRequestsList({
           {requests.map((req) => (
             <TableRow key={req.call_session_id}>
               {selectable && (
-                <TableCell onClick={(e) => e.stopPropagation()}>
+                <TableCell
+                  className="cursor-pointer"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!completing?.has(req.call_session_id)) onComplete?.(req.call_session_id);
+                  }}
+                >
                   <Checkbox
-                    checked={selected?.has(req.call_session_id) ?? false}
-                    onCheckedChange={(checked) => onToggle?.(req.call_session_id, checked === true)}
-                    aria-label="Select request"
+                    checked={completing?.has(req.call_session_id) ?? false}
+                    disabled={completing?.has(req.call_session_id) ?? false}
+                    onCheckedChange={() => onComplete?.(req.call_session_id)}
+                    aria-label="Mark request as completed"
                   />
                 </TableCell>
               )}
@@ -105,52 +112,28 @@ export function ServiceRequestsTable({
   requests: ServiceRequestOut[];
   onDismiss: (callSessionIds: string[]) => Promise<void>;
 }) {
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [dismissing, setDismissing] = useState(false);
+  const [completing, setCompleting] = useState<Set<string>>(new Set());
   const [binOpen, setBinOpen] = useState(false);
 
-  function toggle(callSessionId: string, checked: boolean) {
-    setSelected((current) => {
-      const next = new Set(current);
-      if (checked) next.add(callSessionId);
-      else next.delete(callSessionId);
-      return next;
-    });
-  }
-
-  async function handleDismissSelected() {
-    if (selected.size === 0) return;
-    setDismissing(true);
+  async function handleComplete(callSessionId: string) {
+    setCompleting((current) => new Set(current).add(callSessionId));
     try {
-      await onDismiss(Array.from(selected));
-      setSelected(new Set());
+      await onDismiss([callSessionId]);
     } finally {
-      setDismissing(false);
+      setCompleting((current) => {
+        const next = new Set(current);
+        next.delete(callSessionId);
+        return next;
+      });
     }
   }
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-end gap-2">
-        {selected.size > 0 && (
-          <span className="text-xs text-muted-foreground">{selected.size} selected</span>
-        )}
-        <Button
-          variant="outline"
-          size="icon-sm"
-          aria-label="Mark selected requests as completed"
-          disabled={selected.size === 0 || dismissing}
-          onClick={handleDismissSelected}
-          className={cn(selected.size > 0 && "border-destructive text-destructive hover:bg-destructive/10")}
-        >
-          <Trash2 className="size-4" />
-        </Button>
-      </div>
-
       {requests.length === 0 ? (
         <p className="text-sm text-muted-foreground">No open service requests.</p>
       ) : (
-        <ServiceRequestsList requests={requests} selectable selected={selected} onToggle={toggle} />
+        <ServiceRequestsList requests={requests} selectable completing={completing} onComplete={handleComplete} />
       )}
 
       <div>

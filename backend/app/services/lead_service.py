@@ -53,18 +53,25 @@ async def _get_or_create_lead_for_call(
     name is captured immediately when volunteered (see GOLDEN_RULES), so
     this is decided correctly before any other tool call needs a lead.
 
-    Returns None only when call_session_id itself is None (no session to
-    attach anything to -- matches the pre-existing behavior of every caller
-    here, which never created an orphan lead in that case either).
+    call_session_id=None is valid, not just tolerated: RecoveryService
+    (app/services/recovery_service.py) resolves/reuses a guest's lead for a
+    rejected call that never got a CallSession at all (see
+    app/voice/pipeline.py's BUSY_RECOVERY branch, which returns before
+    get_or_create_call_session is ever reached) -- step 1 above simply has
+    nothing to check in that case, but step 2's guest_profile_id-based reuse
+    still applies fully, so a guest busy-rejected more than once still
+    lands on the same still-open Lead rather than fragmenting into one row
+    per rejected attempt. Every pre-existing caller here always passes a
+    real call_session_id from a live call, so this is additive, not a
+    behavior change for the in-call path.
     """
-    if call_session_id is None:
-        return None
-
-    call_session = await db.get(CallSession, call_session_id)
-    if call_session is not None and call_session.lead_id is not None:
-        existing = await db.get(Lead, call_session.lead_id)
-        if existing is not None:
-            return existing
+    call_session = None
+    if call_session_id is not None:
+        call_session = await db.get(CallSession, call_session_id)
+        if call_session is not None and call_session.lead_id is not None:
+            existing = await db.get(Lead, call_session.lead_id)
+            if existing is not None:
+                return existing
 
     lead = None
     if guest_profile_id is not None:

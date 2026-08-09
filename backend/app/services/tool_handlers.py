@@ -121,21 +121,6 @@ async def _send_escalation_email(to_email: str, subject: str, body: str, html_bo
         logger.exception("Failed to send escalation email to %s", to_email)
 
 
-async def _send_whatsapp_message(to_phone: str, body: str) -> None:
-    # Same detached/best-effort pattern as _send_escalation_email above --
-    # never blocks the tool result on a live call for a slow/failed Twilio
-    # request. "skipped" covers both Twilio not being configured and the
-    # far more common sandbox case (63015: recipient never texted "join
-    # <code>" to the sandbox number), which surfaces as a TwilioError, not
-    # a "skipped" status -- both are logged, neither raises past here.
-    try:
-        result = await twilio_client.send_whatsapp_message(to_phone, body)
-        if result.get("status") == "skipped":
-            logger.info("WhatsApp message to %s skipped: %s", to_phone, result.get("reason"))
-    except twilio_client.TwilioError:
-        logger.exception("Failed to send WhatsApp message to %s", to_phone)
-
-
 async def _send_escalation_whatsapp(
     to_phone: str, urgency: str, property_name: str, reason: str, call_summary: str | None, guest_phone: str | None, dashboard_url: str
 ) -> None:
@@ -143,31 +128,31 @@ async def _send_escalation_whatsapp(
     # Dashboard" button, no raw URL, no link-preview card) when it's been
     # created -- see scripts/create_escalation_template.py. Falls back to
     # a plain-text message with a bare URL if the template hasn't been set
-    # up yet, so escalations still reach the host either way.
+    # up yet, so escalations still reach the host either way. The actual
+    # fire-and-forget "log skip/failure, never raise" contract lives in
+    # twilio_client.send_whatsapp_template_best_effort/send_whatsapp_best_effort
+    # (cleanup pass: this used to reimplement that contract locally --
+    # consolidated to the same wrapper recovery_service.py already uses, so
+    # there is exactly one place that contract is implemented).
     emoji = _URGENCY_EMOJI.get(urgency, "⚪")
-    try:
-        if settings.twilio_escalation_template_sid:
-            result = await twilio_client.send_whatsapp_template(
-                to_phone,
-                settings.twilio_escalation_template_sid,
-                {
-                    "1": emoji,
-                    "2": urgency.upper(),
-                    "3": property_name,
-                    "4": reason,
-                    "5": call_summary or "Not provided",
-                    "6": guest_phone or "Not captured",
-                },
-            )
-        else:
-            result = await twilio_client.send_whatsapp_message(
-                to_phone,
-                _build_escalation_whatsapp_text(urgency, property_name, reason, call_summary, guest_phone, dashboard_url),
-            )
-        if result.get("status") == "skipped":
-            logger.info("Escalation WhatsApp to %s skipped: %s", to_phone, result.get("reason"))
-    except twilio_client.TwilioError:
-        logger.exception("Failed to send escalation WhatsApp to %s", to_phone)
+    if settings.twilio_escalation_template_sid:
+        await twilio_client.send_whatsapp_template_best_effort(
+            to_phone,
+            settings.twilio_escalation_template_sid,
+            {
+                "1": emoji,
+                "2": urgency.upper(),
+                "3": property_name,
+                "4": reason,
+                "5": call_summary or "Not provided",
+                "6": guest_phone or "Not captured",
+            },
+        )
+    else:
+        await twilio_client.send_whatsapp_best_effort(
+            to_phone,
+            _build_escalation_whatsapp_text(urgency, property_name, reason, call_summary, guest_phone, dashboard_url),
+        )
 
 
 async def _get_property(db: AsyncSession, property_id: str) -> Property | None:
@@ -443,7 +428,7 @@ async def handle_send_whatsapp(
         urgency="low",
         message=f"To {args.phone}: {args.message}",
     )
-    asyncio.create_task(_send_whatsapp_message(args.phone, args.message))
+    asyncio.create_task(twilio_client.send_whatsapp_best_effort(args.phone, args.message))
     return f"Got it, I've queued a WhatsApp message to {args.phone}." + _phone_confirmation_warning(args.phone)
 
 
@@ -474,7 +459,7 @@ async def handle_send_photos(
     # Real WhatsApp send via Twilio sandbox (only reaches numbers that have
     # joined the sandbox -- see twilio_account_sid's docstring in config.py).
     asyncio.create_task(
-        _send_whatsapp_message(args.guest_phone, f"Here are photos of {property_.name} -- {gallery_url}")
+        twilio_client.send_whatsapp_best_effort(args.guest_phone, f"Here are photos of {property_.name} -- {gallery_url}")
     )
 
     # Email stays as a parallel channel (not a fallback) so this is testable

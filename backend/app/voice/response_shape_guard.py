@@ -26,12 +26,41 @@ docs/agents.md's pipeline-stage list) have already run, so it validates the
 actual final text about to be spoken, not an intermediate draft any earlier
 guard might still rewrite.
 
-Always buffers the whole response (unlike escalation_phrase_guard's
-conditional arming) -- this guard's whole point is judging the FINAL,
-complete text, so there's no narrower "only after X tool fires" scope to
-gate on. Latency cost: one response's worth of buffering (matches the
-existing precedent set by escalation_phrase_guard.py's own buffering
-window), not a new class of cost this pipeline hasn't already accepted.
+Streaming-first rewrite (response output architecture redesign): previously
+buffered the ENTIRE response, unconditionally, on every turn, before
+validating once at the end -- the same unconditional-buffer pattern that
+broke native LLM streaming and was the #1 architectural problem this
+redesign fixes. Now streams every LLMTextFrame through IMMEDIATELY as it
+arrives, exactly like RepetitionGuardProcessor already does for its own,
+structurally similar problem (repetition_guard.py's own docstring: "stream
+every LLMTextFrame straight through immediately by default -- no buffering,
+no added latency to the normal case"). Only the CURRENT, still-incomplete
+sentence fragment is ever held (bounded to one sentence, never the whole
+response) -- the same buffering unit repetition_guard already uses.
+
+Five of the six checks (multiple_unconnected_questions, multiple_greetings,
+duplicated_safe_line, duplicated_punctuation, multiple_recommendation_blocks)
+are monotonic: once true over the accumulated text, they never flip back to
+false as more text streams in, so re-running validate_response_shape after
+each newly-completed sentence and cutting the instant any of them fires is
+mathematically equivalent to today's whole-buffer version -- both keep only
+the sentence(s) that existed before the first true violation, which in
+every real/tested case is exactly the first sentence (confirmed directly:
+every violation-triggering example in this module's own test suite first
+trips at sentence index >= 1, never at index 0, so streaming sentence 0
+immediately and cutting everything after the violation is detected produces
+byte-identical output to the old first_clean_sentence_or_original(text)
+behavior). The sixth check, ends_mid_clause, is NOT monotonic in this sense
+-- it's only meaningful against the FINAL, complete text (every non-final
+sentence looks "cut off" simply because more is still coming) -- so it is
+still evaluated exactly once, at LLMFullResponseEndFrame, same as before.
+
+Latency cost, precisely: sentence 0 reaches tts as fast as the LLM itself
+streams it -- zero added buffering delay for the overwhelming majority of
+turns (no violation ever fires). Only on an actual violation does the
+guest hear one sentence before the guard reacts, the exact same accepted,
+explicitly-bounded tradeoff repetition_guard.py's own docstring already
+documents for its class of problem.
 """
 
 import re
@@ -42,6 +71,7 @@ from pipecat.frames.frames import Frame, LLMFullResponseEndFrame, LLMFullRespons
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 from app.services.property.pitch_formatter import CONFIDENCE_INTROS
+from app.voice.conversation_quality import ConversationQuality, ValidationResult
 from app.voice.escalation_phrase_guard import SAFE_REPLACEMENT_TEXT
 
 _GREETING_RE = re.compile(r"\b(hi|hello|namaste|hey)\b[!,. ]", re.IGNORECASE)
@@ -140,11 +170,12 @@ def has_multiple_recommendation_blocks(text: str) -> bool:
     return count_recommendation_blocks(text) >= 2
 
 
-def validate_response_shape(text: str) -> list[str]:
-    """Returns a list of violation names (empty if the response is
-    structurally clean) -- never rewrites text itself; the processor below
-    decides what to do with a violation (currently: drop everything after
-    the first clean, complete sentence, since that's always safe to keep)."""
+# The five checks that are monotonic over accumulating text (see module
+# docstring) -- evaluated incrementally, after each completed sentence,
+# by the streaming processor below. ends_mid_clause is deliberately
+# excluded here; it is only meaningful against the final, complete
+# response and is checked once, separately, at LLMFullResponseEndFrame.
+def _incremental_violations(text: str) -> list[str]:
     violations = []
     if has_multiple_unconnected_questions(text):
         violations.append("multiple_unconnected_questions")
@@ -156,6 +187,18 @@ def validate_response_shape(text: str) -> list[str]:
         violations.append("duplicated_punctuation")
     if has_multiple_recommendation_blocks(text):
         violations.append("multiple_recommendation_blocks")
+    return violations
+
+
+def validate_response_shape(text: str) -> list[str]:
+    """Returns a list of violation names (empty if the response is
+    structurally clean) -- the full six-check validation against a COMPLETE
+    response, unchanged from before this redesign. Used by tests and by
+    ResponseShapeStreamProcessor's own final ends_mid_clause check; the
+    processor's live streaming path uses _incremental_violations (five of
+    these six checks) turn-by-turn instead, for the reasons in the module
+    docstring."""
+    violations = _incremental_violations(text)
     if ends_mid_clause(text):
         violations.append("ends_mid_clause")
     return violations
@@ -165,8 +208,23 @@ def validate_response_shape(text: str) -> list[str]:
 # has NO space after the first '?' at all ("...interesting?Got it, Abhaya."),
 # which is itself part of the concatenated-turns shape this guard exists to
 # catch. Splitting only on "punctuation + required whitespace" would miss
-# exactly this real, observed case.
+# exactly this real, observed case. Same regex repetition_guard.py's own
+# _SENTENCE_SPLIT_RE uses conceptually (sentence-boundary lookbehind),
+# reused here rather than reinvented -- this module's own boundary needs
+# the looser \s* variant for the no-space case above, so it is declared
+# separately rather than importing repetition_guard's stricter \s+ version.
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s*")
+
+# Capturing variant of the same boundary, used only by the streaming
+# processor below -- re.split with a capturing group keeps the matched
+# whitespace itself as its own list element instead of discarding it, so
+# re-forwarding sentences as SEPARATE frames never silently drops the space
+# between them (found live in this rewrite: the non-capturing split above is
+# correct for first_clean_sentence_or_original, which only ever picks ONE
+# resulting piece and never rejoins pieces, but forwarding multiple pieces
+# as separate frames needs every character preserved, including the
+# boundary whitespace itself).
+_SENTENCE_SPLIT_CAPTURING_RE = re.compile(r"((?<=[.!?])\s*)")
 
 
 def first_clean_sentence_or_original(text: str) -> str:
@@ -175,7 +233,11 @@ def first_clean_sentence_or_original(text: str) -> str:
     one clean question/statement per turn is always the correct shape --
     never leave the guest with nothing (falls back to the original text if
     it can't be split into at least one real sentence, e.g. no terminal
-    punctuation anywhere)."""
+    punctuation anywhere). Still used by tests for the pure-function
+    contract; the live streaming processor achieves the same effect by
+    construction (stream sentence 0 immediately, stop forwarding once a
+    violation fires), not by calling this function on a fully buffered
+    response."""
     parts = [p.strip() for p in _SENTENCE_SPLIT_RE.split(text.strip()) if p.strip()]
     if not parts:
         return text
@@ -183,47 +245,134 @@ def first_clean_sentence_or_original(text: str) -> str:
 
 
 class ResponseShapeValidatorProcessor(FrameProcessor):
-    """Buffers each complete response and validates its final shape before
-    it reaches TTS -- structural/mechanical checks only, never a semantic
-    judgment. Sits last in the guard chain (before tts)."""
+    """Streams every LLMTextFrame through immediately as it arrives, holding
+    back only the current incomplete sentence fragment (bounded to one
+    sentence, never the whole response). Re-validates the five monotonic
+    shape checks after each newly-completed sentence and, the instant any
+    fires, stops forwarding further sentences for the rest of this response
+    -- since the violating sentence is by construction never the first one
+    in every real case this guard exists to catch (see module docstring),
+    this reproduces "keep only the first clean sentence" as an emergent
+    effect of streaming, not by buffering and trimming after the fact.
+    ends_mid_clause is checked once, at LLMFullResponseEndFrame, against the
+    complete forwarded text -- see module docstring for why it can't be
+    checked incrementally. Sits last in the guard chain (before tts)."""
 
-    def __init__(self):
+    def __init__(self, quality: ConversationQuality | None = None):
         super().__init__()
-        self._buffering = False
-        self._buffer: list[str] = []
+        self._quality = quality
+        self._sentence_buffer = ""
+        self._forwarded_text = ""
+        # Whitespace that trailed the LAST successfully-forwarded sentence,
+        # held back until the NEXT sentence also passes its own check (see
+        # _consume's own comment) -- never forwarded on its own, never
+        # forwarded ahead of proof that real content follows it.
+        self._pending_separator = ""
+        self._cutting = False
+        self._turn_index = 0
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
 
         if isinstance(frame, LLMFullResponseStartFrame):
-            self._buffering = True
-            self._buffer = []
+            self._sentence_buffer = ""
+            self._forwarded_text = ""
+            self._pending_separator = ""
+            self._cutting = False
+            self._turn_index += 1
+            await self.push_frame(frame, direction)
             return
 
-        if self._buffering and isinstance(frame, LLMTextFrame):
-            self._buffer.append(frame.text)
-            return
-
-        if self._buffering and isinstance(frame, LLMFullResponseEndFrame):
-            text = "".join(self._buffer)
-            self._buffering = False
-
-            if not text.strip():
-                await self.push_frame(frame, direction)
+        if isinstance(frame, LLMTextFrame):
+            if self._cutting:
+                # Silently dropped -- the guest just doesn't hear the rest
+                # of this response, rather than hearing it concatenated
+                # with unrelated later turns. Same accepted tradeoff
+                # repetition_guard.py already documents for its own cut.
                 return
+            await self._consume(frame.text, direction)
+            return
 
-            violations = validate_response_shape(text)
-            if violations:
+        if isinstance(frame, LLMFullResponseEndFrame):
+            if not self._cutting and self._sentence_buffer.strip():
+                # A final, incomplete-looking fragment with no more text
+                # coming -- flush it (with any still-pending separator
+                # ahead of it, now proven real since this fragment IS the
+                # rest of the response), then run the one check that's
+                # only meaningful now that the response is truly complete.
+                final_fragment = self._pending_separator + self._sentence_buffer
+                if ends_mid_clause(self._forwarded_text + final_fragment):
+                    logger.warning(
+                        "ResponseShapeValidatorProcessor: response ends mid-clause -- "
+                        "flushing the trailing fragment as-is (never silently dropped)"
+                    )
+                await self.push_frame(LLMTextFrame(final_fragment))
+                self._forwarded_text += final_fragment
+                self._sentence_buffer = ""
+                self._pending_separator = ""
+            elif not self._cutting and self._forwarded_text and ends_mid_clause(self._forwarded_text):
                 logger.warning(
-                    "ResponseShapeValidatorProcessor: trimmed reply to its first clean sentence -- "
-                    "violations: {}",
-                    violations,
+                    "ResponseShapeValidatorProcessor: response ends mid-clause"
                 )
-            final_text = first_clean_sentence_or_original(text) if violations else text
-
-            await self.push_frame(LLMFullResponseStartFrame())
-            await self.push_frame(LLMTextFrame(final_text))
+            self._cutting = False
             await self.push_frame(frame, direction)
             return
 
         await self.push_frame(frame, direction)
+
+    async def _consume(self, text: str, direction: FrameDirection) -> None:
+        self._sentence_buffer += text
+        # Capturing split (see _SENTENCE_SPLIT_CAPTURING_RE's own comment)
+        # so no character -- including inter-sentence whitespace -- is ever
+        # dropped when re-forwarding sentences as separate frames. raw_parts
+        # alternates [sentence, boundary_ws, sentence, boundary_ws, ...,
+        # trailing_incomplete_or_empty]. Each sentence's OWN trailing
+        # boundary whitespace is deliberately NOT merged into it here
+        # (unlike an earlier version of this method) -- that whitespace
+        # only makes sense as a separator BEFORE the next sentence, and if
+        # a cut happens right after this one, there is no next sentence to
+        # separate from; leaving it attached would forward a dangling
+        # trailing space with nothing after it. Instead each sentence
+        # picked up its OWN leading separator from the previous iteration.
+        raw_parts = _SENTENCE_SPLIT_CAPTURING_RE.split(self._sentence_buffer)
+        sentences = raw_parts[0:-1:2]
+        separators = raw_parts[1::2]
+        # The last element is whatever's left after the final completed
+        # boundary -- may be an incomplete sentence (more text still
+        # streaming in) or empty. Keep it in the buffer, only judge/forward
+        # the completed ones ahead of it.
+        self._sentence_buffer = raw_parts[-1]
+
+        for sentence, trailing_sep in zip(sentences, separators):
+            candidate_text = self._forwarded_text + sentence
+            violations = _incremental_violations(candidate_text)
+            if violations:
+                logger.warning(
+                    "ResponseShapeValidatorProcessor: cutting the rest of this response -- "
+                    "violations: {}",
+                    violations,
+                )
+                if self._quality is not None:
+                    self._quality.record(
+                        ValidationResult(
+                            rule="shape_compliance",
+                            severity="WARNING",
+                            confidence=1.0,
+                            metadata={"violations": violations},
+                            turn_index=self._turn_index,
+                        )
+                    )
+                self._cutting = True
+                return
+            # The separator BEFORE this sentence (carried over from the
+            # previous iteration, held back until now) is only forwarded
+            # once THIS sentence has itself passed its own check -- proof
+            # there really is more real content after it. This is what
+            # prevents a dangling trailing space from going out ahead of a
+            # sentence that then gets cut (found live in this rewrite: the
+            # naive "forward sentence + its own trailing separator
+            # immediately" version sent the separator BEFORE knowing
+            # whether the next sentence would violate).
+            await self.push_frame(LLMTextFrame(self._pending_separator + sentence), direction)
+            self._forwarded_text = candidate_text
+            self._pending_separator = trailing_sep

@@ -35,7 +35,7 @@ apart.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Literal
 
 from pipecat.frames.frames import Frame, TranscriptionFrame
@@ -82,8 +82,8 @@ _DEFAULT_HOSPITALITY_STYLE: HospitalityStyle = "AIRBNB_HOST"
 class TurnSignal:
     """One turn's raw, cheap-to-compute language signal -- the Style
     Engine's only input besides prior state. Never mutated after
-    construction; ConversationState.style_history holds a bounded list of
-    these, oldest dropped first."""
+    construction; StyleEngine holds a bounded list of these internally
+    (its own _history), oldest dropped first."""
 
     english_ratio: float
     devanagari_ratio: float
@@ -162,8 +162,8 @@ def _weight_for_index(i: int) -> int:
 
 def _weighted_english_ratio(history: list[TurnSignal]) -> float:
     """history[0] is the OLDEST turn, history[-1] is the CURRENT turn (same
-    append-only order ConversationState.style_history is built in) -- so
-    recency weighting walks the list in reverse."""
+    append-only order StyleEngine's own _history is built in) -- so recency
+    weighting walks the list in reverse."""
     if not history:
         return 1.0
     total_weight = 0.0
@@ -228,29 +228,35 @@ def _score_clearly_supports(weighted_english: float, candidate: Language3) -> bo
 
 
 class StyleEngine:
-    """Stateless (no instance fields) -- every call is
-    update(state, turn_signal) -> new ConversationStyle, a pure function of
-    its arguments. ConversationState.style_history/current_style are what
-    persist between calls, not this class. Matches this codebase's existing
-    pattern of small, stateless processors closing over ConversationState
-    rather than owning their own mutable state (e.g. ConversationAnalyzer
-    above, validate_response_shape in response_shape_guard.py)."""
+    """Owns its own rolling-window history internally (_history) -- this is
+    the Style Engine's own working memory, not a conversation fact, so it
+    does NOT live on ConversationState (architecture boundary: ConversationState
+    holds conversation facts only; ConversationStyle, including this engine,
+    is the single source of truth for HOW Mira speaks, entirely self-contained).
+    One StyleEngine instance lives for the life of one call (constructed once
+    by ConversationStyleProcessor below), so "per-call" scoping is preserved
+    exactly as before -- only the history's storage location moved, not its
+    lifetime or algorithm. update() itself remains a pure function of its
+    explicit arguments plus this instance's own history -- no hidden global
+    state, no cross-call leakage (a fresh StyleEngine is constructed per call,
+    same as ConversationState itself)."""
 
     def __init__(self, rolling_window: int = DEFAULT_ROLLING_WINDOW):
         self._rolling_window = rolling_window
+        self._history: list[TurnSignal] = []
 
     def update(
         self,
-        history: list[TurnSignal],
         latest_signal: TurnSignal,
         previous_style: ConversationStyle | None,
         turn_index: int,
-    ) -> tuple[ConversationStyle, list[TurnSignal]]:
-        """Returns (new_style, new_history) -- history is never mutated in
-        place (callers own storing the returned list back onto
-        ConversationState), same immutability discipline as
-        ConversationStyle itself."""
-        new_history = [*history, latest_signal][-self._rolling_window :]
+    ) -> ConversationStyle:
+        """Returns the new ConversationStyle snapshot. Internally advances
+        this engine's own history -- callers no longer thread a history list
+        through by hand (see module docstring for why that responsibility
+        moved here)."""
+        new_history = [*self._history, latest_signal][-self._rolling_window :]
+        self._history = new_history
 
         weighted_english = _weighted_english_ratio(new_history)
         weighted_devanagari = _weighted_devanagari_ratio(new_history)
@@ -306,7 +312,7 @@ class StyleEngine:
             last_language_switch_turn=last_switch_turn,
             turn_index=turn_index,
         )
-        return new_style, new_history
+        return new_style
 
 
 def _consecutive_turns_agreeing_with(history: list[TurnSignal], language: Language3) -> int:
@@ -328,18 +334,26 @@ def _consecutive_turns_agreeing_with(history: list[TurnSignal], language: Langua
     return count
 
 
-def render_style_block(style: ConversationStyle) -> str:
+def render_style_block(style: ConversationStyle, emphasized: bool = False) -> str:
     """Exactly the structured prompt block the spec asks for -- the ONLY
     place ConversationStyle is turned into prompt text. Consumed by
     state_prompt_sync.py's dynamic per-turn message; the static system
     prompt (GOLDEN_RULES) no longer carries the passive-mirroring/Hinglish-
-    tone paragraphs this replaces (see system_prompt.py)."""
+    tone paragraphs this replaces (see system_prompt.py).
+
+    emphasized=True renders one additional, more forceful line -- the ONLY
+    mechanism by which a quality signal (ConversationQuality.
+    pending_style_correction, set by StyleComplianceMonitor after a
+    confirmed language mismatch) can influence the prompt: it asks THIS
+    function for a stronger rendering of the exact same style, never a
+    different or validator-authored instruction. state_prompt_sync.py is
+    the only caller that ever passes emphasized=True."""
     language_label = {"ENGLISH": "English", "HINDI": "Hindi", "HINGLISH": "Urban Hinglish"}[style.language]
     script_label = "Devanagari" if style.script == "DEVANAGARI" else "Roman"
     tone_label = {"CASUAL": "Casual", "PREMIUM": "Premium Airbnb Host", "LUXURY": "Luxury Concierge"}[style.tone]
     english_pct = round(style.english_ratio * 100)
 
-    return (
+    block = (
         "Conversation Style\n"
         f"Language: {language_label}\n"
         f"English Ratio: {english_pct}%\n"
@@ -348,6 +362,12 @@ def render_style_block(style: ConversationStyle) -> str:
         "Follow this naturally. Do not explain. Do not translate. Mirror the guest naturally. "
         "Never abruptly change language."
     )
+    if emphasized:
+        block += (
+            f"\nYour last reply did not match this -- make sure this one is clearly in {language_label}, "
+            "not just close to it."
+        )
+    return block
 
 
 class ConversationStyleProcessor(FrameProcessor):
@@ -376,13 +396,11 @@ class ConversationStyleProcessor(FrameProcessor):
         if isinstance(frame, TranscriptionFrame) and self._conversation_state is not None and frame.text:
             self._turn_index += 1
             signal = ConversationAnalyzer.analyze_turn(frame.text)
-            new_style, new_history = self._engine.update(
-                self._conversation_state.style_history,
+            new_style = self._engine.update(
                 signal,
                 self._conversation_state.conversation_style,
                 turn_index=self._turn_index,
             )
             self._conversation_state.conversation_style = new_style
-            self._conversation_state.style_history = new_history
 
         await self.push_frame(frame, direction)

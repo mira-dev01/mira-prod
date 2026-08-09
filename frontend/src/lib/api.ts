@@ -32,6 +32,7 @@ import type {
   PropertyImportResult,
   PropertyOut,
   PropertyUpdate,
+  RecoveryAnalytics,
   TechnicianCreate,
   TechnicianOut,
   UserOut,
@@ -280,6 +281,14 @@ export const api = {
           start_date: params.startDate,
           end_date: params.endDate,
           include_test_calls: params.includeTestCalls ?? false,
+        })}`
+      ),
+    recovery: (params?: { days?: number; startDate?: string; endDate?: string }) =>
+      request<RecoveryAnalytics>(
+        `/analytics/recovery${buildQuery({
+          days: params?.startDate || params?.endDate ? undefined : (params?.days ?? 30),
+          start_date: params?.startDate,
+          end_date: params?.endDate,
         })}`
       ),
   },

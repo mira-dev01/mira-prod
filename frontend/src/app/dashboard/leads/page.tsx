@@ -14,12 +14,14 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatusChip, type StatusTone } from "@/components/status-chip";
+import { CloseLeadDialog } from "@/components/close-lead-dialog";
 import { DateRangePicker } from "@/components/date-range-picker";
 import { LeadDetailPanel, LEAD_STATUSES, leadUrgencyTone } from "@/components/lead-detail-panel";
 import { ServiceRequestsTable } from "@/components/service-requests-table";
 import { useAsync } from "@/hooks/use-async";
 import { useDateRange } from "@/hooks/use-date-range";
 import { api, ApiError } from "@/lib/api";
+import { leadGuestLabel, leadPhoneLabel } from "@/lib/leads";
 import { cn, isBrowserTestIdentity, matchesSearch } from "@/lib/utils";
 import type { LeadOut, LeadStatus } from "@/lib/types";
 
@@ -60,14 +62,6 @@ function isEmptyLead(lead: LeadOut): boolean {
     lead.purpose_of_stay || lead.conversation_summary || lead.occasion || lead.properties_discussed.length > 0
   );
   return !hasIdentity && !hasContent;
-}
-
-function leadGuestLabel(lead: LeadOut): string {
-  return isBrowserTestIdentity(lead.phone) ? "Browser test" : lead.guest_name ?? "Unknown guest";
-}
-
-function leadPhoneLabel(lead: LeadOut): string {
-  return isBrowserTestIdentity(lead.phone) ? "Browser test" : lead.phone ?? "No phone";
 }
 
 function leadDatesLabel(lead: LeadOut): string {
@@ -151,20 +145,36 @@ function LeadsTable({
 }
 
 const KANBAN_COLUMNS: { status: LeadStatus; label: string }[] = [
-  { status: "open", label: "Open" },
+  { status: "open", label: "Open Leads" },
   { status: "contacted", label: "Contacted" },
-  { status: "booked", label: "Booked" },
-  { status: "closed", label: "Closed" },
+  // Underlying status stays "booked" (see CLAUDE.md/lead-detail-panel.tsx --
+  // no enum/DB rename, this is a display-only relabel) so nothing else that
+  // filters/reads status="booked" needs to change.
+  { status: "booked", label: "Hot Lead" },
+  { status: "closed", label: "Closed Leads" },
 ];
+
+// A lead is ready to promote to Hot Lead once it has real dates and at
+// least one discussed property -- the same three fields CloseLeadDialog
+// later needs to create the calendar block. There's no separate "guest
+// verbally confirmed" signal captured today (only lead_temperature, which
+// is the agent's own qualification judgment, not a yes/no on booking) --
+// see CLAUDE.md-adjacent discussion; host reads conversation_summary to
+// judge that themselves before clicking.
+function isReadyForHotLead(lead: LeadOut): boolean {
+  return Boolean(lead.check_in && lead.check_out && lead.properties_discussed.length > 0);
+}
 
 function LeadCard({
   lead,
   onClick,
   onDragStart,
+  onMarkHot,
 }: {
   lead: LeadOut;
   onClick: () => void;
   onDragStart: (e: React.DragEvent) => void;
+  onMarkHot?: (lead: LeadOut) => void;
 }) {
   const closed = lead.status === "closed";
   return (
@@ -195,6 +205,19 @@ function LeadCard({
           )}
           <span className="whitespace-nowrap text-[11px] text-muted-foreground">{leadReceivedLabel(lead)}</span>
         </div>
+        {onMarkHot && isReadyForHotLead(lead) && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full"
+            onClick={(e) => {
+              e.stopPropagation();
+              onMarkHot(lead);
+            }}
+          >
+            Mark as Hot Lead
+          </Button>
+        )}
       </CardContent>
     </Card>
   );
@@ -204,10 +227,12 @@ function LeadsKanban({
   leads,
   onCardClick,
   onDropStatus,
+  onMarkHot,
 }: {
   leads: LeadOut[];
   onCardClick: (lead: LeadOut) => void;
   onDropStatus: (leadId: string, status: LeadStatus) => void;
+  onMarkHot: (lead: LeadOut) => void;
 }) {
   const [dragOverColumn, setDragOverColumn] = useState<LeadStatus | null>(null);
 
@@ -258,6 +283,7 @@ function LeadsKanban({
                   e.dataTransfer.setData("text/plain", lead.id);
                   e.dataTransfer.effectAllowed = "move";
                 }}
+                onMarkHot={column.status === "open" ? onMarkHot : undefined}
               />
             ))}
             {leadsForColumn(column.status).length === 0 && (
@@ -333,6 +359,7 @@ function BookingRequestsTabContent() {
   const [editing, setEditing] = useState<LeadOut | null>(null);
   const [view, setView] = useState<"table" | "board">("board");
   const [search, setSearch] = useState("");
+  const [closingLead, setClosingLead] = useState<LeadOut | null>(null);
 
   const testFilteredLeads = (leads ?? []).filter(
     (lead) => includeTestCalls || !isBrowserTestIdentity(lead.phone)
@@ -375,6 +402,15 @@ function BookingRequestsTabContent() {
   async function handleStatusDrop(leadId: string, newStatus: LeadStatus) {
     const lead = leads?.find((l) => l.id === leadId);
     if (!lead || lead.status === newStatus) return;
+
+    // Closing (drag onto "Closed Leads") is gated behind CloseLeadDialog's
+    // confirmation popup -- it also creates the calendar block -- so it
+    // never goes through the optimistic PATCH below. See CloseLeadDialog.
+    if (newStatus === "closed") {
+      setClosingLead(lead);
+      return;
+    }
+
     const previousStatus = lead.status;
 
     // Optimistic update: move the card immediately instead of waiting on
@@ -393,6 +429,16 @@ function BookingRequestsTabContent() {
         current?.map((l) => (l.id === leadId ? { ...l, status: previousStatus } : l)) ?? current
       );
       toast.error(err instanceof ApiError ? err.message : "Failed to update lead status");
+    }
+  }
+
+  async function handleMarkHot(lead: LeadOut) {
+    try {
+      await api.leads.update(lead.id, { status: "booked" });
+      toast.success("Marked as Hot Lead");
+      refetch();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Failed to update lead");
     }
   }
 
@@ -461,7 +507,12 @@ function BookingRequestsTabContent() {
         ) : searchFilteredLeads.length === 0 ? (
           <p className="text-sm text-muted-foreground">No leads match your search.</p>
         ) : (
-          <LeadsKanban leads={searchFilteredLeads} onCardClick={setEditing} onDropStatus={handleStatusDrop} />
+          <LeadsKanban
+            leads={searchFilteredLeads}
+            onCardClick={setEditing}
+            onDropStatus={handleStatusDrop}
+            onMarkHot={handleMarkHot}
+          />
         )
       ) : statusFilteredLeads.length === 0 ? (
         <p className="text-sm text-muted-foreground">
@@ -497,6 +548,15 @@ function BookingRequestsTabContent() {
         lead={editing}
         onOpenChange={(open) => !open && setEditing(null)}
         onSaved={refetch}
+      />
+
+      <CloseLeadDialog
+        lead={closingLead}
+        onOpenChange={(open) => !open && setClosingLead(null)}
+        onConfirmed={() => {
+          setClosingLead(null);
+          refetch();
+        }}
       />
     </div>
   );

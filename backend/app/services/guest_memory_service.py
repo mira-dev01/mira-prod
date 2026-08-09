@@ -25,6 +25,22 @@ from app.models.guest_profile import GuestProfile
 MAX_CONVERSATION_SUMMARIES = 20
 
 
+def set_last_property(guest: GuestProfile, property_id: uuid.UUID | None) -> None:
+    """The one piece of GuestProfile.last_property_id's write contract that
+    has a second caller: RecoveryService (app/services/recovery_service.py)
+    needs to set it too, for a busy-rejected call that never reaches
+    update_guest_memory_from_call below (no CallSession/Lead is ever created
+    for a rejected call) -- see that module's own comment on why. Kept as a
+    real function here (not inlined at both call sites) so GuestProfile.
+    last_property_id has exactly one place its write rule ("only overwrite
+    when a real property is known") lives, cleanup-pass fix for what was
+    previously a direct `guest.last_property_id = property_.id` in
+    recovery_service.py, duplicating knowledge of this field outside its
+    owning module."""
+    if property_id is not None:
+        guest.last_property_id = property_id
+
+
 async def update_guest_memory_from_call(
     db: AsyncSession,
     call_session_id: uuid.UUID | None,
@@ -74,8 +90,7 @@ async def update_guest_memory_from_call(
 
     guest.total_stays = (guest.total_stays or 0) + 1
     guest.last_call_at = lead.updated_at
-    if property_id is not None:
-        guest.last_property_id = property_id
+    set_last_property(guest, property_id)
 
     if lead.conversation_summary:
         entry = {
