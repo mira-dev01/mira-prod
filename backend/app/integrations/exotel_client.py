@@ -7,19 +7,16 @@ code: optional SMS fallback and webhook-token verification for Exotel's
 call-status callbacks (also reused to verify the voice websocket's token).
 """
 
-import hmac
-
 import httpx
 
 from app.config import settings
+from app.utils.webhook_auth import verify_shared_secret_token
 
 
 def verify_webhook_token(token: str | None) -> bool:
     """Exotel does not HMAC-sign callbacks, so we require a shared secret
     token configured as a query param on the callback URL itself."""
-    if not token:
-        return False
-    return hmac.compare_digest(token, settings.exotel_webhook_token)
+    return verify_shared_secret_token(token, settings.exotel_webhook_token)
 
 
 async def send_sms(to: str, body: str) -> dict:

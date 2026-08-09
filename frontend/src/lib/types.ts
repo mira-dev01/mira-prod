@@ -421,6 +421,27 @@ export type AnalyticsTimeseries = {
   points: AnalyticsTimeseriesPoint[];
 };
 
+export type RecoveryFunnelStage = {
+  stage: "busy_calls" | "recovered" | "converted";
+  label: string;
+  value: number;
+};
+
+export type RecoveryAnalytics = {
+  window_days: number;
+  start_date: string | null;
+  end_date: string | null;
+  busy_calls: number;
+  recovered: number;
+  converted: number;
+  lost: number;
+  avg_recovery_time_seconds: number | null;
+  avg_host_response_seconds: number | null;
+  recovery_rate: number | null;
+  conversion_rate: number | null;
+  funnel: RecoveryFunnelStage[];
+};
+
 export type LeadOut = {
   id: string;
   user_id: string;
@@ -439,6 +460,17 @@ export type LeadOut = {
   support_requests: string[];
   lead_temperature: string | null;
   lead_source: string;
+  // How the guest reached Mira (phone_call today; a future WhatsApp-inbound
+  // or web-widget lead would use a different value here).
+  entry_channel: string;
+  // Why this lead needed system-driven recovery instead of coming from a
+  // normal completed conversation -- null for the common case. See
+  // backend/app/models/lead.py's own comment for the full lead_source/
+  // entry_channel/recovery_reason split (deliberately not a Lead.status
+  // value). "BUSY_CALL" | "AFTER_HOURS" | "HOST_CALLBACK" | "GUEST_CALLBACK"
+  // when set, kept as `string` here (not a union) to match how this file
+  // already treats every other enum-like Lead field (status, lead_temperature).
+  recovery_reason: string | null;
   conversation_summary: string | null;
   next_follow_up: string | null;
   escalated: boolean;

@@ -21,6 +21,7 @@ import { ServiceRequestsTable } from "@/components/service-requests-table";
 import { useAsync } from "@/hooks/use-async";
 import { useDateRange } from "@/hooks/use-date-range";
 import { api, ApiError } from "@/lib/api";
+import { leadGuestLabel, leadPhoneLabel } from "@/lib/leads";
 import { cn, isBrowserTestIdentity, matchesSearch } from "@/lib/utils";
 import type { LeadOut, LeadStatus } from "@/lib/types";
 
@@ -61,14 +62,6 @@ function isEmptyLead(lead: LeadOut): boolean {
     lead.purpose_of_stay || lead.conversation_summary || lead.occasion || lead.properties_discussed.length > 0
   );
   return !hasIdentity && !hasContent;
-}
-
-function leadGuestLabel(lead: LeadOut): string {
-  return isBrowserTestIdentity(lead.phone) ? "Browser test" : lead.guest_name ?? "Unknown guest";
-}
-
-function leadPhoneLabel(lead: LeadOut): string {
-  return isBrowserTestIdentity(lead.phone) ? "Browser test" : lead.phone ?? "No phone";
 }
 
 function leadDatesLabel(lead: LeadOut): string {

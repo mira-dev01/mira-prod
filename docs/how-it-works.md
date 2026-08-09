@@ -151,7 +151,7 @@ Built **once**, before the pipeline exists, and never rebuilt mid-call — this 
 
 | Pure business logic (no LLM involved) | Pure prompt engineering (no code logic) | Hybrid (both, deliberately) |
 |---|---|---|
-| `pricing_engine.py` (price/negotiation math); `calendar_service.py` (availability, iCal sync); `lead_service.py` (upsert/backfill/dedup); `notification_service.py`; `property/retrieval/{filter_builder,sql_search,ranking}.py`; all seven pipeline guards; `ConversationState`'s own goal-derivation logic | `GOLDEN_RULES` tone/formatting/warmth clauses; lead-qualification workflow ordering (prompt prose, not enforced by code except the property-lock exception); scope/decline heuristics ("is this caller relevant") | `system_prompt.py`'s `_today_anchor()` (dates computed in code, spoken by the model); `property_recommendation_guard.py` (business logic verifies what the LLM says against real tool output); `call_classification_service.py` / `call_summary_service.py` (one-shot LLM calls, but their output structurally overrides live tool-call judgments) |
+| `pricing_engine.py` (price/negotiation math); `calendar_service.py` (availability, iCal sync); `lead_service.py` (upsert/backfill/dedup); `notification_service.py`; `property/retrieval/{filter_builder,sql_search,ranking}.py`; all pipeline guards (9 as of 2026-08-09, see `docs/agents.md`'s Pipeline stages); `ConversationState`'s own goal-derivation logic | `GOLDEN_RULES` tone/formatting/warmth clauses; lead-qualification workflow ordering (prompt prose, not enforced by code except the property-lock exception); scope/decline heuristics ("is this caller relevant") | `system_prompt.py`'s `_today_anchor()` (dates computed in code, spoken by the model); `property_recommendation_guard.py` (business logic verifies what the LLM says against real tool output); `call_classification_service.py` / `call_summary_service.py` (one-shot LLM calls, but their output structurally overrides live tool-call judgments) |
 
 ---
 
@@ -263,11 +263,11 @@ Host sees: dashboard Live Requests (Notification rows) + WhatsApp (if opted into
 
 | | Examples |
 |---|---|
-| **Deterministic** | Pricing math (`pricing_engine.py`), date anchoring (`_today_anchor`), availability (`calendar_service.py`), property filtering/ranking (`retrieval/`), which tool result gets spoken verbatim vs. overridden (all 7 guards), turn-end timing (`turn_strategies.py`), silence/hangup timers, `conversation_goal`/`closing_state` derivation, ₹0-price refusal, phone-digit-count sanity check |
+| **Deterministic** | Pricing math (`pricing_engine.py`), date anchoring (`_today_anchor`), availability (`calendar_service.py`), property filtering/ranking (`retrieval/`), which tool result gets spoken verbatim vs. overridden (all pipeline guards, see `docs/agents.md`), turn-end timing (`turn_strategies.py`), silence/hangup timers, `conversation_goal`/`closing_state` derivation, ₹0-price refusal, phone-digit-count sanity check |
 | **LLM-driven** | Which tool to call and when, how to phrase everything spoken, scope/decline judgment ("is this caller relevant"), language mirroring (passive detection is code — `LanguageSyncProcessor` — but the *reply*-language choice is the model's), extracting structured slot values out of free-form guest speech before calling a tool, lead-temperature judgment |
 | **One-shot LLM, post-call only** | `call_classification_service.classify_call`, `call_summary_service.summarize_call` — not built on the streaming pipeline at all, same Groq→Anthropic→OpenRouter fallback, run once after the guest has already hung up, over the full transcript |
 
-The dominant design pattern across this whole codebase: **the LLM decides intent and phrasing; code decides and verifies fact.** Every one of the seven pipeline guards exists specifically because a "trust the prompt" version of that fact-check failed on a real call — this is the single most load-bearing architectural principle to preserve in any future change (see Refactoring Plan's guardrails).
+The dominant design pattern across this whole codebase: **the LLM decides intent and phrasing; code decides and verifies fact.** Every one of the pipeline guards exists specifically because a "trust the prompt" version of that fact-check failed on a real call — this is the single most load-bearing architectural principle to preserve in any future change (see Refactoring Plan's guardrails).
 
 ---
 

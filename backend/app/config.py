@@ -121,14 +121,26 @@ class Settings(BaseSettings):
     # both no-op/fall back cleanly (same pattern as bright_data_api_key).
     searchapi_api_key: str | None = None
 
-    # Optional TTL cache for SearchApi responses (app/integrations/
-    # redis_client.py), keyed off the same small free-tier allowance as
-    # searchapi_api_key above -- repeat pricing questions for the same
-    # property/dates within the TTL window are served from cache instead of
-    # spending another request. Unset = every call hits SearchApi live,
-    # same as before this existed; never blocks or errors a pricing quote
-    # on Redis being unreachable, same "don't crash, don't block" pattern
-    # as everything else optional in this file.
+    # TWO independent uses, deliberately not merged (see app/integrations/
+    # redis_client.py's own module docstring for why):
+    #   1. Optional TTL cache for SearchApi responses (redis_client.py),
+    #      keyed off the same small free-tier allowance as searchapi_api_key
+    #      above. Unset = every call hits SearchApi live; never blocks or
+    #      errors a pricing quote on Redis being unreachable -- same
+    #      "don't crash, don't block" pattern as everything else optional
+    #      in this file.
+    #   2. CallCoordinator's active-call ownership/lease mechanism (see
+    #      app/services/call_coordinator.py, app/integrations/
+    #      redis_lease_client.py) -- Redis is the SOLE source of truth for
+    #      "is this host/property already on a live call?" as of the Redis
+    #      migration; Postgres no longer participates. Unlike use 1, an
+    #      unreachable Redis here is NOT a silent no-op: acquire_or_reject
+    #      logs it loudly (lease_redis_unavailable) as a degraded-protection
+    #      signal and fails OPEN (the call still proceeds -- a live guest
+    #      call must never be rejected solely because Redis is down), while
+    #      renew/release always fail open silently (never allowed to
+    #      terminate/endanger an in-progress call). See call_coordinator.py's
+    #      own module docstring for the full failure-policy reasoning.
     redis_url: str | None = None
 
     # Twilio WhatsApp Sandbox (https://www.twilio.com/docs/whatsapp/sandbox)
@@ -153,6 +165,22 @@ class Settings(BaseSettings):
     # card). Unset = escalate_to_host falls back to a plain-text message
     # with the bare URL.
     twilio_escalation_template_sid: str | None = None
+
+    # ContentSid of the "mira_busy_recovery" twilio/text template (see
+    # scripts/create_busy_recovery_template.py) -- the numbered-menu message
+    # RecoveryService sends a guest whose call was rejected as BUSY_RECOVERY
+    # (see app/services/recovery_service.py, app/services/call_coordinator.py).
+    # Unset = falls back to an equivalent plain-text message built inline,
+    # same fallback discipline as twilio_escalation_template_sid above.
+    twilio_busy_recovery_template_sid: str | None = None
+
+    # Shared-secret path token for the inbound WhatsApp webhook (see
+    # app/api/v1/webhooks/whatsapp.py, app/services/whatsapp_reply_service.py)
+    # -- same "path segment, not Twilio's own HMAC scheme" convention as
+    # twilio_voice_webhook_token/exotel_webhook_token above. Configured as
+    # this account's WhatsApp sandbox "WHEN A MESSAGE COMES IN" webhook URL
+    # in the Twilio console.
+    twilio_whatsapp_webhook_token: str = "change-me"
 
     # Twilio Voice -- an entirely separate integration from the WhatsApp
     # sandbox above and from Exotel telephony (app/api/v1/voice.py's

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { ArrowRight } from "lucide-react";
@@ -10,17 +10,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ListRow, ListRowFooter, ListRowHeader } from "@/components/ui/list-row";
 import { StatusChip } from "@/components/status-chip";
 import { leadUrgencyTone } from "@/components/lead-detail-panel";
-import { API_BASE_URL, ApiError, api, getToken } from "@/lib/api";
-import { isBrowserTestIdentity } from "@/lib/utils";
-import type { LeadOut, NotificationOut } from "@/lib/types";
-
-function leadGuestLabel(lead: LeadOut): string {
-  return isBrowserTestIdentity(lead.phone) ? "Browser test" : lead.guest_name ?? "Unknown guest";
-}
-
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-}
+import { useNotificationStream } from "@/hooks/use-notification-stream";
+import { ApiError, api } from "@/lib/api";
+import { formatLeadTimestamp, leadGuestLabel } from "@/lib/leads";
+import type { LeadOut } from "@/lib/types";
 
 /**
  * Overview's "Live requests" card -- previously its own NotificationsFeed
@@ -43,7 +36,6 @@ export function LiveRequestsCard({
   onCardClick: (lead: LeadOut) => void;
   limit?: number;
 }) {
-  const seenNotificationIds = useRef(new Set<string>());
   const [handlingIds, setHandlingIds] = useState<Set<string>>(new Set());
 
   async function markHandled(lead: LeadOut) {
@@ -61,51 +53,13 @@ export function LiveRequestsCard({
     }
   }
 
-  useEffect(() => {
-    const controller = new AbortController();
-    const token = getToken();
-
-    async function streamNotifications() {
-      try {
-        const res = await fetch(`${API_BASE_URL}/notifications/stream`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-          signal: controller.signal,
-        });
-        if (!res.body) return;
-
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-
-          const events = buffer.split("\n\n");
-          buffer = events.pop() ?? "";
-
-          for (const event of events) {
-            const line = event.split("\n").find((l) => l.startsWith("data: "));
-            if (!line) continue;
-            const notification = JSON.parse(line.slice("data: ".length)) as NotificationOut;
-            if (seenNotificationIds.current.has(notification.id)) continue;
-            seenNotificationIds.current.add(notification.id);
-            // A new escalation notification means the Lead it's tied to
-            // just changed (created or updated) -- refetch leads so this
-            // card and the count stay live, same as the old feed did.
-            onRefetch();
-          }
-        }
-      } catch {
-        // connection closed (navigation, unmount, or backend restart) — nothing to do
-      }
-    }
-
-    streamNotifications();
-    return () => controller.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- onRefetch is a stable useAsync refetch callback, re-subscribing on every render would tear down and rebuild the stream needlessly
-  }, []);
+  // Shared connection (hooks/use-notification-stream.ts) -- every dashboard
+  // consumer of the notification stream (this card, OpportunitiesCard, the
+  // Opportunities page) subscribes to the same underlying fetch() rather
+  // than each opening its own. A new escalation notification means the Lead
+  // it's tied to just changed (created or updated) -- refetch leads so this
+  // card and the count stay live, same as the old feed did.
+  useNotificationStream(() => onRefetch());
 
   const escalatedLeads = leads
     .filter((lead) => lead.status === "open" && (lead.escalated || lead.urgency))
@@ -120,7 +74,7 @@ export function LiveRequestsCard({
       </CardHeader>
       <CardContent className="flex-1 space-y-3">
         {escalatedLeads.length === 0 && (
-          <p className="text-sm text-muted-foreground">Nothing pending — you're all caught up.</p>
+          <p className="text-sm text-muted-foreground">Nothing pending — you&rsquo;re all caught up.</p>
         )}
         {visibleLeads.map((lead) => (
           <ListRow key={lead.id} variant="boxed" interactive onClick={() => onCardClick(lead)}>
@@ -145,7 +99,7 @@ export function LiveRequestsCard({
                   {lead.properties_discussed[0] ?? leadGuestLabel(lead)}
                 </span>
               </div>
-              <span className="whitespace-nowrap text-xs text-muted-foreground">{formatTime(lead.updated_at)}</span>
+              <span className="whitespace-nowrap text-xs text-muted-foreground">{formatLeadTimestamp(lead.updated_at)}</span>
             </ListRowHeader>
             <p className="text-sm leading-relaxed">
               {lead.conversation_summary ?? `${leadGuestLabel(lead)} needs follow-up.`}

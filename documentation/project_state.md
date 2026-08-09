@@ -1,10 +1,59 @@
 # Project State
 
-Living snapshot for session continuity — not a chronological log. See `CLAUDE.md` and `docs/` for stable reference material.
+Living snapshot for session continuity — not a chronological log. See `CLAUDE.md` and `docs/` for stable reference material. The section immediately below (**Status summary**) is the current authoritative snapshot, verified directly against source on 2026-08-09 (a documentation-only architecture sync pass — no application code was changed to produce it). Everything under "Recent fixes" further down is the historical, reverse-chronological log this summary was derived from — preserved, not superseded.
 
 ## Active branch
 
-`main` (`shagun` merged in; both branches exist, `main` is current HEAD as of 2026-07-27)
+`abhaya` (current working branch as of 2026-08-09). `main` is current HEAD of the merged history; see git log for the latest merged commit.
+
+## Status summary (2026-08-09)
+
+See [current_architecture.md](current_architecture.md) for the full technical picture behind every line below.
+
+### Currently implemented
+
+- **Voice pipeline core** (Exotel + Twilio Voice + 2 browser-test entry points, one shared `_run_pipeline`) — STT/LLM/tools/TTS, full guard chain, streaming response output (not buffered — see below). Committed on `main`.
+- **Conversation architecture**: `ConversationState` (facts/slots/goal), `ConversationStyle` (hysteresis-smoothed language/tone via `StyleEngine`), `ConversationQuality` (observational validator output) — three separate types, committed on `main`. `StyleComplianceMonitor` (streaming, no LLM regeneration) replaced the old buffering `ResponseComplianceProcessor`, also committed.
+- **Streaming response architecture**: every guard from `RepetitionGuardProcessor` through `ResponseShapeValidatorProcessor` forwards `LLMTextFrame`s immediately as they stream from the LLM, rather than buffering a full response before deciding whether to forward it. This is real and committed, not aspirational.
+- **Response validation without hidden regeneration**: every corrective mechanism (7 guards + `StyleComplianceMonitor`) either deterministically rewrites/truncates already-generated text, or nudges the *next* turn's prompt — nothing calls the LLM a second time mid-turn to "fix" a response.
+- **Conversational flexibility / ambiguous-date handling / multi-property recommendations**: implemented — refinement turns ("something cheaper", "closer to Candolim"), relative budget/guest-count resolution, amenity accumulation across turns, match-reason/comparison-note explanations, recommendation diversity rotation, availability pre-filtering. See the 2026-08-05 entries below for the detailed build history.
+- **Language/Hinglish adaptation**: implemented at two layers — `LanguageSyncProcessor` (live TTS voice switch, per-utterance) and the newer `ConversationStyle`/`StyleEngine` (hysteresis-smoothed, multi-turn language-family commitment surfaced into the prompt). Explicit guest-stated language preference (`update_lead(preferred_language=...)`) and host-level policy (`User.agent_language_policy`) both wired.
+- **`CallCoordinator`**: Redis-backed lease/concurrency authority, fully implemented — `acquire_or_reject`/`renew`/`release`/`transfer`, atomic Lua scripts, fail-open-with-loud-logging on Redis outage. Wired into both `run_voice_pipeline` (Exotel) and `run_voice_pipeline_twilio`, including the periodic lease-renewal background task (a previously-shipped-but-uncalled gap, now fixed and called). **Uncommitted** — see below.
+- **Redis-based call leasing**: complete, not partial. `CallLease` (Postgres) is fully superseded — staged for removal, confirmed nothing writes to it anymore. **Uncommitted.**
+- **Busy Call Recovery**: fully implemented end-to-end — `RecoveryService`, guest+host WhatsApp (template + plain-text fallback), inbound WhatsApp reply routing (`whatsapp_reply_service.py`) with a 72h/reusable-status-guarded lead-resolution window, Recovery Analytics (`GET /analytics/recovery`). **Uncommitted.**
+- **Lead preservation**: three independent, verified mechanisms — in-call `update_lead`/`escalate_to_host`, the `ensure_lead_for_engagement` system-level safety net (fires on `get_pricing`/`negotiate_rate`/`check_calendar` regardless of whether the LLM calls `update_lead`), and Busy Call Recovery's own lead creation for calls that never reach the LLM at all.
+- **WhatsApp recovery / conversation continuation**: implemented — the guest-facing recovery menu (Property/Pricing/FAQs/Photos/Talk-to-host/Something-else), defined once (`whatsapp_reply_service._MENU_OPTIONS`) and shared by both the outbound send and inbound parser so they can't drift apart.
+- **Dashboard opportunities/recovery UI**: `frontend/src/app/dashboard/opportunities/page.tsx` + `opportunities-card.tsx`/`opportunity-list.tsx`/`recovery-analytics-card.tsx`, real-time via `use-notification-stream.ts`. **Uncommitted**, alongside the backend it reads from.
+- **Host notifications**: `Notification` model extended with `lead_id` (indexed) + `responded_at`, new channels `busy_recovery`/`busy_recovery_reply` alongside existing `whatsapp`/`escalation`/`system`. **Uncommitted** (model/service changes only — the `whatsapp`/`escalation`/`system` channels themselves are pre-existing and committed).
+
+### In progress / uncommitted (implemented and tested, not yet merged to `main`)
+
+Per `git status`/`git diff --stat HEAD` on 2026-08-09, the entire Redis-lease/Busy-Call-Recovery/WhatsApp-reply subsystem is real, working code in the local working tree but has not been committed: `app/models/call_lease.py`, `app/services/call_coordinator.py`, `app/services/recovery_service.py`, `app/services/whatsapp_reply_service.py`, `app/api/v1/webhooks/whatsapp.py`, `app/utils/webhook_auth.py`, associated Alembic migrations (`356d5c923c77`, `3fae82f7b3d0`, `6384600c83f2`, `7a236ad1ffd1`), the frontend opportunities pages/components, and matching test files. `docs/agents.md`/`docs/database.md`/`docs/api.md` already describe this subsystem as current (they were written/updated alongside the code) — treat them as accurate regardless of commit status, but be aware a fresh `git clone` of `main` alone would not yet include any of it.
+
+By contrast, `ConversationStyle`/`ConversationQuality`/`StyleComplianceMonitor`/the streaming response-output rewrite **are already committed** on `main` (see commits `5a8e1bc`, `1b2b36f`, and later) — only the Redis-lease/recovery/WhatsApp-reply work above is uncommitted.
+
+### Known limitations
+
+- `CallLease` (Postgres table/model/migration) still physically exists in the schema, staged for removal — a future session could mistakenly assume it's active without reading `call_coordinator.py`'s own docstring first.
+- Twilio WhatsApp is Sandbox-only (not a Meta-approved WhatsApp Business number) — 24h customer-service-window constraint applies to both Busy Call Recovery sends and ordinary `send_whatsapp`/`send_photos`/escalation sends.
+- No `tiktoken`-exact token counts anywhere in this codebase's own measurements — all prompt-size figures in this file and `agent-conversation-improvement.md` are `chars/4` approximations, consistently flagged as such where they appear.
+- No real/browser voice call has been placed against several of the conversation-architecture phases in this environment (Clerk-only auth + WebRTC not scriptable here) — verification for those relies on direct construction-path runs against real DB data plus `pytest`, not an actual audio call. See `agent-conversation-improvement.md`'s per-phase sign-offs for exactly which.
+- `search_faq`'s `UnansweredQuestion` gap-logging under-reports for any property with a known `property_id`, since `full_property_context()` always returns *something* as a last resort (documented pre-existing tradeoff, not revisited).
+
+### Known risks
+
+- The entire Redis-lease/Recovery/WhatsApp-reply subsystem being uncommitted means it exists only in this working tree — not backed up via git history, not on any other branch, not deployed. A lost/reset working tree would lose real, tested, working code with no recovery path other than this session's own history.
+- `CallLease`'s staged-removal state depends on human follow-through ("drop it in a later cleanup phase") — if that phase never happens, the dead table/model persists indefinitely as a documentation/maintenance hazard (low severity, not urgent).
+- Redis is a single point of failure for busy-call protection specifically (not for the live call itself, which fails open) — if Redis is down for an extended period, double-booking protection is silently degraded for that entire window, discoverable only via log-based alerting on `lease_redis_unavailable`, not any dashboard signal today.
+
+### Next priorities
+
+- Commit the Redis-lease/Busy-Call-Recovery/WhatsApp-reply working tree (currently the single largest gap between what's real and what's on `main`).
+- Decide and execute the `CallLease` Postgres table drop, once the Redis-backed path has run in production long enough to trust (per its own staging docstring).
+- A real live/browser voice call to close out the outstanding verification gaps flagged throughout `agent-conversation-improvement.md`.
+- Re-run a fresh transcript-based catalogue audit (Phase 7.1-equivalent) now that the conversation-style/quality/streaming rewrite has shipped, to confirm the original catalogue items (C1-C6, H1-H2) still stay fixed under the new architecture.
+
+---
 
 ## Recent fixes
 
