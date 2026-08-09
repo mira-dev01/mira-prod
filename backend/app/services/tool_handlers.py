@@ -656,6 +656,7 @@ async def handle_recommend_properties(
     check_in: date | None = None,
     check_out: date | None = None,
     call_session_id: uuid.UUID | None = None,
+    amenity_weights: dict[str, float] | None = None,
 ) -> RecommendationResult:
     """Thin delegate to app/services/property/retrieval/orchestrator.py --
     the actual filter -> SQL search -> (conditionally) semantic search ->
@@ -667,9 +668,17 @@ async def handle_recommend_properties(
     RecommendPropertiesArgs itself -- see orchestrator.recommend_properties's
     own docstring. call_session_id (Phase 2.5) seeds the leading-candidate
     diversity rotation so the SAME call stays internally consistent while
-    DIFFERENT calls see genuine variety."""
+    DIFFERENT calls see genuine variety. amenity_weights (attention/salience
+    tracking, ConversationState.attention) is optional, same pass-through
+    shape as check_in/check_out -- see orchestrator.recommend_properties."""
     return await property_retrieval_orchestrator.recommend_properties(
-        db, args, host_user_id, check_in=check_in, check_out=check_out, call_session_id=call_session_id
+        db,
+        args,
+        host_user_id,
+        check_in=check_in,
+        check_out=check_out,
+        call_session_id=call_session_id,
+        amenity_weights=amenity_weights,
     )
 
 

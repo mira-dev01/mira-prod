@@ -140,14 +140,26 @@ _SLOT_LABELS: dict[str, str] = {
 }
 
 
-def _format_slots(slots: dict) -> str:
+def _format_slots(state: ConversationState) -> str:
+    """Orders known slots by attention score (most emphasized/most recently
+    restated first), not _SLOT_LABELS' fixed dict order -- a guest who's
+    corrected their budget twice cares more about it being respected than
+    one set once early on and never revisited, even though both are equally
+    "known." A slot restated (genuinely changed, not backfilled -- see
+    ConversationState.set_slot) 2+ times also gets an explicit annotation,
+    since the LLM shouldn't have to infer emphasis from message order alone."""
+    known = [(key, label) for key, label in _SLOT_LABELS.items() if key in state.slots and state.slots[key] is not None]
+    known.sort(key=lambda kl: state.attention_score(f"slot:{kl[0]}"), reverse=True)
     parts = []
-    for key, label in _SLOT_LABELS.items():
-        if key in slots and slots[key] is not None:
-            value = slots[key]
-            if key == "budget":
-                value = f"~₹{value:,.0f}"
-            parts.append(f"{label}: {value}")
+    for key, label in known:
+        value = state.slots[key]
+        if key == "budget":
+            value = f"~₹{value:,.0f}"
+        text = f"{label}: {value}"
+        salience = state.attention.get(f"slot:{key}")
+        if salience is not None and salience.count >= 2:
+            text += f" (guest has restated this {salience.count}x -- weigh it heavily)"
+        parts.append(text)
     return ", ".join(parts)
 
 
@@ -191,7 +203,7 @@ def build_state_block_content(state: ConversationState, quality: "ConversationQu
     than injecting an empty or placeholder block. quality is optional and
     read ONLY for the one narrow pending_style_correction bridge -- see
     _language_hint's own docstring."""
-    slot_summary = _format_slots(state.slots)
+    slot_summary = _format_slots(state)
     goal_hint = _closing_hint(state) or _GOAL_HINTS.get(state.conversation_goal, "")
     language_hint = _language_hint(state, quality)
 

@@ -58,6 +58,7 @@ from app.schemas.tool import (
     UpdateLeadArgs,
 )
 from app.services import tool_handlers
+from app.services.amenity_taxonomy import canonicalize_amenities, canonicalize_amenity
 from app.services.property.pitch_formatter import render_recommendation_text
 from app.voice.conversation_state import ConversationState
 from app.voice.property_recommendation_guard import PropertyRecommendationGuardProcessor
@@ -536,6 +537,19 @@ def build_voice_tools(
         # model DID pass this call.
         previously_required = state.slots.get("required_amenities") or []
         effective_amenities = sorted(set(previously_required) | set(required_amenities or [])) or None
+        # Attention/salience: only touch for amenities actually present in
+        # THIS call's raw `required_amenities` arg, never the full
+        # accumulated `effective_amenities` list above -- effective_amenities
+        # re-includes everything ever mentioned on every single call
+        # (that's the whole point of accumulation), so touching attention
+        # off it would count every earlier amenity as "mentioned again" on
+        # every subsequent, unrelated recommend_properties call. The raw arg
+        # is only non-empty when the model is actually relaying something
+        # the guest just said. Canonicalized so "pool"/"private pool"/
+        # "swimming pool" all accumulate onto the same attention entry
+        # rather than three separate, individually-weaker ones.
+        for amenity in required_amenities or []:
+            state.touch_attention(f"amenity:{canonicalize_amenity(amenity)}")
         # Relative refinement ("something cheaper"/"larger"): resolved from
         # ConversationState.recommendations_shown (Phase 4's own already-
         # stored price/capacity data), never an LLM-invented number. Only
@@ -570,6 +584,19 @@ def build_voice_tools(
         # behavior), never raise.
         recommend_check_in = _parse_iso_date(state.slots.get("check_in"))
         recommend_check_out = _parse_iso_date(state.slots.get("check_out"))
+        # Attention/salience -> ranking: an amenity the guest has emphasized
+        # (mentioned repeatedly and/or recently) outweighs one only ever
+        # said once, when apply_amenity_boost (filter_builder.py) ranks
+        # candidates. Built fresh every call from effective_amenities (the
+        # full accumulated set), not just this call's raw arg -- an amenity
+        # mentioned three turns ago should still outrank one just mentioned
+        # for the first time this turn, exactly what attention_score's
+        # recency decay already expresses; no separate logic needed here.
+        amenity_weights = (
+            {a: 1.0 + state.attention_score(f"amenity:{a}") for a in canonicalize_amenities(effective_amenities)}
+            if effective_amenities
+            else None
+        )
         async with AsyncSessionLocal() as db:
             args = RecommendPropertiesArgs(
                 budget=effective_budget,
@@ -589,6 +616,7 @@ def build_voice_tools(
                 check_in=recommend_check_in,
                 check_out=recommend_check_out,
                 call_session_id=call_session_id,
+                amenity_weights=amenity_weights,
             )
         rendered_result = render_recommendation_text(structured_result)
         if property_recommendation_guard is not None:

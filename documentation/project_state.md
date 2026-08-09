@@ -57,6 +57,80 @@ By contrast, `ConversationStyle`/`ConversationQuality`/`StyleComplianceMonitor`/
 
 ## Recent fixes
 
+**2026-08-10 — Conversation attention/salience tracking: repetition + recency weighting, feeding both
+the LLM-facing state summary and amenity ranking. Deliberately narrower than "attention mechanism" as
+an ML term implies -- no neural attention layer, no LLM-based emphasis classification; purely
+deterministic, derived from tool-call activity, same discipline every other `ConversationState` field
+already follows (confirmed via explicit AskUserQuestion scoping before writing any code: repetition +
+recency only, no emphasis-word/sentiment text classification).**
+- **`Salience` + `ConversationState.attention: dict[str, Salience]`** (`app/voice/conversation_state.py`)
+  -- a small, generic primitive (count + last_turn per string key, half-life-decayed score), not
+  amenity- or slot-specific. `touch_attention(key)`/`attention_score(key)`/`advance_turn()` are the
+  only entry points; `attention` itself is never mutated directly. Half-life defaults to 6 turns,
+  reusing `conversation_style.py`'s own `DEFAULT_ROLLING_WINDOW` constant for consistency rather than
+  inventing a second arbitrary number.
+- **Turn counter**: `ConversationState.turn_index`, advanced from `ConversationStyleProcessor`
+  (`app/voice/conversation_style.py`) on every real guest `TranscriptionFrame` -- reuses that
+  processor's own existing "one real utterance = one turn" firing point (already used for its own
+  local hysteresis counter) rather than adding a new pipeline stage just to increment one shared
+  counter.
+- **`set_slot` auto-touches attention, but only on a genuine value CHANGE, not every call.** A real bug
+  caught before it shipped: `recommend_properties`'s wrapper (`app/voice/tools.py`) calls
+  `set_slot("num_guests", effective_num_guests)` on *every* call, including calls where
+  `effective_num_guests` was silently backfilled from `state.slots` itself because the model omitted
+  the field -- that's bookkeeping, not the guest restating anything, and would have inflated the
+  repetition signal on nearly every turn if touched unconditionally. `set_slot` now compares the new
+  value against what's already stored and only touches attention when it actually differs (including
+  the first-ever set) -- covered by
+  `test_set_slot_does_not_touch_attention_when_value_unchanged` in the new
+  `tests/test_conversation_state_attention.py`.
+- **Amenities get their own explicit touch** (`app/voice/tools.py`'s `recommend_properties` wrapper),
+  since they accumulate as a list rather than overwrite and so can't piggyback on `set_slot`'s
+  per-field semantics -- only amenities present in *that call's raw* `required_amenities` argument are
+  touched, never the full accumulated `effective_amenities` list (which would re-touch every
+  previously-mentioned amenity on every subsequent call). Canonicalized via
+  `amenity_taxonomy.canonicalize_amenity` at touch time so "pool"/"private pool"/"swimming pool" all
+  accumulate onto one attention entry instead of three separately-weaker ones.
+- **Prompt-facing consumer** (`app/voice/state_prompt_sync.py`'s `_format_slots`, now takes the full
+  `ConversationState` instead of just `state.slots`): known slots are ordered by attention score
+  (most emphasized/most recently restated first, not `_SLOT_LABELS`' fixed dict order), and a slot
+  restated 2+ times gets an explicit `"(guest has restated this Nx -- weigh it heavily)"` annotation.
+- **Ranking-facing consumer**: `filter_builder.apply_amenity_boost` gained an optional
+  `amenity_weights: dict[str, float]` parameter (keyed by canonical amenity name, default 1.0 per
+  amenity when unset/missing -- every existing caller passing nothing reproduces the original flat
+  match-count ranking exactly, confirmed by
+  `test_apply_amenity_boost_no_weights_reproduces_flat_match_count_ranking`). Threaded straight through
+  `sql_search.run_sql_search` -> `orchestrator.recommend_properties` -> `tool_handlers.
+  handle_recommend_properties`, same explicit-optional-parameter shape `check_in`/`check_out` already
+  established for "real data ConversationState has that isn't part of the LLM-facing
+  `RecommendPropertiesArgs` schema." Built in `app/voice/tools.py` from
+  `1.0 + state.attention_score(f"amenity:{canonical}")` for every amenity in the accumulated set.
+  **Important, deliberately-tested asymmetry**: because scoring is additive with a weight floor of 1.0,
+  a property matching MORE requested amenities always still outranks one matching fewer, regardless of
+  weighting -- attention only ever breaks a tie among properties matching the SAME number of requested
+  amenities (a first version of the end-to-end test asserted the stronger, false claim that a single
+  heavily-emphasized amenity could outrank two flatly-matched ones; caught by hand-computing the actual
+  weighted sums before trusting the assertion, not by a failing test -- see
+  `test_recommend_properties_amenity_attention_breaks_a_match_count_tie_by_emphasis`'s docstring in
+  `tests/test_recommend_properties_refinement.py` for the corrected, mathematically-valid scenario).
+- **Untouched**: `ranking.py`, `semantic_search.py`, `calendar_service.py`, every other
+  `ConversationState` field/method, `ConversationStyle`/`ConversationQuality` (attention is a
+  `ConversationState` fact -- HOW-Mira-speaks and validator/quality data were both explicitly ruled out
+  as the wrong home per the three-type discipline in `CLAUDE.md`/`current_architecture.md` §6 before
+  writing any code).
+- 26 new tests: 12 in new `tests/test_conversation_state_attention.py` (Salience scoring/decay,
+  touch_attention/attention_score/advance_turn, set_slot's change-detection gate including the
+  backfill-noise case), 4 in `test_state_prompt_sync.py` (ordering, annotation, annotation thresholds,
+  backfill-not-annotated), 3 in `test_property_retrieval_filter_builder.py` (no-weights parity,
+  weighted-tiebreak, missing-weight-defaults-to-one), 3 end-to-end in
+  `test_recommend_properties_refinement.py` (attention only touched for newly-mentioned amenities,
+  canonicalization dedup across repeated calls, the real tie-break ranking flip through the full
+  tools.py -> ... -> filter_builder chain). Full `pytest`: 919 passed (925 baseline pre-existing minus
+  the same historically-documented pre-existing failures, all confirmed unrelated by inspecting each
+  failure directly -- a phone-format assertion, an FAQ-fallback-text assertion, environment-only
+  failures needing real network/DB-pool/SMTP/embedding-API access unavailable in this environment),
+  zero regressions.
+
 **2026-08-05 — Recommendation conversations ("Phase X"): support guest refinement turns ("something
 cheaper", "anything with a pool?", "closer to Candolim", "larger", "more premium", "pet friendly")
 without restarting retrieval. Two real, user-approved decisions grounded this phase, not silently

@@ -28,7 +28,10 @@ _AMENITY_CANDIDATE_POOL_SIZE = 10
 
 
 async def run_sql_search(
-    db: AsyncSession, base_stmt: Select, args: RecommendPropertiesArgs
+    db: AsyncSession,
+    base_stmt: Select,
+    args: RecommendPropertiesArgs,
+    amenity_weights: dict[str, float] | None = None,
 ) -> tuple[list[Property], str]:
     """Returns (properties, combo_note) -- combo_note is a non-empty string
     only when the small-units fallback fired (no single property sleeps the
@@ -64,6 +67,6 @@ async def run_sql_search(
     # meaning ("combine these"), same reasoning ranking.diversify_leading_candidates
     # already uses to skip that path.
     if args.required_amenities and not combo_note:
-        properties = apply_amenity_boost(properties, args.required_amenities)[:3]
+        properties = apply_amenity_boost(properties, args.required_amenities, amenity_weights)[:3]
 
     return properties, combo_note

@@ -11,7 +11,7 @@
   --font-mono: ui-monospace, "DM Mono", "SFMono-Regular", Menlo, monospace;
   --font-display: var(--font-clash-display);
   --font-heading: var(--font-display);
-  --font-subheading: var(--font-new-title);
+  --font-subheading: var(--font-amulya);
   --font-brand: var(--font-alex-brush);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -69,71 +69,71 @@
    baselines against an icon) -- don't reach for them as a default card or
    section padding. */
 :root {
-  --background: #f5f0e8;
-  --foreground: #1a1714;
-  --card: #fdfaf5;
-  --card-foreground: #1a1714;
-  --popover: #fdfaf5;
-  --popover-foreground: #1a1714;
-  --primary: #d94f3d;
+  --background: #f3ede2;
+  --foreground: #2a2420;
+  --card: #fbf7ef;
+  --card-foreground: #2a2420;
+  --popover: #fbf7ef;
+  --popover-foreground: #2a2420;
+  --primary: #b8452f;
   --primary-foreground: #ffffff;
-  --secondary: #fdfaf5;
-  --secondary-foreground: #1a1714;
-  --muted: #ede8df;
-  --muted-foreground: #635747;
-  --accent: #ede8df;
-  --accent-foreground: #1a1714;
-  --destructive: #d94f3d;
-  --border: #e8e0d5;
-  --input: #e8e0d5;
-  --ring: #c9a882;
-  --chart-1: #e8a838;
-  --chart-2: #4da6a8;
-  --chart-3: #e07a5f;
-  --chart-4: #6b8fd4;
-  --chart-5: #9b7ec8;
+  --secondary: #fbf7ef;
+  --secondary-foreground: #2a2420;
+  --muted: #ece3d4;
+  --muted-foreground: #6f6252;
+  --accent: #ece3d4;
+  --accent-foreground: #2a2420;
+  --destructive: #b8452f;
+  --border: #e3d9c8;
+  --input: #e3d9c8;
+  --ring: #d9a441;
+  --chart-1: #d9a441;
+  --chart-2: #6b7d5a;
+  --chart-3: #c17a42;
+  --chart-4: #5f7a99;
+  --chart-5: #8d6f96;
   --radius: 0.625rem;
-  --sidebar: #fdfaf5;
-  --sidebar-foreground: #1a1714;
-  --sidebar-primary: #d94f3d;
+  --sidebar: #fbf7ef;
+  --sidebar-foreground: #2a2420;
+  --sidebar-primary: #b8452f;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #ede8df;
-  --sidebar-accent-foreground: #1a1714;
-  --sidebar-border: #e8e0d5;
-  --sidebar-ring: #c9a882;
+  --sidebar-accent: #ece3d4;
+  --sidebar-accent-foreground: #2a2420;
+  --sidebar-border: #e3d9c8;
+  --sidebar-ring: #d9a441;
 
   /* Status + intent-category colors, for badges/accents across calls,
      leads, and notifications. */
-  --status-live: #7aaf6e;
-  --status-live-bg: rgba(122, 175, 110, 0.12);
-  --status-pending: #e8a838;
-  --status-pending-bg: rgba(232, 168, 56, 0.12);
-  --status-progress: #6b8fd4;
-  --status-progress-bg: rgba(107, 143, 212, 0.12);
-  --status-purple: #9b7ec8;
-  --status-purple-bg: rgba(155, 126, 200, 0.12);
-  --status-orange: #d97a3d;
-  --status-orange-bg: rgba(217, 122, 61, 0.12);
-  --accent-warm: #c9a882;
-  --accent-warm-bg: rgba(201, 168, 130, 0.12);
+  --status-live: #75885f;
+  --status-live-bg: rgba(117, 136, 95, 0.12);
+  --status-pending: #d9a441;
+  --status-pending-bg: rgba(217, 164, 65, 0.12);
+  --status-progress: #5f7a99;
+  --status-progress-bg: rgba(95, 122, 153, 0.12);
+  --status-purple: #8d6f96;
+  --status-purple-bg: rgba(141, 111, 150, 0.12);
+  --status-orange: #c17a42;
+  --status-orange-bg: rgba(193, 122, 66, 0.12);
+  --accent-warm: #d9a441;
+  --accent-warm-bg: rgba(217, 164, 65, 0.12);
 
   /* Low-priority/-urgency tone. Deliberately a cool slate rather than a
      washed-out red -- "high" (destructive red) and "medium" (status-pending
      amber) already have distinct hues; giving "low" a red-family tint too
      made all three tiers hard to tell apart at a glance during triage. */
-  --priority-low: #6b7280;
-  --priority-low-bg: rgba(107, 114, 128, 0.12);
+  --priority-low: #7d7267;
+  --priority-low-bg: rgba(125, 114, 103, 0.12);
 
   /* Elevation scale. Warm, low-contrast shadows (not neutral black) so
      depth reads as "paper stacked on parchment" rather than a generic
      Material dropshadow -- consistent with the palette's warm undertone.
      xs = resting card state (replaces the old single ad hoc shadow),
      sm/md = hover/lifted states, lg = popovers & dropdowns, xl = dialogs. */
-  --shadow-xs: 0 1px 2px rgba(26, 23, 20, 0.04);
-  --shadow-sm: 0 2px 6px rgba(26, 23, 20, 0.06), 0 1px 2px rgba(26, 23, 20, 0.04);
-  --shadow-md: 0 6px 16px rgba(26, 23, 20, 0.08), 0 2px 4px rgba(26, 23, 20, 0.04);
-  --shadow-lg: 0 12px 28px rgba(26, 23, 20, 0.12), 0 4px 8px rgba(26, 23, 20, 0.04);
-  --shadow-xl: 0 24px 48px rgba(26, 23, 20, 0.16), 0 8px 16px rgba(26, 23, 20, 0.06);
+  --shadow-xs: 0 1px 2px rgba(42, 36, 32, 0.04);
+  --shadow-sm: 0 2px 6px rgba(42, 36, 32, 0.06), 0 1px 2px rgba(42, 36, 32, 0.04);
+  --shadow-md: 0 6px 16px rgba(42, 36, 32, 0.08), 0 2px 4px rgba(42, 36, 32, 0.04);
+  --shadow-lg: 0 12px 28px rgba(42, 36, 32, 0.12), 0 4px 8px rgba(42, 36, 32, 0.04);
+  --shadow-xl: 0 24px 48px rgba(42, 36, 32, 0.16), 0 8px 16px rgba(42, 36, 32, 0.06);
 
   /* Hover/active deltas. Applied as utility classes (see @layer components
      below) so every interactive surface -- cards, rows, buttons -- lifts
@@ -234,15 +234,16 @@
   }
 
   /* Table column headers (Caller, Status, Started, ...) use the
-     subheading face throughout the app -- keeps a third, distinct type
-     voice between page titles (--font-display) and body copy
-     (--font-sans), consistent everywhere TableHead is used rather than
-     each page restyling its own tables. Size/weight set explicitly here
-     (not left at the table's inherited text-sm + a font-medium utility)
-     -- New Title reads noticeably smaller than Amulya/Clash Display at
-     the same declared size, so the inherited 14px read as too small;
-     450 is a lighter weight than the previous 500 (font-medium), a
-     deliberately modest reduction rather than dropping to regular. */
+     subheading face throughout the app -- currently the same face as body
+     copy (--font-sans), set via --font-subheading so any future divergence
+     only needs to change one variable rather than every TableHead usage.
+     Size/weight still set explicitly here (not left at the table's
+     inherited text-sm + a font-medium utility) -- 1rem/450 was originally
+     tuned to compensate for New Title reading smaller than Amulya at the
+     same declared size; now that the subheading face IS Amulya, that
+     compensation is no longer needed but has been left as-is since sizing
+     wasn't part of this change -- revisit if table headers now look too
+     large relative to body text. */
   [data-slot="table-head"] {
     font-family: var(--font-subheading);
     font-size: 1rem;

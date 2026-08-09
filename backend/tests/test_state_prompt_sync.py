@@ -56,6 +56,49 @@ def test_build_state_block_content_includes_known_slots():
     assert "Do not re-ask" in content
 
 
+def test_build_state_block_content_orders_slots_by_attention_most_salient_first():
+    state = ConversationState()
+    # "area" set once, long ago.
+    state.advance_turn()
+    state.set_slot("preferred_location", "Goa")
+    for _ in range(10):
+        state.advance_turn()
+    # "budget" restated (a genuine change, not a backfill echo) much later --
+    # higher attention score, should render first despite being set second.
+    state.set_slot("budget", 5000)
+    state.advance_turn()
+    state.set_slot("budget", 8000)
+    content = build_state_block_content(state)
+    assert content.index("budget") < content.index("area")
+
+
+def test_build_state_block_content_annotates_a_slot_restated_twice_or_more():
+    state = ConversationState()
+    state.set_slot("budget", 5000)
+    state.set_slot("budget", 8000)  # genuine correction -> count 2
+    content = build_state_block_content(state)
+    assert "restated this 2x" in content
+
+
+def test_build_state_block_content_does_not_annotate_a_slot_set_only_once():
+    state = ConversationState()
+    state.set_slot("num_guests", 4)
+    content = build_state_block_content(state)
+    assert "restated" not in content
+
+
+def test_build_state_block_content_backfilled_unchanged_value_is_not_annotated_as_restated():
+    """set_slot called repeatedly with the SAME value (the real shape of
+    recommend_properties' own backfill-from-state behavior) must not read as
+    guest emphasis -- see ConversationState.set_slot's change-detection gate."""
+    state = ConversationState()
+    state.set_slot("num_guests", 4)
+    state.set_slot("num_guests", 4)
+    state.set_slot("num_guests", 4)
+    content = build_state_block_content(state)
+    assert "restated" not in content
+
+
 def test_build_state_block_content_includes_recommendations_shown():
     state = ConversationState()
     state.record_recommendations([{"property_id": "p1", "name": "Ocean View", "price": 6000, "guests": 4}])

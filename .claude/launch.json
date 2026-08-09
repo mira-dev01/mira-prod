@@ -11,7 +11,8 @@
       "name": "frontend",
       "runtimeExecutable": "bash",
       "runtimeArgs": ["-c", "cd '/Users/shagunverma/Desktop/mira /mira-prod/frontend' && npm run dev"],
-      "port": 3000
+      "port": 3000,
+      "autoPort": true
     }
   ]
 }

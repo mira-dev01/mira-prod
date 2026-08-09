@@ -126,3 +126,40 @@ def test_apply_amenity_boost_canonicalizes_synonyms():
     other = _property(name="Other", amenity_tags=[])
     boosted = apply_amenity_boost([other, property_], ["pet friendly"])
     assert boosted[0].name == "PetFriendly"
+
+
+def test_apply_amenity_boost_no_weights_reproduces_flat_match_count_ranking():
+    """amenity_weights omitted (every pre-attention caller) must be
+    byte-for-byte identical to the original flat-count behavior -- every
+    matched amenity implicitly defaults to weight 1.0."""
+    none_match = _property(name="None", amenity_tags=[])
+    one_match = _property(name="One", amenity_tags=["pool"])
+    both_match = _property(name="Both", amenity_tags=["pool", "pets_allowed"])
+    boosted = apply_amenity_boost([none_match, one_match, both_match], ["pool", "pet friendly"])
+    assert [p.name for p in boosted] == ["Both", "One", "None"]
+
+
+def test_apply_amenity_boost_attention_weight_can_outrank_a_higher_raw_match_count():
+    """A property matching only the heavily-emphasized amenity ("pool",
+    asked about repeatedly) outranks one matching two amenities the guest
+    only mentioned once each -- attention/salience tracking's actual point:
+    weigh what the guest emphasized, not just how many boxes are ticked."""
+    two_flat_matches = _property(name="TwoFlat", amenity_tags=["pool", "wifi"])
+    one_emphasized_match = _property(name="OneEmphasized", amenity_tags=["pets_allowed"])
+    boosted = apply_amenity_boost(
+        [two_flat_matches, one_emphasized_match],
+        ["pool", "wifi", "pet friendly"],
+        amenity_weights={"pool": 1.0, "wifi": 1.0, "pets_allowed": 5.0},
+    )
+    assert boosted[0].name == "OneEmphasized"
+
+
+def test_apply_amenity_boost_missing_weight_entries_default_to_one():
+    """An amenity absent from the weights dict (e.g. attention never fired
+    for it) must fall back to the same weight=1.0 every other amenity
+    starts at, not zero -- zero would make it count as if it weren't
+    matched at all."""
+    match = _property(name="Match", amenity_tags=["pool"])
+    no_match = _property(name="NoMatch", amenity_tags=[])
+    boosted = apply_amenity_boost([no_match, match], ["pool"], amenity_weights={})
+    assert boosted[0].name == "Match"

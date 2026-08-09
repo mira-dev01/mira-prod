@@ -402,5 +402,15 @@ class ConversationStyleProcessor(FrameProcessor):
                 turn_index=self._turn_index,
             )
             self._conversation_state.conversation_style = new_style
+            # Also the shared per-call turn counter for ConversationState's
+            # own attention/salience tracking (touch_attention/
+            # attention_score, see conversation_state.py) -- reuses this
+            # exact "one real guest TranscriptionFrame = one turn" signal
+            # rather than introducing a second, differently-defined turn
+            # counter. Deliberately advanced here (this processor already
+            # fires unconditionally on every such frame and already writes
+            # to conversation_state) rather than adding a new dedicated
+            # pipeline stage just to increment one counter.
+            self._conversation_state.advance_turn()
 
         await self.push_frame(frame, direction)

@@ -166,7 +166,11 @@ def apply_landmark_boost(properties: list[Property], near_landmark: str | None) 
     return sorted(properties, key=lambda p: not matches_landmark(p, near_landmark))
 
 
-def apply_amenity_boost(properties: list[Property], required_amenities: list[str] | None) -> list[Property]:
+def apply_amenity_boost(
+    properties: list[Property],
+    required_amenities: list[str] | None,
+    amenity_weights: dict[str, float] | None = None,
+) -> list[Property]:
     """Soft rank signal, same shape as apply_landmark_boost/apply_premium_boost
     -- ranks by how MANY of the requested amenities each property actually
     has (most matches first), never excludes a property for lacking one.
@@ -176,13 +180,28 @@ def apply_amenity_boost(properties: list[Property], required_amenities: list[str
     of silently disappearing -- card.py's amenity_checklist_note is what
     tells the guest explicitly which requested amenities each result does
     and doesn't have, so a partial match is a real, informed choice for the
-    guest rather than a filter deciding for them."""
+    guest rather than a filter deciding for them.
+
+    amenity_weights (optional, keyed by CANONICAL amenity name -- the same
+    vocabulary canonicalize_amenities produces) lets a repeatedly-/recently-
+    emphasized amenity outrank a flat match count -- e.g. a property
+    matching only "pool" (asked about 3 times this call) can rank ahead of
+    one matching "pool"+"parking" if the guest's real emphasis was
+    overwhelmingly on the pool, not spread evenly across everything they
+    mentioned. Sourced from ConversationState.attention (see
+    app/voice/tools.py's recommend_properties wrapper) -- never invented
+    here. Any amenity missing from the dict (including every case where
+    amenity_weights is None, i.e. every existing caller) defaults to weight
+    1.0, which reproduces today's flat match-count ranking exactly."""
     if not required_amenities:
         return properties
     canonical_required = set(canonicalize_amenities(required_amenities))
+    weights = amenity_weights or {}
     return sorted(
         properties,
-        key=lambda p: -len(canonical_required & set(p.amenity_tags or [])),
+        key=lambda p: -sum(
+            weights.get(a, 1.0) for a in canonical_required & set(p.amenity_tags or [])
+        ),
     )
 
 

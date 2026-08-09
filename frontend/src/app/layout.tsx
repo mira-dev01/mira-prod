@@ -90,13 +90,13 @@ export default function RootLayout({
               // kept as literal hex/rgba here since Clerk's hosted
               // components render in their own isolated context, not this
               // page's DOM, so `var(--primary)` etc. wouldn't resolve.
-              colorPrimary: "#d94f3d",
-              colorBackground: "#fdfaf5",
-              colorForeground: "#1a1714",
-              colorMutedForeground: "#6b5f4f",
-              colorInput: "#f5f0e8",
-              colorInputForeground: "#1a1714",
-              colorBorder: "#e8e0d5",
+              colorPrimary: "#b8452f",
+              colorBackground: "#fbf7ef",
+              colorForeground: "#2a2420",
+              colorMutedForeground: "#6f6252",
+              colorInput: "#f3ede2",
+              colorInputForeground: "#2a2420",
+              colorBorder: "#e3d9c8",
               borderRadius: "0.625rem",
               fontFamily: "var(--font-amulya), sans-serif",
             },

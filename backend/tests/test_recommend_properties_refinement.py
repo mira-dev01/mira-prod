@@ -109,6 +109,60 @@ async def test_required_amenities_accumulate_across_calls_not_replace(db_session
     assert set(state.slots["required_amenities"]) == {"pet friendly", "pool"}
 
 
+async def test_recommend_properties_touches_attention_for_newly_mentioned_amenities_only(db_session, test_user):
+    """Attention/salience: only the amenities actually present in THIS
+    call's raw required_amenities argument get touched -- the accumulated
+    list must not re-touch earlier amenities on every subsequent call (see
+    ConversationState.touch_attention's callers in tools.py)."""
+    await _property(db_session, test_user, name="Villa")
+    state = ConversationState()
+    tools = build_voice_tools(call_session_id=None, property_id=None, host_user_id=test_user.id, conversation_state=state)
+    recommend_properties = next(t for t in tools if t.__name__ == "recommend_properties")
+
+    await recommend_properties(_FakeFunctionCallParams(), required_amenities=["pool"])
+    assert state.attention["amenity:pool"].count == 1
+
+    # A later call that repeats "pool" (still the guest's stated need) AND
+    # adds a new amenity -- "pool" should be touched again (mentioned twice
+    # now), "pet friendly" freshly touched once.
+    await recommend_properties(_FakeFunctionCallParams(), required_amenities=["pool", "pet friendly"])
+    assert state.attention["amenity:pool"].count == 2
+    assert state.attention["amenity:pets_allowed"].count == 1
+
+
+async def test_recommend_properties_amenity_attention_breaks_a_match_count_tie_by_emphasis(
+    db_session, test_user
+):
+    """End-to-end: two properties each match exactly ONE of the two
+    requested amenities -- a flat match-count boost can't distinguish them
+    at all (a tie, so the underlying price-ascending SQL order would just
+    win by default). A guest who's asked about "pool" three separate times
+    but "wifi" only once should see the pool-only property ranked first
+    despite being pricier -- confirms amenity_weights actually threads all
+    the way through tools.py -> tool_handlers -> orchestrator -> sql_search
+    -> filter_builder.apply_amenity_boost, not just that it's computed.
+    (Matching MORE amenities always still wins outright over matching
+    fewer, by design -- attention only ever breaks a tie in match count,
+    never overrides it; see filter_builder.apply_amenity_boost's own
+    docstring.)"""
+    await _property(db_session, test_user, name="Wifi Villa", amenity_tags=["wifi"], base_price=3000)
+    await _property(db_session, test_user, name="Pool Villa", amenity_tags=["pool"], base_price=6000)
+    state = ConversationState()
+    tools = build_voice_tools(call_session_id=None, property_id=None, host_user_id=test_user.id, conversation_state=state)
+    recommend_properties = next(t for t in tools if t.__name__ == "recommend_properties")
+
+    # Guest asks about the pool three separate times across the call.
+    await recommend_properties(_FakeFunctionCallParams(), required_amenities=["pool"])
+    await recommend_properties(_FakeFunctionCallParams(), required_amenities=["pool"])
+    await recommend_properties(_FakeFunctionCallParams(), required_amenities=["pool"])
+    final = _FakeFunctionCallParams()
+    await recommend_properties(final, required_amenities=["pool", "wifi"])
+
+    pool_pos = final.result.index("Pool Villa")
+    wifi_pos = final.result.index("Wifi Villa")
+    assert pool_pos < wifi_pos
+
+
 async def test_amenity_soft_match_still_returns_property_missing_one_requested_amenity(db_session, test_user):
     """The retrieval-semantics change this phase made: required_amenities is
     now a soft boost, so a property with only SOME of the accumulated

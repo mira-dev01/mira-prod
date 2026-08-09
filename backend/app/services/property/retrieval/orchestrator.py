@@ -32,6 +32,7 @@ async def recommend_properties(
     check_in: date | None = None,
     check_out: date | None = None,
     call_session_id: uuid.UUID | None = None,
+    amenity_weights: dict[str, float] | None = None,
 ) -> RecommendationResult:
     """check_in/check_out are optional and NOT part of RecommendPropertiesArgs
     itself (the LLM-facing tool schema deliberately has no date fields --
@@ -41,9 +42,15 @@ async def recommend_properties(
     through here lets Phase 2.4 (documentation/agent-conversation-improvement.md)
     exclude already-booked properties from the candidate set up front,
     instead of the guest being recommended a property and only finding out
-    it's unavailable on a later check_calendar call."""
+    it's unavailable on a later check_calendar call.
+
+    amenity_weights is the same shape/sourcing as check_in/check_out -- not
+    part of RecommendPropertiesArgs (it's derived from ConversationState's
+    attention tracking, not a guest-facing tool argument), optional,
+    threaded straight through to sql_search.run_sql_search's amenity boost.
+    See filter_builder.apply_amenity_boost's own docstring for what it does."""
     base_stmt = filter_builder.build_base_filters(args, host_user_id)
-    sql_results, combo_note = await sql_search.run_sql_search(db, base_stmt, args)
+    sql_results, combo_note = await sql_search.run_sql_search(db, base_stmt, args, amenity_weights)
 
     if check_in is not None and check_out is not None and sql_results:
         # Fail open on any error -- an availability pre-check is a UX

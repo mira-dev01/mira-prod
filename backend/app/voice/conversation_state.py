@@ -82,6 +82,44 @@ ConversationGoal = Literal[
 # out of scope for this pass; see docs/how-it-works.md's Refactoring Plan.
 ClosingState = Literal["open", "farewell_pending", "closed"]
 
+# Attention/salience tracking -- how much weight a fact deserves isn't just
+# "is it known" (slots already answers that) but "how much has the guest
+# actually emphasized it" -- repeated across turns, or stated recently, vs.
+# mentioned once early on and never revisited. Repetition + recency ONLY, by
+# explicit product decision: no emphasis-word/sentiment text classification,
+# same "derived from tool-call activity, never a new LLM/NLU pass" discipline
+# every other field on this dataclass already follows (see module docstring).
+# Half-life decay, not linear -- needs to keep behaving sensibly for a call
+# of ANY length, not just a fixed-size window (contrast with
+# conversation_style.py's _RECENCY_WEIGHTS, a fixed 6-entry table -- fine for
+# StyleEngine's fixed rolling window, but this needs a continuous curve
+# since a call could run 3 turns or 30).
+_DEFAULT_ATTENTION_HALF_LIFE = 6
+
+
+@dataclass
+class Salience:
+    """One key's raw attention bookkeeping. Generic over what `key` means
+    (a "slot:<name>" or "amenity:<canonical>" composite string, see
+    ConversationState.touch_attention) -- this stays a small, reusable
+    primitive rather than a bespoke mechanism per caller."""
+
+    count: int = 0
+    last_turn: int = 0
+
+    def score(self, current_turn: int, half_life: int = _DEFAULT_ATTENTION_HALF_LIFE) -> float:
+        """Repetition count decayed by how many turns ago it was last
+        touched -- a fact mentioned 3 times long ago can still rank below
+        one mentioned twice recently. half_life <= 0 degrades to "only the
+        current turn counts at full weight, everything older is zero",
+        rather than dividing by zero."""
+        turns_ago = max(0, current_turn - self.last_turn)
+        if half_life <= 0:
+            recency = 1.0 if turns_ago == 0 else 0.0
+        else:
+            recency = 0.5 ** (turns_ago / half_life)
+        return self.count * recency
+
 # Priority order for deriving a goal from which slots are still unset, absent
 # a more specific tool-driven signal -- mirrors LEAD_AGENT_INSTRUCTIONS step 2
 # (system_prompt.py), which already asks for dates, then guests, then
@@ -188,6 +226,34 @@ class ConversationState:
     # with a discount applied) is always the current one to surface.
     quoted_price: dict[str, Any] | None = None
 
+    # Attention/salience -- see Salience above. turn_index is a single
+    # shared per-call counter (advanced by ConversationStyleProcessor on
+    # every real guest TranscriptionFrame, the same "one real utterance = one
+    # turn" signal that module's own hysteresis logic already relies on --
+    # see conversation_style.py). attention holds one Salience per tracked
+    # key, written only via touch_attention, never mutated directly.
+    turn_index: int = 0
+    attention: dict[str, Salience] = field(default_factory=dict)
+
+    def touch_attention(self, key: str) -> None:
+        """Records one more mention of `key` at the current turn. Callers:
+        set_slot (below, automatic for every scalar slot write) and
+        app/voice/tools.py's recommend_properties wrapper (explicit, for
+        amenities -- these accumulate as a list rather than overwrite, so
+        they can't piggyback on set_slot's per-field semantics)."""
+        entry = self.attention.setdefault(key, Salience())
+        entry.count += 1
+        entry.last_turn = self.turn_index
+
+    def attention_score(self, key: str, half_life: int = _DEFAULT_ATTENTION_HALF_LIFE) -> float:
+        entry = self.attention.get(key)
+        if entry is None:
+            return 0.0
+        return entry.score(self.turn_index, half_life)
+
+    def advance_turn(self) -> None:
+        self.turn_index += 1
+
     def lock_property(self, property_id: str | None, property_name: str | None = None) -> None:
         if not property_id:
             return
@@ -204,10 +270,23 @@ class ConversationState:
     def set_slot(self, key: str, value: Any) -> None:
         """Set a single slot field. Never call this with a blind dict merge --
         a tool call that only supplies `phone` must never clobber a `num_guests`
-        set by an earlier call. `None`/unset values are simply not written."""
+        set by an earlier call. `None`/unset values are simply not written.
+
+        Only touches attention when the value actually CHANGES (including
+        the first time it's set). Several callers (recommend_properties'
+        wrapper in app/voice/tools.py, most notably) call set_slot every
+        turn with a BACKFILLED value pulled from state.slots itself when the
+        model omitted the field that call -- that's bookkeeping to keep the
+        slot alive, not the guest restating anything, and must not inflate
+        the repetition signal. A value that genuinely changes (first set, or
+        a real correction like "actually make that 6 guests") always is real
+        signal, backfill-of-the-unchanged-value never is."""
         if value is None:
             return
+        changed = self.slots.get(key) != value
         self.slots[key] = value
+        if changed:
+            self.touch_attention(f"slot:{key}")
         self._recompute_goal(after_tool="set_slot")
 
     def record_recommendations(self, options: list[dict[str, Any]]) -> None:
