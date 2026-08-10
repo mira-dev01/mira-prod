@@ -98,7 +98,8 @@ export function CallFlowShowcase() {
         aria-hidden
         className="pointer-events-none absolute inset-0 rounded-3xl"
         style={{
-          background: "radial-gradient(ellipse at 50% 30%, rgba(201,168,130,0.16), transparent 65%)",
+          background:
+            "radial-gradient(ellipse at 50% 30%, color-mix(in oklch, var(--accent-warm) 16%, transparent), transparent 65%)",
         }}
       />
       <div
@@ -106,7 +107,7 @@ export function CallFlowShowcase() {
         className="pointer-events-none absolute inset-0 rounded-3xl opacity-[0.3]"
         style={{
           backgroundImage:
-            "linear-gradient(to right, rgba(26,23,20,0.05) 1px, transparent 1px), linear-gradient(to bottom, rgba(26,23,20,0.05) 1px, transparent 1px)",
+            "linear-gradient(to right, color-mix(in oklch, var(--foreground) 5%, transparent) 1px, transparent 1px), linear-gradient(to bottom, color-mix(in oklch, var(--foreground) 5%, transparent) 1px, transparent 1px)",
           backgroundSize: "28px 28px",
           maskImage: "radial-gradient(ellipse at center, black 40%, transparent 75%)",
         }}
