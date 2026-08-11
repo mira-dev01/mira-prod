@@ -174,6 +174,15 @@ class Settings(BaseSettings):
     # same fallback discipline as twilio_escalation_template_sid above.
     twilio_busy_recovery_template_sid: str | None = None
 
+    # ContentSid of the `mira_availability` WhatsApp template (see
+    # scripts/create_availability_template.py) -- sent to a busy-recovery
+    # guest once Mira's CallCoordinator lease for that host/property is
+    # actually released (see app/services/recovery_service.py's
+    # process_availability_recovery). Unset = falls back to an equivalent
+    # plain-text message, same fallback discipline as
+    # twilio_busy_recovery_template_sid above.
+    twilio_availability_template_sid: str | None = None
+
     # Shared-secret path token for the inbound WhatsApp webhook (see
     # app/api/v1/webhooks/whatsapp.py, app/services/whatsapp_reply_service.py)
     # -- same "path segment, not Twilio's own HMAC scheme" convention as

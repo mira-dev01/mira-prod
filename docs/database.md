@@ -57,7 +57,8 @@ c22483e0853a -> 054ea268d326   add index on notification property_id
 9c3f2a7e5d41 -> 6384600c83f2   add call_leases
 6384600c83f2 -> 356d5c923c77   add lead recovery metadata (entry_channel, recovery_reason)
 356d5c923c77 -> 3fae82f7b3d0   add notification lead_id and responded_at
-3fae82f7b3d0 -> 7a236ad1ffd1   index notification lead_id and channel (HEAD)
+3fae82f7b3d0 -> 7a236ad1ffd1   index notification lead_id and channel
+7a236ad1ffd1 -> 8f1c4b9e2a67   add lead busy recovery availability tracking (HEAD)
 ```
 
 If a session ever fails with demo-login 500s or a missing-column error, check `alembic heads` against the running DB first — a DB left behind on an old revision is a common cause (see `project_state.md` at the repo root for the 2026-07-15 incident).
@@ -185,6 +186,9 @@ Computed properties (not columns): `duration_minutes`, `guest_name` (prefers `Le
 | `escalated`, `transferred_to_host` | Boolean, default `false` | |
 | `status` | String(16), default `open` | `open`/`contacted`/`booked`/`closed` — **host-managed follow-up lifecycle**, distinct from `lead_temperature`. The voice agent never sets this; only the dashboard's Leads page edit dialog does. Overview's "Open Leads" card = count where `status == "open"` |
 | `occasion` | String(255), nullable | free text (not an enum) — guest phrasing for a birthday/anniversary/honeymoon/etc, recorded verbatim, never host-facing suggestions |
+| `busy_recovery_availability_status` | String(16), nullable, **indexed** | Whether Mira still owes this busy-recovery guest an "I'm available now" WhatsApp — `pending` / `processing` / `notified`, or `NULL` for every lead with no `recovery_reason`. Set by `recovery_service.py`'s `process_availability_recovery`, triggered from `app/voice/pipeline.py`'s `_run_pipeline` finally block only when `call_coordinator.release()` returns `True` (this call's own token actually freed the lease). Deliberately separate from `status` (sales lifecycle) and `recovery_reason` (why, not follow-up state) — see the model's own comment |
+| `busy_recovery_at` | DateTime(tz), nullable | When the (most recent) busy call happened — not `created_at`/`updated_at`, both of which can be inaccurate for a reused Lead (see migration `8f1c4b9e2a67`'s own comment). Basis for `process_availability_recovery`'s `AVAILABILITY_WINDOW` (30 min, conservative default — no existing convention for this specific question; see that module's own comment) |
+| `busy_recovery_claimed_at` | DateTime(tz), nullable | Set only while `busy_recovery_availability_status == "processing"` — lets a crashed worker's stuck claim become reclaimable after `STALE_CLAIM_THRESHOLD` (2 min) instead of blocking that guest's notification forever |
 
 ### `guest_profiles` (`GuestProfile`, `app/models/guest_profile.py`)
 

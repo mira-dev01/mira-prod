@@ -1,9 +1,9 @@
-"""Plays fixed WAV clips directly on the raw Exotel WebSocket during the
-window before the real pipecat pipeline/transport exists for a call --
-either looped (the ringback tone, while run_voice_pipeline's own setup: DB
+"""Plays audio directly on the raw Exotel WebSocket during the window
+before the real pipecat pipeline/transport exists for a call -- either
+looped (the ringback tone, while run_voice_pipeline's own setup: DB
 lookups, pipeline build, Sarvam STT/TTS connect -- is in progress, confirmed
 via call logs to take ~4-6s, which the guest otherwise hears as dead air
-before Mira's first word) or played once (a short placeholder message when
+before Mira's first word) or played once (a short spoken message when
 CallCoordinator rejects the call as BUSY_RECOVERY -- see pipeline.py -- and
 no real pipeline will be built for this call at all).
 
@@ -29,6 +29,25 @@ event loop thread, so there is no interleaving window where both this loop
 and the real transport could write at once. play_busy_message (BUSY_RECOVERY)
 never races a real transport at all -- no pipeline is ever built on that
 path, so there's nothing else writing to the socket to conflict with.
+
+BUSY_MESSAGE_TEXT is a fixed, static string -- no property, pricing,
+availability, or guest-specific data is ever interpolated into it (single
+call site, pipeline.py's _reject_call_as_busy, always passes the same fixed
+text). Because of that, it's synthesized exactly ONCE, offline, by
+scripts/generate_busy_message_speech.py, and committed as a static WAV
+asset (busy_message_speech_8000.wav) -- the same approach
+generate_ringing_tone.py already uses for the ring tone. play_busy_message
+below makes zero network calls: no live Sarvam TTS request, no LLM, no STT,
+just streaming a pre-generated file, same as play_ringing_tone. An earlier
+version of this fix called Sarvam TTS live on every busy call; that was
+unnecessary latency (~1-2s) and per-call cost for text that never changes,
+and (confirmed live 2026-08-10) an extra live dependency that can itself
+fail (e.g. account-level quota exhaustion) for no benefit, since the text
+is always identical anyway. busy_message_8000.wav (the original 3-beep
+placeholder tone, see scripts/generate_busy_message_tone.py) is kept as a
+last-resort fallback purely against this module's own asset failing to
+load at import time -- not against any live dependency, since there no
+longer is one on this path.
 """
 
 import asyncio
@@ -43,6 +62,14 @@ from fastapi import WebSocket
 logger = logging.getLogger(__name__)
 
 _ASSETS_DIR = Path(__file__).parent / "assets"
+
+# Source of truth for what busy_message_speech_8000.wav actually says --
+# read by scripts/generate_busy_message_speech.py to (re)generate that
+# asset. Not used for any live synthesis call; see module docstring.
+BUSY_MESSAGE_TEXT = (
+    "Hi! I'm helping another guest right now. I've sent you the details on "
+    "WhatsApp. Feel free to call back in 5 mins. Thank you!"
+)
 
 # Exotel's media stream protocol carries raw PCM in these frame events --
 # 20ms is the conventional telephony chunk size (matches the pace real
@@ -63,9 +90,24 @@ def _load_pcm(filename: str) -> bytes:
 
 # Read once at import time -- these are small, fixed, committed assets, not
 # something that changes per call. See scripts/generate_ringing_tone.py and
-# scripts/generate_busy_message_tone.py.
+# scripts/generate_busy_message_speech.py.
 _RINGING_TONE_PCM = _load_pcm("ringing_tone_8000.wav")
-_BUSY_MESSAGE_PCM = _load_pcm("busy_message_8000.wav")
+
+try:
+    # The real spoken busy-recovery message -- see scripts/
+    # generate_busy_message_speech.py and the module docstring above.
+    _BUSY_MESSAGE_PCM = _load_pcm("busy_message_speech_8000.wav")
+except (FileNotFoundError, wave.Error):
+    # Last-resort fallback purely against this module's own committed asset
+    # going missing/corrupt -- e.g. a fresh checkout that hasn't run the
+    # generation script yet. Not a live-dependency fallback (there is no
+    # live dependency on this path anymore); a caller must still hear
+    # *something* and get hung up on promptly rather than a silent socket.
+    logger.error(
+        "busy_message_speech_8000.wav missing/unreadable; falling back to "
+        "the placeholder beep tone. Run scripts/generate_busy_message_speech.py."
+    )
+    _BUSY_MESSAGE_PCM = _load_pcm("busy_message_8000.wav")
 
 
 async def _stream_pcm(websocket: WebSocket, stream_sid: str, pcm: bytes) -> None:
@@ -104,17 +146,19 @@ async def play_ringing_tone(websocket: WebSocket, stream_sid: str) -> None:
 
 
 async def play_busy_message(websocket: WebSocket, stream_sid: str) -> None:
-    """Plays the fixed busy-recovery placeholder clip once and returns --
+    """Plays the pre-generated spoken busy-recovery clip once and returns --
     used when CallCoordinator rejects a call as BUSY_RECOVERY (see
     pipeline.py), where no real pipeline/transport will ever exist for this
     call, so (unlike play_ringing_tone) there is no real transport for this
     playback to race against and nothing further to hand the socket off to.
-    Best-effort, same as play_ringing_tone: a failed/partial play is never
-    worth raising into the caller, which still needs to hang up the call
-    either way.
+    No network call, no TTS, no LLM -- see module docstring. Best-effort,
+    same as play_ringing_tone: a failed/partial play is never worth raising
+    into the caller, which still needs to hang up the call either way.
     """
+    logger.info("busy_recovery_audio_started stream_sid=%s", stream_sid)
     try:
         await _stream_pcm(websocket, stream_sid, _BUSY_MESSAGE_PCM)
+        logger.info("busy_recovery_audio_completed stream_sid=%s", stream_sid)
     except asyncio.CancelledError:
         raise
     except Exception:
