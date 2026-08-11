@@ -192,4 +192,9 @@ async def test_busy_message_text_matches_intended_recovery_copy():
     # the source of truth scripts/generate_busy_message_speech.py reads to
     # (re)generate the committed asset -- not used for any live synthesis.
     assert "helping another guest" in BUSY_MESSAGE_TEXT
-    assert "WhatsApp" in BUSY_MESSAGE_TEXT
+    # Lowercase "whatsapp" deliberately, not "WhatsApp" -- Sarvam TTS
+    # mis-articulates the capitalized brand spelling (confirmed by ear
+    # against real generated audio, 2026-08-11); lowercase is the one that
+    # reads back correctly. See BUSY_MESSAGE_TEXT's own comment.
+    assert "whatsapp" in BUSY_MESSAGE_TEXT
+    assert "WhatsApp" not in BUSY_MESSAGE_TEXT

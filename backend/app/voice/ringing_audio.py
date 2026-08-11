@@ -68,7 +68,13 @@ _ASSETS_DIR = Path(__file__).parent / "assets"
 # asset. Not used for any live synthesis call; see module docstring.
 BUSY_MESSAGE_TEXT = (
     "Hi! I'm helping another guest right now. I've sent you the details on "
-    "WhatsApp. Feel free to call back in 5 mins. Thank you!"
+    # Lowercase "whatsapp" deliberately -- Sarvam TTS mis-articulates the
+    # capitalized brand spelling "WhatsApp" (confirmed by ear across
+    # several respellings tried live); the plain lowercase form is the one
+    # that reads back correctly. Bake-once asset (see
+    # scripts/generate_busy_message_speech.py), so this is a one-time
+    # wording choice for TTS legibility, not a general style rule.
+    "whatsapp. Feel free to call back in 5 mins. Thank you!"
 )
 
 # Exotel's media stream protocol carries raw PCM in these frame events --
