@@ -1,7 +1,7 @@
 """add lead busy recovery availability tracking
 
 Revision ID: 8f1c4b9e2a67
-Revises: 7a236ad1ffd1
+Revises: 44fd2130051e
 Create Date: 2026-08-10 00:00:00.000000
 
 """
@@ -12,7 +12,18 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = '8f1c4b9e2a67'
-down_revision: Union[str, None] = '7a236ad1ffd1'
+# Originally written against 7a236ad1ffd1 (the head at the time), before
+# 44fd2130051e (a no-op merge migration reconciling the shagun branch's
+# saturday-minimum-stay/negotiation-engine heads back into main) landed on
+# main first -- both ended up claiming 7a236ad1ffd1 as their parent,
+# producing two divergent heads ("Multiple head revisions" -- alembic
+# upgrade head refuses to run, which is what actually broke the Railway
+# deploy: alembic upgrade head is the container's own startup command,
+# see Dockerfile, so the container never got past that line and every
+# healthcheck attempt failed against a process that never started).
+# Re-pointed at 44fd2130051e (the real current head, which already
+# contains 7a236ad1ffd1 as an ancestor) to collapse back to one line.
+down_revision: Union[str, None] = '44fd2130051e'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
