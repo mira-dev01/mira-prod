@@ -118,6 +118,27 @@ async def upsert_lead(
         lead = Lead(user_id=user_id, call_session_id=call_session_id)
         db.add(lead)
 
+    # A real, answered call (call_session_id is not None -- recovery_service.py's
+    # own busy-rejection upsert always passes None, see that module's own
+    # comment) that reuses a Lead still armed for busy-recovery availability
+    # follow-up (busy_recovery_availability_status set) means the guest got
+    # through to Mira for real, on this exact Lead, since the busy call that
+    # armed it. Sending "Mira is available now" after that would be a stale,
+    # confusing message -- the guest already knows Mira is available, they're
+    # talking to her right now (or just finished). Cleared unconditionally
+    # here, before **fields below, regardless of whether THIS call's own
+    # tool calls happen to touch next_follow_up (process_availability_recovery's
+    # own next_follow_up guard only catches an explicit update_lead call
+    # during the callback -- many real calls resolve without one, e.g. the
+    # guest asks a quick question and hangs up satisfied, which would
+    # otherwise leave this lead wrongly claimable by a later, unrelated
+    # lease-release event for a different busy caller). recovery_reason
+    # itself is untouched -- "why this lead originally needed recovery"
+    # stays true and historical even after the guest gets through.
+    if call_session_id is not None and lead.busy_recovery_availability_status is not None:
+        lead.busy_recovery_availability_status = None
+        lead.busy_recovery_claimed_at = None
+
     # guest_profile_id is consumed above for the reuse lookup, not passed
     # through **fields -- still needs applying to the lead itself, same
     # "only set if actually given" semantics as every other field below.

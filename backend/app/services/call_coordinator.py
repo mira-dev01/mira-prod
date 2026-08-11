@@ -302,7 +302,7 @@ async def renew(host_user_id: uuid.UUID, property_id: uuid.UUID | None, token: s
     return new_expiry
 
 
-async def release(host_user_id: uuid.UUID, property_id: uuid.UUID | None, token: str) -> None:
+async def release(host_user_id: uuid.UUID, property_id: uuid.UUID | None, token: str) -> bool:
     """Marks the lease held by `token` as released, freeing the (host,
     property) pair for a new acquire() immediately -- ONLY if `token` still
     matches what's currently stored. Idempotent -- calling this with a
@@ -321,10 +321,24 @@ async def release(host_user_id: uuid.UUID, property_id: uuid.UUID | None, token:
     the key. Call B's lease is untouched. See
     test_call_coordinator.py::test_stale_token_cannot_release_a_newer_lease.
 
-    Fails open on a Redis outage: logs and returns, never raises -- a
+    Fails open on a Redis outage: logs and returns False, never raises -- a
     release failure must never crash or endanger the call it's cleaning up
     after (this always runs from a pipeline's finally block, after the
     call has already ended).
+
+    Returns True only when THIS call's token actually held and deleted the
+    lease -- False for a Redis outage, a stale/already-released token, or a
+    token that never held anything. This is a plain, additive expansion of
+    what redis_lease_client.release() already computes and previously
+    discarded (see that function's own bool return) -- release()'s actual
+    job (verify token, delete if it matches) is unchanged; it now just
+    truthfully reports what happened instead of always returning None. The
+    one intended caller of this return value is app/voice/pipeline.py's
+    _run_pipeline, to decide whether THIS call is the one that actually
+    freed the (host, property) pair and should therefore trigger busy-
+    recovery availability processing (see recovery_service.py) -- this
+    module still has zero knowledge that caller or that concept exists;
+    it remains a plain boolean about lease ownership, nothing else.
     """
     owner_property_id = _owner_property_id(property_id)
     key = _lease_key(host_user_id, property_id)
@@ -336,7 +350,7 @@ async def release(host_user_id: uuid.UUID, property_id: uuid.UUID | None, token:
             host_user_id,
             owner_property_id,
         )
-        return
+        return False
     if released:
         logger.info("lease_released host_user_id=%s property_id=%s", host_user_id, owner_property_id)
     else:
@@ -345,6 +359,7 @@ async def release(host_user_id: uuid.UUID, property_id: uuid.UUID | None, token:
             host_user_id,
             owner_property_id,
         )
+    return released
 
 
 async def transfer(
