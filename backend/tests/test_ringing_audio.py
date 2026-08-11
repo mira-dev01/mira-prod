@@ -198,3 +198,44 @@ async def test_busy_message_text_matches_intended_recovery_copy():
     # reads back correctly. See BUSY_MESSAGE_TEXT's own comment.
     assert "whatsapp" in BUSY_MESSAGE_TEXT
     assert "WhatsApp" not in BUSY_MESSAGE_TEXT
+
+
+async def test_stream_pcm_does_not_accumulate_drift_under_send_latency(monkeypatch):
+    # Regression for the exact live symptom (2026-08-11): a busy-call
+    # message that sounded correctly paced as a standalone file played
+    # audibly slow/dragged-out on a real call. Root cause: the old
+    # implementation did `await websocket.send_text(...)` then
+    # unconditionally `await asyncio.sleep(_CHUNK_DURATION_S)` -- sleep()
+    # only guarantees AT LEAST that duration, and send_text's own latency
+    # (real under production event-loop contention -- _reject_call_as_busy
+    # only ever runs while a different, resource-hungry live call is
+    # ALSO active on this process, see pipeline.py) adds on top and
+    # compounds across ~800+ chunks in a 17s clip. This test simulates
+    # that contention (each send_text call itself takes real, non-negligible
+    # time) and asserts total playback time stays close to the clip's
+    # authored duration instead of drifting past it.
+    chunk_count = 40  # 40 * 20ms = 0.8s of nominal audio
+    pcm = b"\x00\x01" * (chunk_count * (_CHUNK_BYTES // 2))
+    nominal_duration = chunk_count * 0.02
+
+    class _SlowWebSocket:
+        def __init__(self):
+            self.sent: list[str] = []
+
+        async def send_text(self, data: str):
+            # Stands in for real send latency under load -- a meaningful
+            # fraction of the 20ms budget, not negligible.
+            await asyncio.sleep(0.008)
+            self.sent.append(data)
+
+    ws = _SlowWebSocket()
+    loop = asyncio.get_running_loop()
+    start = loop.time()
+    await ringing_audio._stream_pcm(ws, "stream-drift", pcm)
+    elapsed = loop.time() - start
+
+    assert len(ws.sent) == chunk_count
+    # Old behavior would land at ~chunk_count * (0.008 + 0.02) = 1.12s here
+    # (40% over nominal) -- deadline-based pacing keeps total elapsed time
+    # close to the clip's real duration regardless of per-chunk send cost.
+    assert elapsed < nominal_duration * 1.15

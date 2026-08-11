@@ -119,13 +119,42 @@ except (FileNotFoundError, wave.Error):
 async def _stream_pcm(websocket: WebSocket, stream_sid: str, pcm: bytes) -> None:
     """Writes one pass of `pcm` to `websocket` as real-time-paced Exotel
     media-event chunks. The one place both playback modes below encode
-    Exotel's wire format and pace chunks -- see module docstring."""
+    Exotel's wire format and pace chunks -- see module docstring.
+
+    Paced against an absolute deadline (loop.time() + N * chunk duration),
+    not `await asyncio.sleep(_CHUNK_DURATION_S)` after every send -- that
+    naive version only guarantees "sleep AT LEAST 20ms," never exactly
+    20ms, and each send_text call itself takes some nonzero time too. On a
+    quiet event loop the difference is imperceptible; under real
+    contention it isn't; each chunk was made to lag a little further
+    behind, error compounds over the ~800+ chunks (17s clip / 20ms) in a
+    real busy message, and the fixed-cadence recording ends up audibly
+    dragged out and choppy in production despite being generated at the
+    right pace, and the exact CPU/IO-active source of that contention
+    always is present for the busy-call path (this coroutine only ever
+    runs while Mira is ALREADY mid-call for a different guest -- see
+    pipeline.py's _reject_call_as_busy -- i.e. exactly while a real,
+    resource-hungry STT/TTS/LLM pipeline is also active on this same
+    process/event loop). Computing each chunk's target send time up front
+    from a fixed start point and sleeping only the remaining gap to that
+    deadline (clamped to >=0, since a chunk running behind must never sleep
+    a NEGATIVE amount) keeps drift from accumulating: a late chunk sleeps
+    less to catch back up, instead of every later chunk inheriting the
+    previous one's lateness on top of its own.
+    """
+    loop = asyncio.get_running_loop()
+    start = loop.time()
+    chunk_index = 0
     for offset in range(0, len(pcm), _CHUNK_BYTES):
         chunk = pcm[offset : offset + _CHUNK_BYTES]
         payload = base64.b64encode(chunk).decode("ascii")
         message = {"event": "media", "streamSid": stream_sid, "media": {"payload": payload}}
         await websocket.send_text(json.dumps(message))
-        await asyncio.sleep(_CHUNK_DURATION_S)
+        chunk_index += 1
+        target_time = start + chunk_index * _CHUNK_DURATION_S
+        remaining = target_time - loop.time()
+        if remaining > 0:
+            await asyncio.sleep(remaining)
 
 
 async def play_ringing_tone(websocket: WebSocket, stream_sid: str) -> None:
