@@ -1,7 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
+import { cn, glassCardClassName } from "@/lib/utils";
 
 type StatCardProps = {
   icon: LucideIcon;
@@ -17,6 +17,11 @@ type StatCardProps = {
    * itself wrapped in a real interactive element (e.g. a Link), so the
    * lift affordance isn't shown on purely informational stat cards. */
   interactive?: boolean;
+  /** Frosted-glass treatment for use over a gradient backdrop -- opt-in only,
+   * for zones that actually have something behind them worth blurring.
+   * Default stays fully opaque for every other consumer (landing-page
+   * mockup, recovery-analytics-card) sitting on a flat surface. */
+  glass?: boolean;
   className?: string;
 };
 
@@ -27,10 +32,17 @@ export function StatCard({
   value,
   loading,
   interactive,
+  glass,
   className,
 }: StatCardProps) {
   return (
-    <Card className={cn(interactive && "surface-interactive", className)}>
+    <Card
+      className={cn(
+        interactive && "surface-interactive",
+        glass && glassCardClassName,
+        className
+      )}
+    >
       <CardContent className="space-y-2">
         <span
           className="flex size-8 items-center justify-center rounded-full"

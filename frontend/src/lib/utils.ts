@@ -5,6 +5,16 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+// Frosted-glass card treatment for the Overview page's ambient-gradient
+// zone (page.tsx + StatCard, LiveRequestsCard, OpportunitiesCard,
+// UnansweredQuestionsCard's `glass` props) -- centralized so every glass
+// surface on that page gets the same opacity/blur/highlight recipe instead
+// of five copies drifting apart. Only meaningful over something worth
+// blurring (the page's own gradient mesh); other consumers of these
+// components leave `glass` unset and stay fully opaque.
+export const glassCardClassName =
+  "bg-card/55 ring-1 ring-white/60 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_1px_2px_rgba(42,36,32,0.04)]"
+
 // Matches app/services/call_service.py's BROWSER_TEST_CALLER_NUMBER -- the
 // placeholder caller identity used by the dashboard's "test in browser"
 // feature, since there's no real phone number for a WebRTC test call.

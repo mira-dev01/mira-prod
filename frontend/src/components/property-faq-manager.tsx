@@ -77,7 +77,6 @@ export function PropertyFaqManager({
 
   return (
     <PropertyFormSection
-      icon="F"
       title="FAQ"
       count={entries.length}
       action={

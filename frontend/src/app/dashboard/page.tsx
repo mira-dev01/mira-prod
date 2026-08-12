@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { ArrowRight, Phone, PhoneCall, AlertTriangle, Percent, Wallet, Users } from "lucide-react";
 import Link from "next/link";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
@@ -17,6 +17,7 @@ import { OpportunitiesCard } from "@/components/opportunities-card";
 import { StatCard } from "@/components/stat-card";
 import { DateRangePicker } from "@/components/date-range-picker";
 import { UnansweredQuestionsCard } from "@/components/unanswered-questions-card";
+import { cn, glassCardClassName } from "@/lib/utils";
 import type { LeadOut } from "@/lib/types";
 
 export default function OverviewPage() {
@@ -40,8 +41,44 @@ export default function OverviewPage() {
   const recentCalls = calls ?? [];
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    // One unified glass panel, not a decorative background layer plus
+    // separately-padded content: this outer div IS the frosted surface
+    // (glassCardClassName's bg/ring/blur/shadow + the gradient mesh as its
+    // own background-image), bled flush to <main>'s edges via negative
+    // margin (-m-6 at md+ cancels main's own md:p-6 on all four sides --
+    // sidebar included, since this is a sibling of <SidebarNav> in
+    // dashboard/layout.tsx, not an overlap risk), then given its own p-6
+    // back so the header/cards inside sit inset with real breathing room
+    // instead of touching the panel's edges. Mobile only bleeds
+    // left/right/bottom (-mx-4 -mb-4); top keeps main's
+    // pt-[calc(3.5rem+1rem)] untouched since that's reserved space for the
+    // fixed mobile header bar, not decorative padding to cancel. No
+    // overflow-hidden needed for the rounded corners -- border-radius
+    // clips an element's own background paint by default, so popovers
+    // (DateRangePicker) and the LeadDetailPanel drawer, both portaled,
+    // aren't at risk of being clipped. Percentage-based blob positions
+    // keep the gradient proportionally distributed top-to-bottom on any
+    // page length. Every card below opts into the same glassCardClassName
+    // (lib/utils.ts) so it reads as its own frosted surface layered on top
+    // of this one, matching the reference's layered-glass look. Same
+    // radial-gradient + color-mix(in oklch, var(--token)) technique
+    // already used in components/hero/call-flow-showcase.tsx.
+    <div
+      className={cn(
+        "-mx-4 -mb-4 space-y-5 rounded-3xl p-4 md:-m-6 md:p-6",
+        glassCardClassName
+      )}
+      style={{
+        backgroundImage:
+          "radial-gradient(50% 40% at 10% 6%, color-mix(in oklch, var(--accent-warm) 24%, transparent), transparent 70%), radial-gradient(45% 35% at 90% 4%, color-mix(in oklch, var(--primary) 14%, transparent), transparent 70%), radial-gradient(40% 30% at 52% 28%, color-mix(in oklch, var(--chart-2) 14%, transparent), transparent 70%), radial-gradient(40% 30% at 22% 70%, color-mix(in oklch, var(--accent-warm) 10%, transparent), transparent 70%), radial-gradient(45% 35% at 82% 88%, color-mix(in oklch, var(--primary) 8%, transparent), transparent 70%)",
+      }}
+    >
+      <div
+        className={cn(
+          "flex flex-col gap-3 rounded-2xl p-4 sm:flex-row sm:items-center sm:justify-between",
+          glassCardClassName
+        )}
+      >
         <div>
           <h1 className="page-title">Overview</h1>
           <p className="text-sm text-muted-foreground">Across all properties</p>
@@ -57,9 +94,10 @@ export default function OverviewPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        <StatCard icon={Phone} label="Total calls" value={summary?.total_calls} loading={summaryLoading} />
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <StatCard glass icon={Phone} label="Total calls" value={summary?.total_calls} loading={summaryLoading} />
         <StatCard
+          glass
           icon={PhoneCall}
           iconColorVar="--status-live"
           label="Completed"
@@ -67,6 +105,7 @@ export default function OverviewPage() {
           loading={summaryLoading}
         />
         <StatCard
+          glass
           icon={AlertTriangle}
           iconColorVar="--destructive"
           label="Escalated"
@@ -74,33 +113,55 @@ export default function OverviewPage() {
           loading={summaryLoading}
         />
         <StatCard
+          glass
           icon={Percent}
           label="Answer rate"
           value={summary?.answer_rate != null ? `${Math.round(summary.answer_rate * 100)}%` : undefined}
           loading={summaryLoading}
         />
         <StatCard
+          glass
           icon={Wallet}
           label="Pipeline value"
           value={summary?.pipeline_value != null ? `₹${summary.pipeline_value.toLocaleString("en-IN")}` : undefined}
           loading={summaryLoading}
         />
         <Link href="/dashboard/leads?tab=booking&status=open" className="block">
-          <StatCard icon={Users} label="Open leads" value={summary?.open_leads} loading={summaryLoading} interactive />
+          <StatCard
+            glass
+            icon={Users}
+            label="Open leads"
+            value={summary?.open_leads}
+            loading={summaryLoading}
+            interactive
+          />
         </Link>
       </div>
 
-      {/* Live requests and unanswered FAQs both need to be visible at first
-          glance without scrolling -- xl:grid-cols-3 pulls Unanswered
-          Questions into the same row on wide screens; on narrower laptop
-          widths (1366x768/1440x900) it wraps to a second row but stays
-          right below the fold rather than pushed down by an 8-row calls
-          table (cut to 5 here, full list stays one click away). */}
-      <div className="grid items-stretch gap-6 lg:grid-cols-2 xl:grid-cols-3">
-        <Card className="h-full">
+      {/* Action-needed cards first (Live requests, then Unanswered
+          questions), Recent calls last since it's passive/FYI -- same 3
+          grid items and span classes as before, so the existing wrap
+          tuning holds: two single-span cards pair up on row 1 at the lg
+          breakpoint (1366x768/1440x900 laptop widths), Unanswered
+          Questions' col-span-2 fills row 2 alone; all three sit in one row
+          at xl. Reordering which card is which changes only reading order,
+          not row count. */}
+      <div className="grid items-stretch gap-4 lg:grid-cols-2 xl:grid-cols-3">
+        {leadsLoading ? (
+          <Skeleton className="h-40 w-full" />
+        ) : (
+          <LiveRequestsCard
+            glass
+            leads={leads ?? []}
+            onRefetch={refetchLeads}
+            onCardClick={setEditingLead}
+            limit={2}
+          />
+        )}
+
+        <Card className={cn("h-full", glassCardClassName)}>
           <CardHeader>
             <CardTitle>Recent calls</CardTitle>
-            <CardDescription>Latest 5 call sessions across your properties</CardDescription>
           </CardHeader>
           <CardContent className="flex-1">
             {callsLoading ? (
@@ -122,19 +183,8 @@ export default function OverviewPage() {
           </div>
         </Card>
 
-        {leadsLoading ? (
-          <Skeleton className="h-40 w-full" />
-        ) : (
-          <LiveRequestsCard
-            leads={leads ?? []}
-            onRefetch={refetchLeads}
-            onCardClick={setEditingLead}
-            limit={2}
-          />
-        )}
-
         <div className="flex lg:col-span-2 xl:col-span-1">
-          <UnansweredQuestionsCard limit={2} linkToFaqPage />
+          <UnansweredQuestionsCard glass limit={2} linkToFaqPage hideDescription />
         </div>
       </div>
 
@@ -145,7 +195,13 @@ export default function OverviewPage() {
       {leadsLoading ? (
         <Skeleton className="h-40 w-full" />
       ) : (
-        <OpportunitiesCard leads={leads ?? []} onRefetch={refetchLeads} onCardClick={setEditingLead} limit={3} />
+        <OpportunitiesCard
+          glass
+          leads={leads ?? []}
+          onRefetch={refetchLeads}
+          onCardClick={setEditingLead}
+          limit={3}
+        />
       )}
 
       <LeadDetailPanel

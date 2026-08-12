@@ -13,7 +13,7 @@ import { RightPanel, RightPanelFooterButton } from "@/components/ui/right-panel"
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { cn } from "@/lib/utils";
+import { cn, glassCardClassName } from "@/lib/utils";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError } from "@/lib/api";
 import type { FaqGapOut } from "@/lib/types";
@@ -29,7 +29,20 @@ export function UnansweredQuestionsCard({
   limit,
   linkToFaqPage,
   collapsible,
-}: { limit?: number; linkToFaqPage?: boolean; collapsible?: boolean } = {}) {
+  hideDescription,
+  glass,
+}: {
+  limit?: number;
+  linkToFaqPage?: boolean;
+  collapsible?: boolean;
+  /** Overview's compact preview sits right under the card title with no
+   * room to spare -- the explanatory sentence is redundant there since
+   * "Questions Mira couldn't answer" + the unanswered-count badge already
+   * say what this card is. The FAQ page's full view keeps it. */
+  hideDescription?: boolean;
+  /** See lib/utils.ts's glassCardClassName -- opt-in, Overview page only. */
+  glass?: boolean;
+} = {}) {
   const { data: properties } = useAsync(() => api.properties.list(), []);
   const { data: allGaps, loading: gapsLoading, refetch: refetchGaps } = useAsync(() => api.faqGaps.list(), []);
   const gaps = limit ? allGaps?.slice(0, limit) : allGaps;
@@ -112,7 +125,7 @@ export function UnansweredQuestionsCard({
 
   return (
     <>
-      <Card className="h-full min-w-0">
+      <Card className={cn("h-full min-w-0", glass && glassCardClassName)}>
         {collapsible ? (
           <button
             type="button"
@@ -141,10 +154,12 @@ export function UnansweredQuestionsCard({
         ) : (
           <CardHeader>
             <CardTitle>Questions Mira couldn&apos;t answer</CardTitle>
-            <CardDescription>
-              Guests asked these and Mira had no verified answer, so she couldn&apos;t help — answer one below and
-              Mira will use it automatically next time.
-            </CardDescription>
+            {!hideDescription && (
+              <CardDescription>
+                Guests asked these and Mira had no verified answer, so she couldn&apos;t help — answer one below and
+                Mira will use it automatically next time.
+              </CardDescription>
+            )}
           </CardHeader>
         )}
         {expanded && <CardContent className="min-w-0 flex-1">

@@ -408,7 +408,7 @@ export default function PropertiesPage() {
           >
             <form id="create-property-form" onSubmit={handleCreate} className="space-y-4">
               <PropertyFormFields form={form} onChange={setForm} />
-              <p className="text-micro pt-2 text-muted-foreground">
+              <p className="pt-2 text-xs text-muted-foreground">
                 FAQ and photos can be added once the property is created — edit it afterward from the property
                 card.
               </p>

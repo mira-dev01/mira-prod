@@ -13,6 +13,7 @@ import { leadUrgencyTone } from "@/components/lead-detail-panel";
 import { useNotificationStream } from "@/hooks/use-notification-stream";
 import { ApiError, api } from "@/lib/api";
 import { formatLeadTimestamp, leadGuestLabel } from "@/lib/leads";
+import { cn, glassCardClassName } from "@/lib/utils";
 import type { LeadOut } from "@/lib/types";
 
 /**
@@ -30,11 +31,14 @@ export function LiveRequestsCard({
   onRefetch,
   onCardClick,
   limit,
+  glass,
 }: {
   leads: LeadOut[];
   onRefetch: () => void;
   onCardClick: (lead: LeadOut) => void;
   limit?: number;
+  /** See lib/utils.ts's glassCardClassName -- opt-in, Overview page only. */
+  glass?: boolean;
 }) {
   const [handlingIds, setHandlingIds] = useState<Set<string>>(new Set());
 
@@ -67,7 +71,7 @@ export function LiveRequestsCard({
   const visibleLeads = limit ? escalatedLeads.slice(0, limit) : escalatedLeads;
 
   return (
-    <Card className="h-full">
+    <Card className={cn("h-full", glass && glassCardClassName)}>
       <CardHeader className="flex flex-row items-center justify-between gap-2">
         <CardTitle>Live requests</CardTitle>
         <Badge variant="outline">{escalatedLeads.length} active</Badge>

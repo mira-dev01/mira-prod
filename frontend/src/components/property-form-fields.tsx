@@ -70,105 +70,101 @@ export function PropertyFormFields({
             onChange={(e) => onChange({ ...form, base_price: Number(e.target.value) })}
           />
         </div>
-        <div
-          className="col-span-2 flex items-center justify-between rounded-lg border p-3"
-          onClick={(e) => {
-            // Fallback for a confirmed-live bug: a real click directly on the
-            // switch pill sometimes never reaches its own click handler (a
-            // synthetic .click() on the same element always works, so this
-            // isn't a logic bug in the switch itself -- more likely a
-            // hit-testing/positioning quirk). Base-ui's Switch calls
-            // preventDefault() the instant its own onClick runs, and a native
-            // <label for> click already toggles the input directly -- skip
-            // this fallback in both of those cases so a click that already
-            // worked never gets double-toggled back to its original state.
-            if (e.defaultPrevented || (e.target as HTMLElement).closest("label")) return;
-            onChange({ ...form, exact_airbnb_pricing: !(form.exact_airbnb_pricing ?? false) });
-          }}
-        >
-          <div className="space-y-0.5">
-            <Label htmlFor="exact_airbnb_pricing">Quote live Airbnb Smart Pricing</Label>
-            <p className="text-micro text-muted-foreground">
-              Off: Mira quotes the base price above as-is (no markup either way). On: Mira looks up this listing's
-              live price on Airbnb for the guest's actual dates instead — turn this on if you use Airbnb Smart
-              Pricing and want Mira to always match today's real rate. Requires an Airbnb listing to be linked.
-            </p>
+        <div className="col-span-2 grid grid-cols-3 gap-3">
+          <div
+            className="flex items-center justify-between gap-2 rounded-lg border p-3"
+            title="When off, Mira quotes the base price above. When on, she looks up this listing's live Airbnb rate for the guest's dates instead -- use this if you run Airbnb Smart Pricing. Requires a linked Airbnb listing."
+            onClick={(e) => {
+              // Fallback for a confirmed-live bug: a real click directly on the
+              // switch pill sometimes never reaches its own click handler (a
+              // synthetic .click() on the same element always works, so this
+              // isn't a logic bug in the switch itself -- more likely a
+              // hit-testing/positioning quirk). Base-ui's Switch calls
+              // preventDefault() the instant its own onClick runs, and a native
+              // <label for> click already toggles the input directly -- skip
+              // this fallback in both of those cases so a click that already
+              // worked never gets double-toggled back to its original state.
+              if (e.defaultPrevented || (e.target as HTMLElement).closest("label")) return;
+              onChange({ ...form, exact_airbnb_pricing: !(form.exact_airbnb_pricing ?? false) });
+            }}
+          >
+            <Label htmlFor="exact_airbnb_pricing" className="min-w-0 truncate">
+              Smart pricing
+            </Label>
+            <Switch
+              id="exact_airbnb_pricing"
+              className="shrink-0"
+              checked={form.exact_airbnb_pricing ?? false}
+              onCheckedChange={(checked) => onChange({ ...form, exact_airbnb_pricing: checked })}
+            />
           </div>
-          <Switch
-            id="exact_airbnb_pricing"
-            checked={form.exact_airbnb_pricing ?? false}
-            onCheckedChange={(checked) => onChange({ ...form, exact_airbnb_pricing: checked })}
-          />
-        </div>
-        <div
-          className="col-span-2 flex items-center justify-between rounded-lg border p-3"
-          onClick={(e) => {
-            if (e.defaultPrevented || (e.target as HTMLElement).closest("label")) return;
-            onChange({ ...form, is_premium: !(form.is_premium ?? false) });
-          }}
-        >
-          <div className="space-y-0.5">
-            <Label htmlFor="is_premium">Premium property</Label>
-            <p className="text-micro text-muted-foreground">
-              Mark this as one of your nicer/higher-end properties — Mira uses this to recommend it first when a
-              guest asks for something more premium.
-            </p>
+          <div
+            className="flex items-center justify-between gap-2 rounded-lg border p-3"
+            title="Blocks single-Saturday-only bookings -- any stay including a Saturday must be at least 2 nights. Separate from the minimum stay below."
+            onClick={(e) => {
+              // Same base-ui Switch click fallback as exact_airbnb_pricing above.
+              if (e.defaultPrevented || (e.target as HTMLElement).closest("label")) return;
+              onChange({ ...form, saturday_minimum_stay_enabled: !(form.saturday_minimum_stay_enabled ?? false) });
+            }}
+          >
+            <Label htmlFor="saturday_minimum_stay_enabled" className="min-w-0 truncate">
+              Sat. 2-night min
+            </Label>
+            <Switch
+              id="saturday_minimum_stay_enabled"
+              className="shrink-0"
+              checked={form.saturday_minimum_stay_enabled ?? false}
+              onCheckedChange={(checked) => onChange({ ...form, saturday_minimum_stay_enabled: checked })}
+            />
           </div>
-          <Switch
-            id="is_premium"
-            checked={form.is_premium ?? false}
-            onCheckedChange={(checked) => onChange({ ...form, is_premium: checked })}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="max_guests">Max guests</Label>
-          <Input
-            id="max_guests"
-            type="number"
-            min={1}
-            value={form.max_guests}
-            onChange={(e) => onChange({ ...form, max_guests: Number(e.target.value) })}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="minimum_nights">Minimum stay (nights)</Label>
-          <Input
-            id="minimum_nights"
-            type="number"
-            min={1}
-            value={form.minimum_nights ?? 1}
-            onChange={(e) => onChange({ ...form, minimum_nights: Number(e.target.value) })}
-          />
-        </div>
-        <div
-          className="col-span-2 flex items-center justify-between rounded-lg border p-3"
-          onClick={(e) => {
-            // Same base-ui Switch click fallback as exact_airbnb_pricing above.
-            if (e.defaultPrevented || (e.target as HTMLElement).closest("label")) return;
-            onChange({ ...form, saturday_minimum_stay_enabled: !(form.saturday_minimum_stay_enabled ?? false) });
-          }}
-        >
-          <div className="space-y-0.5">
-            <Label htmlFor="saturday_minimum_stay_enabled">Require 2-night minimum on Saturdays</Label>
-            <p className="text-micro text-muted-foreground">
-              Off: a guest can book a single Saturday night on its own. On: any stay that includes a Saturday night
-              must be at least 2 nights — a lone Saturday-only booking is turned down. Independent of the minimum
-              stay above.
-            </p>
+          <div
+            className="flex items-center justify-between gap-2 rounded-lg border p-3"
+            title="Mira recommends this property first when a guest asks for something more premium."
+            onClick={(e) => {
+              if (e.defaultPrevented || (e.target as HTMLElement).closest("label")) return;
+              onChange({ ...form, is_premium: !(form.is_premium ?? false) });
+            }}
+          >
+            <Label htmlFor="is_premium" className="min-w-0 truncate">
+              Premium property
+            </Label>
+            <Switch
+              id="is_premium"
+              className="shrink-0"
+              checked={form.is_premium ?? false}
+              onCheckedChange={(checked) => onChange({ ...form, is_premium: checked })}
+            />
           </div>
-          <Switch
-            id="saturday_minimum_stay_enabled"
-            checked={form.saturday_minimum_stay_enabled ?? false}
-            onCheckedChange={(checked) => onChange({ ...form, saturday_minimum_stay_enabled: checked })}
-          />
         </div>
-        <div className="space-y-2">
-          <Label htmlFor="ical_url">iCal URL</Label>
-          <Input
-            id="ical_url"
-            value={form.ical_url ?? ""}
-            onChange={(e) => onChange({ ...form, ical_url: e.target.value })}
-          />
+        <div className="col-span-2 grid grid-cols-3 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="max_guests">Max guests</Label>
+            <Input
+              id="max_guests"
+              type="number"
+              min={1}
+              value={form.max_guests}
+              onChange={(e) => onChange({ ...form, max_guests: Number(e.target.value) })}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="minimum_nights">Minimum stay (nights)</Label>
+            <Input
+              id="minimum_nights"
+              type="number"
+              min={1}
+              value={form.minimum_nights ?? 1}
+              onChange={(e) => onChange({ ...form, minimum_nights: Number(e.target.value) })}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="ical_url">iCal URL</Label>
+            <Input
+              id="ical_url"
+              value={form.ical_url ?? ""}
+              onChange={(e) => onChange({ ...form, ical_url: e.target.value })}
+            />
+          </div>
         </div>
         <div className="space-y-2">
           <Label htmlFor="check_in_time">Check-in time</Label>
@@ -191,7 +187,6 @@ export function PropertyFormFields({
       </div>
 
       <PropertyFormSection
-        icon="D"
         title="Description"
         helpText="MIRA answers general questions about the property directly from this -- what makes it stand out, the vibe, what's nearby."
       >
@@ -257,7 +252,6 @@ export function PropertyFormFields({
       </div>
 
       <PropertyFormSection
-        icon="S"
         title="Seasonal Notes"
         count={seasonalNotes.length}
         action={

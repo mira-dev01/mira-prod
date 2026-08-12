@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { OpportunityList } from "@/components/opportunity-list";
 import { useNotificationStream } from "@/hooks/use-notification-stream";
 import { isOpportunity } from "@/lib/opportunities";
+import { cn, glassCardClassName } from "@/lib/utils";
 import type { LeadOut } from "@/lib/types";
 
 /**
@@ -23,11 +24,14 @@ export function OpportunitiesCard({
   onRefetch,
   onCardClick,
   limit,
+  glass,
 }: {
   leads: LeadOut[];
   onRefetch: () => void;
   onCardClick: (lead: LeadOut) => void;
   limit?: number;
+  /** See lib/utils.ts's glassCardClassName -- opt-in, Overview page only. */
+  glass?: boolean;
 }) {
   useNotificationStream((notification) => {
     if (notification.channel === "busy_recovery") onRefetch();
@@ -39,7 +43,7 @@ export function OpportunitiesCard({
   const visibleLeads = limit ? opportunityLeads.slice(0, limit) : opportunityLeads;
 
   return (
-    <Card className="h-full">
+    <Card className={cn("h-full", glass && glassCardClassName)}>
       <CardHeader className="flex flex-row items-center justify-between gap-2">
         <CardTitle>Opportunities</CardTitle>
         <Badge variant="outline">{opportunityLeads.length} open</Badge>
