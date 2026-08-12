@@ -22,6 +22,7 @@ from app.api.v1 import (
     notifications,
     pricing,
     properties,
+    take_call,
     technicians,
     voice,
 )
@@ -251,6 +252,7 @@ app.include_router(leads.router, prefix=API_PREFIX)
 app.include_router(faq.router, prefix=API_PREFIX)
 app.include_router(negotiation_rules.router, prefix=API_PREFIX)
 app.include_router(voice.router, prefix=API_PREFIX)
+app.include_router(take_call.router, prefix=API_PREFIX)
 app.include_router(exotel.router, prefix=API_PREFIX)
 app.include_router(whatsapp.router, prefix=API_PREFIX)
 

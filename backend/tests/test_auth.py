@@ -130,3 +130,46 @@ async def test_onboarding_requires_airbnb_url(client, auth_headers):
     del payload["airbnb_url"]
     resp = await client.post("/api/v1/auth/onboarding", json=payload, headers=auth_headers)
     assert resp.status_code == 422
+
+
+async def test_update_me_sets_host_phone(client, auth_headers):
+    """Phase 5: User.phone is the canonical host contact number, reused
+    (not duplicated) for escalation, call ownership routing, and future
+    live takeover. This is the same PATCH /auth/me endpoint every other
+    host self-service setting already goes through -- no new
+    authorization surface was added for Phase 5."""
+    resp = await client.patch("/api/v1/auth/me", json={"phone": "+919812345678"}, headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["phone"] == "+919812345678"
+
+
+async def test_update_me_phone_change_does_not_affect_unrelated_fields(client, auth_headers, test_user):
+    """Setting phone must not clobber other settings -- exclude_unset means
+    only the fields present in this request are touched."""
+    await client.patch("/api/v1/auth/me", json={"notification_email": "ops@example.com"}, headers=auth_headers)
+    resp = await client.patch("/api/v1/auth/me", json={"phone": "+919812345678"}, headers=auth_headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["phone"] == "+919812345678"
+    assert body["notification_email"] == "ops@example.com"
+
+
+async def test_update_me_cannot_change_another_hosts_phone(client, auth_headers, db_session):
+    """A host can only ever update current_user's own row -- PATCH /auth/me
+    has no property_id/user_id parameter to target another host's account
+    with, so there is no request shape that could update someone else's
+    phone number through this endpoint."""
+    from app.models.user import User
+
+    other_user = User(
+        email="other-host-phone@example.com", name="Other Host", phone="+919800000000"
+    )
+    db_session.add(other_user)
+    await db_session.commit()
+    await db_session.refresh(other_user)
+
+    resp = await client.patch("/api/v1/auth/me", json={"phone": "+919812345678"}, headers=auth_headers)
+    assert resp.status_code == 200
+
+    await db_session.refresh(other_user)
+    assert other_user.phone == "+919800000000"

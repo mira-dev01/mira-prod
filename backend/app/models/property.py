@@ -200,6 +200,74 @@ class Property(UUIDPkMixin, TimestampMixin, Base):
     airbnb_latitude: Mapped[float | None] = mapped_column(Numeric(9, 6))
     airbnb_longitude: Mapped[float | None] = mapped_column(Numeric(9, 6))
 
+    # Call Ownership Schedule (Phase 1 -- storage only, no resolver/routing
+    # logic yet; see docs/call-ownership-schedule.md once written). Answers
+    # "who owns an inbound guest call for this property" -- one of three
+    # unambiguous states, not two:
+    #   "MIRA"      -- Mira handles every call, unconditionally. Schedule
+    #                  fields (below) are ignored even if set.
+    #   "HOST"      -- the host receives every call directly, unconditionally
+    #                  (once later phases implement routing). Schedule
+    #                  fields are ignored even if set.
+    #   "SCHEDULED" -- ownership alternates by time of day, per the schedule
+    #                  fields below (during the host-hours window the HOST
+    #                  owns the call; outside it, MIRA does -- see
+    #                  resolve_effective_call_owner, added in a later
+    #                  phase, for the actual HOST/MIRA decision).
+    # Earlier draft of this column only had "MIRA"/"HOST" and tried to let
+    # a *populated* schedule implicitly mean "scheduled" -- that was
+    # genuinely ambiguous: "MIRA" with a schedule set could not be
+    # distinguished from "always MIRA, schedule field populated but
+    # inert" vs. "scheduled, MIRA currently active," and there was no way
+    # to represent "scheduled" at all as a stored fact independent of the
+    # current time. Fixed by making SCHEDULED an explicit third value
+    # rather than an inferred state -- the three product-level modes now
+    # map 1:1 onto three stored strings, no inference required anywhere
+    # downstream. Plain string, not a DB enum, matching this codebase's
+    # existing convention for every other status-like column (User.status,
+    # CallSession.status, Lead.status, etc. -- see those models; no
+    # SQLAlchemy/Postgres enum type is used anywhere in this project).
+    # Defaults to "MIRA" so every existing property, and every property
+    # created before a host visits the new settings UI, continues routing
+    # to Mira exactly as it does today -- this default must never change
+    # without a deliberate, separate decision, since flipping it silently
+    # would route live guest calls to a host who never opted in.
+    call_handling_mode: Mapped[str] = mapped_column(String(16), default="MIRA", server_default="MIRA")
+
+    # The daily local-time window during which the HOST owns the call when
+    # call_handling_mode == "SCHEDULED" (see resolve_effective_call_owner,
+    # added in a later phase, for how these combine with call_handling_mode
+    # into a HOST/MIRA decision; outside this window MIRA owns the call).
+    # Meaningless/ignored when call_handling_mode is "MIRA" or "HOST" --
+    # not validated against those modes at this layer (see PropertyUpdate's
+    # validator in app/schemas/property.py for where that's enforced: a
+    # SCHEDULED property must have both fields set, non-SCHEDULED properties
+    # may leave them null or keep a previously-configured window around
+    # inertly if the host switches modes and back). Plain "HH:MM" strings,
+    # same representation and length as the existing check_in_time/
+    # check_out_time columns above -- a SQL TIME column was considered and
+    # rejected: these are recurring wall-clock values compared against a
+    # call's local time-of-day, never arithmetic against a real date, so
+    # the extra type precision buys nothing and HH:MM string comparison
+    # ("22:00" > "09:00") already sorts correctly for same-day windows.
+    # Overnight windows (e.g. start="22:00", end="06:00") are valid values
+    # here and must remain so -- the start>end wraparound is resolved by
+    # the future resolver, not rejected at this layer, same precedent as
+    # seasonal_notes' own start_month/end_month wraparound above.
+    call_handling_schedule_start: Mapped[str | None] = mapped_column(String(8))
+    call_handling_schedule_end: Mapped[str | None] = mapped_column(String(8))
+
+    # IANA timezone identifier the schedule window above is evaluated in
+    # (e.g. "Asia/Kolkata") -- exact same column definition as the existing
+    # User.timezone (see app/models/user.py), reused rather than inventing
+    # a second timezone representation. Deliberately property-level, not
+    # inherited from the host's own User.timezone: a host's properties can
+    # span multiple regions/timezones even though today's fleet is
+    # entirely IST, and the schedule is a property-local wall-clock
+    # concept (guests call a specific property's line), not a host-global
+    # one.
+    timezone: Mapped[str] = mapped_column(String(64), default="Asia/Kolkata", server_default="Asia/Kolkata")
+
     owner: Mapped["User"] = relationship(back_populates="properties")
     bookings: Mapped[list["Booking"]] = relationship(back_populates="property", cascade="all, delete-orphan")
     call_sessions: Mapped[list["CallSession"]] = relationship(

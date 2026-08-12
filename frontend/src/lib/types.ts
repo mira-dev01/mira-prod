@@ -134,6 +134,13 @@ export type FAQItem = { question: string; answer: string };
 
 export type SeasonalNote = { note: string; start_month: number; end_month: number };
 
+// Call Ownership Schedule (Phase 1-3) -- who owns an inbound guest call for
+// this property. "MIRA"/"HOST" apply unconditionally; "SCHEDULED"
+// alternates by time of day per call_handling_schedule_start/_end
+// (property-local wall-clock, evaluated in `timezone`). Actual call
+// routing is not implemented yet (Phase 4+) -- this is configuration only.
+export type CallHandlingMode = "MIRA" | "HOST" | "SCHEDULED";
+
 export type PropertyOut = {
   id: string;
   user_id: string;
@@ -160,6 +167,10 @@ export type PropertyOut = {
   smart_price_updated_at: string | null;
   exact_airbnb_pricing: boolean;
   is_premium: boolean;
+  call_handling_mode: CallHandlingMode;
+  call_handling_schedule_start: string | null;
+  call_handling_schedule_end: string | null;
+  timezone: string;
   created_at: string;
 };
 
@@ -197,6 +208,17 @@ export type PropertyCreate = {
   saturday_minimum_stay_enabled?: boolean;
   exact_airbnb_pricing?: boolean;
   is_premium?: boolean;
+  // Same as exact_airbnb_pricing/is_premium above -- not on the backend's
+  // PropertyCreate schema (Phase 1 decision: a schedule shouldn't be
+  // required at property-creation time), only on PropertyUpdate. Included
+  // here anyway since this type doubles as both panels' shared form shape;
+  // extra keys sent on create are silently ignored by Pydantic (no
+  // extra="forbid" on PropertyCreate), same as those two fields already
+  // rely on.
+  call_handling_mode?: CallHandlingMode;
+  call_handling_schedule_start?: string | null;
+  call_handling_schedule_end?: string | null;
+  timezone?: string;
 };
 
 export type PropertyUpdate = Partial<PropertyCreate>;
