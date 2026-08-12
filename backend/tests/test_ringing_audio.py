@@ -142,6 +142,81 @@ async def test_busy_message_is_the_real_spoken_asset_not_the_beep_placeholder():
     assert loaded_duration_s > beep_tone_duration_s * 2
 
 
+def test_committed_busy_message_asset_is_actually_8000hz():
+    # Direct regression for the 2026-08-12 production incident: a
+    # replacement busy_message_speech_8000.wav was committed with a
+    # correct-looking filename but a real WAV header of 22050 Hz -- every
+    # downstream consumer (_stream_pcm's fixed chunk-size/pacing math)
+    # blindly trusted the filename/hardcoded constants instead of the
+    # file's own header, so production played the message back at ~2.76x
+    # its real duration with pitch dropped by the same factor (confirmed
+    # live: "slow, robotic, garbled"). This test reads the committed
+    # asset's ACTUAL header directly (not through the validating
+    # _load_pcm, which would now catch this anyway -- see the test below --
+    # this test instead guards the raw asset file itself, so it fails even
+    # if _load_pcm's own validation were ever weakened or removed).
+    with ringing_audio.wave.open(str(ringing_audio._ASSETS_DIR / "busy_message_speech_8000.wav"), "rb") as wav_file:
+        assert wav_file.getframerate() == 8000
+        assert wav_file.getnchannels() == 1
+        assert wav_file.getsampwidth() == 2
+
+
+def test_load_pcm_rejects_a_wav_with_the_wrong_real_sample_rate(tmp_path):
+    # Unit-level regression for the same incident, isolated from the
+    # committed asset: _load_pcm must refuse (not silently accept) a WAV
+    # whose actual header doesn't match the 8000Hz/mono/16-bit format
+    # _stream_pcm's fixed chunk math assumes -- proves the validation
+    # itself works, independent of whether today's committed asset happens
+    # to be correct.
+    import wave as wave_module
+
+    mismatched_path = tmp_path / "wrong_rate.wav"
+    with wave_module.open(str(mismatched_path), "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(22050)  # the exact wrong rate from the real incident
+        wav_file.writeframes(b"\x00\x00" * 100)
+
+    original_assets_dir = ringing_audio._ASSETS_DIR
+    ringing_audio._ASSETS_DIR = tmp_path
+    try:
+        try:
+            ringing_audio._load_pcm("wrong_rate.wav")
+            raised = False
+        except ringing_audio._UnexpectedWavFormat as exc:
+            raised = True
+            assert "22050" in str(exc)
+            assert "8000" in str(exc)
+    finally:
+        ringing_audio._ASSETS_DIR = original_assets_dir
+
+    assert raised, "_load_pcm must raise _UnexpectedWavFormat for a real-rate mismatch, not silently load it"
+
+
+def test_load_pcm_accepts_a_correctly_formatted_wav(tmp_path):
+    # The inverse of the test above -- a genuinely correct 8000Hz/mono/
+    # 16-bit file must still load normally, proving the new validation
+    # isn't overly strict.
+    import wave as wave_module
+
+    correct_path = tmp_path / "correct_rate.wav"
+    frame_bytes = b"\x01\x00" * 50
+    with wave_module.open(str(correct_path), "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(8000)
+        wav_file.writeframes(frame_bytes)
+
+    original_assets_dir = ringing_audio._ASSETS_DIR
+    ringing_audio._ASSETS_DIR = tmp_path
+    try:
+        pcm = ringing_audio._load_pcm("correct_rate.wav")
+    finally:
+        ringing_audio._ASSETS_DIR = original_assets_dir
+
+    assert pcm == frame_bytes
+
+
 async def test_busy_message_send_failure_is_swallowed_not_raised():
     # Same contract as the ring tone: a busy-recovery call still needs to
     # proceed to hangup even if playback itself fails partway through.
@@ -152,14 +227,15 @@ async def test_busy_message_send_failure_is_swallowed_not_raised():
     await play_busy_message(_FailingWebSocket(), "stream-busy-fail")
 
 
-def test_busy_message_pcm_falls_back_to_beep_tone_if_speech_asset_fails_to_load(monkeypatch):
+def test_busy_message_pcm_falls_back_to_beep_tone_if_speech_asset_fails_to_load():
     # Not a live-dependency fallback (there is no live dependency on this
     # path anymore) -- purely against this module's own committed asset
     # going missing/corrupt at import time, e.g. a fresh checkout that
     # hasn't run the generation script. Exercises the module's actual
     # load-time try/except logic directly (same _load_pcm/except shape as
-    # the real module-level code) rather than reloading the module, which
-    # can't cleanly isolate a monkeypatch across its own re-execution.
+    # the real module-level code, including _UnexpectedWavFormat) rather
+    # than reloading the module, which can't cleanly isolate a monkeypatch
+    # across its own re-execution.
     def _load_pcm_missing_speech_asset(filename: str) -> bytes:
         if filename == "busy_message_speech_8000.wav":
             raise FileNotFoundError(filename)
@@ -167,8 +243,28 @@ def test_busy_message_pcm_falls_back_to_beep_tone_if_speech_asset_fails_to_load(
 
     try:
         pcm = _load_pcm_missing_speech_asset("busy_message_speech_8000.wav")
-    except (FileNotFoundError, ringing_audio.wave.Error):
+    except (FileNotFoundError, ringing_audio.wave.Error, ringing_audio._UnexpectedWavFormat):
         pcm = _load_pcm_missing_speech_asset("busy_message_8000.wav")
+
+    assert pcm == ringing_audio._load_pcm("busy_message_8000.wav")
+
+
+def test_busy_message_pcm_falls_back_to_beep_tone_if_speech_asset_is_wrong_sample_rate():
+    # Same fallback contract as the test above, but exercising the actual
+    # incident's trigger: the asset loads fine as a WAV file (no
+    # FileNotFoundError, no wave.Error) but its real header doesn't match
+    # -- _UnexpectedWavFormat is what _load_pcm raises for that case, and
+    # the module's own except clause must catch it and degrade to the beep
+    # tone, not let it propagate and break the whole module at import time.
+    def _load_pcm_wrong_rate_speech_asset(filename: str) -> bytes:
+        if filename == "busy_message_speech_8000.wav":
+            raise ringing_audio._UnexpectedWavFormat("simulated 22050Hz asset")
+        return ringing_audio._load_pcm(filename)
+
+    try:
+        pcm = _load_pcm_wrong_rate_speech_asset("busy_message_speech_8000.wav")
+    except (FileNotFoundError, ringing_audio.wave.Error, ringing_audio._UnexpectedWavFormat):
+        pcm = _load_pcm_wrong_rate_speech_asset("busy_message_8000.wav")
 
     assert pcm == ringing_audio._load_pcm("busy_message_8000.wav")
 

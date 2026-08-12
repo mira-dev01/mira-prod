@@ -89,8 +89,35 @@ _SAMPLE_WIDTH = 2
 _CHUNK_BYTES = int(_SAMPLE_RATE * _CHUNK_DURATION_S) * _SAMPLE_WIDTH
 
 
+class _UnexpectedWavFormat(ValueError):
+    """Raised by _load_pcm when a committed asset's actual WAV header
+    doesn't match the format every downstream consumer (_stream_pcm's fixed
+    _CHUNK_BYTES/_CHUNK_DURATION_S math, and Exotel's own wire protocol on
+    this raw-websocket path) hardcodes and blindly trusts. Concrete
+    incident this guards against (2026-08-12): a replacement
+    busy_message_speech_8000.wav was committed with a correct-looking
+    filename but a real header of 22050 Hz, not 8000 -- _load_pcm had no
+    way to notice, so _stream_pcm silently chunked/paced 22050 Hz samples
+    as if they were 8000 Hz, playing back at ~2.76x the correct duration
+    with pitch dropped by the same factor (confirmed live: robotic,
+    garbled, "slow" audio) instead of failing loudly. A ValueError subclass
+    (not a bare assert/raise) so callers can catch it specifically -- see
+    _BUSY_MESSAGE_PCM's fallback chain below, which must still degrade to
+    the beep tone rather than crash the whole module on a bad asset."""
+
+
 def _load_pcm(filename: str) -> bytes:
     with wave.open(str(_ASSETS_DIR / filename), "rb") as wav_file:
+        actual_rate = wav_file.getframerate()
+        actual_channels = wav_file.getnchannels()
+        actual_width = wav_file.getsampwidth()
+        if (actual_rate, actual_channels, actual_width) != (_SAMPLE_RATE, 1, _SAMPLE_WIDTH):
+            raise _UnexpectedWavFormat(
+                f"{filename}: expected {_SAMPLE_RATE}Hz/mono/{_SAMPLE_WIDTH * 8}-bit, "
+                f"got {actual_rate}Hz/{actual_channels}ch/{actual_width * 8}-bit -- "
+                "refusing to load, since _stream_pcm's fixed chunk-size/pacing math "
+                "would silently mis-play it (see _UnexpectedWavFormat's own docstring)."
+            )
         return wav_file.readframes(wav_file.getnframes())
 
 
@@ -103,15 +130,20 @@ try:
     # The real spoken busy-recovery message -- see scripts/
     # generate_busy_message_speech.py and the module docstring above.
     _BUSY_MESSAGE_PCM = _load_pcm("busy_message_speech_8000.wav")
-except (FileNotFoundError, wave.Error):
+except (FileNotFoundError, wave.Error, _UnexpectedWavFormat) as exc:
     # Last-resort fallback purely against this module's own committed asset
-    # going missing/corrupt -- e.g. a fresh checkout that hasn't run the
-    # generation script yet. Not a live-dependency fallback (there is no
-    # live dependency on this path anymore); a caller must still hear
-    # *something* and get hung up on promptly rather than a silent socket.
+    # going missing/corrupt/wrong-format -- e.g. a fresh checkout that
+    # hasn't run the generation script yet, or (the concrete incident
+    # _UnexpectedWavFormat documents) a replacement file committed with the
+    # right filename but the wrong real sample rate. Not a live-dependency
+    # fallback (there is no live dependency on this path anymore); a caller
+    # must still hear *something* correctly-paced and get hung up on
+    # promptly, rather than either a crash or (the actual incident) audio
+    # silently mis-played at the wrong speed/pitch.
     logger.error(
-        "busy_message_speech_8000.wav missing/unreadable; falling back to "
-        "the placeholder beep tone. Run scripts/generate_busy_message_speech.py."
+        "busy_message_speech_8000.wav missing/unreadable/wrong-format (%s); falling back to "
+        "the placeholder beep tone. Run scripts/generate_busy_message_speech.py.",
+        exc,
     )
     _BUSY_MESSAGE_PCM = _load_pcm("busy_message_8000.wav")
 
