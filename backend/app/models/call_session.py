@@ -77,6 +77,22 @@ class CallSession(UUIDPkMixin, TimestampMixin, Base):
     # live/outstanding.
     dismissed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    # Host Take Call / live handoff (Phase 1 -- storage only, no transition
+    # logic yet). NULL for every call that never has a takeover requested
+    # (the overwhelming majority, including every existing row as of this
+    # migration) -- not a default value from a fixed set, but the genuine
+    # "not applicable" state, same meaning NULL already carries for e.g.
+    # dismissed_at above. Once later phases implement the feature, the
+    # values are "requested" (host tapped Take Call, not yet claimed/
+    # acted on) / "connecting" (Mira has spoken the handoff phrase and is
+    # tearing down) / "connected" (Exotel reports the host leg answered) /
+    # "failed" (no-answer/busy/rejected/Connect failure). Plain string,
+    # matching this column's own status field above and every other
+    # status-like column in this codebase -- no enum type introduced.
+    # Nothing writes a non-NULL value here yet; that begins in the phase
+    # that implements the Take Call endpoint's atomic claim.
+    handoff_status: Mapped[str | None] = mapped_column(String(16))
+
     property: Mapped["Property"] = relationship(back_populates="call_sessions")
     guest_profile: Mapped["GuestProfile"] = relationship(back_populates="call_sessions")
     notifications: Mapped[list["Notification"]] = relationship(back_populates="call_session")

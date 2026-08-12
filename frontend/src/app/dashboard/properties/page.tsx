@@ -47,6 +47,10 @@ const emptyForm: PropertyCreate = {
   saturday_minimum_stay_enabled: false,
   exact_airbnb_pricing: false,
   is_premium: false,
+  call_handling_mode: "MIRA",
+  call_handling_schedule_start: null,
+  call_handling_schedule_end: null,
+  timezone: "Asia/Kolkata",
 };
 
 function normalizeForSubmit(form: PropertyCreate): PropertyCreate {
@@ -85,6 +89,10 @@ function propertyToForm(property: PropertyOut): PropertyCreate {
     saturday_minimum_stay_enabled: property.saturday_minimum_stay_enabled,
     exact_airbnb_pricing: property.exact_airbnb_pricing,
     is_premium: property.is_premium,
+    call_handling_mode: property.call_handling_mode,
+    call_handling_schedule_start: property.call_handling_schedule_start,
+    call_handling_schedule_end: property.call_handling_schedule_end,
+    timezone: property.timezone,
   };
 }
 
@@ -173,6 +181,18 @@ export default function PropertiesPage() {
   async function handleSaveEdit(e: React.FormEvent) {
     e.preventDefault();
     if (!editing) return;
+    // Backend remains authoritative (app/schemas/property.py's
+    // PropertyUpdate cross-field validator is the real enforcement) -- this
+    // is only a friendlier message than the raw 422 JSON a host would
+    // otherwise see, for the one case that's easy to hit by clicking
+    // "Scheduled" without filling in hours yet.
+    if (
+      editForm.call_handling_mode === "SCHEDULED" &&
+      (!editForm.call_handling_schedule_start || !editForm.call_handling_schedule_end)
+    ) {
+      toast.error("Set both a start and end time for Scheduled host hours.");
+      return;
+    }
     setSavingEdit(true);
     try {
       await api.properties.update(editing.id, normalizeForSubmit(editForm));
@@ -407,10 +427,10 @@ export default function PropertiesPage() {
             }
           >
             <form id="create-property-form" onSubmit={handleCreate} className="space-y-4">
-              <PropertyFormFields form={form} onChange={setForm} />
+              <PropertyFormFields form={form} onChange={setForm} showCallHandling={false} />
               <p className="text-micro pt-2 text-muted-foreground">
-                FAQ and photos can be added once the property is created — edit it afterward from the property
-                card.
+                FAQ, photos, and Call Handling can be added once the property is created — edit it afterward
+                from the property card.
               </p>
             </form>
           </RightPanel>

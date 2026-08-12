@@ -179,13 +179,14 @@ function SettingsPageContent() {
 
             <Card>
               <CardHeader>
-                <CardTitle>WhatsApp Assist</CardTitle>
+                <CardTitle>Host contact number</CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="mb-3 text-sm text-muted-foreground">
-                  Your phone number for escalation WhatsApp messages, in addition to email. After saving,
-                  text &quot;join &lt;code&gt;&quot; to the Twilio Sandbox number from this phone — the
-                  sandbox only delivers to numbers that have opted in.
+                  This is the number Mira uses to reach you — guest escalation WhatsApp messages (in
+                  addition to email), and, as those features roll out, call ownership routing and host call
+                  takeover. After saving, text &quot;join &lt;code&gt;&quot; to the Twilio Sandbox number
+                  from this phone — the sandbox only delivers to numbers that have opted in.
                 </p>
                 <form onSubmit={handleSavePhone} className="flex gap-2">
                   <Input

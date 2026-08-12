@@ -183,6 +183,32 @@ class Settings(BaseSettings):
     # twilio_busy_recovery_template_sid above.
     twilio_availability_template_sid: str | None = None
 
+    # ContentSid of the `mira_guest_calling` twilio/call-to-action template
+    # (see scripts/create_guest_calling_template.py) -- Phase 5's "guest is
+    # calling Mira right now" host notification (see app/services/
+    # guest_calling_notification.py), fired once per live MIRA-owned call.
+    # Unset = falls back to an equivalent plain-text message, same fallback
+    # discipline as twilio_escalation_template_sid above.
+    twilio_guest_calling_template_sid: str | None = None
+
+    # HS256 signing secret for the Take Call action token (Phase 6, see
+    # app/services/take_call_token.py) -- a short-lived, single-use grant
+    # embedded in the WhatsApp "Take Call" link, verified with no Clerk
+    # session involved. Deliberately a separate secret from every other
+    # token/secret in this file (never reused across purposes) so rotating
+    # it can never affect Exotel/Twilio webhook auth or Clerk sessions.
+    # "change-me" default matches this file's existing convention for
+    # every other must-be-set-in-production secret (exotel_webhook_token,
+    # twilio_voice_webhook_token, etc.) -- fails loudly/obviously in a real
+    # deployment that forgot to set it, rather than silently using a weak
+    # default. UNLIKE those shared-secret tokens (compared via
+    # hmac.compare_digest, never used as cryptographic key material), this
+    # one IS an HMAC signing key -- pyjwt itself warns
+    # (InsecureKeyLengthWarning) if it's under 32 bytes for HS256. Set a
+    # real value at least 32 bytes long in production (e.g.
+    # `openssl rand -hex 32`), not a short human-chosen phrase.
+    take_call_token_secret: str = "change-me"
+
     # Shared-secret path token for the inbound WhatsApp webhook (see
     # app/api/v1/webhooks/whatsapp.py, app/services/whatsapp_reply_service.py)
     # -- same "path segment, not Twilio's own HMAC scheme" convention as
