@@ -233,7 +233,6 @@ export function PropertyFormFields({
 
       {showCallHandling && (
         <PropertyFormSection
-          icon="C"
           title="Call Handling"
           helpText="Who answers guest calls to this property, and when."
         >
