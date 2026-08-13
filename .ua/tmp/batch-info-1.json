@@ -1,0 +1,2210 @@
+{
+  "batchIndex": 1,
+  "files": [
+    {
+      "path": "backend/app/api/v1/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/api/v1/analytics.py",
+      "language": "python",
+      "sizeLines": 432,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/api/v1/auth.py",
+      "language": "python",
+      "sizeLines": 148,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/api/v1/bookings.py",
+      "language": "python",
+      "sizeLines": 76,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/api/v1/calls.py",
+      "language": "python",
+      "sizeLines": 85,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/api/v1/common.py",
+      "language": "python",
+      "sizeLines": 54,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/api/v1/faq.py",
+      "language": "python",
+      "sizeLines": 138,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/api/v1/guests.py",
+      "language": "python",
+      "sizeLines": 126,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/api/v1/leads.py",
+      "language": "python",
+      "sizeLines": 116,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/api/v1/negotiation_rules.py",
+      "language": "python",
+      "sizeLines": 126,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/api/v1/notifications.py",
+      "language": "python",
+      "sizeLines": 68,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/api/v1/pricing.py",
+      "language": "python",
+      "sizeLines": 66,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/api/v1/properties.py",
+      "language": "python",
+      "sizeLines": 494,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/api/v1/technicians.py",
+      "language": "python",
+      "sizeLines": 48,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/api/v1/voice.py",
+      "language": "python",
+      "sizeLines": 521,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/auth/dependencies.py",
+      "language": "python",
+      "sizeLines": 113,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/database.py",
+      "language": "python",
+      "sizeLines": 24,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/integrations/bright_data_client.py",
+      "language": "python",
+      "sizeLines": 85,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/integrations/cloudinary_client.py",
+      "language": "python",
+      "sizeLines": 96,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/integrations/ical_client.py",
+      "language": "python",
+      "sizeLines": 62,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/main.py",
+      "language": "python",
+      "sizeLines": 271,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/models/booking.py",
+      "language": "python",
+      "sizeLines": 27,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/models/notification.py",
+      "language": "python",
+      "sizeLines": 69,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/models/technician.py",
+      "language": "python",
+      "sizeLines": 22,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/models/user.py",
+      "language": "python",
+      "sizeLines": 116,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/schemas/booking.py",
+      "language": "python",
+      "sizeLines": 34,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/schemas/call_session.py",
+      "language": "python",
+      "sizeLines": 48,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/schemas/faq_entry.py",
+      "language": "python",
+      "sizeLines": 40,
+      "fileCategory": "code"
+    }
+  ],
+  "batchImportData": {
+    "backend/app/api/v1/__init__.py": [],
+    "backend/app/api/v1/analytics.py": [
+      "backend/app/api/v1/common.py",
+      "backend/app/auth/dependencies.py",
+      "backend/app/database.py",
+      "backend/app/models/call_session.py",
+      "backend/app/models/lead.py",
+      "backend/app/models/notification.py",
+      "backend/app/models/user.py",
+      "backend/app/schemas/call_classification.py",
+      "backend/app/services/call_service.py",
+      "backend/app/services/recovery_service.py",
+      "backend/app/services/whatsapp_reply_service.py"
+    ],
+    "backend/app/api/v1/auth.py": [
+      "backend/app/auth/dependencies.py",
+      "backend/app/database.py",
+      "backend/app/integrations/__init__.py",
+      "backend/app/integrations/bright_data_client.py",
+      "backend/app/integrations/cloudinary_client.py",
+      "backend/app/models/user.py",
+      "backend/app/schemas/user.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/faq_service.py"
+    ],
+    "backend/app/api/v1/bookings.py": [
+      "backend/app/api/v1/common.py",
+      "backend/app/auth/dependencies.py",
+      "backend/app/database.py",
+      "backend/app/models/booking.py",
+      "backend/app/models/user.py",
+      "backend/app/schemas/booking.py",
+      "backend/app/services/calendar_service.py"
+    ],
+    "backend/app/api/v1/calls.py": [
+      "backend/app/api/v1/common.py",
+      "backend/app/auth/dependencies.py",
+      "backend/app/database.py",
+      "backend/app/models/call_session.py",
+      "backend/app/models/notification.py",
+      "backend/app/models/user.py",
+      "backend/app/schemas/call_session.py",
+      "backend/app/schemas/notification.py",
+      "backend/app/services/call_service.py"
+    ],
+    "backend/app/api/v1/common.py": [
+      "backend/app/models/property.py",
+      "backend/app/models/user.py"
+    ],
+    "backend/app/api/v1/faq.py": [
+      "backend/app/api/v1/common.py",
+      "backend/app/auth/dependencies.py",
+      "backend/app/database.py",
+      "backend/app/models/faq_entry.py",
+      "backend/app/models/user.py",
+      "backend/app/schemas/faq_entry.py",
+      "backend/app/schemas/faq_gap.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/faq_service.py"
+    ],
+    "backend/app/api/v1/guests.py": [
+      "backend/app/api/v1/common.py",
+      "backend/app/auth/dependencies.py",
+      "backend/app/database.py",
+      "backend/app/models/call_session.py",
+      "backend/app/models/guest_profile.py",
+      "backend/app/models/property.py",
+      "backend/app/models/user.py",
+      "backend/app/schemas/guest_profile.py"
+    ],
+    "backend/app/api/v1/leads.py": [
+      "backend/app/api/v1/common.py",
+      "backend/app/auth/dependencies.py",
+      "backend/app/database.py",
+      "backend/app/models/lead.py",
+      "backend/app/models/notification.py",
+      "backend/app/models/user.py",
+      "backend/app/schemas/lead.py",
+      "backend/app/schemas/service_request.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/lead_service.py",
+      "backend/app/services/request_feed_service.py"
+    ],
+    "backend/app/api/v1/negotiation_rules.py": [
+      "backend/app/api/v1/common.py",
+      "backend/app/auth/dependencies.py",
+      "backend/app/database.py",
+      "backend/app/models/negotiation_rule.py",
+      "backend/app/models/user.py",
+      "backend/app/schemas/negotiation_rule.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/negotiation_policy_service.py"
+    ],
+    "backend/app/api/v1/notifications.py": [
+      "backend/app/api/v1/common.py",
+      "backend/app/auth/dependencies.py",
+      "backend/app/database.py",
+      "backend/app/models/user.py",
+      "backend/app/schemas/notification.py",
+      "backend/app/services/notification_service.py"
+    ],
+    "backend/app/api/v1/pricing.py": [
+      "backend/app/api/v1/common.py",
+      "backend/app/auth/dependencies.py",
+      "backend/app/database.py",
+      "backend/app/models/pricing_rule.py",
+      "backend/app/models/user.py",
+      "backend/app/schemas/booking.py",
+      "backend/app/schemas/pricing_rule.py",
+      "backend/app/services/pricing_engine.py"
+    ],
+    "backend/app/api/v1/properties.py": [
+      "backend/app/api/v1/common.py",
+      "backend/app/auth/dependencies.py",
+      "backend/app/database.py",
+      "backend/app/integrations/__init__.py",
+      "backend/app/integrations/bright_data_client.py",
+      "backend/app/integrations/cloudinary_client.py",
+      "backend/app/models/property.py",
+      "backend/app/models/user.py",
+      "backend/app/schemas/property.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/airbnb_import.py",
+      "backend/app/services/amenity_taxonomy.py",
+      "backend/app/services/calendar_service.py",
+      "backend/app/services/faq_service.py",
+      "backend/app/services/property/chunking.py",
+      "backend/app/services/property_normalizer.py"
+    ],
+    "backend/app/api/v1/technicians.py": [
+      "backend/app/api/v1/common.py",
+      "backend/app/auth/dependencies.py",
+      "backend/app/database.py",
+      "backend/app/models/technician.py",
+      "backend/app/models/user.py",
+      "backend/app/schemas/technician.py"
+    ],
+    "backend/app/api/v1/voice.py": [
+      "backend/app/api/v1/common.py",
+      "backend/app/auth/dependencies.py",
+      "backend/app/config.py",
+      "backend/app/database.py",
+      "backend/app/integrations/exotel_client.py",
+      "backend/app/integrations/twilio_voice.py",
+      "backend/app/models/user.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/faq_service.py",
+      "backend/app/voice/pipeline.py"
+    ],
+    "backend/app/auth/dependencies.py": [
+      "backend/app/config.py",
+      "backend/app/database.py",
+      "backend/app/integrations/clerk_client.py",
+      "backend/app/models/user.py"
+    ],
+    "backend/app/database.py": [
+      "backend/app/config.py"
+    ],
+    "backend/app/integrations/bright_data_client.py": [
+      "backend/app/config.py"
+    ],
+    "backend/app/integrations/cloudinary_client.py": [
+      "backend/app/config.py"
+    ],
+    "backend/app/integrations/ical_client.py": [],
+    "backend/app/main.py": [
+      "backend/app/api/v1/__init__.py",
+      "backend/app/api/v1/analytics.py",
+      "backend/app/api/v1/auth.py",
+      "backend/app/api/v1/bookings.py",
+      "backend/app/api/v1/calls.py",
+      "backend/app/api/v1/faq.py",
+      "backend/app/api/v1/guests.py",
+      "backend/app/api/v1/leads.py",
+      "backend/app/api/v1/negotiation_rules.py",
+      "backend/app/api/v1/notifications.py",
+      "backend/app/api/v1/pricing.py",
+      "backend/app/api/v1/properties.py",
+      "backend/app/api/v1/take_call.py",
+      "backend/app/api/v1/technicians.py",
+      "backend/app/api/v1/voice.py",
+      "backend/app/api/v1/webhooks/__init__.py",
+      "backend/app/api/v1/webhooks/exotel.py",
+      "backend/app/api/v1/webhooks/whatsapp.py",
+      "backend/app/config.py",
+      "backend/app/database.py",
+      "backend/app/services/calendar_service.py",
+      "backend/app/services/smart_pricing_service.py"
+    ],
+    "backend/app/models/booking.py": [
+      "backend/app/database.py",
+      "backend/app/models/mixins.py"
+    ],
+    "backend/app/models/notification.py": [
+      "backend/app/database.py",
+      "backend/app/models/mixins.py"
+    ],
+    "backend/app/models/technician.py": [
+      "backend/app/database.py",
+      "backend/app/models/mixins.py"
+    ],
+    "backend/app/models/user.py": [
+      "backend/app/database.py",
+      "backend/app/models/mixins.py"
+    ],
+    "backend/app/schemas/booking.py": [],
+    "backend/app/schemas/call_session.py": [
+      "backend/app/schemas/call_summary.py",
+      "backend/app/schemas/notification.py"
+    ],
+    "backend/app/schemas/faq_entry.py": []
+  },
+  "neighborMap": {
+    "backend/app/api/v1/__init__.py": [
+      {
+        "path": "backend/tests/test_voice_ice_servers.py",
+        "batchIndex": 2,
+        "symbols": [
+          "test_ice_servers_stun_only_by_default",
+          "test_ice_servers_includes_turn_when_configured"
+        ]
+      }
+    ],
+    "backend/app/api/v1/analytics.py": [
+      {
+        "path": "backend/app/models/call_session.py",
+        "batchIndex": 7,
+        "symbols": [
+          "CallSession"
+        ]
+      },
+      {
+        "path": "backend/app/models/lead.py",
+        "batchIndex": 7,
+        "symbols": [
+          "Lead"
+        ]
+      },
+      {
+        "path": "backend/app/schemas/call_classification.py",
+        "batchIndex": 3,
+        "symbols": [
+          "ClassificationResult"
+        ]
+      },
+      {
+        "path": "backend/app/services/call_service.py",
+        "batchIndex": 7,
+        "symbols": [
+          "get_property_by_number",
+          "get_user_by_lead_number",
+          "get_property_by_twilio_number",
+          "get_user_by_twilio_lead_number",
+          "extract_caller_number",
+          "get_or_create_guest_profile",
+          "get_or_create_call_session",
+          "attach_exotel_call",
+          "set_call_classification",
+          "set_call_summary",
+          "_map_exotel_status",
+          "finalize_call_session"
+        ]
+      },
+      {
+        "path": "backend/app/services/recovery_service.py",
+        "batchIndex": 7,
+        "symbols": [
+          "_guest_recovery_whatsapp_text",
+          "RecoveryMetadata",
+          "handle_busy_recovery",
+          "_handle_busy_recovery",
+          "_send_guest_recovery_whatsapp",
+          "_send_host_recovery_whatsapp",
+          "process_availability_recovery",
+          "_process_availability_recovery",
+          "_claim_lead",
+          "_notify_availability"
+        ]
+      },
+      {
+        "path": "backend/app/services/whatsapp_reply_service.py",
+        "batchIndex": 7,
+        "symbols": [
+          "_label_words",
+          "_parse_menu_choice",
+          "_to_bare_digits",
+          "_resolve_recovery_lead",
+          "_resolve_property",
+          "handle_inbound_reply",
+          "_handle_inbound_reply",
+          "_reply_property",
+          "_reply_pricing",
+          "_reply_faq",
+          "_reply_brochure",
+          "_notify_host_of_reply"
+        ]
+      }
+    ],
+    "backend/app/api/v1/auth.py": [
+      {
+        "path": "backend/app/integrations/__init__.py",
+        "batchIndex": 10,
+        "symbols": []
+      },
+      {
+        "path": "backend/app/schemas/user.py",
+        "batchIndex": 2,
+        "symbols": [
+          "HostOnboarding",
+          "UserUpdate",
+          "UserOut",
+          "HostOnboardingResponse"
+        ]
+      },
+      {
+        "path": "backend/app/services/__init__.py",
+        "batchIndex": 7,
+        "symbols": []
+      },
+      {
+        "path": "backend/app/services/faq_service.py",
+        "batchIndex": 10,
+        "symbols": [
+          "search_faq_entries",
+          "search_legacy_property_faq",
+          "full_property_context",
+          "list_verified_property_faq",
+          "list_faq_entries",
+          "get_owned_faq_entry",
+          "sync_imported_faq_entries",
+          "FaqGap",
+          "list_faq_gaps",
+          "_merge_semantically_similar_gaps",
+          "_attach_suggested_answers",
+          "faq_gap_analytics",
+          "transcribe_gap_answer_audio",
+          "get_owned_unanswered_question",
+          "answer_faq_gap"
+        ]
+      }
+    ],
+    "backend/app/api/v1/bookings.py": [
+      {
+        "path": "backend/app/services/calendar_service.py",
+        "batchIndex": 2,
+        "symbols": [
+          "is_available",
+          "unavailable_property_ids",
+          "next_available_window",
+          "sync_property_ical",
+          "sync_all_properties"
+        ]
+      }
+    ],
+    "backend/app/api/v1/calls.py": [
+      {
+        "path": "backend/app/models/call_session.py",
+        "batchIndex": 7,
+        "symbols": [
+          "CallSession"
+        ]
+      },
+      {
+        "path": "backend/app/schemas/notification.py",
+        "batchIndex": 2,
+        "symbols": [
+          "NotificationOut"
+        ]
+      },
+      {
+        "path": "backend/app/services/call_service.py",
+        "batchIndex": 7,
+        "symbols": [
+          "get_property_by_number",
+          "get_user_by_lead_number",
+          "get_property_by_twilio_number",
+          "get_user_by_twilio_lead_number",
+          "extract_caller_number",
+          "get_or_create_guest_profile",
+          "get_or_create_call_session",
+          "attach_exotel_call",
+          "set_call_classification",
+          "set_call_summary",
+          "_map_exotel_status",
+          "finalize_call_session"
+        ]
+      }
+    ],
+    "backend/app/api/v1/common.py": [
+      {
+        "path": "backend/app/models/property.py",
+        "batchIndex": 7,
+        "symbols": [
+          "Property"
+        ]
+      },
+      {
+        "path": "backend/app/services/faq_service.py",
+        "batchIndex": 10,
+        "symbols": [
+          "search_faq_entries",
+          "search_legacy_property_faq",
+          "full_property_context",
+          "list_verified_property_faq",
+          "list_faq_entries",
+          "get_owned_faq_entry",
+          "sync_imported_faq_entries",
+          "FaqGap",
+          "list_faq_gaps",
+          "_merge_semantically_similar_gaps",
+          "_attach_suggested_answers",
+          "faq_gap_analytics",
+          "transcribe_gap_answer_audio",
+          "get_owned_unanswered_question",
+          "answer_faq_gap"
+        ]
+      },
+      {
+        "path": "backend/app/services/lead_service.py",
+        "batchIndex": 7,
+        "symbols": [
+          "_get_or_create_lead_for_call",
+          "upsert_lead",
+          "backfill_lead_from_engagement",
+          "backfill_lead",
+          "delete_if_empty",
+          "delete_for_unqualified_call",
+          "list_leads",
+          "get_owned_lead",
+          "get_active_booking"
+        ]
+      }
+    ],
+    "backend/app/api/v1/faq.py": [
+      {
+        "path": "backend/app/models/faq_entry.py",
+        "batchIndex": 10,
+        "symbols": [
+          "FaqEntry"
+        ]
+      },
+      {
+        "path": "backend/app/schemas/faq_gap.py",
+        "batchIndex": 2,
+        "symbols": [
+          "FaqGapOut",
+          "FaqGapAnswerIn",
+          "FaqGapAnalyticsOut"
+        ]
+      },
+      {
+        "path": "backend/app/services/__init__.py",
+        "batchIndex": 7,
+        "symbols": []
+      },
+      {
+        "path": "backend/app/services/faq_service.py",
+        "batchIndex": 10,
+        "symbols": [
+          "search_faq_entries",
+          "search_legacy_property_faq",
+          "full_property_context",
+          "list_verified_property_faq",
+          "list_faq_entries",
+          "get_owned_faq_entry",
+          "sync_imported_faq_entries",
+          "FaqGap",
+          "list_faq_gaps",
+          "_merge_semantically_similar_gaps",
+          "_attach_suggested_answers",
+          "faq_gap_analytics",
+          "transcribe_gap_answer_audio",
+          "get_owned_unanswered_question",
+          "answer_faq_gap"
+        ]
+      }
+    ],
+    "backend/app/api/v1/guests.py": [
+      {
+        "path": "backend/app/models/call_session.py",
+        "batchIndex": 7,
+        "symbols": [
+          "CallSession"
+        ]
+      },
+      {
+        "path": "backend/app/models/guest_profile.py",
+        "batchIndex": 7,
+        "symbols": [
+          "GuestProfile"
+        ]
+      },
+      {
+        "path": "backend/app/models/property.py",
+        "batchIndex": 7,
+        "symbols": [
+          "Property"
+        ]
+      },
+      {
+        "path": "backend/app/schemas/guest_profile.py",
+        "batchIndex": 7,
+        "symbols": [
+          "ConversationSummaryEntry",
+          "GuestProfileOut",
+          "GuestProfileUpdate",
+          "GuestRecentCall",
+          "GuestProfileDetailOut"
+        ]
+      }
+    ],
+    "backend/app/api/v1/leads.py": [
+      {
+        "path": "backend/app/models/lead.py",
+        "batchIndex": 7,
+        "symbols": [
+          "Lead"
+        ]
+      },
+      {
+        "path": "backend/app/schemas/lead.py",
+        "batchIndex": 2,
+        "symbols": [
+          "LeadOut",
+          "LeadUpdate"
+        ]
+      },
+      {
+        "path": "backend/app/schemas/service_request.py",
+        "batchIndex": 2,
+        "symbols": [
+          "ServiceRequestOut"
+        ]
+      },
+      {
+        "path": "backend/app/services/__init__.py",
+        "batchIndex": 7,
+        "symbols": []
+      },
+      {
+        "path": "backend/app/services/lead_service.py",
+        "batchIndex": 7,
+        "symbols": [
+          "_get_or_create_lead_for_call",
+          "upsert_lead",
+          "backfill_lead_from_engagement",
+          "backfill_lead",
+          "delete_if_empty",
+          "delete_for_unqualified_call",
+          "list_leads",
+          "get_owned_lead",
+          "get_active_booking"
+        ]
+      },
+      {
+        "path": "backend/app/services/request_feed_service.py",
+        "batchIndex": 2,
+        "symbols": [
+          "_room_number",
+          "_property_name",
+          "_message",
+          "_urgency",
+          "_to_out",
+          "list_service_requests",
+          "bulk_dismiss"
+        ]
+      }
+    ],
+    "backend/app/api/v1/negotiation_rules.py": [
+      {
+        "path": "backend/app/models/negotiation_rule.py",
+        "batchIndex": 10,
+        "symbols": [
+          "NegotiationRule"
+        ]
+      },
+      {
+        "path": "backend/app/schemas/negotiation_rule.py",
+        "batchIndex": 2,
+        "symbols": [
+          "NegotiationPolicyParseRequest",
+          "NegotiationRuleOut",
+          "NegotiationPolicyParseResponse",
+          "NegotiationRuleUpdate"
+        ]
+      },
+      {
+        "path": "backend/app/services/__init__.py",
+        "batchIndex": 7,
+        "symbols": []
+      },
+      {
+        "path": "backend/app/services/negotiation_policy_service.py",
+        "batchIndex": 10,
+        "symbols": [
+          "NegotiationPolicyParseError",
+          "_extract_json_rules",
+          "_call_groq",
+          "_call_anthropic",
+          "_call_openrouter",
+          "call_configured_llm_for_json",
+          "parse_negotiation_policy_text",
+          "build_pending_rules"
+        ]
+      }
+    ],
+    "backend/app/api/v1/notifications.py": [
+      {
+        "path": "backend/app/schemas/notification.py",
+        "batchIndex": 2,
+        "symbols": [
+          "NotificationOut"
+        ]
+      },
+      {
+        "path": "backend/app/services/notification_service.py",
+        "batchIndex": 7,
+        "symbols": [
+          "create_notification",
+          "list_notifications",
+          "mark_read"
+        ]
+      }
+    ],
+    "backend/app/api/v1/pricing.py": [
+      {
+        "path": "backend/app/models/pricing_rule.py",
+        "batchIndex": 10,
+        "symbols": [
+          "PricingRule"
+        ]
+      },
+      {
+        "path": "backend/app/schemas/pricing_rule.py",
+        "batchIndex": 2,
+        "symbols": [
+          "PricingRuleCreate",
+          "PricingRuleOut"
+        ]
+      },
+      {
+        "path": "backend/app/services/pricing_engine.py",
+        "batchIndex": 10,
+        "symbols": [
+          "PriceBreakdown",
+          "_approved_negotiation_rules",
+          "_approved_property_pricing_rules",
+          "_condition_number",
+          "_length_of_stay_discount_percent",
+          "_stay_includes_weekend_night",
+          "minimum_stay_nights_violation",
+          "_flat_fee",
+          "_sum_cached_nightly_rates",
+          "calculate_price",
+          "NegotiationResult",
+          "HostNegotiationPolicy",
+          "_get_host_negotiation_policy",
+          "_is_repeat_guest_for_host",
+          "negotiate_rate"
+        ]
+      }
+    ],
+    "backend/app/api/v1/properties.py": [
+      {
+        "path": "backend/app/integrations/__init__.py",
+        "batchIndex": 10,
+        "symbols": []
+      },
+      {
+        "path": "backend/app/models/property.py",
+        "batchIndex": 7,
+        "symbols": [
+          "Property"
+        ]
+      },
+      {
+        "path": "backend/app/schemas/property.py",
+        "batchIndex": 2,
+        "symbols": [
+          "_validate_ical_url",
+          "FAQItem",
+          "SeasonalNote",
+          "LandmarkItem",
+          "PropertyCreate",
+          "PropertyUpdate",
+          "PropertyGalleryOut",
+          "PropertyOut",
+          "PropertyImportResult",
+          "AirbnbUrlImportRequest",
+          "AirbnbUrlImportTriggered",
+          "AirbnbUrlImportStatus"
+        ]
+      },
+      {
+        "path": "backend/app/services/__init__.py",
+        "batchIndex": 7,
+        "symbols": []
+      },
+      {
+        "path": "backend/app/services/airbnb_import.py",
+        "batchIndex": 2,
+        "symbols": [
+          "_to_24h",
+          "_strip_html",
+          "_apply_normalized_name_fields",
+          "_find_section",
+          "_extract_name",
+          "_extract_city",
+          "_extract_amenities",
+          "_extract_house_rules_and_times",
+          "_extract_layout_faq",
+          "_extract_neighbourhood_faq",
+          "_extract_cancellation_faq",
+          "_extract_guest_favorite_faq",
+          "_extract_description_faq",
+          "_extract_safety_faq",
+          "parse_airbnb_listing",
+          "parse_bright_data_listing"
+        ]
+      },
+      {
+        "path": "backend/app/services/amenity_taxonomy.py",
+        "batchIndex": 2,
+        "symbols": [
+          "canonicalize_amenity",
+          "canonicalize_amenities",
+          "rank_amenities_for_pitch"
+        ]
+      },
+      {
+        "path": "backend/app/services/calendar_service.py",
+        "batchIndex": 2,
+        "symbols": [
+          "is_available",
+          "unavailable_property_ids",
+          "next_available_window",
+          "sync_property_ical",
+          "sync_all_properties"
+        ]
+      },
+      {
+        "path": "backend/app/services/faq_service.py",
+        "batchIndex": 10,
+        "symbols": [
+          "search_faq_entries",
+          "search_legacy_property_faq",
+          "full_property_context",
+          "list_verified_property_faq",
+          "list_faq_entries",
+          "get_owned_faq_entry",
+          "sync_imported_faq_entries",
+          "FaqGap",
+          "list_faq_gaps",
+          "_merge_semantically_similar_gaps",
+          "_attach_suggested_answers",
+          "faq_gap_analytics",
+          "transcribe_gap_answer_audio",
+          "get_owned_unanswered_question",
+          "answer_faq_gap"
+        ]
+      },
+      {
+        "path": "backend/app/services/property/chunking.py",
+        "batchIndex": 2,
+        "symbols": [
+          "_overview_chunk_text",
+          "_amenities_chunk_text",
+          "_location_chunk_text",
+          "_house_rules_chunk_text",
+          "build_property_chunks",
+          "sync_property_chunks"
+        ]
+      },
+      {
+        "path": "backend/app/services/property_normalizer.py",
+        "batchIndex": 2,
+        "symbols": [
+          "_truncate_at_word_boundary",
+          "NormalizedName",
+          "_extract_counts",
+          "_extract_property_type",
+          "_clean_display_segment",
+          "_derive_spoken_name",
+          "normalize_property_name",
+          "_parse_llm_json",
+          "_call_groq",
+          "_call_anthropic",
+          "_call_openrouter",
+          "normalize_property_name_llm_fallback"
+        ]
+      },
+      {
+        "path": "backend/tests/test_property_display_name_backfill.py",
+        "batchIndex": 8,
+        "symbols": [
+          "test_backfill_populates_display_name_for_pre_existing_properties",
+          "test_backfill_is_idempotent_and_skips_already_backfilled_properties",
+          "test_backfill_runs_across_multiple_hosts",
+          "test_backfill_is_genuinely_idempotent_even_when_normalizer_derives_nothing",
+          "test_startup_backfill_never_calls_the_llm_fallback",
+          "test_renormalize_one_llm_fallback_still_enabled_by_default"
+        ]
+      }
+    ],
+    "backend/app/api/v1/technicians.py": [
+      {
+        "path": "backend/app/schemas/technician.py",
+        "batchIndex": 2,
+        "symbols": [
+          "TechnicianCreate",
+          "TechnicianOut"
+        ]
+      }
+    ],
+    "backend/app/api/v1/voice.py": [
+      {
+        "path": "backend/app/config.py",
+        "batchIndex": 10,
+        "symbols": [
+          "Settings",
+          "get_settings"
+        ]
+      },
+      {
+        "path": "backend/app/integrations/exotel_client.py",
+        "batchIndex": 10,
+        "symbols": [
+          "verify_webhook_token",
+          "send_sms",
+          "hangup_call"
+        ]
+      },
+      {
+        "path": "backend/app/integrations/twilio_voice.py",
+        "batchIndex": 10,
+        "symbols": [
+          "verify_voice_webhook_token",
+          "build_connect_stream_twiml",
+          "build_reject_twiml"
+        ]
+      },
+      {
+        "path": "backend/app/services/__init__.py",
+        "batchIndex": 7,
+        "symbols": []
+      },
+      {
+        "path": "backend/app/services/faq_service.py",
+        "batchIndex": 10,
+        "symbols": [
+          "search_faq_entries",
+          "search_legacy_property_faq",
+          "full_property_context",
+          "list_verified_property_faq",
+          "list_faq_entries",
+          "get_owned_faq_entry",
+          "sync_imported_faq_entries",
+          "FaqGap",
+          "list_faq_gaps",
+          "_merge_semantically_similar_gaps",
+          "_attach_suggested_answers",
+          "faq_gap_analytics",
+          "transcribe_gap_answer_audio",
+          "get_owned_unanswered_question",
+          "answer_faq_gap"
+        ]
+      },
+      {
+        "path": "backend/app/voice/pipeline.py",
+        "batchIndex": 3,
+        "symbols": [
+          "_spawn_background_task",
+          "_hangup_exotel_call",
+          "_pick_groq_model",
+          "_FallbackGroqLLMService",
+          "_ReconnectingSarvamSTTService",
+          "_build_llm",
+          "_build_openrouter_llm",
+          "_is_host_handoff_frame",
+          "_HandoffOutcome",
+          "_renew_call_lease_periodically",
+          "_run_pipeline",
+          "_wait_and_trigger_handoff",
+          "_run_pipeline_inner",
+          "_reject_call_as_busy",
+          "run_voice_pipeline",
+          "run_voice_pipeline_twilio",
+          "run_browser_voice_pipeline",
+          "run_browser_lead_pipeline"
+        ]
+      },
+      {
+        "path": "backend/tests/test_voice_ice_servers.py",
+        "batchIndex": 2,
+        "symbols": [
+          "test_ice_servers_stun_only_by_default",
+          "test_ice_servers_includes_turn_when_configured"
+        ]
+      }
+    ],
+    "backend/app/auth/dependencies.py": [
+      {
+        "path": "backend/app/config.py",
+        "batchIndex": 10,
+        "symbols": [
+          "Settings",
+          "get_settings"
+        ]
+      },
+      {
+        "path": "backend/app/integrations/clerk_client.py",
+        "batchIndex": 10,
+        "symbols": [
+          "ClerkError",
+          "fetch_user_email"
+        ]
+      },
+      {
+        "path": "backend/tests/conftest.py",
+        "batchIndex": 2,
+        "symbols": [
+          "_override_get_current_user",
+          "_setup_database",
+          "_clean_tables",
+          "_clean_call_leases",
+          "db_session",
+          "client",
+          "test_user",
+          "auth_headers_for",
+          "auth_headers",
+          "test_property",
+          "test_call_session"
+        ]
+      }
+    ],
+    "backend/app/database.py": [
+      {
+        "path": "backend/app/config.py",
+        "batchIndex": 10,
+        "symbols": [
+          "Settings",
+          "get_settings"
+        ]
+      },
+      {
+        "path": "backend/alembic/env.py",
+        "batchIndex": 10,
+        "symbols": [
+          "run_migrations_offline",
+          "do_run_migrations",
+          "run_migrations_online"
+        ]
+      },
+      {
+        "path": "backend/app/api/v1/take_call.py",
+        "batchIndex": 7,
+        "symbols": [
+          "_page",
+          "_invalid_token_page",
+          "_call_ended_page",
+          "take_call_confirm",
+          "take_call_claim",
+          "_property_label"
+        ]
+      },
+      {
+        "path": "backend/app/api/v1/webhooks/exotel.py",
+        "batchIndex": 7,
+        "symbols": [
+          "exotel_call_status",
+          "exotel_call_routing",
+          "_normalize_destination_phone",
+          "exotel_connect_routing",
+          "_resolve_and_respond",
+          "_destination_response",
+          "_empty_destination_response"
+        ]
+      },
+      {
+        "path": "backend/app/api/v1/webhooks/whatsapp.py",
+        "batchIndex": 7,
+        "symbols": [
+          "whatsapp_inbound"
+        ]
+      },
+      {
+        "path": "backend/app/models/call_lease.py",
+        "batchIndex": 10,
+        "symbols": [
+          "CallLease"
+        ]
+      },
+      {
+        "path": "backend/app/models/call_session.py",
+        "batchIndex": 7,
+        "symbols": [
+          "CallSession"
+        ]
+      },
+      {
+        "path": "backend/app/models/faq_entry.py",
+        "batchIndex": 10,
+        "symbols": [
+          "FaqEntry"
+        ]
+      },
+      {
+        "path": "backend/app/models/guest_profile.py",
+        "batchIndex": 7,
+        "symbols": [
+          "GuestProfile"
+        ]
+      },
+      {
+        "path": "backend/app/models/lead.py",
+        "batchIndex": 7,
+        "symbols": [
+          "Lead"
+        ]
+      },
+      {
+        "path": "backend/app/models/negotiation_rule.py",
+        "batchIndex": 10,
+        "symbols": [
+          "NegotiationRule"
+        ]
+      },
+      {
+        "path": "backend/app/models/pricing_rule.py",
+        "batchIndex": 10,
+        "symbols": [
+          "PricingRule"
+        ]
+      },
+      {
+        "path": "backend/app/models/property.py",
+        "batchIndex": 7,
+        "symbols": [
+          "Property"
+        ]
+      },
+      {
+        "path": "backend/app/models/property_chunk.py",
+        "batchIndex": 12,
+        "symbols": [
+          "PropertyChunk"
+        ]
+      },
+      {
+        "path": "backend/app/models/unanswered_question.py",
+        "batchIndex": 10,
+        "symbols": [
+          "UnansweredQuestion"
+        ]
+      },
+      {
+        "path": "backend/app/services/guest_calling_notification.py",
+        "batchIndex": 7,
+        "symbols": [
+          "maybe_notify_guest_calling",
+          "_maybe_notify_guest_calling"
+        ]
+      },
+      {
+        "path": "backend/app/services/recovery_service.py",
+        "batchIndex": 7,
+        "symbols": [
+          "_guest_recovery_whatsapp_text",
+          "RecoveryMetadata",
+          "handle_busy_recovery",
+          "_handle_busy_recovery",
+          "_send_guest_recovery_whatsapp",
+          "_send_host_recovery_whatsapp",
+          "process_availability_recovery",
+          "_process_availability_recovery",
+          "_claim_lead",
+          "_notify_availability"
+        ]
+      },
+      {
+        "path": "backend/app/voice/pipeline.py",
+        "batchIndex": 3,
+        "symbols": [
+          "_spawn_background_task",
+          "_hangup_exotel_call",
+          "_pick_groq_model",
+          "_FallbackGroqLLMService",
+          "_ReconnectingSarvamSTTService",
+          "_build_llm",
+          "_build_openrouter_llm",
+          "_is_host_handoff_frame",
+          "_HandoffOutcome",
+          "_renew_call_lease_periodically",
+          "_run_pipeline",
+          "_wait_and_trigger_handoff",
+          "_run_pipeline_inner",
+          "_reject_call_as_busy",
+          "run_voice_pipeline",
+          "run_voice_pipeline_twilio",
+          "run_browser_voice_pipeline",
+          "run_browser_lead_pipeline"
+        ]
+      },
+      {
+        "path": "backend/app/voice/tools.py",
+        "batchIndex": 3,
+        "symbols": [
+          "_parse_iso_date",
+          "build_voice_tools"
+        ]
+      },
+      {
+        "path": "backend/backfill_guest_names_to_english.py",
+        "batchIndex": 7,
+        "symbols": [
+          "backfill"
+        ]
+      },
+      {
+        "path": "backend/scripts/seed_demo_data.py",
+        "batchIndex": 2,
+        "symbols": [
+          "_reanchor",
+          "get_or_create_demo_user",
+          "get_or_create_property",
+          "seed_bookings",
+          "seed_technicians",
+          "seed_sample_notifications",
+          "main"
+        ]
+      },
+      {
+        "path": "backend/tests/conftest.py",
+        "batchIndex": 2,
+        "symbols": [
+          "_override_get_current_user",
+          "_setup_database",
+          "_clean_tables",
+          "_clean_call_leases",
+          "db_session",
+          "client",
+          "test_user",
+          "auth_headers_for",
+          "auth_headers",
+          "test_property",
+          "test_call_session"
+        ]
+      },
+      {
+        "path": "backend/tests/test_database.py",
+        "batchIndex": 11,
+        "symbols": [
+          "test_engine_pool_size_matches_settings",
+          "test_engine_pool_overflow_matches_settings",
+          "test_engine_pool_timeout_matches_settings",
+          "test_engine_pool_recycle_matches_settings",
+          "test_engine_pool_pre_ping_still_enabled",
+          "test_default_pool_settings_match_previous_implicit_sqlalchemy_defaults"
+        ]
+      }
+    ],
+    "backend/app/integrations/bright_data_client.py": [
+      {
+        "path": "backend/app/config.py",
+        "batchIndex": 10,
+        "symbols": [
+          "Settings",
+          "get_settings"
+        ]
+      },
+      {
+        "path": "backend/tests/test_airbnb_import.py",
+        "batchIndex": 2,
+        "symbols": [
+          "_load_fixture",
+          "test_parse_airbnb_listing_extracts_core_fields",
+          "test_parse_airbnb_listing_extracts_canonical_name_fields",
+          "test_parse_airbnb_listing_extracts_faq_entries",
+          "test_parse_airbnb_listing_handles_empty_input",
+          "test_import_creates_property_and_faq_entries",
+          "test_import_creates_property_chunks",
+          "test_reimport_does_not_duplicate_property_chunks",
+          "test_reimport_with_changed_amenities_replaces_stale_chunk_content",
+          "test_reimport_same_listing_updates_instead_of_duplicating",
+          "test_reimport_preserves_host_added_faq_entries",
+          "test_import_bad_json_reports_error_without_failing_batch",
+          "_bright_data_record",
+          "test_parse_bright_data_listing_skips_photos_without_folder",
+          "test_parse_bright_data_listing_skips_photos_when_cloudinary_unconfigured",
+          "test_parse_bright_data_listing_uploads_photos_when_cloudinary_configured",
+          "test_parse_bright_data_listing_falls_back_to_single_image_field",
+          "test_import_airbnb_urls_status_ready_creates_property_with_photos",
+          "test_import_with_pathologically_long_seo_title_does_not_500"
+        ]
+      }
+    ],
+    "backend/app/integrations/cloudinary_client.py": [
+      {
+        "path": "backend/app/config.py",
+        "batchIndex": 10,
+        "symbols": [
+          "Settings",
+          "get_settings"
+        ]
+      },
+      {
+        "path": "backend/app/services/airbnb_import.py",
+        "batchIndex": 2,
+        "symbols": [
+          "_to_24h",
+          "_strip_html",
+          "_apply_normalized_name_fields",
+          "_find_section",
+          "_extract_name",
+          "_extract_city",
+          "_extract_amenities",
+          "_extract_house_rules_and_times",
+          "_extract_layout_faq",
+          "_extract_neighbourhood_faq",
+          "_extract_cancellation_faq",
+          "_extract_guest_favorite_faq",
+          "_extract_description_faq",
+          "_extract_safety_faq",
+          "parse_airbnb_listing",
+          "parse_bright_data_listing"
+        ]
+      }
+    ],
+    "backend/app/integrations/ical_client.py": [
+      {
+        "path": "backend/app/services/calendar_service.py",
+        "batchIndex": 2,
+        "symbols": [
+          "is_available",
+          "unavailable_property_ids",
+          "next_available_window",
+          "sync_property_ical",
+          "sync_all_properties"
+        ]
+      },
+      {
+        "path": "backend/tests/test_ical_sync.py",
+        "batchIndex": 2,
+        "symbols": [
+          "test_parse_ical_extracts_events",
+          "test_sync_property_ical_upserts_bookings",
+          "test_sync_property_ical_is_idempotent_on_uid",
+          "test_sync_property_ical_removes_bookings_dropped_from_feed"
+        ]
+      }
+    ],
+    "backend/app/main.py": [
+      {
+        "path": "backend/app/api/v1/take_call.py",
+        "batchIndex": 7,
+        "symbols": [
+          "_page",
+          "_invalid_token_page",
+          "_call_ended_page",
+          "take_call_confirm",
+          "take_call_claim",
+          "_property_label"
+        ]
+      },
+      {
+        "path": "backend/app/api/v1/webhooks/__init__.py",
+        "batchIndex": 7,
+        "symbols": []
+      },
+      {
+        "path": "backend/app/api/v1/webhooks/exotel.py",
+        "batchIndex": 7,
+        "symbols": [
+          "exotel_call_status",
+          "exotel_call_routing",
+          "_normalize_destination_phone",
+          "exotel_connect_routing",
+          "_resolve_and_respond",
+          "_destination_response",
+          "_empty_destination_response"
+        ]
+      },
+      {
+        "path": "backend/app/api/v1/webhooks/whatsapp.py",
+        "batchIndex": 7,
+        "symbols": [
+          "whatsapp_inbound"
+        ]
+      },
+      {
+        "path": "backend/app/config.py",
+        "batchIndex": 10,
+        "symbols": [
+          "Settings",
+          "get_settings"
+        ]
+      },
+      {
+        "path": "backend/app/services/calendar_service.py",
+        "batchIndex": 2,
+        "symbols": [
+          "is_available",
+          "unavailable_property_ids",
+          "next_available_window",
+          "sync_property_ical",
+          "sync_all_properties"
+        ]
+      },
+      {
+        "path": "backend/app/services/smart_pricing_service.py",
+        "batchIndex": 10,
+        "symbols": [
+          "refresh_smart_pricing",
+          "refresh_live_pricing_cache"
+        ]
+      },
+      {
+        "path": "backend/tests/conftest.py",
+        "batchIndex": 2,
+        "symbols": [
+          "_override_get_current_user",
+          "_setup_database",
+          "_clean_tables",
+          "_clean_call_leases",
+          "db_session",
+          "client",
+          "test_user",
+          "auth_headers_for",
+          "auth_headers",
+          "test_property",
+          "test_call_session"
+        ]
+      },
+      {
+        "path": "backend/tests/test_main.py",
+        "batchIndex": 2,
+        "symbols": [
+          "test_scheduled_ical_sync_survives_a_failure",
+          "test_scheduled_ical_sync_logs_results_on_success"
+        ]
+      }
+    ],
+    "backend/app/models/booking.py": [
+      {
+        "path": "backend/app/models/mixins.py",
+        "batchIndex": 10,
+        "symbols": [
+          "UUIDPkMixin",
+          "TimestampMixin"
+        ]
+      },
+      {
+        "path": "backend/app/models/__init__.py",
+        "batchIndex": 10,
+        "symbols": []
+      },
+      {
+        "path": "backend/app/services/calendar_service.py",
+        "batchIndex": 2,
+        "symbols": [
+          "is_available",
+          "unavailable_property_ids",
+          "next_available_window",
+          "sync_property_ical",
+          "sync_all_properties"
+        ]
+      },
+      {
+        "path": "backend/scripts/seed_demo_data.py",
+        "batchIndex": 2,
+        "symbols": [
+          "_reanchor",
+          "get_or_create_demo_user",
+          "get_or_create_property",
+          "seed_bookings",
+          "seed_technicians",
+          "seed_sample_notifications",
+          "main"
+        ]
+      },
+      {
+        "path": "backend/tests/test_bookings_api.py",
+        "batchIndex": 2,
+        "symbols": [
+          "test_cancel_booking_unblocks_dates",
+          "test_cancel_booking_not_found",
+          "test_cancel_booking_from_other_host_forbidden"
+        ]
+      },
+      {
+        "path": "backend/tests/test_calendar_service.py",
+        "batchIndex": 2,
+        "symbols": [
+          "test_is_available_true_when_no_bookings",
+          "test_is_available_false_when_overlapping",
+          "test_next_available_window_skips_blocked_range",
+          "test_unavailable_property_ids_empty_when_no_ids_given",
+          "test_unavailable_property_ids_batched_across_candidate_set",
+          "test_unavailable_property_ids_ignores_non_confirmed_bookings"
+        ]
+      },
+      {
+        "path": "backend/tests/test_ical_sync.py",
+        "batchIndex": 2,
+        "symbols": [
+          "test_parse_ical_extracts_events",
+          "test_sync_property_ical_upserts_bookings",
+          "test_sync_property_ical_is_idempotent_on_uid",
+          "test_sync_property_ical_removes_bookings_dropped_from_feed"
+        ]
+      },
+      {
+        "path": "backend/tests/test_property_retrieval_orchestrator.py",
+        "batchIndex": 12,
+        "symbols": [
+          "test_orchestrator_returns_sql_only_when_purpose_of_stay_absent",
+          "test_orchestrator_never_returns_more_than_three_options",
+          "test_orchestrator_semantic_search_never_fires_for_pure_structured_query",
+          "test_orchestrator_semantic_search_enriches_when_sql_underreturns",
+          "test_handle_recommend_properties_delegates_to_orchestrator",
+          "test_recommend_properties_excludes_booked_property_when_dates_known",
+          "test_recommend_properties_byte_identical_when_dates_not_known",
+          "test_recommend_properties_confidence_strong_for_one_clean_match",
+          "test_recommend_properties_confidence_weak_for_combo_fallback",
+          "test_recommend_properties_diversifies_leader_across_calls_with_comparable_options",
+          "test_recommend_properties_no_call_session_id_uses_stable_default_order",
+          "test_more_premium_than_shown_boost_survives_diversify_rotation",
+          "test_recommend_properties_availability_check_fails_open_on_error"
+        ]
+      }
+    ],
+    "backend/app/models/notification.py": [
+      {
+        "path": "backend/app/models/mixins.py",
+        "batchIndex": 10,
+        "symbols": [
+          "UUIDPkMixin",
+          "TimestampMixin"
+        ]
+      },
+      {
+        "path": "backend/app/models/__init__.py",
+        "batchIndex": 10,
+        "symbols": []
+      },
+      {
+        "path": "backend/app/services/guest_calling_notification.py",
+        "batchIndex": 7,
+        "symbols": [
+          "maybe_notify_guest_calling",
+          "_maybe_notify_guest_calling"
+        ]
+      },
+      {
+        "path": "backend/app/services/notification_service.py",
+        "batchIndex": 7,
+        "symbols": [
+          "create_notification",
+          "list_notifications",
+          "mark_read"
+        ]
+      },
+      {
+        "path": "backend/app/services/request_feed_service.py",
+        "batchIndex": 2,
+        "symbols": [
+          "_room_number",
+          "_property_name",
+          "_message",
+          "_urgency",
+          "_to_out",
+          "list_service_requests",
+          "bulk_dismiss"
+        ]
+      },
+      {
+        "path": "backend/scripts/seed_demo_data.py",
+        "batchIndex": 2,
+        "symbols": [
+          "_reanchor",
+          "get_or_create_demo_user",
+          "get_or_create_property",
+          "seed_bookings",
+          "seed_technicians",
+          "seed_sample_notifications",
+          "main"
+        ]
+      },
+      {
+        "path": "backend/tests/test_analytics_recovery.py",
+        "batchIndex": 8,
+        "symbols": [
+          "test_busy_calls_counts_one_per_rejection_not_per_lead",
+          "test_recovered_counts_distinct_leads_not_reply_messages",
+          "test_converted_and_lost_reflect_lead_status_on_recovery_leads_only",
+          "test_avg_host_response_uses_responded_at_set_on_first_mark_read",
+          "test_mark_read_twice_does_not_move_responded_at_forward",
+          "test_avg_recovery_time_measures_first_reply_after_first_rejection",
+          "test_recovery_analytics_scoped_to_current_user_only"
+        ]
+      },
+      {
+        "path": "backend/tests/test_service_requests_api.py",
+        "batchIndex": 2,
+        "symbols": [
+          "_make_guest_support_call",
+          "test_guest_support_call_appears_in_service_requests",
+          "test_lead_agent_call_falls_back_to_ai_summary_property",
+          "test_booking_lead_call_is_excluded_from_service_requests",
+          "test_notification_message_takes_priority_over_ai_summary",
+          "test_dismiss_moves_request_out_of_live_list_but_keeps_it_for_reference",
+          "test_dismiss_is_scoped_to_the_requesting_host"
+        ]
+      },
+      {
+        "path": "backend/tests/test_whatsapp_reply_service.py",
+        "batchIndex": 8,
+        "symbols": [
+          "_seed_recovery_lead",
+          "test_parse_menu_choice_recognizes_numbers_and_keywords",
+          "test_parse_menu_choice_falls_back_to_other_for_free_text",
+          "test_parse_menu_choice_stopwords_never_cause_a_false_positive_match",
+          "test_to_bare_digits_strips_whatsapp_prefix",
+          "test_handle_inbound_reply_with_no_matching_lead_is_a_noop",
+          "test_reply_never_reattaches_to_a_lead_the_host_already_resolved",
+          "test_reply_never_reattaches_to_a_stale_recovery_lead",
+          "test_reply_still_resolves_a_recent_open_recovery_lead",
+          "test_property_reply_sends_property_details",
+          "test_pricing_reply_guards_against_zero_base_price",
+          "test_faq_reply_with_no_verified_entries",
+          "test_faq_reply_with_verified_entries",
+          "test_faq_reply_caps_each_answer_length",
+          "test_brochure_reply_with_no_photos",
+          "test_continue_conversation_reply_notifies_host_and_updates_lead",
+          "test_free_text_reply_notifies_host_with_verbatim_message",
+          "test_reply_reuses_the_same_lead_never_creates_a_new_one"
+        ]
+      }
+    ],
+    "backend/app/models/technician.py": [
+      {
+        "path": "backend/app/models/mixins.py",
+        "batchIndex": 10,
+        "symbols": [
+          "UUIDPkMixin",
+          "TimestampMixin"
+        ]
+      },
+      {
+        "path": "backend/app/models/__init__.py",
+        "batchIndex": 10,
+        "symbols": []
+      },
+      {
+        "path": "backend/app/services/technician_service.py",
+        "batchIndex": 11,
+        "symbols": [
+          "find_technician"
+        ]
+      },
+      {
+        "path": "backend/scripts/seed_demo_data.py",
+        "batchIndex": 2,
+        "symbols": [
+          "_reanchor",
+          "get_or_create_demo_user",
+          "get_or_create_property",
+          "seed_bookings",
+          "seed_technicians",
+          "seed_sample_notifications",
+          "main"
+        ]
+      },
+      {
+        "path": "backend/tests/test_tool_handlers.py",
+        "batchIndex": 8,
+        "symbols": [
+          "test_check_calendar_available",
+          "test_check_calendar_unknown_property",
+          "test_check_calendar_on_checked_fires_with_real_property_and_availability",
+          "test_check_calendar_on_checked_never_fires_on_not_found",
+          "test_check_calendar_exceeds_max_guests",
+          "_next_saturday",
+          "test_check_calendar_rejects_saturday_only_when_rule_enabled",
+          "test_check_calendar_allows_saturday_sunday_when_rule_enabled",
+          "test_check_calendar_allows_saturday_only_when_rule_disabled",
+          "test_check_calendar_saturday_rule_does_not_block_non_saturday_one_night_stay",
+          "test_check_calendar_weekend_minimum_stay_rule_blocks_short_weekend_stay",
+          "test_check_calendar_weekend_minimum_stay_rule_ignored_without_host_user_id",
+          "test_get_pricing_includes_total",
+          "test_get_pricing_early_checkin_fee_only_surfaced_when_requested",
+          "test_get_pricing_weekend_minimum_stay_rule_blocks_short_quote",
+          "test_get_pricing_on_priced_fires_with_real_property_and_breakdown",
+          "test_get_pricing_never_quotes_zero_when_base_price_is_zero",
+          "test_negotiate_rate_on_priced_fires_with_real_property_and_result",
+          "test_negotiate_rate_never_quotes_zero_when_base_price_is_zero",
+          "test_get_pricing_backfills_lead_even_if_update_lead_never_called",
+          "test_get_pricing_backfill_never_overwrites_guest_stated_dates",
+          "test_get_pricing_without_call_session_id_never_creates_a_lead",
+          "test_dispatch_technician_finds_specialist",
+          "test_dispatch_technician_no_technician_on_file",
+          "test_send_whatsapp_creates_notification",
+          "test_escalate_to_host_creates_urgent_notification",
+          "test_escalate_to_host_also_saves_lead_so_it_isnt_left_empty",
+          "test_negotiate_rate_returns_message",
+          "test_negotiate_rate_threads_host_user_id_to_disable_negotiation",
+          "test_search_faq_logs_gap_when_no_verified_answer",
+          "test_search_faq_on_answered_fires_with_real_property_when_resolved",
+          "test_search_faq_on_answered_never_fires_for_portfolio_wide_query",
+          "test_search_faq_no_gap_logged_when_answer_found",
+          "test_update_lead_persists_occasion",
+          "test_update_lead_flags_incomplete_phone",
+          "test_update_lead_no_warning_for_full_phone",
+          "test_send_whatsapp_flags_incomplete_phone",
+          "test_recommend_properties_matches_south_goa_locality_without_literal_text",
+          "test_recommend_properties_south_goa_query_excludes_airport_travel_time_mention",
+          "test_recommend_properties_matches_north_goa_locality",
+          "test_recommend_properties_suggests_combining_units_for_large_group",
+          "test_recommend_properties_combo_fallback_keeps_all_four_units",
+          "test_recommend_properties_ranks_required_amenity_match_first_without_excluding_others",
+          "test_recommend_properties_near_landmark_boosts_matching_property",
+          "test_recommend_properties_near_landmark_never_drops_all_results"
+        ]
+      },
+      {
+        "path": "backend/tests/test_voice_tools.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_FakeFunctionCallParams",
+          "test_check_calendar_available",
+          "test_check_calendar_invalid_args_returns_graceful_message",
+          "test_get_pricing_includes_total",
+          "test_dispatch_technician_uses_bound_call_session_id",
+          "test_send_whatsapp_uses_bound_property_id",
+          "test_send_whatsapp_falls_back_to_caller_number_when_phone_omitted",
+          "test_send_whatsapp_explicit_phone_wins_over_caller_number",
+          "test_send_whatsapp_no_phone_and_no_caller_number_asks_instead_of_erroring",
+          "test_send_photos_falls_back_to_caller_number",
+          "test_update_lead_falls_back_to_caller_number_for_phone",
+          "test_recommend_properties_filters_by_host_and_guests",
+          "test_recommend_properties_no_match_suggests_escalation",
+          "test_update_lead_creates_and_updates_lead_record",
+          "test_search_faq_returns_verified_entry",
+          "test_search_faq_no_match_signals_escalation",
+          "test_end_call_arms_the_silence_watchdog",
+          "test_end_call_without_a_watchdog_still_returns_a_result",
+          "test_decline_irrelevant_call_arms_the_silence_watchdog",
+          "test_decline_irrelevant_call_without_a_watchdog_still_returns_a_result"
+        ]
+      }
+    ],
+    "backend/app/models/user.py": [
+      {
+        "path": "backend/app/models/mixins.py",
+        "batchIndex": 10,
+        "symbols": [
+          "UUIDPkMixin",
+          "TimestampMixin"
+        ]
+      },
+      {
+        "path": "backend/app/api/v1/webhooks/exotel.py",
+        "batchIndex": 7,
+        "symbols": [
+          "exotel_call_status",
+          "exotel_call_routing",
+          "_normalize_destination_phone",
+          "exotel_connect_routing",
+          "_resolve_and_respond",
+          "_destination_response",
+          "_empty_destination_response"
+        ]
+      },
+      {
+        "path": "backend/app/models/__init__.py",
+        "batchIndex": 10,
+        "symbols": []
+      },
+      {
+        "path": "backend/app/prompts/system_prompt.py",
+        "batchIndex": 7,
+        "symbols": [
+          "_today_anchor",
+          "_BlankOnMissing",
+          "_resolve_template",
+          "_persona_and_escalation_sections",
+          "build_system_prompt",
+          "_active_seasonal_notes",
+          "_guest_memory_section",
+          "_caller_phone_section",
+          "_active_booking_section",
+          "first_message_for",
+          "build_lead_system_prompt",
+          "lead_first_message_for"
+        ]
+      },
+      {
+        "path": "backend/app/services/call_service.py",
+        "batchIndex": 7,
+        "symbols": [
+          "get_property_by_number",
+          "get_user_by_lead_number",
+          "get_property_by_twilio_number",
+          "get_user_by_twilio_lead_number",
+          "extract_caller_number",
+          "get_or_create_guest_profile",
+          "get_or_create_call_session",
+          "attach_exotel_call",
+          "set_call_classification",
+          "set_call_summary",
+          "_map_exotel_status",
+          "finalize_call_session"
+        ]
+      },
+      {
+        "path": "backend/app/services/guest_calling_notification.py",
+        "batchIndex": 7,
+        "symbols": [
+          "maybe_notify_guest_calling",
+          "_maybe_notify_guest_calling"
+        ]
+      },
+      {
+        "path": "backend/app/services/pricing_engine.py",
+        "batchIndex": 10,
+        "symbols": [
+          "PriceBreakdown",
+          "_approved_negotiation_rules",
+          "_approved_property_pricing_rules",
+          "_condition_number",
+          "_length_of_stay_discount_percent",
+          "_stay_includes_weekend_night",
+          "minimum_stay_nights_violation",
+          "_flat_fee",
+          "_sum_cached_nightly_rates",
+          "calculate_price",
+          "NegotiationResult",
+          "HostNegotiationPolicy",
+          "_get_host_negotiation_policy",
+          "_is_repeat_guest_for_host",
+          "negotiate_rate"
+        ]
+      },
+      {
+        "path": "backend/app/services/recovery_service.py",
+        "batchIndex": 7,
+        "symbols": [
+          "_guest_recovery_whatsapp_text",
+          "RecoveryMetadata",
+          "handle_busy_recovery",
+          "_handle_busy_recovery",
+          "_send_guest_recovery_whatsapp",
+          "_send_host_recovery_whatsapp",
+          "process_availability_recovery",
+          "_process_availability_recovery",
+          "_claim_lead",
+          "_notify_availability"
+        ]
+      },
+      {
+        "path": "backend/app/services/tool_handlers.py",
+        "batchIndex": 11,
+        "symbols": [
+          "_phone_confirmation_warning",
+          "_build_escalation_whatsapp_text",
+          "_send_escalation_email",
+          "_send_escalation_whatsapp",
+          "_get_property",
+          "handle_check_calendar",
+          "handle_get_pricing",
+          "handle_dispatch_technician",
+          "handle_send_whatsapp",
+          "handle_send_photos",
+          "handle_escalate_to_host",
+          "handle_negotiate_rate",
+          "handle_recommend_properties",
+          "_resolve_property_names",
+          "handle_update_lead",
+          "handle_search_faq"
+        ]
+      },
+      {
+        "path": "backend/app/services/whatsapp_reply_service.py",
+        "batchIndex": 7,
+        "symbols": [
+          "_label_words",
+          "_parse_menu_choice",
+          "_to_bare_digits",
+          "_resolve_recovery_lead",
+          "_resolve_property",
+          "handle_inbound_reply",
+          "_handle_inbound_reply",
+          "_reply_property",
+          "_reply_pricing",
+          "_reply_faq",
+          "_reply_brochure",
+          "_notify_host_of_reply"
+        ]
+      },
+      {
+        "path": "backend/app/voice/pipeline.py",
+        "batchIndex": 3,
+        "symbols": [
+          "_spawn_background_task",
+          "_hangup_exotel_call",
+          "_pick_groq_model",
+          "_FallbackGroqLLMService",
+          "_ReconnectingSarvamSTTService",
+          "_build_llm",
+          "_build_openrouter_llm",
+          "_is_host_handoff_frame",
+          "_HandoffOutcome",
+          "_renew_call_lease_periodically",
+          "_run_pipeline",
+          "_wait_and_trigger_handoff",
+          "_run_pipeline_inner",
+          "_reject_call_as_busy",
+          "run_voice_pipeline",
+          "run_voice_pipeline_twilio",
+          "run_browser_voice_pipeline",
+          "run_browser_lead_pipeline"
+        ]
+      },
+      {
+        "path": "backend/scripts/seed_demo_data.py",
+        "batchIndex": 2,
+        "symbols": [
+          "_reanchor",
+          "get_or_create_demo_user",
+          "get_or_create_property",
+          "seed_bookings",
+          "seed_technicians",
+          "seed_sample_notifications",
+          "main"
+        ]
+      },
+      {
+        "path": "backend/seed_demo.py",
+        "batchIndex": 11,
+        "symbols": [
+          "seed"
+        ]
+      },
+      {
+        "path": "backend/seed_faq_updates.py",
+        "batchIndex": 11,
+        "symbols": [
+          "_upsert_faq_entry",
+          "seed"
+        ]
+      },
+      {
+        "path": "backend/tests/conftest.py",
+        "batchIndex": 2,
+        "symbols": [
+          "_override_get_current_user",
+          "_setup_database",
+          "_clean_tables",
+          "_clean_call_leases",
+          "db_session",
+          "client",
+          "test_user",
+          "auth_headers_for",
+          "auth_headers",
+          "test_property",
+          "test_call_session"
+        ]
+      },
+      {
+        "path": "backend/tests/test_recovery_service.py",
+        "batchIndex": 8,
+        "symbols": [
+          "test_handle_busy_recovery_creates_lead_and_notification",
+          "test_handle_busy_recovery_creates_guest_profile_scoped_by_phone_and_host",
+          "test_handle_busy_recovery_sets_last_property_id_on_guest_profile",
+          "test_handle_busy_recovery_reuses_the_same_lead_across_repeated_rejections",
+          "test_handle_busy_recovery_does_not_reuse_a_booked_lead",
+          "test_handle_busy_recovery_for_lead_agent_call_has_no_property",
+          "test_lead_agent_busy_recovery_notification_is_visible_via_the_real_dashboard_filter",
+          "test_handle_busy_recovery_handles_anonymous_caller_gracefully",
+          "test_handle_busy_recovery_reads_host_phone_after_earlier_commits",
+          "test_handle_busy_recovery_returns_none_for_unknown_host",
+          "test_handle_busy_recovery_never_raises_on_internal_failure"
+        ]
+      },
+      {
+        "path": "backend/tests/test_system_prompt.py",
+        "batchIndex": 8,
+        "symbols": [
+          "_FixedDatetime",
+          "_user",
+          "_property",
+          "_guest",
+          "_booking",
+          "test_first_message_default_has_no_placeholders_left_unresolved",
+          "test_today_anchor_precomputes_correct_weekend_dates",
+          "test_today_anchor_named_month_example_demonstrates_the_rollover_it_teaches",
+          "test_today_anchor_january_has_no_earlier_month_this_year_to_roll_over",
+          "test_first_message_uses_host_template_with_placeholders",
+          "test_first_message_prefers_spoken_name_over_raw_name",
+          "test_build_system_prompt_uses_display_name_over_raw_name",
+          "test_first_message_template_blank_on_missing_property_context",
+          "test_first_message_template_malformed_brace_fails_open_to_literal_text",
+          "test_default_escalation_phrase_used_when_host_has_not_set_one",
+          "test_host_escalation_phrase_overrides_default",
+          "test_persona_note_included_when_set",
+          "test_persona_note_omitted_when_not_set",
+          "test_negotiation_off_note_omitted_by_default",
+          "test_negotiation_off_note_included_when_explicitly_disabled",
+          "test_no_guest_profile_says_new_guest",
+          "test_guest_profile_with_zero_stays_is_treated_as_new",
+          "test_returning_guest_included_with_name_and_stay_count",
+          "test_returning_guest_includes_preferred_language_and_last_outcome",
+          "test_returning_guest_includes_last_conversation_summary",
+          "test_lead_agent_prompt_also_gets_guest_memory_section",
+          "test_lead_agent_prompt_defaults_to_new_guest_when_omitted",
+          "test_negotiation_off_note_omitted_when_explicitly_enabled",
+          "test_property_usp_included_in_guest_support_prompt",
+          "test_property_neighborhood_info_included_in_guest_support_prompt",
+          "test_property_neighborhood_info_omitted_when_not_set",
+          "test_legacy_property_faq_still_inlined",
+          "test_verified_faq_entries_inlined_alongside_legacy_faq",
+          "test_faq_section_omitted_when_no_legacy_or_verified_entries",
+          "test_verified_faq_entries_defaults_to_none_for_existing_call_sites",
+          "test_property_usp_omitted_from_lead_agent_portfolio_listing",
+          "test_property_amenities_omitted_from_lead_agent_portfolio_listing",
+          "test_lead_agent_portfolio_listing_uses_display_name_over_raw_name",
+          "test_lead_agent_prompt_requires_phone_and_defers_email",
+          "test_lead_agent_prompt_also_gets_persona_and_escalation_overrides",
+          "test_prompts_warn_against_narrating_internal_workflow_steps",
+          "test_prompts_instruct_faithful_occasion_capture_without_host_suggestions",
+          "test_prompts_handle_ota_discount_comparisons_via_existing_pricing_tools",
+          "test_prompts_allow_sparing_fillers_but_never_after_an_interruption",
+          "test_active_seasonal_notes_simple_range",
+          "test_active_seasonal_notes_wraparound_range",
+          "test_active_seasonal_notes_handles_none_and_empty",
+          "test_active_seasonal_notes_skips_malformed_entries",
+          "test_active_seasonal_notes_multiple_notes_only_active_ones_returned",
+          "test_build_system_prompt_includes_active_seasonal_note",
+          "test_build_system_prompt_omits_inactive_seasonal_note",
+          "test_active_booking_section_empty_when_no_booking",
+          "test_active_booking_section_includes_property_dates_and_name",
+          "test_active_booking_section_handles_missing_dates",
+          "test_active_booking_section_handles_missing_guest_name",
+          "test_active_booking_section_uses_last_discussed_property",
+          "test_build_system_prompt_includes_active_booking_when_present",
+          "test_build_system_prompt_omits_booking_section_when_none",
+          "test_build_lead_system_prompt_includes_active_booking_when_present",
+          "test_build_system_prompt_handles_no_seasonal_notes",
+          "test_golden_rules_forbid_inventing_tool_call_arguments",
+          "test_golden_rules_saturday_minimum_stay_asks_before_declining",
+          "test_golden_rules_forbid_narrator_meta_text",
+          "test_golden_rules_hello_mid_call_never_repeats_last_answer",
+          "test_golden_rules_forbid_loop_in_the_host_phrasing_on_booking_accept",
+          "test_golden_rules_forbid_loop_in_the_host_for_any_escalation_reason",
+          "test_caller_phone_is_exposed_so_the_model_never_needs_it_recited",
+          "test_caller_phone_section_omitted_when_not_available",
+          "test_lead_caller_phone_is_exposed_too",
+          "test_guest_memory_says_not_to_reask_a_known_returning_guests_name",
+          "test_guest_memory_omits_reask_line_when_name_unknown",
+          "test_golden_rules_save_unprompted_name_via_update_lead_in_guest_support",
+          "test_golden_rules_save_unprompted_name_also_present_in_lead_agent_prompt",
+          "test_golden_rules_covers_guest_self_correction",
+          "test_golden_rules_covers_answer_first_then_return_to_flow",
+          "test_golden_rules_covers_conversational_memory_callback_wording",
+          "test_golden_rules_covers_comparison_questions_between_recommended_properties",
+          "test_golden_rules_covers_early_checkin_late_checkout_fees_only_when_asked",
+          "test_golden_rules_covers_weekend_minimum_stay_requirement",
+          "test_golden_rules_covers_hard_close_vs_soft_close_framing",
+          "test_golden_rules_hard_close_does_not_repeat_host_will_follow_up",
+          "test_golden_rules_covers_next_follow_up_must_be_a_concrete_action",
+          "test_golden_rules_covers_escalation_urgency_mapping",
+          "test_golden_rules_covers_recommendation_refinement_is_additive_not_replacement",
+          "test_golden_rules_covers_amenity_checklist_must_state_present_and_missing",
+          "test_golden_rules_extracts_composite_and_implicit_guest_counts",
+          "test_golden_rules_treats_a_named_locality_as_a_usable_answer",
+          "test_golden_rules_treats_under_x_budget_as_an_exact_ceiling",
+          "test_guest_support_has_its_own_name_phone_timing_guidance",
+          "test_lead_agent_recommends_before_asking_budget_when_other_criteria_known",
+          "test_golden_rules_explicit_language_request_recognized_immediately",
+          "test_golden_rules_explicit_language_request_also_present_in_lead_agent_prompt",
+          "test_unset_agent_language_policy_is_byte_identical_to_no_policy_field",
+          "test_agent_language_policy_hindi_first_adds_baseline_note",
+          "test_agent_language_policy_english_first_adds_baseline_note",
+          "test_agent_language_policy_present_in_lead_agent_prompt_too"
+        ]
+      },
+      {
+        "path": "backend/tests/test_take_call.py",
+        "batchIndex": 8,
+        "symbols": [
+          "_call_session_for",
+          "test_valid_token_confirm_page_shows_property_and_guest",
+          "test_valid_token_claim_succeeds",
+          "test_success_page_copy_does_not_overclaim_connection_or_live_update",
+          "test_expired_token_confirm_page_rejects",
+          "test_expired_token_claim_rejects",
+          "test_tampered_token_signature_rejects",
+          "test_token_signed_with_wrong_secret_rejects",
+          "test_token_property_mismatch_rejects",
+          "test_token_host_mismatch_rejects",
+          "test_unknown_call_session_rejects",
+          "test_ended_call_confirm_shows_no_longer_active",
+          "test_ended_call_claim_rejects_without_telephony_attempt",
+          "test_call_ending_between_status_read_and_atomic_update_still_cannot_be_claimed",
+          "test_duplicate_claim_is_a_safe_no_op",
+          "test_confirm_page_after_claim_shows_already_requested",
+          "test_concurrent_claims_only_one_succeeds",
+          "test_malformed_token_rejects",
+          "test_token_missing_required_claim_rejects",
+          "test_token_with_valid_signature_but_no_exp_claim_never_bypasses_expiry",
+          "test_alg_none_forged_token_is_rejected",
+          "test_token_with_non_uuid_claim_rejects",
+          "test_take_call_requires_no_clerk_session"
+        ]
+      }
+    ],
+    "backend/app/schemas/call_session.py": [
+      {
+        "path": "backend/app/schemas/call_summary.py",
+        "batchIndex": 7,
+        "symbols": [
+          "BookingSnapshot",
+          "SummaryOutcome",
+          "CallSummary"
+        ]
+      },
+      {
+        "path": "backend/app/schemas/notification.py",
+        "batchIndex": 2,
+        "symbols": [
+          "NotificationOut"
+        ]
+      }
+    ]
+  }
+}

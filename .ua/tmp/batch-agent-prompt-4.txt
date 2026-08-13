@@ -1,0 +1,2468 @@
+Analyze these files and produce GraphNode and GraphEdge objects.
+Project root: `/Users/shagunverma/Desktop/mira /mira-prod`
+Project: mira-prod
+Languages: python, typescript, markdown, yaml, dockerfile, sql
+Batch: 4/26
+Skill directory (for bundled scripts): /Users/shagunverma/.claude/plugins/cache/understand-anything/understand-anything/2.9.4/skills/understand
+Output: write to /Users/shagunverma/Desktop/mira /mira-prod/.ua/intermediate/batch-4.json
+
+Pre-resolved import data for this batch (use directly — do NOT re-resolve imports from source):
+```json
+{
+  "frontend/src/app/dashboard/calendar/page.tsx": [
+    "frontend/src/components/guest-combobox.tsx",
+    "frontend/src/components/ui/button.tsx",
+    "frontend/src/components/ui/input.tsx",
+    "frontend/src/components/ui/label.tsx",
+    "frontend/src/components/ui/right-panel.tsx",
+    "frontend/src/components/ui/select.tsx",
+    "frontend/src/components/ui/skeleton.tsx",
+    "frontend/src/hooks/use-async.ts",
+    "frontend/src/lib/api.ts",
+    "frontend/src/lib/types.ts",
+    "frontend/src/lib/utils.ts"
+  ],
+  "frontend/src/app/dashboard/calls/[id]/page.tsx": [
+    "frontend/src/components/call-summary-card.tsx",
+    "frontend/src/components/status-chip.tsx",
+    "frontend/src/components/ui/badge.tsx",
+    "frontend/src/components/ui/button.tsx",
+    "frontend/src/components/ui/card.tsx",
+    "frontend/src/components/ui/skeleton.tsx",
+    "frontend/src/hooks/use-async.ts",
+    "frontend/src/lib/api.ts",
+    "frontend/src/lib/transcript.ts",
+    "frontend/src/lib/utils.ts"
+  ],
+  "frontend/src/app/dashboard/calls/page.tsx": [
+    "frontend/src/components/calls-table.tsx",
+    "frontend/src/components/date-range-picker.tsx",
+    "frontend/src/components/ui/input.tsx",
+    "frontend/src/components/ui/label.tsx",
+    "frontend/src/components/ui/select.tsx",
+    "frontend/src/components/ui/skeleton.tsx",
+    "frontend/src/components/ui/switch.tsx",
+    "frontend/src/hooks/use-async.ts",
+    "frontend/src/hooks/use-date-range.ts",
+    "frontend/src/lib/api.ts",
+    "frontend/src/lib/utils.ts"
+  ],
+  "frontend/src/app/dashboard/faq/page.tsx": [
+    "frontend/src/components/expandable-text.tsx",
+    "frontend/src/components/status-chip.tsx",
+    "frontend/src/components/ui/button.tsx",
+    "frontend/src/components/ui/card.tsx",
+    "frontend/src/components/ui/dictation-textarea.tsx",
+    "frontend/src/components/ui/input.tsx",
+    "frontend/src/components/ui/label.tsx",
+    "frontend/src/components/ui/right-panel.tsx",
+    "frontend/src/components/ui/select.tsx",
+    "frontend/src/components/ui/skeleton.tsx",
+    "frontend/src/components/ui/table.tsx",
+    "frontend/src/components/unanswered-questions-card.tsx",
+    "frontend/src/hooks/use-async.ts",
+    "frontend/src/lib/api.ts",
+    "frontend/src/lib/utils.ts"
+  ],
+  "frontend/src/app/dashboard/guests/[id]/page.tsx": [
+    "frontend/src/components/stat-card.tsx",
+    "frontend/src/components/status-chip.tsx",
+    "frontend/src/components/ui/avatar.tsx",
+    "frontend/src/components/ui/badge.tsx",
+    "frontend/src/components/ui/button.tsx",
+    "frontend/src/components/ui/card.tsx",
+    "frontend/src/components/ui/dictation-textarea.tsx",
+    "frontend/src/components/ui/input.tsx",
+    "frontend/src/components/ui/label.tsx",
+    "frontend/src/components/ui/list-row.tsx",
+    "frontend/src/components/ui/skeleton.tsx",
+    "frontend/src/hooks/use-async.ts",
+    "frontend/src/lib/api.ts",
+    "frontend/src/lib/utils.ts"
+  ],
+  "frontend/src/app/dashboard/guests/page.tsx": [
+    "frontend/src/components/date-range-picker.tsx",
+    "frontend/src/components/ui/avatar.tsx",
+    "frontend/src/components/ui/badge.tsx",
+    "frontend/src/components/ui/button.tsx",
+    "frontend/src/components/ui/skeleton.tsx",
+    "frontend/src/components/ui/table.tsx",
+    "frontend/src/hooks/use-async.ts",
+    "frontend/src/hooks/use-date-range.ts",
+    "frontend/src/lib/api.ts",
+    "frontend/src/lib/utils.ts"
+  ],
+  "frontend/src/app/dashboard/layout.tsx": [
+    "frontend/src/components/date-range-context.tsx",
+    "frontend/src/components/pending-import-banner.tsx",
+    "frontend/src/components/sidebar-nav.tsx",
+    "frontend/src/lib/auth-context.tsx"
+  ],
+  "frontend/src/app/dashboard/leads/page.tsx": [
+    "frontend/src/components/close-lead-dialog.tsx",
+    "frontend/src/components/date-range-picker.tsx",
+    "frontend/src/components/lead-detail-panel.tsx",
+    "frontend/src/components/service-requests-table.tsx",
+    "frontend/src/components/status-chip.tsx",
+    "frontend/src/components/ui/button.tsx",
+    "frontend/src/components/ui/card.tsx",
+    "frontend/src/components/ui/input.tsx",
+    "frontend/src/components/ui/label.tsx",
+    "frontend/src/components/ui/select.tsx",
+    "frontend/src/components/ui/skeleton.tsx",
+    "frontend/src/components/ui/switch.tsx",
+    "frontend/src/components/ui/table.tsx",
+    "frontend/src/components/ui/tabs.tsx",
+    "frontend/src/hooks/use-async.ts",
+    "frontend/src/hooks/use-date-range.ts",
+    "frontend/src/lib/api.ts",
+    "frontend/src/lib/leads.ts",
+    "frontend/src/lib/types.ts",
+    "frontend/src/lib/utils.ts"
+  ],
+  "frontend/src/app/dashboard/onboarding/page.tsx": [
+    "frontend/src/components/ui/button.tsx",
+    "frontend/src/components/ui/card.tsx",
+    "frontend/src/components/ui/input.tsx",
+    "frontend/src/components/ui/label.tsx",
+    "frontend/src/components/ui/select.tsx",
+    "frontend/src/components/ui/textarea.tsx",
+    "frontend/src/lib/api.ts",
+    "frontend/src/lib/auth-context.tsx",
+    "frontend/src/lib/types.ts"
+  ],
+  "frontend/src/app/dashboard/opportunities/page.tsx": [
+    "frontend/src/components/date-range-picker.tsx",
+    "frontend/src/components/lead-detail-panel.tsx",
+    "frontend/src/components/opportunity-list.tsx",
+    "frontend/src/components/recovery-analytics-card.tsx",
+    "frontend/src/components/ui/input.tsx",
+    "frontend/src/components/ui/skeleton.tsx",
+    "frontend/src/components/ui/tabs.tsx",
+    "frontend/src/hooks/use-async.ts",
+    "frontend/src/hooks/use-notification-stream.ts",
+    "frontend/src/lib/api.ts",
+    "frontend/src/lib/opportunities.ts",
+    "frontend/src/lib/types.ts",
+    "frontend/src/lib/utils.ts"
+  ],
+  "frontend/src/app/dashboard/page.tsx": [
+    "frontend/src/components/calls-table.tsx",
+    "frontend/src/components/date-range-picker.tsx",
+    "frontend/src/components/lead-detail-panel.tsx",
+    "frontend/src/components/live-requests-card.tsx",
+    "frontend/src/components/opportunities-card.tsx",
+    "frontend/src/components/stat-card.tsx",
+    "frontend/src/components/ui/card.tsx",
+    "frontend/src/components/ui/label.tsx",
+    "frontend/src/components/ui/skeleton.tsx",
+    "frontend/src/components/ui/switch.tsx",
+    "frontend/src/components/unanswered-questions-card.tsx",
+    "frontend/src/hooks/use-async.ts",
+    "frontend/src/hooks/use-date-range.ts",
+    "frontend/src/lib/api.ts",
+    "frontend/src/lib/types.ts",
+    "frontend/src/lib/utils.ts"
+  ],
+  "frontend/src/app/dashboard/pricing/page.tsx": [
+    "frontend/src/components/settings/ai-training-section.tsx",
+    "frontend/src/components/ui/badge.tsx",
+    "frontend/src/components/ui/button.tsx",
+    "frontend/src/components/ui/card.tsx",
+    "frontend/src/components/ui/definition-row.tsx",
+    "frontend/src/components/ui/input.tsx",
+    "frontend/src/components/ui/label.tsx",
+    "frontend/src/components/ui/select.tsx",
+    "frontend/src/components/ui/skeleton.tsx",
+    "frontend/src/components/ui/table.tsx",
+    "frontend/src/hooks/use-async.ts",
+    "frontend/src/lib/api.ts",
+    "frontend/src/lib/types.ts"
+  ],
+  "frontend/src/app/dashboard/profile/page.tsx": [
+    "frontend/src/components/ui/avatar.tsx",
+    "frontend/src/components/ui/button.tsx",
+    "frontend/src/components/ui/input.tsx",
+    "frontend/src/components/ui/label.tsx",
+    "frontend/src/components/ui/right-panel.tsx",
+    "frontend/src/components/ui/switch.tsx",
+    "frontend/src/lib/api.ts",
+    "frontend/src/lib/auth-context.tsx"
+  ],
+  "frontend/src/app/dashboard/properties/ai-training/page.tsx": [
+    "frontend/src/components/settings/ai-training-section.tsx",
+    "frontend/src/components/ui/button.tsx",
+    "frontend/src/components/ui/card.tsx",
+    "frontend/src/components/ui/dictation-textarea.tsx",
+    "frontend/src/components/ui/label.tsx",
+    "frontend/src/components/ui/skeleton.tsx",
+    "frontend/src/lib/api.ts",
+    "frontend/src/lib/auth-context.tsx",
+    "frontend/src/lib/types.ts",
+    "frontend/src/lib/utils.ts"
+  ],
+  "frontend/src/app/dashboard/properties/page.tsx": [
+    "frontend/src/components/property-faq-manager.tsx",
+    "frontend/src/components/property-form-fields.tsx",
+    "frontend/src/components/property-photo-carousel.tsx",
+    "frontend/src/components/property-photos-manager.tsx",
+    "frontend/src/components/status-chip.tsx",
+    "frontend/src/components/talk-to-mira-dialog.tsx",
+    "frontend/src/components/ui/button.tsx",
+    "frontend/src/components/ui/card.tsx",
+    "frontend/src/components/ui/dropdown-menu.tsx",
+    "frontend/src/components/ui/input.tsx",
+    "frontend/src/components/ui/list-row.tsx",
+    "frontend/src/components/ui/right-panel.tsx",
+    "frontend/src/components/ui/skeleton.tsx",
+    "frontend/src/components/ui/textarea.tsx",
+    "frontend/src/hooks/use-async.ts",
+    "frontend/src/lib/api.ts",
+    "frontend/src/lib/auth-context.tsx",
+    "frontend/src/lib/types.ts",
+    "frontend/src/lib/utils.ts"
+  ],
+  "frontend/src/app/dashboard/settings/page.tsx": [
+    "frontend/src/components/settings/call-ownership-card.tsx",
+    "frontend/src/components/settings/technicians-section.tsx",
+    "frontend/src/components/ui/badge.tsx",
+    "frontend/src/components/ui/button.tsx",
+    "frontend/src/components/ui/card.tsx",
+    "frontend/src/components/ui/definition-row.tsx",
+    "frontend/src/components/ui/input.tsx",
+    "frontend/src/components/ui/skeleton.tsx",
+    "frontend/src/components/ui/tabs.tsx",
+    "frontend/src/lib/api.ts",
+    "frontend/src/lib/auth-context.tsx"
+  ],
+  "frontend/src/components/actionable-card.tsx": [
+    "frontend/src/components/expandable-text.tsx",
+    "frontend/src/components/ui/badge.tsx",
+    "frontend/src/components/ui/list-row.tsx",
+    "frontend/src/lib/tone.ts",
+    "frontend/src/lib/utils.ts"
+  ],
+  "frontend/src/components/call-summary-card.tsx": [
+    "frontend/src/components/status-chip.tsx",
+    "frontend/src/components/ui/card.tsx",
+    "frontend/src/lib/types.ts"
+  ],
+  "frontend/src/components/calls-table.tsx": [
+    "frontend/src/components/status-chip.tsx",
+    "frontend/src/components/ui/badge.tsx",
+    "frontend/src/components/ui/table.tsx",
+    "frontend/src/lib/types.ts",
+    "frontend/src/lib/utils.ts"
+  ],
+  "frontend/src/components/close-lead-dialog.tsx": [
+    "frontend/src/components/ui/button.tsx",
+    "frontend/src/components/ui/dialog.tsx",
+    "frontend/src/components/ui/label.tsx",
+    "frontend/src/components/ui/select.tsx",
+    "frontend/src/hooks/use-async.ts",
+    "frontend/src/lib/api.ts",
+    "frontend/src/lib/types.ts"
+  ],
+  "frontend/src/components/date-range-context.tsx": [],
+  "frontend/src/components/date-range-picker.tsx": [
+    "frontend/src/components/ui/button.tsx",
+    "frontend/src/components/ui/calendar.tsx",
+    "frontend/src/components/ui/popover.tsx",
+    "frontend/src/hooks/use-date-range.ts"
+  ],
+  "frontend/src/components/expandable-text.tsx": [
+    "frontend/src/lib/utils.ts"
+  ],
+  "frontend/src/components/guest-combobox.tsx": [
+    "frontend/src/components/ui/input.tsx",
+    "frontend/src/lib/types.ts",
+    "frontend/src/lib/utils.ts"
+  ],
+  "frontend/src/components/image-lightbox.tsx": [
+    "frontend/src/components/ui/dialog.tsx",
+    "frontend/src/lib/utils.ts"
+  ],
+  "frontend/src/components/lead-detail-panel.tsx": [
+    "frontend/src/components/call-summary-card.tsx",
+    "frontend/src/components/close-lead-dialog.tsx",
+    "frontend/src/components/status-chip.tsx",
+    "frontend/src/components/ui/button.tsx",
+    "frontend/src/components/ui/dictation-textarea.tsx",
+    "frontend/src/components/ui/input.tsx",
+    "frontend/src/components/ui/label.tsx",
+    "frontend/src/components/ui/right-panel.tsx",
+    "frontend/src/components/ui/select.tsx",
+    "frontend/src/hooks/use-async.ts",
+    "frontend/src/lib/api.ts",
+    "frontend/src/lib/types.ts",
+    "frontend/src/lib/utils.ts"
+  ],
+  "frontend/src/components/live-requests-card.tsx": [
+    "frontend/src/components/lead-detail-panel.tsx",
+    "frontend/src/components/status-chip.tsx",
+    "frontend/src/components/ui/badge.tsx",
+    "frontend/src/components/ui/card.tsx",
+    "frontend/src/components/ui/checkbox.tsx",
+    "frontend/src/components/ui/list-row.tsx",
+    "frontend/src/hooks/use-notification-stream.ts",
+    "frontend/src/lib/api.ts",
+    "frontend/src/lib/leads.ts",
+    "frontend/src/lib/types.ts",
+    "frontend/src/lib/utils.ts"
+  ]
+}
+```
+
+Cross-batch neighbors with their exported symbols (confidence boost for cross-batch edges):
+```json
+{
+  "frontend/src/app/dashboard/calendar/page.tsx": [
+    {
+      "path": "frontend/src/components/ui/button.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Button",
+        "buttonVariants"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/input.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Input"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/label.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Label"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/right-panel.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "RightPanel",
+        "RightPanelFooterButton"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/select.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Select",
+        "SelectContent",
+        "SelectGroup",
+        "SelectItem",
+        "SelectLabel",
+        "SelectScrollDownButton",
+        "SelectScrollUpButton",
+        "SelectSeparator",
+        "SelectTrigger",
+        "SelectValue"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/skeleton.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Skeleton"
+      ]
+    },
+    {
+      "path": "frontend/src/hooks/use-async.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "useAsync"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/api.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "setTokenGetter",
+        "getToken",
+        "ApiError",
+        "api",
+        "API_BASE_URL"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/types.ts",
+      "batchIndex": 6,
+      "symbols": []
+    },
+    {
+      "path": "frontend/src/lib/utils.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "cn",
+        "glassCardClassName",
+        "BROWSER_TEST_CALLER_NUMBER",
+        "isBrowserTestIdentity",
+        "matchesSearch"
+      ]
+    }
+  ],
+  "frontend/src/app/dashboard/calls/[id]/page.tsx": [
+    {
+      "path": "frontend/src/components/status-chip.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "StatusTone",
+        "StatusChip"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/badge.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Badge",
+        "badgeVariants"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/button.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Button",
+        "buttonVariants"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/card.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Card",
+        "CardHeader",
+        "CardFooter",
+        "CardTitle",
+        "CardAction",
+        "CardDescription",
+        "CardContent"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/skeleton.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Skeleton"
+      ]
+    },
+    {
+      "path": "frontend/src/hooks/use-async.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "useAsync"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/api.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "setTokenGetter",
+        "getToken",
+        "ApiError",
+        "api",
+        "API_BASE_URL"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/transcript.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "parseTranscript"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/utils.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "cn",
+        "glassCardClassName",
+        "BROWSER_TEST_CALLER_NUMBER",
+        "isBrowserTestIdentity",
+        "matchesSearch"
+      ]
+    }
+  ],
+  "frontend/src/app/dashboard/calls/page.tsx": [
+    {
+      "path": "frontend/src/components/ui/input.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Input"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/label.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Label"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/select.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Select",
+        "SelectContent",
+        "SelectGroup",
+        "SelectItem",
+        "SelectLabel",
+        "SelectScrollDownButton",
+        "SelectScrollUpButton",
+        "SelectSeparator",
+        "SelectTrigger",
+        "SelectValue"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/skeleton.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Skeleton"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/switch.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Switch"
+      ]
+    },
+    {
+      "path": "frontend/src/hooks/use-async.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "useAsync"
+      ]
+    },
+    {
+      "path": "frontend/src/hooks/use-date-range.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "useDateRange"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/api.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "setTokenGetter",
+        "getToken",
+        "ApiError",
+        "api",
+        "API_BASE_URL"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/utils.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "cn",
+        "glassCardClassName",
+        "BROWSER_TEST_CALLER_NUMBER",
+        "isBrowserTestIdentity",
+        "matchesSearch"
+      ]
+    }
+  ],
+  "frontend/src/app/dashboard/faq/page.tsx": [
+    {
+      "path": "frontend/src/components/status-chip.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "StatusTone",
+        "StatusChip"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/button.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Button",
+        "buttonVariants"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/card.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Card",
+        "CardHeader",
+        "CardFooter",
+        "CardTitle",
+        "CardAction",
+        "CardDescription",
+        "CardContent"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/dictation-textarea.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "DictationTextarea"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/input.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Input"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/label.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Label"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/right-panel.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "RightPanel",
+        "RightPanelFooterButton"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/select.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Select",
+        "SelectContent",
+        "SelectGroup",
+        "SelectItem",
+        "SelectLabel",
+        "SelectScrollDownButton",
+        "SelectScrollUpButton",
+        "SelectSeparator",
+        "SelectTrigger",
+        "SelectValue"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/skeleton.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Skeleton"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/table.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Table",
+        "TableHeader",
+        "TableBody",
+        "TableFooter",
+        "TableHead",
+        "TableRow",
+        "TableCell",
+        "TableCaption"
+      ]
+    },
+    {
+      "path": "frontend/src/components/unanswered-questions-card.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "UnansweredQuestionsCard"
+      ]
+    },
+    {
+      "path": "frontend/src/hooks/use-async.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "useAsync"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/api.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "setTokenGetter",
+        "getToken",
+        "ApiError",
+        "api",
+        "API_BASE_URL"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/utils.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "cn",
+        "glassCardClassName",
+        "BROWSER_TEST_CALLER_NUMBER",
+        "isBrowserTestIdentity",
+        "matchesSearch"
+      ]
+    }
+  ],
+  "frontend/src/app/dashboard/guests/[id]/page.tsx": [
+    {
+      "path": "frontend/src/components/stat-card.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "StatCard"
+      ]
+    },
+    {
+      "path": "frontend/src/components/status-chip.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "StatusTone",
+        "StatusChip"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/avatar.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Avatar",
+        "AvatarImage",
+        "AvatarFallback",
+        "AvatarGroup",
+        "AvatarGroupCount",
+        "AvatarBadge"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/badge.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Badge",
+        "badgeVariants"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/button.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Button",
+        "buttonVariants"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/card.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Card",
+        "CardHeader",
+        "CardFooter",
+        "CardTitle",
+        "CardAction",
+        "CardDescription",
+        "CardContent"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/dictation-textarea.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "DictationTextarea"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/input.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Input"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/label.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Label"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/list-row.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "ListRow",
+        "ListRowHeader",
+        "ListRowTitle",
+        "ListRowBody",
+        "ListRowFooter"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/skeleton.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Skeleton"
+      ]
+    },
+    {
+      "path": "frontend/src/hooks/use-async.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "useAsync"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/api.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "setTokenGetter",
+        "getToken",
+        "ApiError",
+        "api",
+        "API_BASE_URL"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/utils.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "cn",
+        "glassCardClassName",
+        "BROWSER_TEST_CALLER_NUMBER",
+        "isBrowserTestIdentity",
+        "matchesSearch"
+      ]
+    }
+  ],
+  "frontend/src/app/dashboard/guests/page.tsx": [
+    {
+      "path": "frontend/src/components/ui/avatar.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Avatar",
+        "AvatarImage",
+        "AvatarFallback",
+        "AvatarGroup",
+        "AvatarGroupCount",
+        "AvatarBadge"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/badge.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Badge",
+        "badgeVariants"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/button.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Button",
+        "buttonVariants"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/skeleton.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Skeleton"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/table.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Table",
+        "TableHeader",
+        "TableBody",
+        "TableFooter",
+        "TableHead",
+        "TableRow",
+        "TableCell",
+        "TableCaption"
+      ]
+    },
+    {
+      "path": "frontend/src/hooks/use-async.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "useAsync"
+      ]
+    },
+    {
+      "path": "frontend/src/hooks/use-date-range.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "useDateRange"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/api.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "setTokenGetter",
+        "getToken",
+        "ApiError",
+        "api",
+        "API_BASE_URL"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/utils.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "cn",
+        "glassCardClassName",
+        "BROWSER_TEST_CALLER_NUMBER",
+        "isBrowserTestIdentity",
+        "matchesSearch"
+      ]
+    }
+  ],
+  "frontend/src/app/dashboard/layout.tsx": [
+    {
+      "path": "frontend/src/components/pending-import-banner.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "PendingImportBanner"
+      ]
+    },
+    {
+      "path": "frontend/src/components/sidebar-nav.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "SidebarNav"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/auth-context.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "PENDING_IMPORT_KEY",
+        "AuthProvider",
+        "useAuth"
+      ]
+    }
+  ],
+  "frontend/src/app/dashboard/leads/page.tsx": [
+    {
+      "path": "frontend/src/components/service-requests-table.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "ServiceRequestsTable"
+      ]
+    },
+    {
+      "path": "frontend/src/components/status-chip.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "StatusTone",
+        "StatusChip"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/button.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Button",
+        "buttonVariants"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/card.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Card",
+        "CardHeader",
+        "CardFooter",
+        "CardTitle",
+        "CardAction",
+        "CardDescription",
+        "CardContent"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/input.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Input"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/label.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Label"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/select.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Select",
+        "SelectContent",
+        "SelectGroup",
+        "SelectItem",
+        "SelectLabel",
+        "SelectScrollDownButton",
+        "SelectScrollUpButton",
+        "SelectSeparator",
+        "SelectTrigger",
+        "SelectValue"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/skeleton.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Skeleton"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/switch.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Switch"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/table.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Table",
+        "TableHeader",
+        "TableBody",
+        "TableFooter",
+        "TableHead",
+        "TableRow",
+        "TableCell",
+        "TableCaption"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/tabs.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Tabs",
+        "TabsList",
+        "TabsTrigger",
+        "TabsContent",
+        "tabsListVariants"
+      ]
+    },
+    {
+      "path": "frontend/src/hooks/use-async.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "useAsync"
+      ]
+    },
+    {
+      "path": "frontend/src/hooks/use-date-range.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "useDateRange"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/api.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "setTokenGetter",
+        "getToken",
+        "ApiError",
+        "api",
+        "API_BASE_URL"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/leads.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "leadGuestLabel",
+        "leadPhoneLabel",
+        "formatLeadTimestamp"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/types.ts",
+      "batchIndex": 6,
+      "symbols": []
+    },
+    {
+      "path": "frontend/src/lib/utils.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "cn",
+        "glassCardClassName",
+        "BROWSER_TEST_CALLER_NUMBER",
+        "isBrowserTestIdentity",
+        "matchesSearch"
+      ]
+    }
+  ],
+  "frontend/src/app/dashboard/onboarding/page.tsx": [
+    {
+      "path": "frontend/src/components/ui/button.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Button",
+        "buttonVariants"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/card.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Card",
+        "CardHeader",
+        "CardFooter",
+        "CardTitle",
+        "CardAction",
+        "CardDescription",
+        "CardContent"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/input.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Input"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/label.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Label"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/select.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Select",
+        "SelectContent",
+        "SelectGroup",
+        "SelectItem",
+        "SelectLabel",
+        "SelectScrollDownButton",
+        "SelectScrollUpButton",
+        "SelectSeparator",
+        "SelectTrigger",
+        "SelectValue"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/textarea.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Textarea"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/api.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "setTokenGetter",
+        "getToken",
+        "ApiError",
+        "api",
+        "API_BASE_URL"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/auth-context.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "PENDING_IMPORT_KEY",
+        "AuthProvider",
+        "useAuth"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/types.ts",
+      "batchIndex": 6,
+      "symbols": []
+    }
+  ],
+  "frontend/src/app/dashboard/opportunities/page.tsx": [
+    {
+      "path": "frontend/src/components/opportunity-list.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "OpportunityList"
+      ]
+    },
+    {
+      "path": "frontend/src/components/recovery-analytics-card.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "RecoveryAnalyticsCard"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/input.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Input"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/skeleton.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Skeleton"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/tabs.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Tabs",
+        "TabsList",
+        "TabsTrigger",
+        "TabsContent",
+        "tabsListVariants"
+      ]
+    },
+    {
+      "path": "frontend/src/hooks/use-async.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "useAsync"
+      ]
+    },
+    {
+      "path": "frontend/src/hooks/use-notification-stream.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "useNotificationStream"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/api.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "setTokenGetter",
+        "getToken",
+        "ApiError",
+        "api",
+        "API_BASE_URL"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/opportunities.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "OPPORTUNITY_TYPES",
+        "isOpportunity",
+        "opportunityType"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/types.ts",
+      "batchIndex": 6,
+      "symbols": []
+    },
+    {
+      "path": "frontend/src/lib/utils.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "cn",
+        "glassCardClassName",
+        "BROWSER_TEST_CALLER_NUMBER",
+        "isBrowserTestIdentity",
+        "matchesSearch"
+      ]
+    }
+  ],
+  "frontend/src/app/dashboard/page.tsx": [
+    {
+      "path": "frontend/src/components/opportunities-card.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "OpportunitiesCard"
+      ]
+    },
+    {
+      "path": "frontend/src/components/stat-card.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "StatCard"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/card.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Card",
+        "CardHeader",
+        "CardFooter",
+        "CardTitle",
+        "CardAction",
+        "CardDescription",
+        "CardContent"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/label.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Label"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/skeleton.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Skeleton"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/switch.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Switch"
+      ]
+    },
+    {
+      "path": "frontend/src/components/unanswered-questions-card.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "UnansweredQuestionsCard"
+      ]
+    },
+    {
+      "path": "frontend/src/hooks/use-async.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "useAsync"
+      ]
+    },
+    {
+      "path": "frontend/src/hooks/use-date-range.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "useDateRange"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/api.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "setTokenGetter",
+        "getToken",
+        "ApiError",
+        "api",
+        "API_BASE_URL"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/types.ts",
+      "batchIndex": 6,
+      "symbols": []
+    },
+    {
+      "path": "frontend/src/lib/utils.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "cn",
+        "glassCardClassName",
+        "BROWSER_TEST_CALLER_NUMBER",
+        "isBrowserTestIdentity",
+        "matchesSearch"
+      ]
+    }
+  ],
+  "frontend/src/app/dashboard/pricing/page.tsx": [
+    {
+      "path": "frontend/src/components/settings/ai-training-section.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "AiTrainingSection"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/badge.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Badge",
+        "badgeVariants"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/button.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Button",
+        "buttonVariants"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/card.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Card",
+        "CardHeader",
+        "CardFooter",
+        "CardTitle",
+        "CardAction",
+        "CardDescription",
+        "CardContent"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/definition-row.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "DefinitionRow"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/input.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Input"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/label.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Label"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/select.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Select",
+        "SelectContent",
+        "SelectGroup",
+        "SelectItem",
+        "SelectLabel",
+        "SelectScrollDownButton",
+        "SelectScrollUpButton",
+        "SelectSeparator",
+        "SelectTrigger",
+        "SelectValue"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/skeleton.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Skeleton"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/table.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Table",
+        "TableHeader",
+        "TableBody",
+        "TableFooter",
+        "TableHead",
+        "TableRow",
+        "TableCell",
+        "TableCaption"
+      ]
+    },
+    {
+      "path": "frontend/src/hooks/use-async.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "useAsync"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/api.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "setTokenGetter",
+        "getToken",
+        "ApiError",
+        "api",
+        "API_BASE_URL"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/types.ts",
+      "batchIndex": 6,
+      "symbols": []
+    }
+  ],
+  "frontend/src/app/dashboard/profile/page.tsx": [
+    {
+      "path": "frontend/src/components/ui/avatar.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Avatar",
+        "AvatarImage",
+        "AvatarFallback",
+        "AvatarGroup",
+        "AvatarGroupCount",
+        "AvatarBadge"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/button.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Button",
+        "buttonVariants"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/input.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Input"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/label.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Label"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/right-panel.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "RightPanel",
+        "RightPanelFooterButton"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/switch.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Switch"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/api.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "setTokenGetter",
+        "getToken",
+        "ApiError",
+        "api",
+        "API_BASE_URL"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/auth-context.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "PENDING_IMPORT_KEY",
+        "AuthProvider",
+        "useAuth"
+      ]
+    }
+  ],
+  "frontend/src/app/dashboard/properties/ai-training/page.tsx": [
+    {
+      "path": "frontend/src/components/settings/ai-training-section.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "AiTrainingSection"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/button.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Button",
+        "buttonVariants"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/card.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Card",
+        "CardHeader",
+        "CardFooter",
+        "CardTitle",
+        "CardAction",
+        "CardDescription",
+        "CardContent"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/dictation-textarea.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "DictationTextarea"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/label.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Label"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/skeleton.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Skeleton"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/api.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "setTokenGetter",
+        "getToken",
+        "ApiError",
+        "api",
+        "API_BASE_URL"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/auth-context.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "PENDING_IMPORT_KEY",
+        "AuthProvider",
+        "useAuth"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/types.ts",
+      "batchIndex": 6,
+      "symbols": []
+    },
+    {
+      "path": "frontend/src/lib/utils.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "cn",
+        "glassCardClassName",
+        "BROWSER_TEST_CALLER_NUMBER",
+        "isBrowserTestIdentity",
+        "matchesSearch"
+      ]
+    }
+  ],
+  "frontend/src/app/dashboard/properties/page.tsx": [
+    {
+      "path": "frontend/src/components/property-faq-manager.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "PropertyFaqManager"
+      ]
+    },
+    {
+      "path": "frontend/src/components/property-form-fields.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "PropertyFormFields"
+      ]
+    },
+    {
+      "path": "frontend/src/components/property-photo-carousel.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "PropertyPhotoCarousel"
+      ]
+    },
+    {
+      "path": "frontend/src/components/property-photos-manager.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "PropertyPhotosManager"
+      ]
+    },
+    {
+      "path": "frontend/src/components/status-chip.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "StatusTone",
+        "StatusChip"
+      ]
+    },
+    {
+      "path": "frontend/src/components/talk-to-mira-dialog.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "TalkToMiraDialog"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/button.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Button",
+        "buttonVariants"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/card.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Card",
+        "CardHeader",
+        "CardFooter",
+        "CardTitle",
+        "CardAction",
+        "CardDescription",
+        "CardContent"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/dropdown-menu.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "DropdownMenu",
+        "DropdownMenuPortal",
+        "DropdownMenuTrigger",
+        "DropdownMenuContent",
+        "DropdownMenuGroup",
+        "DropdownMenuLabel",
+        "DropdownMenuItem",
+        "DropdownMenuCheckboxItem",
+        "DropdownMenuRadioGroup",
+        "DropdownMenuRadioItem",
+        "DropdownMenuSeparator",
+        "DropdownMenuShortcut",
+        "DropdownMenuSub",
+        "DropdownMenuSubTrigger",
+        "DropdownMenuSubContent"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/input.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Input"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/list-row.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "ListRow",
+        "ListRowHeader",
+        "ListRowTitle",
+        "ListRowBody",
+        "ListRowFooter"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/right-panel.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "RightPanel",
+        "RightPanelFooterButton"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/skeleton.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Skeleton"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/textarea.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Textarea"
+      ]
+    },
+    {
+      "path": "frontend/src/hooks/use-async.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "useAsync"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/api.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "setTokenGetter",
+        "getToken",
+        "ApiError",
+        "api",
+        "API_BASE_URL"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/auth-context.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "PENDING_IMPORT_KEY",
+        "AuthProvider",
+        "useAuth"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/types.ts",
+      "batchIndex": 6,
+      "symbols": []
+    },
+    {
+      "path": "frontend/src/lib/utils.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "cn",
+        "glassCardClassName",
+        "BROWSER_TEST_CALLER_NUMBER",
+        "isBrowserTestIdentity",
+        "matchesSearch"
+      ]
+    }
+  ],
+  "frontend/src/app/dashboard/settings/page.tsx": [
+    {
+      "path": "frontend/src/components/settings/call-ownership-card.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "CallOwnershipCard"
+      ]
+    },
+    {
+      "path": "frontend/src/components/settings/technicians-section.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "TechniciansSection"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/badge.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Badge",
+        "badgeVariants"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/button.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Button",
+        "buttonVariants"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/card.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Card",
+        "CardHeader",
+        "CardFooter",
+        "CardTitle",
+        "CardAction",
+        "CardDescription",
+        "CardContent"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/definition-row.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "DefinitionRow"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/input.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Input"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/skeleton.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Skeleton"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/tabs.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Tabs",
+        "TabsList",
+        "TabsTrigger",
+        "TabsContent",
+        "tabsListVariants"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/api.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "setTokenGetter",
+        "getToken",
+        "ApiError",
+        "api",
+        "API_BASE_URL"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/auth-context.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "PENDING_IMPORT_KEY",
+        "AuthProvider",
+        "useAuth"
+      ]
+    }
+  ],
+  "frontend/src/components/actionable-card.tsx": [
+    {
+      "path": "frontend/src/components/ui/badge.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Badge",
+        "badgeVariants"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/list-row.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "ListRow",
+        "ListRowHeader",
+        "ListRowTitle",
+        "ListRowBody",
+        "ListRowFooter"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/tone.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "toneClassName",
+        "toneDotClassName",
+        "toneBadgeVariant",
+        "toneCssVar"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/utils.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "cn",
+        "glassCardClassName",
+        "BROWSER_TEST_CALLER_NUMBER",
+        "isBrowserTestIdentity",
+        "matchesSearch"
+      ]
+    }
+  ],
+  "frontend/src/components/call-summary-card.tsx": [
+    {
+      "path": "frontend/src/components/status-chip.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "StatusTone",
+        "StatusChip"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/card.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Card",
+        "CardHeader",
+        "CardFooter",
+        "CardTitle",
+        "CardAction",
+        "CardDescription",
+        "CardContent"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/types.ts",
+      "batchIndex": 6,
+      "symbols": []
+    }
+  ],
+  "frontend/src/components/calls-table.tsx": [
+    {
+      "path": "frontend/src/components/status-chip.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "StatusTone",
+        "StatusChip"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/badge.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Badge",
+        "badgeVariants"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/table.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Table",
+        "TableHeader",
+        "TableBody",
+        "TableFooter",
+        "TableHead",
+        "TableRow",
+        "TableCell",
+        "TableCaption"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/types.ts",
+      "batchIndex": 6,
+      "symbols": []
+    },
+    {
+      "path": "frontend/src/lib/utils.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "cn",
+        "glassCardClassName",
+        "BROWSER_TEST_CALLER_NUMBER",
+        "isBrowserTestIdentity",
+        "matchesSearch"
+      ]
+    }
+  ],
+  "frontend/src/components/close-lead-dialog.tsx": [
+    {
+      "path": "frontend/src/components/ui/button.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Button",
+        "buttonVariants"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/dialog.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Dialog",
+        "DialogClose",
+        "DialogContent",
+        "DialogDescription",
+        "DialogFooter",
+        "DialogHeader",
+        "DialogOverlay",
+        "DialogPortal",
+        "DialogTitle",
+        "DialogTrigger"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/label.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Label"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/select.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Select",
+        "SelectContent",
+        "SelectGroup",
+        "SelectItem",
+        "SelectLabel",
+        "SelectScrollDownButton",
+        "SelectScrollUpButton",
+        "SelectSeparator",
+        "SelectTrigger",
+        "SelectValue"
+      ]
+    },
+    {
+      "path": "frontend/src/hooks/use-async.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "useAsync"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/api.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "setTokenGetter",
+        "getToken",
+        "ApiError",
+        "api",
+        "API_BASE_URL"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/types.ts",
+      "batchIndex": 6,
+      "symbols": []
+    }
+  ],
+  "frontend/src/components/date-range-context.tsx": [
+    {
+      "path": "frontend/src/hooks/use-date-range.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "useDateRange"
+      ]
+    }
+  ],
+  "frontend/src/components/date-range-picker.tsx": [
+    {
+      "path": "frontend/src/components/ui/button.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Button",
+        "buttonVariants"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/calendar.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Calendar",
+        "CalendarDayButton"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/popover.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Popover",
+        "PopoverContent",
+        "PopoverDescription",
+        "PopoverHeader",
+        "PopoverTitle",
+        "PopoverTrigger"
+      ]
+    },
+    {
+      "path": "frontend/src/hooks/use-date-range.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "useDateRange"
+      ]
+    }
+  ],
+  "frontend/src/components/expandable-text.tsx": [
+    {
+      "path": "frontend/src/lib/utils.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "cn",
+        "glassCardClassName",
+        "BROWSER_TEST_CALLER_NUMBER",
+        "isBrowserTestIdentity",
+        "matchesSearch"
+      ]
+    },
+    {
+      "path": "frontend/src/components/service-requests-table.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "ServiceRequestsTable"
+      ]
+    }
+  ],
+  "frontend/src/components/guest-combobox.tsx": [
+    {
+      "path": "frontend/src/components/ui/input.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Input"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/types.ts",
+      "batchIndex": 6,
+      "symbols": []
+    },
+    {
+      "path": "frontend/src/lib/utils.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "cn",
+        "glassCardClassName",
+        "BROWSER_TEST_CALLER_NUMBER",
+        "isBrowserTestIdentity",
+        "matchesSearch"
+      ]
+    }
+  ],
+  "frontend/src/components/image-lightbox.tsx": [
+    {
+      "path": "frontend/src/components/ui/dialog.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Dialog",
+        "DialogClose",
+        "DialogContent",
+        "DialogDescription",
+        "DialogFooter",
+        "DialogHeader",
+        "DialogOverlay",
+        "DialogPortal",
+        "DialogTitle",
+        "DialogTrigger"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/utils.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "cn",
+        "glassCardClassName",
+        "BROWSER_TEST_CALLER_NUMBER",
+        "isBrowserTestIdentity",
+        "matchesSearch"
+      ]
+    },
+    {
+      "path": "frontend/src/components/property-photo-carousel.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "PropertyPhotoCarousel"
+      ]
+    },
+    {
+      "path": "frontend/src/components/property-photos-manager.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "PropertyPhotosManager"
+      ]
+    }
+  ],
+  "frontend/src/components/lead-detail-panel.tsx": [
+    {
+      "path": "frontend/src/components/status-chip.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "StatusTone",
+        "StatusChip"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/button.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Button",
+        "buttonVariants"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/dictation-textarea.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "DictationTextarea"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/input.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Input"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/label.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Label"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/right-panel.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "RightPanel",
+        "RightPanelFooterButton"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/select.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "Select",
+        "SelectContent",
+        "SelectGroup",
+        "SelectItem",
+        "SelectLabel",
+        "SelectScrollDownButton",
+        "SelectScrollUpButton",
+        "SelectSeparator",
+        "SelectTrigger",
+        "SelectValue"
+      ]
+    },
+    {
+      "path": "frontend/src/hooks/use-async.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "useAsync"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/api.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "setTokenGetter",
+        "getToken",
+        "ApiError",
+        "api",
+        "API_BASE_URL"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/types.ts",
+      "batchIndex": 6,
+      "symbols": []
+    },
+    {
+      "path": "frontend/src/lib/utils.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "cn",
+        "glassCardClassName",
+        "BROWSER_TEST_CALLER_NUMBER",
+        "isBrowserTestIdentity",
+        "matchesSearch"
+      ]
+    }
+  ],
+  "frontend/src/components/live-requests-card.tsx": [
+    {
+      "path": "frontend/src/components/status-chip.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "StatusTone",
+        "StatusChip"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/badge.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Badge",
+        "badgeVariants"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/card.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Card",
+        "CardHeader",
+        "CardFooter",
+        "CardTitle",
+        "CardAction",
+        "CardDescription",
+        "CardContent"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/checkbox.tsx",
+      "batchIndex": 5,
+      "symbols": [
+        "Checkbox"
+      ]
+    },
+    {
+      "path": "frontend/src/components/ui/list-row.tsx",
+      "batchIndex": 6,
+      "symbols": [
+        "ListRow",
+        "ListRowHeader",
+        "ListRowTitle",
+        "ListRowBody",
+        "ListRowFooter"
+      ]
+    },
+    {
+      "path": "frontend/src/hooks/use-notification-stream.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "useNotificationStream"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/api.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "setTokenGetter",
+        "getToken",
+        "ApiError",
+        "api",
+        "API_BASE_URL"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/leads.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "leadGuestLabel",
+        "leadPhoneLabel",
+        "formatLeadTimestamp"
+      ]
+    },
+    {
+      "path": "frontend/src/lib/types.ts",
+      "batchIndex": 6,
+      "symbols": []
+    },
+    {
+      "path": "frontend/src/lib/utils.ts",
+      "batchIndex": 6,
+      "symbols": [
+        "cn",
+        "glassCardClassName",
+        "BROWSER_TEST_CALLER_NUMBER",
+        "isBrowserTestIdentity",
+        "matchesSearch"
+      ]
+    }
+  ]
+}
+```
+
+Files to analyze in this batch (every entry MUST be passed through to batchFiles with all four fields — path, language, sizeLines, fileCategory):
+1. `frontend/src/app/dashboard/calendar/page.tsx` (405 lines, language: `typescript`, fileCategory: `code`)
+2. `frontend/src/app/dashboard/calls/[id]/page.tsx` (173 lines, language: `typescript`, fileCategory: `code`)
+3. `frontend/src/app/dashboard/calls/page.tsx` (121 lines, language: `typescript`, fileCategory: `code`)
+4. `frontend/src/app/dashboard/faq/page.tsx` (216 lines, language: `typescript`, fileCategory: `code`)
+5. `frontend/src/app/dashboard/guests/[id]/page.tsx` (308 lines, language: `typescript`, fileCategory: `code`)
+6. `frontend/src/app/dashboard/guests/page.tsx` (97 lines, language: `typescript`, fileCategory: `code`)
+7. `frontend/src/app/dashboard/layout.tsx` (46 lines, language: `typescript`, fileCategory: `code`)
+8. `frontend/src/app/dashboard/leads/page.tsx` (608 lines, language: `typescript`, fileCategory: `code`)
+9. `frontend/src/app/dashboard/onboarding/page.tsx` (320 lines, language: `typescript`, fileCategory: `code`)
+10. `frontend/src/app/dashboard/opportunities/page.tsx` (138 lines, language: `typescript`, fileCategory: `code`)
+11. `frontend/src/app/dashboard/page.tsx` (219 lines, language: `typescript`, fileCategory: `code`)
+12. `frontend/src/app/dashboard/pricing/page.tsx` (217 lines, language: `typescript`, fileCategory: `code`)
+13. `frontend/src/app/dashboard/profile/page.tsx` (356 lines, language: `typescript`, fileCategory: `code`)
+14. `frontend/src/app/dashboard/properties/ai-training/page.tsx` (150 lines, language: `typescript`, fileCategory: `code`)
+15. `frontend/src/app/dashboard/properties/page.tsx` (584 lines, language: `typescript`, fileCategory: `code`)
+16. `frontend/src/app/dashboard/settings/page.tsx` (284 lines, language: `typescript`, fileCategory: `code`)
+17. `frontend/src/components/actionable-card.tsx` (105 lines, language: `typescript`, fileCategory: `code`)
+18. `frontend/src/components/call-summary-card.tsx` (115 lines, language: `typescript`, fileCategory: `code`)
+19. `frontend/src/components/calls-table.tsx` (168 lines, language: `typescript`, fileCategory: `code`)
+20. `frontend/src/components/close-lead-dialog.tsx` (165 lines, language: `typescript`, fileCategory: `code`)
+21. `frontend/src/components/date-range-context.tsx` (46 lines, language: `typescript`, fileCategory: `code`)
+22. `frontend/src/components/date-range-picker.tsx` (71 lines, language: `typescript`, fileCategory: `code`)
+23. `frontend/src/components/expandable-text.tsx` (35 lines, language: `typescript`, fileCategory: `code`)
+24. `frontend/src/components/guest-combobox.tsx` (86 lines, language: `typescript`, fileCategory: `code`)
+25. `frontend/src/components/image-lightbox.tsx` (133 lines, language: `typescript`, fileCategory: `code`)
+26. `frontend/src/components/lead-detail-panel.tsx` (225 lines, language: `typescript`, fileCategory: `code`)
+27. `frontend/src/components/live-requests-card.tsx` (136 lines, language: `typescript`, fileCategory: `code`)
+
+**Additional context from main session:**
+
+Project: mira-prod — AI-powered property-management assistant for short-term rental hosts in India. Handles guest calls via Exotel telephony, lead qualification across a host's portfolio, booking/calendar management, rule-based pricing & negotiation, and a real-time "talk to Mira" voice-test UI. Backend: FastAPI + Python 3.12, pipecat-ai voice pipeline. Frontend: Next.js + TypeScript + Tailwind + shadcn/ui.
+Languages: python, typescript, markdown, yaml, dockerfile
+
+**Language directive**: Generate all textual content (summaries, descriptions, tags, titles, languageNotes, languageLesson) in **English**. Maintain technical accuracy while using natural, native-level phrasing. Keep technical terms in English.

@@ -1,0 +1,1836 @@
+{
+  "batchIndex": 3,
+  "files": [
+    {
+      "path": "backend/app/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/schemas/call_classification.py",
+      "language": "python",
+      "sizeLines": 31,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/services/call_classification_service.py",
+      "language": "python",
+      "sizeLines": 168,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/conversation_quality.py",
+      "language": "python",
+      "sizeLines": 83,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/conversation_state.py",
+      "language": "python",
+      "sizeLines": 413,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/conversation_style.py",
+      "language": "python",
+      "sizeLines": 416,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/end_call_reliability_guard.py",
+      "language": "python",
+      "sizeLines": 115,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/escalation_phrase_guard.py",
+      "language": "python",
+      "sizeLines": 114,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/handoff_signal.py",
+      "language": "python",
+      "sizeLines": 87,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/language_heuristics.py",
+      "language": "python",
+      "sizeLines": 83,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/language_sync.py",
+      "language": "python",
+      "sizeLines": 84,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/meta_commentary_guard.py",
+      "language": "python",
+      "sizeLines": 126,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/pipeline.py",
+      "language": "python",
+      "sizeLines": 1902,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/premature_end_call_guard.py",
+      "language": "python",
+      "sizeLines": 80,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/redundant_context_guard.py",
+      "language": "python",
+      "sizeLines": 93,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/repetition_guard.py",
+      "language": "python",
+      "sizeLines": 241,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/response_shape_guard.py",
+      "language": "python",
+      "sizeLines": 378,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/ringing_audio.py",
+      "language": "python",
+      "sizeLines": 414,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/silence_watchdog.py",
+      "language": "python",
+      "sizeLines": 243,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/slow_tool_filler.py",
+      "language": "python",
+      "sizeLines": 144,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/state_prompt_sync.py",
+      "language": "python",
+      "sizeLines": 286,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/style_compliance_monitor.py",
+      "language": "python",
+      "sizeLines": 231,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/tools.py",
+      "language": "python",
+      "sizeLines": 865,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/turn_strategies.py",
+      "language": "python",
+      "sizeLines": 297,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/vad.py",
+      "language": "python",
+      "sizeLines": 59,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_conversation_quality.py",
+      "language": "python",
+      "sizeLines": 89,
+      "fileCategory": "code"
+    }
+  ],
+  "batchImportData": {
+    "backend/app/__init__.py": [],
+    "backend/app/schemas/call_classification.py": [],
+    "backend/app/services/call_classification_service.py": [
+      "backend/app/config.py",
+      "backend/app/schemas/call_classification.py"
+    ],
+    "backend/app/voice/__init__.py": [],
+    "backend/app/voice/conversation_quality.py": [],
+    "backend/app/voice/conversation_state.py": [],
+    "backend/app/voice/conversation_style.py": [
+      "backend/app/voice/conversation_state.py",
+      "backend/app/voice/language_heuristics.py"
+    ],
+    "backend/app/voice/end_call_reliability_guard.py": [
+      "backend/app/prompts/system_prompt.py",
+      "backend/app/voice/silence_watchdog.py"
+    ],
+    "backend/app/voice/escalation_phrase_guard.py": [],
+    "backend/app/voice/handoff_signal.py": [],
+    "backend/app/voice/language_heuristics.py": [],
+    "backend/app/voice/language_sync.py": [
+      "backend/app/voice/conversation_state.py"
+    ],
+    "backend/app/voice/meta_commentary_guard.py": [],
+    "backend/app/voice/pipeline.py": [
+      "backend/app/config.py",
+      "backend/app/database.py",
+      "backend/app/integrations/__init__.py",
+      "backend/app/integrations/exotel_client.py",
+      "backend/app/models/property.py",
+      "backend/app/models/user.py",
+      "backend/app/prompts/system_prompt.py",
+      "backend/app/schemas/call_classification.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/call_classification_service.py",
+      "backend/app/services/call_coordinator.py",
+      "backend/app/services/call_service.py",
+      "backend/app/services/call_summary_service.py",
+      "backend/app/services/faq_service.py",
+      "backend/app/services/guest_calling_notification.py",
+      "backend/app/services/guest_memory_service.py",
+      "backend/app/services/lead_service.py",
+      "backend/app/services/recovery_service.py",
+      "backend/app/voice/conversation_quality.py",
+      "backend/app/voice/conversation_state.py",
+      "backend/app/voice/conversation_style.py",
+      "backend/app/voice/end_call_reliability_guard.py",
+      "backend/app/voice/escalation_phrase_guard.py",
+      "backend/app/voice/handoff_signal.py",
+      "backend/app/voice/language_sync.py",
+      "backend/app/voice/meta_commentary_guard.py",
+      "backend/app/voice/premature_end_call_guard.py",
+      "backend/app/voice/property_recommendation_guard.py",
+      "backend/app/voice/redundant_context_guard.py",
+      "backend/app/voice/repetition_guard.py",
+      "backend/app/voice/response_shape_guard.py",
+      "backend/app/voice/ringing_audio.py",
+      "backend/app/voice/silence_watchdog.py",
+      "backend/app/voice/slow_tool_filler.py",
+      "backend/app/voice/state_prompt_sync.py",
+      "backend/app/voice/style_compliance_monitor.py",
+      "backend/app/voice/tools.py",
+      "backend/app/voice/turn_strategies.py",
+      "backend/app/voice/vad.py"
+    ],
+    "backend/app/voice/premature_end_call_guard.py": [
+      "backend/app/voice/silence_watchdog.py"
+    ],
+    "backend/app/voice/redundant_context_guard.py": [
+      "backend/app/voice/silence_watchdog.py"
+    ],
+    "backend/app/voice/repetition_guard.py": [
+      "backend/app/voice/conversation_state.py"
+    ],
+    "backend/app/voice/response_shape_guard.py": [
+      "backend/app/services/property/pitch_formatter.py",
+      "backend/app/voice/conversation_quality.py",
+      "backend/app/voice/escalation_phrase_guard.py"
+    ],
+    "backend/app/voice/ringing_audio.py": [],
+    "backend/app/voice/silence_watchdog.py": [],
+    "backend/app/voice/slow_tool_filler.py": [],
+    "backend/app/voice/state_prompt_sync.py": [
+      "backend/app/voice/conversation_quality.py",
+      "backend/app/voice/conversation_state.py",
+      "backend/app/voice/conversation_style.py"
+    ],
+    "backend/app/voice/style_compliance_monitor.py": [
+      "backend/app/voice/conversation_quality.py",
+      "backend/app/voice/language_heuristics.py"
+    ],
+    "backend/app/voice/tools.py": [
+      "backend/app/database.py",
+      "backend/app/schemas/tool.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/amenity_taxonomy.py",
+      "backend/app/services/property/pitch_formatter.py",
+      "backend/app/services/tool_handlers.py",
+      "backend/app/voice/conversation_state.py",
+      "backend/app/voice/property_recommendation_guard.py",
+      "backend/app/voice/silence_watchdog.py"
+    ],
+    "backend/app/voice/turn_strategies.py": [],
+    "backend/app/voice/vad.py": [],
+    "backend/tests/test_conversation_quality.py": [
+      "backend/app/voice/conversation_quality.py"
+    ]
+  },
+  "neighborMap": {
+    "backend/app/__init__.py": [
+      {
+        "path": "backend/tests/test_pipeline_llm.py",
+        "batchIndex": 9,
+        "symbols": [
+          "test_build_llm_defaults_to_groq_with_low_reasoning_effort",
+          "test_build_llm_groq_caps_max_completion_tokens",
+          "test_build_llm_skips_groq_model_marked_down_in_health_check",
+          "test_build_llm_falls_back_to_openrouter_when_all_groq_models_down",
+          "test_build_llm_anthropic",
+          "test_build_llm_openrouter_uses_openai_compatible_service_with_openrouter_base_url",
+          "test_build_llm_openrouter_gpt_oss_gets_low_reasoning_effort",
+          "test_build_llm_openrouter_non_gpt_oss_model_has_no_reasoning_effort"
+        ]
+      }
+    ],
+    "backend/app/schemas/call_classification.py": [
+      {
+        "path": "backend/app/api/v1/analytics.py",
+        "batchIndex": 1,
+        "symbols": [
+          "analytics_summary",
+          "analytics_timeseries",
+          "analytics_recovery"
+        ]
+      },
+      {
+        "path": "backend/app/services/call_service.py",
+        "batchIndex": 7,
+        "symbols": [
+          "get_property_by_number",
+          "get_user_by_lead_number",
+          "get_property_by_twilio_number",
+          "get_user_by_twilio_lead_number",
+          "extract_caller_number",
+          "get_or_create_guest_profile",
+          "get_or_create_call_session",
+          "attach_exotel_call",
+          "set_call_classification",
+          "set_call_summary",
+          "_map_exotel_status",
+          "finalize_call_session"
+        ]
+      }
+    ],
+    "backend/app/services/call_classification_service.py": [
+      {
+        "path": "backend/app/config.py",
+        "batchIndex": 10,
+        "symbols": [
+          "Settings",
+          "get_settings"
+        ]
+      }
+    ],
+    "backend/app/voice/__init__.py": [
+      {
+        "path": "backend/app/api/v1/take_call.py",
+        "batchIndex": 7,
+        "symbols": [
+          "_page",
+          "_invalid_token_page",
+          "_call_ended_page",
+          "take_call_confirm",
+          "take_call_claim",
+          "_property_label"
+        ]
+      },
+      {
+        "path": "backend/tests/test_host_handoff.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_clean_handoff_registry",
+          "test_register_call_creates_a_fresh_unset_event",
+          "test_unregister_call_removes_the_entry",
+          "test_unregister_call_is_safe_for_a_never_registered_id",
+          "test_request_handoff_returns_false_for_unregistered_call",
+          "test_request_handoff_returns_true_and_sets_the_event_for_a_registered_call",
+          "test_wait_for_handoff_request_unblocks_when_requested",
+          "test_wait_for_handoff_request_raises_for_unregistered_call",
+          "test_duplicate_handoff_request_is_safe",
+          "test_host_claim_after_call_already_unregistered_does_nothing",
+          "test_is_host_handoff_frame_true_for_the_real_end_frame",
+          "test_is_host_handoff_frame_false_for_a_normal_end_frame_with_no_reason",
+          "test_is_host_handoff_frame_false_for_a_different_reason_string",
+          "test_is_host_handoff_frame_false_for_an_object_with_no_reason_attribute_at_all",
+          "_FakeWorker",
+          "test_wait_and_trigger_handoff_queues_phrase_then_end_frame_in_order",
+          "test_wait_and_trigger_handoff_never_fires_without_a_request",
+          "test_wait_and_trigger_handoff_phrase_is_spoken_exactly_once_even_if_signalled_twice",
+          "test_normal_call_end_still_invokes_hangup_call",
+          "test_host_handoff_outcome_skips_the_finally_block_safety_net_hangup",
+          "test_host_handoff_still_releases_the_call_coordinator_lease",
+          "test_host_handoff_still_cancels_renewal_and_ringing_tasks"
+        ]
+      },
+      {
+        "path": "backend/tests/test_pipeline_background_tasks.py",
+        "batchIndex": 9,
+        "symbols": [
+          "test_spawn_background_task_survives_gc_with_no_external_reference",
+          "test_spawn_background_task_removes_itself_from_the_registry_once_done",
+          "test_spawn_background_task_exception_does_not_propagate_to_caller"
+        ]
+      },
+      {
+        "path": "backend/tests/test_pipeline_llm.py",
+        "batchIndex": 9,
+        "symbols": [
+          "test_build_llm_defaults_to_groq_with_low_reasoning_effort",
+          "test_build_llm_groq_caps_max_completion_tokens",
+          "test_build_llm_skips_groq_model_marked_down_in_health_check",
+          "test_build_llm_falls_back_to_openrouter_when_all_groq_models_down",
+          "test_build_llm_anthropic",
+          "test_build_llm_openrouter_uses_openai_compatible_service_with_openrouter_base_url",
+          "test_build_llm_openrouter_gpt_oss_gets_low_reasoning_effort",
+          "test_build_llm_openrouter_non_gpt_oss_model_has_no_reasoning_effort"
+        ]
+      },
+      {
+        "path": "backend/tests/test_ringing_audio.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_FakeWebSocket",
+          "test_loops_past_a_single_cycle_until_cancelled",
+          "test_frames_are_well_formed_exotel_media_events",
+          "test_cancel_and_await_stops_sends_immediately_no_frames_arrive_after",
+          "test_send_failure_is_swallowed_not_raised",
+          "test_busy_message_plays_once_and_returns_without_looping",
+          "test_busy_message_frames_are_well_formed_exotel_media_events",
+          "test_busy_message_is_the_real_spoken_asset_not_the_beep_placeholder",
+          "test_committed_busy_message_asset_is_actually_8000hz",
+          "test_load_pcm_rejects_a_wav_with_the_wrong_real_sample_rate",
+          "test_load_pcm_accepts_a_correctly_formatted_wav",
+          "test_busy_message_send_failure_is_swallowed_not_raised",
+          "test_busy_message_pcm_falls_back_to_beep_tone_if_speech_asset_fails_to_load",
+          "test_busy_message_pcm_falls_back_to_beep_tone_if_speech_asset_is_wrong_sample_rate",
+          "test_busy_message_plays_the_beep_tone_fallback_correctly",
+          "test_busy_message_text_matches_intended_recovery_copy",
+          "test_stream_pcm_does_not_accumulate_drift_under_send_latency",
+          "test_resolve_test_chunk_bytes_falls_back_instead_of_raising_on_invalid_value",
+          "test_resolve_test_chunk_bytes_falls_back_instead_of_raising_on_non_integer",
+          "test_resolve_test_chunk_bytes_accepts_every_supported_value",
+          "test_resolve_test_chunk_bytes_defaults_when_unset",
+          "test_busy_message_mark_event_uses_camel_case_stream_sid_field"
+        ]
+      },
+      {
+        "path": "backend/tests/test_run_voice_pipeline_ringing.py",
+        "batchIndex": 8,
+        "symbols": [
+          "_FakeWebSocket",
+          "test_no_matching_property_or_lead_line_cancels_the_ringing_task",
+          "test_busy_recovery_plays_placeholder_and_hangs_up_without_building_a_pipeline",
+          "test_call_proceeds_normally_when_no_other_lease_is_active",
+          "test_run_pipeline_releases_the_lease_even_when_pipeline_construction_fails",
+          "test_run_pipeline_hangs_up_exotel_even_when_pipeline_construction_fails",
+          "test_run_pipeline_original_exception_is_not_swallowed_by_the_hangup_safety_net",
+          "test_run_pipeline_finally_block_hangup_is_a_noop_when_on_pipeline_finished_already_requested_it",
+          "test_run_pipeline_renews_the_lease_periodically_during_a_long_call",
+          "test_lease_renewal_loop_stops_quietly_once_the_lease_is_gone",
+          "test_lease_renewal_loop_uses_the_token_not_a_stale_lease",
+          "test_coordinator_failure_fails_open_instead_of_rejecting_the_call",
+          "test_run_pipeline_triggers_availability_recovery_only_when_lease_actually_released",
+          "test_run_pipeline_does_not_trigger_availability_recovery_on_stale_token_release",
+          "test_run_pipeline_does_not_trigger_availability_recovery_when_no_lease_token"
+        ]
+      }
+    ],
+    "backend/app/voice/conversation_quality.py": [
+      {
+        "path": "backend/tests/test_response_shape_guard.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_response",
+          "_spoken_text",
+          "test_has_multiple_unconnected_questions_catches_real_c3_shape",
+          "test_has_multiple_unconnected_questions_allows_single_followup_question",
+          "test_has_multiple_unconnected_questions_allows_connected_two_part_question",
+          "test_count_greeting_openers_catches_two_greetings",
+          "test_count_greeting_openers_one_greeting_is_fine",
+          "test_has_duplicated_safe_line_catches_repeat",
+          "test_has_duplicated_safe_line_single_occurrence_is_fine",
+          "test_has_duplicated_punctuation_catches_degenerate_flood",
+          "test_has_duplicated_punctuation_normal_text_is_fine",
+          "test_ends_mid_clause_catches_no_terminal_punctuation",
+          "test_ends_mid_clause_catches_dangling_conjunction",
+          "test_ends_mid_clause_allows_normal_complete_sentence",
+          "test_ends_mid_clause_allows_question_ending_in_preposition",
+          "test_has_multiple_recommendation_blocks_catches_two_intros",
+          "test_has_multiple_recommendation_blocks_single_block_is_fine",
+          "test_validate_response_shape_clean_response_has_no_violations",
+          "test_first_clean_sentence_extracts_only_first_question_from_real_c3_text",
+          "test_first_clean_sentence_falls_back_to_original_when_unsplittable",
+          "test_processor_reproduces_and_fixes_real_c3_shape",
+          "test_processor_passes_through_clean_response_unmodified",
+          "test_processor_no_false_positives_against_a_realistic_sample",
+          "test_processor_multiple_greetings_gets_trimmed",
+          "test_processor_duplicated_punctuation_flood_gets_trimmed",
+          "test_processor_never_leaves_the_guest_with_nothing",
+          "test_first_sentence_is_forwarded_before_the_response_ends",
+          "test_multi_chunk_streaming_reconstructs_text_exactly",
+          "test_records_validation_result_on_shape_violation",
+          "test_no_validation_result_recorded_for_a_clean_response",
+          "test_processor_works_without_a_quality_object"
+        ]
+      },
+      {
+        "path": "backend/tests/test_state_prompt_sync.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_style_from_turns",
+          "_is_injected_state_block",
+          "_context_frame",
+          "test_build_state_block_content_empty_when_nothing_known",
+          "test_build_state_block_content_includes_known_slots",
+          "test_build_state_block_content_orders_slots_by_attention_most_salient_first",
+          "test_build_state_block_content_annotates_a_slot_restated_twice_or_more",
+          "test_build_state_block_content_does_not_annotate_a_slot_set_only_once",
+          "test_build_state_block_content_backfilled_unchanged_value_is_not_annotated_as_restated",
+          "test_build_state_block_content_includes_recommendations_shown",
+          "test_build_state_block_content_includes_goal_hint",
+          "test_build_state_block_content_includes_closing_hint_once_farewell_is_pending",
+          "test_build_state_block_content_drops_closing_hint_once_reopened",
+          "test_build_state_block_content_soft_close_when_guest_never_committed",
+          "test_build_state_block_content_hard_close_when_guest_accepted_property_and_was_quoted",
+          "test_build_state_block_content_soft_close_when_only_price_quoted_no_property_accepted",
+          "test_build_state_block_content_soft_close_when_only_property_accepted_no_price_quoted",
+          "test_build_state_block_content_soft_close_when_quote_is_stale_for_a_different_property",
+          "test_no_op_when_state_has_nothing_to_surface",
+          "test_injects_state_block_right_after_system_prompt",
+          "test_injected_message_has_no_extra_keys_beyond_role_and_content",
+          "test_updates_existing_state_block_in_place_rather_than_appending",
+          "test_real_system_prompt_message_is_never_mutated",
+          "test_build_state_block_content_includes_conversation_style_block",
+          "test_build_state_block_content_english_conversation_style",
+          "test_build_state_block_content_no_style_block_before_any_speech_detected",
+          "test_conversation_style_block_flows_through_the_real_processor",
+          "test_build_state_block_content_includes_quoted_price",
+          "test_build_state_block_content_no_quoted_price_line_when_unset",
+          "test_pending_style_correction_renders_emphasized_block",
+          "test_no_pending_correction_renders_plain_block",
+          "test_consuming_pending_correction_clears_the_flag",
+          "test_no_quality_object_is_a_no_op_not_an_error",
+          "test_validator_never_writes_prompt_text_directly",
+          "test_pending_correction_flows_through_the_real_processor"
+        ]
+      },
+      {
+        "path": "backend/tests/test_style_compliance_monitor.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_response",
+          "_style_from_turns",
+          "test_reproduces_real_call_regression",
+          "test_passes_correct_hinglish_reply",
+          "test_passes_devanagari_reply_when_hindi_expected",
+          "test_passes_english_reply_when_english_expected",
+          "test_fails_devanagari_reply_when_english_expected",
+          "test_no_style_known_yet_is_info",
+          "test_short_response_is_warning_not_fail",
+          "test_check_never_takes_conversation_state_only_style",
+          "test_never_buffers_text_frames_are_forwarded_immediately",
+          "test_forwards_each_chunk_before_the_response_ends",
+          "test_no_conversation_state_is_a_no_op_not_an_error",
+          "test_empty_response_does_not_crash",
+          "test_records_fail_to_conversation_quality",
+          "test_fail_sets_pending_style_correction_on_quality",
+          "test_pass_does_not_set_pending_style_correction",
+          "test_works_without_a_quality_object",
+          "test_recorded_validation_result_carries_turn_index",
+          "test_result_is_a_validation_result_instance"
+        ]
+      }
+    ],
+    "backend/app/voice/conversation_state.py": [
+      {
+        "path": "backend/tests/test_conversation_state.py",
+        "batchIndex": 9,
+        "symbols": [
+          "test_set_slot_stores_value",
+          "test_set_slot_ignores_none_and_never_clobbers_existing_field",
+          "test_record_recommendations_stores_options_and_sets_awaiting_selection",
+          "test_lock_property_after_recommendation_sets_guest_accepted",
+          "test_lock_property_not_previously_recommended_does_not_set_guest_accepted",
+          "test_mark_escalated_sets_flag_and_goal_and_freezes_further_derivation",
+          "test_conversation_goal_derives_from_missing_slots_in_priority_order",
+          "test_conversation_goal_different_real_paths_land_on_different_goals",
+          "test_closing_state_defaults_open_and_is_a_settable_field",
+          "test_mark_farewell_pending_sets_state_and_goal",
+          "test_mark_farewell_pending_freezes_further_slot_derived_goal_changes",
+          "test_mark_reopened_resets_closing_state_and_recomputes_goal_from_slots",
+          "test_mark_closed_sets_terminal_state",
+          "test_second_farewell_after_reopen_is_a_fresh_legitimate_close",
+          "test_resolve_cheaper_budget_returns_20_percent_below_cheapest_shown",
+          "test_resolve_cheaper_budget_none_when_nothing_shown_yet",
+          "test_resolve_larger_num_guests_returns_one_above_largest_shown",
+          "test_resolve_larger_num_guests_none_when_nothing_shown_yet",
+          "test_two_conversation_states_are_independent_instances"
+        ]
+      },
+      {
+        "path": "backend/tests/test_conversation_state_attention.py",
+        "batchIndex": 9,
+        "symbols": [
+          "test_touch_attention_starts_a_new_entry_at_the_current_turn",
+          "test_touch_attention_increments_count_and_updates_last_turn_on_repeat",
+          "test_attention_score_zero_for_unknown_key",
+          "test_attention_score_decays_with_turns_since_last_mention",
+          "test_attention_score_rewards_repetition_over_a_single_recent_mention",
+          "test_salience_score_half_life_le_zero_only_current_turn_counts",
+          "test_advance_turn_increments_turn_index",
+          "test_set_slot_touches_attention_on_first_set",
+          "test_set_slot_does_not_touch_attention_when_value_unchanged",
+          "test_set_slot_touches_attention_again_on_a_genuine_change",
+          "test_set_slot_ignores_none_without_touching_attention"
+        ]
+      },
+      {
+        "path": "backend/tests/test_conversation_state_slot_wiring.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_FakeFunctionCallParams",
+          "_small_property",
+          "test_update_lead_writes_slots_without_clobbering_earlier_fields",
+          "test_update_lead_writes_dates_as_iso_strings",
+          "test_check_calendar_sets_slots_and_checking_availability_goal",
+          "test_get_pricing_records_quoted_price_in_state",
+          "test_get_pricing_later_quote_overwrites_earlier_one",
+          "test_escalate_to_host_marks_escalated_and_freezes_goal",
+          "test_recommend_properties_backfills_num_guests_from_state_slots",
+          "test_recommend_properties_explicit_arg_still_wins_over_state",
+          "test_recommend_properties_records_shown_options_and_sets_awaiting_selection",
+          "test_lock_property_after_recommendation_sets_guest_accepted_id",
+          "test_recommend_properties_wrapper_excludes_booked_property_using_state_dates"
+        ]
+      },
+      {
+        "path": "backend/tests/test_conversation_style.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_transcription",
+          "_run",
+          "test_analyze_turn_pure_english",
+          "test_analyze_turn_pure_devanagari",
+          "test_conversation_style_is_frozen",
+          "test_first_turn_commits_immediately_no_prior_style_to_hold_against",
+          "test_hospitality_style_is_always_airbnb_host",
+          "test_one_english_sentence_does_not_flip_an_established_hindi_style",
+          "test_switch_requires_multiple_consecutive_agreeing_turns",
+          "test_real_regression_call_stays_hindi_hinglish_throughout",
+          "test_confidence_grows_when_style_is_reaffirmed",
+          "test_confidence_decreases_when_a_switch_is_held_off",
+          "test_rolling_window_bounds_history_length",
+          "test_each_update_returns_a_fresh_immutable_style",
+          "test_script_devanagari_when_guest_writes_devanagari_consistently",
+          "test_script_roman_for_english_conversation",
+          "test_render_style_block_contains_required_sections",
+          "test_render_style_block_never_says_translate_or_explain",
+          "test_render_style_block_language_label_hinglish_not_hindi",
+          "test_processor_writes_conversation_style_to_state",
+          "test_processor_never_touches_current_spoken_language",
+          "test_processor_forwards_frames_unchanged",
+          "test_processor_no_conversation_state_is_a_no_op_not_an_error",
+          "test_processor_accumulates_history_across_multiple_turns"
+        ]
+      },
+      {
+        "path": "backend/tests/test_explicit_language_preference.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_FakeFunctionCallParams",
+          "test_update_lead_sets_explicit_language_preference_hindi",
+          "test_update_lead_sets_explicit_language_preference_english",
+          "test_update_lead_unset_preferred_language_does_not_clobber_existing_preference",
+          "test_update_lead_unrecognized_preferred_language_is_ignored",
+          "test_update_lead_preferred_language_never_written_to_lead_record"
+        ]
+      },
+      {
+        "path": "backend/tests/test_language_sync.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_transcription",
+          "test_writes_detected_language_to_conversation_state",
+          "test_updates_conversation_state_on_language_switch",
+          "test_no_conversation_state_is_a_no_op_not_an_error",
+          "test_tts_switch_behavior_unchanged_by_state_wiring",
+          "test_no_redundant_tts_switch_for_same_language_twice"
+        ]
+      },
+      {
+        "path": "backend/tests/test_property_lock.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_FakeFunctionCallParams",
+          "_second_property",
+          "test_search_faq_locks_to_property_named_via_check_calendar",
+          "test_property_switch_updates_lock",
+          "test_recommend_properties_refuses_redundant_rebrowse_once_locked",
+          "test_recommend_properties_allows_explicit_compare_with_new_criteria",
+          "test_guest_support_call_search_faq_unaffected_by_conversation_state"
+        ]
+      },
+      {
+        "path": "backend/tests/test_recommend_properties_refinement.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_FakeFunctionCallParams",
+          "_property",
+          "test_preferred_location_backfilled_from_state_when_omitted",
+          "test_purpose_of_stay_backfilled_from_state_when_omitted",
+          "test_explicit_location_this_call_overrides_and_updates_state",
+          "test_required_amenities_accumulate_across_calls_not_replace",
+          "test_recommend_properties_touches_attention_for_newly_mentioned_amenities_only",
+          "test_recommend_properties_amenity_attention_breaks_a_match_count_tie_by_emphasis",
+          "test_amenity_soft_match_still_returns_property_missing_one_requested_amenity",
+          "test_cheaper_than_shown_resolves_to_real_budget_and_excludes_cheapest_shown",
+          "test_cheaper_than_shown_derived_budget_is_not_persisted_to_state",
+          "test_larger_than_shown_resolves_to_real_guest_count_from_recommendations_shown",
+          "test_explicit_budget_wins_over_cheaper_than_shown_flag",
+          "test_more_premium_than_shown_ranks_premium_property_first",
+          "test_relative_refinement_flags_count_as_new_criteria_for_lock_backstop"
+        ]
+      },
+      {
+        "path": "backend/tests/test_repetition_guard.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_response",
+          "_spoken_text",
+          "test_normal_reply_passes_through_unmodified",
+          "test_regression_near_duplicate_clarifying_question_gets_cut",
+          "test_regression_short_fragment_flood_gets_cut",
+          "test_differently_worded_non_repeating_questions_are_not_flagged",
+          "test_short_common_acknowledgements_are_not_flagged",
+          "test_cut_state_resets_between_responses",
+          "test_final_sentence_with_no_trailing_text_is_still_recorded_for_structured_repeat",
+          "test_first_utterance_of_a_quoted_price_is_never_cut",
+          "test_reworded_repeat_of_the_same_quoted_price_across_turns_is_cut",
+          "test_different_price_for_same_property_is_not_flagged_as_repeat",
+          "test_mentioning_the_same_property_name_for_an_unrelated_reason_is_not_flagged",
+          "test_no_conversation_state_is_a_no_op_for_structured_check"
+        ]
+      },
+      {
+        "path": "backend/tests/test_silence_watchdog.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_blank_transcript",
+          "_real_transcript",
+          "test_silence_prompts_then_hangs_up_after_two_unanswered_nudges",
+          "test_blank_transcript_does_not_reset_or_count_as_reply",
+          "test_real_transcript_resets_strikes_and_cancels_timer",
+          "test_end_call_ends_after_the_closing_line_finishes_playing",
+          "test_guest_speaking_again_cancels_a_pending_end_call",
+          "test_request_end_marks_conversation_state_farewell_pending",
+          "test_guest_speaking_again_resets_conversation_state_to_open",
+          "test_premature_end_call_guard_cancellation_also_reopens_conversation_state",
+          "test_end_call_completing_marks_conversation_state_closed",
+          "test_second_close_later_in_the_same_call_is_treated_as_a_fresh_legitimate_close",
+          "test_no_conversation_state_is_a_no_op_for_closing_lifecycle"
+        ]
+      },
+      {
+        "path": "backend/tests/test_state_prompt_sync.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_style_from_turns",
+          "_is_injected_state_block",
+          "_context_frame",
+          "test_build_state_block_content_empty_when_nothing_known",
+          "test_build_state_block_content_includes_known_slots",
+          "test_build_state_block_content_orders_slots_by_attention_most_salient_first",
+          "test_build_state_block_content_annotates_a_slot_restated_twice_or_more",
+          "test_build_state_block_content_does_not_annotate_a_slot_set_only_once",
+          "test_build_state_block_content_backfilled_unchanged_value_is_not_annotated_as_restated",
+          "test_build_state_block_content_includes_recommendations_shown",
+          "test_build_state_block_content_includes_goal_hint",
+          "test_build_state_block_content_includes_closing_hint_once_farewell_is_pending",
+          "test_build_state_block_content_drops_closing_hint_once_reopened",
+          "test_build_state_block_content_soft_close_when_guest_never_committed",
+          "test_build_state_block_content_hard_close_when_guest_accepted_property_and_was_quoted",
+          "test_build_state_block_content_soft_close_when_only_price_quoted_no_property_accepted",
+          "test_build_state_block_content_soft_close_when_only_property_accepted_no_price_quoted",
+          "test_build_state_block_content_soft_close_when_quote_is_stale_for_a_different_property",
+          "test_no_op_when_state_has_nothing_to_surface",
+          "test_injects_state_block_right_after_system_prompt",
+          "test_injected_message_has_no_extra_keys_beyond_role_and_content",
+          "test_updates_existing_state_block_in_place_rather_than_appending",
+          "test_real_system_prompt_message_is_never_mutated",
+          "test_build_state_block_content_includes_conversation_style_block",
+          "test_build_state_block_content_english_conversation_style",
+          "test_build_state_block_content_no_style_block_before_any_speech_detected",
+          "test_conversation_style_block_flows_through_the_real_processor",
+          "test_build_state_block_content_includes_quoted_price",
+          "test_build_state_block_content_no_quoted_price_line_when_unset",
+          "test_pending_style_correction_renders_emphasized_block",
+          "test_no_pending_correction_renders_plain_block",
+          "test_consuming_pending_correction_clears_the_flag",
+          "test_no_quality_object_is_a_no_op_not_an_error",
+          "test_validator_never_writes_prompt_text_directly",
+          "test_pending_correction_flows_through_the_real_processor"
+        ]
+      },
+      {
+        "path": "backend/tests/test_style_compliance_monitor.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_response",
+          "_style_from_turns",
+          "test_reproduces_real_call_regression",
+          "test_passes_correct_hinglish_reply",
+          "test_passes_devanagari_reply_when_hindi_expected",
+          "test_passes_english_reply_when_english_expected",
+          "test_fails_devanagari_reply_when_english_expected",
+          "test_no_style_known_yet_is_info",
+          "test_short_response_is_warning_not_fail",
+          "test_check_never_takes_conversation_state_only_style",
+          "test_never_buffers_text_frames_are_forwarded_immediately",
+          "test_forwards_each_chunk_before_the_response_ends",
+          "test_no_conversation_state_is_a_no_op_not_an_error",
+          "test_empty_response_does_not_crash",
+          "test_records_fail_to_conversation_quality",
+          "test_fail_sets_pending_style_correction_on_quality",
+          "test_pass_does_not_set_pending_style_correction",
+          "test_works_without_a_quality_object",
+          "test_recorded_validation_result_carries_turn_index",
+          "test_result_is_a_validation_result_instance"
+        ]
+      }
+    ],
+    "backend/app/voice/conversation_style.py": [
+      {
+        "path": "backend/tests/test_conversation_style.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_transcription",
+          "_run",
+          "test_analyze_turn_pure_english",
+          "test_analyze_turn_pure_devanagari",
+          "test_conversation_style_is_frozen",
+          "test_first_turn_commits_immediately_no_prior_style_to_hold_against",
+          "test_hospitality_style_is_always_airbnb_host",
+          "test_one_english_sentence_does_not_flip_an_established_hindi_style",
+          "test_switch_requires_multiple_consecutive_agreeing_turns",
+          "test_real_regression_call_stays_hindi_hinglish_throughout",
+          "test_confidence_grows_when_style_is_reaffirmed",
+          "test_confidence_decreases_when_a_switch_is_held_off",
+          "test_rolling_window_bounds_history_length",
+          "test_each_update_returns_a_fresh_immutable_style",
+          "test_script_devanagari_when_guest_writes_devanagari_consistently",
+          "test_script_roman_for_english_conversation",
+          "test_render_style_block_contains_required_sections",
+          "test_render_style_block_never_says_translate_or_explain",
+          "test_render_style_block_language_label_hinglish_not_hindi",
+          "test_processor_writes_conversation_style_to_state",
+          "test_processor_never_touches_current_spoken_language",
+          "test_processor_forwards_frames_unchanged",
+          "test_processor_no_conversation_state_is_a_no_op_not_an_error",
+          "test_processor_accumulates_history_across_multiple_turns"
+        ]
+      },
+      {
+        "path": "backend/tests/test_state_prompt_sync.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_style_from_turns",
+          "_is_injected_state_block",
+          "_context_frame",
+          "test_build_state_block_content_empty_when_nothing_known",
+          "test_build_state_block_content_includes_known_slots",
+          "test_build_state_block_content_orders_slots_by_attention_most_salient_first",
+          "test_build_state_block_content_annotates_a_slot_restated_twice_or_more",
+          "test_build_state_block_content_does_not_annotate_a_slot_set_only_once",
+          "test_build_state_block_content_backfilled_unchanged_value_is_not_annotated_as_restated",
+          "test_build_state_block_content_includes_recommendations_shown",
+          "test_build_state_block_content_includes_goal_hint",
+          "test_build_state_block_content_includes_closing_hint_once_farewell_is_pending",
+          "test_build_state_block_content_drops_closing_hint_once_reopened",
+          "test_build_state_block_content_soft_close_when_guest_never_committed",
+          "test_build_state_block_content_hard_close_when_guest_accepted_property_and_was_quoted",
+          "test_build_state_block_content_soft_close_when_only_price_quoted_no_property_accepted",
+          "test_build_state_block_content_soft_close_when_only_property_accepted_no_price_quoted",
+          "test_build_state_block_content_soft_close_when_quote_is_stale_for_a_different_property",
+          "test_no_op_when_state_has_nothing_to_surface",
+          "test_injects_state_block_right_after_system_prompt",
+          "test_injected_message_has_no_extra_keys_beyond_role_and_content",
+          "test_updates_existing_state_block_in_place_rather_than_appending",
+          "test_real_system_prompt_message_is_never_mutated",
+          "test_build_state_block_content_includes_conversation_style_block",
+          "test_build_state_block_content_english_conversation_style",
+          "test_build_state_block_content_no_style_block_before_any_speech_detected",
+          "test_conversation_style_block_flows_through_the_real_processor",
+          "test_build_state_block_content_includes_quoted_price",
+          "test_build_state_block_content_no_quoted_price_line_when_unset",
+          "test_pending_style_correction_renders_emphasized_block",
+          "test_no_pending_correction_renders_plain_block",
+          "test_consuming_pending_correction_clears_the_flag",
+          "test_no_quality_object_is_a_no_op_not_an_error",
+          "test_validator_never_writes_prompt_text_directly",
+          "test_pending_correction_flows_through_the_real_processor"
+        ]
+      },
+      {
+        "path": "backend/tests/test_style_compliance_monitor.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_response",
+          "_style_from_turns",
+          "test_reproduces_real_call_regression",
+          "test_passes_correct_hinglish_reply",
+          "test_passes_devanagari_reply_when_hindi_expected",
+          "test_passes_english_reply_when_english_expected",
+          "test_fails_devanagari_reply_when_english_expected",
+          "test_no_style_known_yet_is_info",
+          "test_short_response_is_warning_not_fail",
+          "test_check_never_takes_conversation_state_only_style",
+          "test_never_buffers_text_frames_are_forwarded_immediately",
+          "test_forwards_each_chunk_before_the_response_ends",
+          "test_no_conversation_state_is_a_no_op_not_an_error",
+          "test_empty_response_does_not_crash",
+          "test_records_fail_to_conversation_quality",
+          "test_fail_sets_pending_style_correction_on_quality",
+          "test_pass_does_not_set_pending_style_correction",
+          "test_works_without_a_quality_object",
+          "test_recorded_validation_result_carries_turn_index",
+          "test_result_is_a_validation_result_instance"
+        ]
+      }
+    ],
+    "backend/app/voice/end_call_reliability_guard.py": [
+      {
+        "path": "backend/app/prompts/system_prompt.py",
+        "batchIndex": 7,
+        "symbols": [
+          "_today_anchor",
+          "_BlankOnMissing",
+          "_resolve_template",
+          "_persona_and_escalation_sections",
+          "build_system_prompt",
+          "_active_seasonal_notes",
+          "_guest_memory_section",
+          "_caller_phone_section",
+          "_active_booking_section",
+          "first_message_for",
+          "build_lead_system_prompt",
+          "lead_first_message_for"
+        ]
+      },
+      {
+        "path": "backend/tests/test_end_call_reliability_guard.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_response",
+          "_end_call_started",
+          "_other_call_started",
+          "test_closing_line_without_end_call_arms_the_hangup_anyway",
+          "test_closing_line_with_end_call_does_not_double_arm",
+          "test_normal_reply_without_closing_line_is_untouched",
+          "test_other_tool_call_with_no_closing_line_is_untouched",
+          "test_closing_line_split_across_multiple_text_frames_still_matches",
+          "test_text_is_never_modified",
+          "test_end_call_flag_does_not_leak_into_the_next_turn"
+        ]
+      }
+    ],
+    "backend/app/voice/escalation_phrase_guard.py": [
+      {
+        "path": "backend/tests/test_escalation_phrase_guard.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_response",
+          "_escalate_call_started",
+          "_other_call_started",
+          "test_unarmed_passes_banned_phrase_through_unchanged",
+          "test_a_different_tool_call_does_not_arm_the_guard",
+          "test_escalate_to_host_call_started_arms_and_replaces_the_reply",
+          "test_regression_a_phrasing_variant_the_old_regex_never_covered_is_still_replaced",
+          "test_same_completion_race_is_caught",
+          "test_armed_replaces_even_an_already_clean_reply_and_disarms",
+          "test_empty_tool_call_only_cycle_stays_armed_for_next_cycle"
+        ]
+      }
+    ],
+    "backend/app/voice/handoff_signal.py": [
+      {
+        "path": "backend/app/api/v1/take_call.py",
+        "batchIndex": 7,
+        "symbols": [
+          "_page",
+          "_invalid_token_page",
+          "_call_ended_page",
+          "take_call_confirm",
+          "take_call_claim",
+          "_property_label"
+        ]
+      },
+      {
+        "path": "backend/tests/test_host_handoff.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_clean_handoff_registry",
+          "test_register_call_creates_a_fresh_unset_event",
+          "test_unregister_call_removes_the_entry",
+          "test_unregister_call_is_safe_for_a_never_registered_id",
+          "test_request_handoff_returns_false_for_unregistered_call",
+          "test_request_handoff_returns_true_and_sets_the_event_for_a_registered_call",
+          "test_wait_for_handoff_request_unblocks_when_requested",
+          "test_wait_for_handoff_request_raises_for_unregistered_call",
+          "test_duplicate_handoff_request_is_safe",
+          "test_host_claim_after_call_already_unregistered_does_nothing",
+          "test_is_host_handoff_frame_true_for_the_real_end_frame",
+          "test_is_host_handoff_frame_false_for_a_normal_end_frame_with_no_reason",
+          "test_is_host_handoff_frame_false_for_a_different_reason_string",
+          "test_is_host_handoff_frame_false_for_an_object_with_no_reason_attribute_at_all",
+          "_FakeWorker",
+          "test_wait_and_trigger_handoff_queues_phrase_then_end_frame_in_order",
+          "test_wait_and_trigger_handoff_never_fires_without_a_request",
+          "test_wait_and_trigger_handoff_phrase_is_spoken_exactly_once_even_if_signalled_twice",
+          "test_normal_call_end_still_invokes_hangup_call",
+          "test_host_handoff_outcome_skips_the_finally_block_safety_net_hangup",
+          "test_host_handoff_still_releases_the_call_coordinator_lease",
+          "test_host_handoff_still_cancels_renewal_and_ringing_tasks"
+        ]
+      }
+    ],
+    "backend/app/voice/language_heuristics.py": [
+      {
+        "path": "backend/tests/test_language_heuristics.py",
+        "batchIndex": 9,
+        "symbols": [
+          "test_devanagari_ratio_pure_devanagari",
+          "test_devanagari_ratio_pure_latin",
+          "test_devanagari_ratio_ignores_digits_and_punctuation",
+          "test_devanagari_ratio_empty_text_no_zero_division",
+          "test_has_hinglish_token_detects_common_words",
+          "test_has_hinglish_token_does_not_false_positive_on_the",
+          "test_has_hinglish_token_no_match_on_plain_english",
+          "test_english_word_ratio_pure_english",
+          "test_english_word_ratio_counts_contractions_as_english",
+          "test_english_word_ratio_romanized_hindi_with_english_loanword",
+          "test_english_word_ratio_mixed",
+          "test_english_word_ratio_excludes_recognized_hinglish_tokens",
+          "test_english_word_ratio_empty_text",
+          "test_english_word_ratio_ignores_devanagari_tokens"
+        ]
+      }
+    ],
+    "backend/app/voice/language_sync.py": [
+      {
+        "path": "backend/tests/test_language_sync.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_transcription",
+          "test_writes_detected_language_to_conversation_state",
+          "test_updates_conversation_state_on_language_switch",
+          "test_no_conversation_state_is_a_no_op_not_an_error",
+          "test_tts_switch_behavior_unchanged_by_state_wiring",
+          "test_no_redundant_tts_switch_for_same_language_twice"
+        ]
+      }
+    ],
+    "backend/app/voice/meta_commentary_guard.py": [
+      {
+        "path": "backend/tests/test_meta_commentary_guard.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_response",
+          "_spoken_text",
+          "test_normal_reply_passes_through_unmodified",
+          "test_regression_waiting_for_guest_response_is_dropped",
+          "test_meta_commentary_split_across_many_small_chunks_is_still_caught",
+          "test_legitimate_parenthetical_content_is_kept",
+          "test_unclosed_parenthetical_at_response_end_is_flushed_not_dropped",
+          "test_state_resets_between_responses"
+        ]
+      }
+    ],
+    "backend/app/voice/pipeline.py": [
+      {
+        "path": "backend/app/config.py",
+        "batchIndex": 10,
+        "symbols": [
+          "Settings",
+          "get_settings"
+        ]
+      },
+      {
+        "path": "backend/app/database.py",
+        "batchIndex": 1,
+        "symbols": [
+          "Base",
+          "get_db"
+        ]
+      },
+      {
+        "path": "backend/app/integrations/__init__.py",
+        "batchIndex": 10,
+        "symbols": []
+      },
+      {
+        "path": "backend/app/integrations/exotel_client.py",
+        "batchIndex": 10,
+        "symbols": [
+          "verify_webhook_token",
+          "send_sms",
+          "hangup_call"
+        ]
+      },
+      {
+        "path": "backend/app/models/property.py",
+        "batchIndex": 7,
+        "symbols": [
+          "Property"
+        ]
+      },
+      {
+        "path": "backend/app/models/user.py",
+        "batchIndex": 1,
+        "symbols": [
+          "User"
+        ]
+      },
+      {
+        "path": "backend/app/prompts/system_prompt.py",
+        "batchIndex": 7,
+        "symbols": [
+          "_today_anchor",
+          "_BlankOnMissing",
+          "_resolve_template",
+          "_persona_and_escalation_sections",
+          "build_system_prompt",
+          "_active_seasonal_notes",
+          "_guest_memory_section",
+          "_caller_phone_section",
+          "_active_booking_section",
+          "first_message_for",
+          "build_lead_system_prompt",
+          "lead_first_message_for"
+        ]
+      },
+      {
+        "path": "backend/app/services/__init__.py",
+        "batchIndex": 7,
+        "symbols": []
+      },
+      {
+        "path": "backend/app/services/call_coordinator.py",
+        "batchIndex": 10,
+        "symbols": [
+          "Lease",
+          "Decision",
+          "_now",
+          "_owner_property_id",
+          "_lease_key",
+          "_encode_lease",
+          "is_busy",
+          "acquire",
+          "acquire_or_reject",
+          "renew",
+          "release",
+          "transfer"
+        ]
+      },
+      {
+        "path": "backend/app/services/call_service.py",
+        "batchIndex": 7,
+        "symbols": [
+          "get_property_by_number",
+          "get_user_by_lead_number",
+          "get_property_by_twilio_number",
+          "get_user_by_twilio_lead_number",
+          "extract_caller_number",
+          "get_or_create_guest_profile",
+          "get_or_create_call_session",
+          "attach_exotel_call",
+          "set_call_classification",
+          "set_call_summary",
+          "_map_exotel_status",
+          "finalize_call_session"
+        ]
+      },
+      {
+        "path": "backend/app/services/call_summary_service.py",
+        "batchIndex": 7,
+        "symbols": [
+          "CallSummaryError",
+          "_pre_check",
+          "_as_str_list",
+          "_parse_summary_response",
+          "_call_groq",
+          "_call_anthropic",
+          "_call_openrouter",
+          "_call_llm_with_fallback",
+          "summarize_call"
+        ]
+      },
+      {
+        "path": "backend/app/services/faq_service.py",
+        "batchIndex": 10,
+        "symbols": [
+          "search_faq_entries",
+          "search_legacy_property_faq",
+          "full_property_context",
+          "list_verified_property_faq",
+          "list_faq_entries",
+          "get_owned_faq_entry",
+          "sync_imported_faq_entries",
+          "FaqGap",
+          "list_faq_gaps",
+          "_merge_semantically_similar_gaps",
+          "_attach_suggested_answers",
+          "faq_gap_analytics",
+          "transcribe_gap_answer_audio",
+          "get_owned_unanswered_question",
+          "answer_faq_gap"
+        ]
+      },
+      {
+        "path": "backend/app/services/guest_calling_notification.py",
+        "batchIndex": 7,
+        "symbols": [
+          "maybe_notify_guest_calling",
+          "_maybe_notify_guest_calling"
+        ]
+      },
+      {
+        "path": "backend/app/services/guest_memory_service.py",
+        "batchIndex": 7,
+        "symbols": [
+          "set_last_property",
+          "update_guest_memory_from_call"
+        ]
+      },
+      {
+        "path": "backend/app/services/lead_service.py",
+        "batchIndex": 7,
+        "symbols": [
+          "_get_or_create_lead_for_call",
+          "upsert_lead",
+          "backfill_lead_from_engagement",
+          "backfill_lead",
+          "delete_if_empty",
+          "delete_for_unqualified_call",
+          "list_leads",
+          "get_owned_lead",
+          "get_active_booking"
+        ]
+      },
+      {
+        "path": "backend/app/services/recovery_service.py",
+        "batchIndex": 7,
+        "symbols": [
+          "_guest_recovery_whatsapp_text",
+          "RecoveryMetadata",
+          "handle_busy_recovery",
+          "_handle_busy_recovery",
+          "_send_guest_recovery_whatsapp",
+          "_send_host_recovery_whatsapp",
+          "process_availability_recovery",
+          "_process_availability_recovery",
+          "_claim_lead",
+          "_notify_availability"
+        ]
+      },
+      {
+        "path": "backend/app/voice/property_recommendation_guard.py",
+        "batchIndex": 12,
+        "symbols": [
+          "_extract_amounts",
+          "_amount_present",
+          "strip_property_ids",
+          "_fallback_recommendation_text",
+          "_fallback_price_text",
+          "_fallback_availability_text",
+          "PropertyRecommendationGuardProcessor"
+        ]
+      },
+      {
+        "path": "backend/app/api/v1/voice.py",
+        "batchIndex": 1,
+        "symbols": [
+          "transcribe_dictation",
+          "_ice_servers",
+          "exotel_voice_ws",
+          "twilio_voice_incoming",
+          "twilio_voice_ws",
+          "BrowserOfferRequest",
+          "BrowserOfferResponse",
+          "browser_test_offer",
+          "browser_test_page"
+        ]
+      },
+      {
+        "path": "backend/tests/test_host_handoff.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_clean_handoff_registry",
+          "test_register_call_creates_a_fresh_unset_event",
+          "test_unregister_call_removes_the_entry",
+          "test_unregister_call_is_safe_for_a_never_registered_id",
+          "test_request_handoff_returns_false_for_unregistered_call",
+          "test_request_handoff_returns_true_and_sets_the_event_for_a_registered_call",
+          "test_wait_for_handoff_request_unblocks_when_requested",
+          "test_wait_for_handoff_request_raises_for_unregistered_call",
+          "test_duplicate_handoff_request_is_safe",
+          "test_host_claim_after_call_already_unregistered_does_nothing",
+          "test_is_host_handoff_frame_true_for_the_real_end_frame",
+          "test_is_host_handoff_frame_false_for_a_normal_end_frame_with_no_reason",
+          "test_is_host_handoff_frame_false_for_a_different_reason_string",
+          "test_is_host_handoff_frame_false_for_an_object_with_no_reason_attribute_at_all",
+          "_FakeWorker",
+          "test_wait_and_trigger_handoff_queues_phrase_then_end_frame_in_order",
+          "test_wait_and_trigger_handoff_never_fires_without_a_request",
+          "test_wait_and_trigger_handoff_phrase_is_spoken_exactly_once_even_if_signalled_twice",
+          "test_normal_call_end_still_invokes_hangup_call",
+          "test_host_handoff_outcome_skips_the_finally_block_safety_net_hangup",
+          "test_host_handoff_still_releases_the_call_coordinator_lease",
+          "test_host_handoff_still_cancels_renewal_and_ringing_tasks"
+        ]
+      },
+      {
+        "path": "backend/tests/test_pipeline_background_tasks.py",
+        "batchIndex": 9,
+        "symbols": [
+          "test_spawn_background_task_survives_gc_with_no_external_reference",
+          "test_spawn_background_task_removes_itself_from_the_registry_once_done",
+          "test_spawn_background_task_exception_does_not_propagate_to_caller"
+        ]
+      },
+      {
+        "path": "backend/tests/test_pipeline_llm.py",
+        "batchIndex": 9,
+        "symbols": [
+          "test_build_llm_defaults_to_groq_with_low_reasoning_effort",
+          "test_build_llm_groq_caps_max_completion_tokens",
+          "test_build_llm_skips_groq_model_marked_down_in_health_check",
+          "test_build_llm_falls_back_to_openrouter_when_all_groq_models_down",
+          "test_build_llm_anthropic",
+          "test_build_llm_openrouter_uses_openai_compatible_service_with_openrouter_base_url",
+          "test_build_llm_openrouter_gpt_oss_gets_low_reasoning_effort",
+          "test_build_llm_openrouter_non_gpt_oss_model_has_no_reasoning_effort"
+        ]
+      },
+      {
+        "path": "backend/tests/test_run_voice_pipeline_ringing.py",
+        "batchIndex": 8,
+        "symbols": [
+          "_FakeWebSocket",
+          "test_no_matching_property_or_lead_line_cancels_the_ringing_task",
+          "test_busy_recovery_plays_placeholder_and_hangs_up_without_building_a_pipeline",
+          "test_call_proceeds_normally_when_no_other_lease_is_active",
+          "test_run_pipeline_releases_the_lease_even_when_pipeline_construction_fails",
+          "test_run_pipeline_hangs_up_exotel_even_when_pipeline_construction_fails",
+          "test_run_pipeline_original_exception_is_not_swallowed_by_the_hangup_safety_net",
+          "test_run_pipeline_finally_block_hangup_is_a_noop_when_on_pipeline_finished_already_requested_it",
+          "test_run_pipeline_renews_the_lease_periodically_during_a_long_call",
+          "test_lease_renewal_loop_stops_quietly_once_the_lease_is_gone",
+          "test_lease_renewal_loop_uses_the_token_not_a_stale_lease",
+          "test_coordinator_failure_fails_open_instead_of_rejecting_the_call",
+          "test_run_pipeline_triggers_availability_recovery_only_when_lease_actually_released",
+          "test_run_pipeline_does_not_trigger_availability_recovery_on_stale_token_release",
+          "test_run_pipeline_does_not_trigger_availability_recovery_when_no_lease_token"
+        ]
+      }
+    ],
+    "backend/app/voice/premature_end_call_guard.py": [
+      {
+        "path": "backend/tests/test_premature_end_call_guard.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_response",
+          "_end_call_started",
+          "_other_call_started",
+          "test_end_call_with_no_question_does_not_cancel",
+          "test_regression_end_call_with_a_question_cancels_the_hangup",
+          "test_a_different_tool_call_is_ignored",
+          "test_text_is_never_modified"
+        ]
+      }
+    ],
+    "backend/app/voice/redundant_context_guard.py": [
+      {
+        "path": "backend/tests/test_redundant_context_guard.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_context_frame",
+          "test_first_context_frame_always_forwarded",
+          "test_growing_context_is_always_forwarded",
+          "test_regression_unchanged_context_after_deferred_push_is_dropped",
+          "test_new_real_turn_after_a_dropped_frame_is_still_forwarded"
+        ]
+      }
+    ],
+    "backend/app/voice/repetition_guard.py": [
+      {
+        "path": "backend/tests/test_repetition_guard.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_response",
+          "_spoken_text",
+          "test_normal_reply_passes_through_unmodified",
+          "test_regression_near_duplicate_clarifying_question_gets_cut",
+          "test_regression_short_fragment_flood_gets_cut",
+          "test_differently_worded_non_repeating_questions_are_not_flagged",
+          "test_short_common_acknowledgements_are_not_flagged",
+          "test_cut_state_resets_between_responses",
+          "test_final_sentence_with_no_trailing_text_is_still_recorded_for_structured_repeat",
+          "test_first_utterance_of_a_quoted_price_is_never_cut",
+          "test_reworded_repeat_of_the_same_quoted_price_across_turns_is_cut",
+          "test_different_price_for_same_property_is_not_flagged_as_repeat",
+          "test_mentioning_the_same_property_name_for_an_unrelated_reason_is_not_flagged",
+          "test_no_conversation_state_is_a_no_op_for_structured_check"
+        ]
+      }
+    ],
+    "backend/app/voice/response_shape_guard.py": [
+      {
+        "path": "backend/app/services/property/pitch_formatter.py",
+        "batchIndex": 12,
+        "symbols": [
+          "RecommendationResult",
+          "confidence_for_result",
+          "_number_word",
+          "_join_natural",
+          "format_property_pitch_line",
+          "render_recommendation_text"
+        ]
+      },
+      {
+        "path": "backend/tests/test_response_shape_guard.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_response",
+          "_spoken_text",
+          "test_has_multiple_unconnected_questions_catches_real_c3_shape",
+          "test_has_multiple_unconnected_questions_allows_single_followup_question",
+          "test_has_multiple_unconnected_questions_allows_connected_two_part_question",
+          "test_count_greeting_openers_catches_two_greetings",
+          "test_count_greeting_openers_one_greeting_is_fine",
+          "test_has_duplicated_safe_line_catches_repeat",
+          "test_has_duplicated_safe_line_single_occurrence_is_fine",
+          "test_has_duplicated_punctuation_catches_degenerate_flood",
+          "test_has_duplicated_punctuation_normal_text_is_fine",
+          "test_ends_mid_clause_catches_no_terminal_punctuation",
+          "test_ends_mid_clause_catches_dangling_conjunction",
+          "test_ends_mid_clause_allows_normal_complete_sentence",
+          "test_ends_mid_clause_allows_question_ending_in_preposition",
+          "test_has_multiple_recommendation_blocks_catches_two_intros",
+          "test_has_multiple_recommendation_blocks_single_block_is_fine",
+          "test_validate_response_shape_clean_response_has_no_violations",
+          "test_first_clean_sentence_extracts_only_first_question_from_real_c3_text",
+          "test_first_clean_sentence_falls_back_to_original_when_unsplittable",
+          "test_processor_reproduces_and_fixes_real_c3_shape",
+          "test_processor_passes_through_clean_response_unmodified",
+          "test_processor_no_false_positives_against_a_realistic_sample",
+          "test_processor_multiple_greetings_gets_trimmed",
+          "test_processor_duplicated_punctuation_flood_gets_trimmed",
+          "test_processor_never_leaves_the_guest_with_nothing",
+          "test_first_sentence_is_forwarded_before_the_response_ends",
+          "test_multi_chunk_streaming_reconstructs_text_exactly",
+          "test_records_validation_result_on_shape_violation",
+          "test_no_validation_result_recorded_for_a_clean_response",
+          "test_processor_works_without_a_quality_object"
+        ]
+      }
+    ],
+    "backend/app/voice/ringing_audio.py": [
+      {
+        "path": "backend/tests/test_ringing_audio.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_FakeWebSocket",
+          "test_loops_past_a_single_cycle_until_cancelled",
+          "test_frames_are_well_formed_exotel_media_events",
+          "test_cancel_and_await_stops_sends_immediately_no_frames_arrive_after",
+          "test_send_failure_is_swallowed_not_raised",
+          "test_busy_message_plays_once_and_returns_without_looping",
+          "test_busy_message_frames_are_well_formed_exotel_media_events",
+          "test_busy_message_is_the_real_spoken_asset_not_the_beep_placeholder",
+          "test_committed_busy_message_asset_is_actually_8000hz",
+          "test_load_pcm_rejects_a_wav_with_the_wrong_real_sample_rate",
+          "test_load_pcm_accepts_a_correctly_formatted_wav",
+          "test_busy_message_send_failure_is_swallowed_not_raised",
+          "test_busy_message_pcm_falls_back_to_beep_tone_if_speech_asset_fails_to_load",
+          "test_busy_message_pcm_falls_back_to_beep_tone_if_speech_asset_is_wrong_sample_rate",
+          "test_busy_message_plays_the_beep_tone_fallback_correctly",
+          "test_busy_message_text_matches_intended_recovery_copy",
+          "test_stream_pcm_does_not_accumulate_drift_under_send_latency",
+          "test_resolve_test_chunk_bytes_falls_back_instead_of_raising_on_invalid_value",
+          "test_resolve_test_chunk_bytes_falls_back_instead_of_raising_on_non_integer",
+          "test_resolve_test_chunk_bytes_accepts_every_supported_value",
+          "test_resolve_test_chunk_bytes_defaults_when_unset",
+          "test_busy_message_mark_event_uses_camel_case_stream_sid_field"
+        ]
+      }
+    ],
+    "backend/app/voice/silence_watchdog.py": [
+      {
+        "path": "backend/tests/test_end_call_reliability_guard.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_response",
+          "_end_call_started",
+          "_other_call_started",
+          "test_closing_line_without_end_call_arms_the_hangup_anyway",
+          "test_closing_line_with_end_call_does_not_double_arm",
+          "test_normal_reply_without_closing_line_is_untouched",
+          "test_other_tool_call_with_no_closing_line_is_untouched",
+          "test_closing_line_split_across_multiple_text_frames_still_matches",
+          "test_text_is_never_modified",
+          "test_end_call_flag_does_not_leak_into_the_next_turn"
+        ]
+      },
+      {
+        "path": "backend/tests/test_premature_end_call_guard.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_response",
+          "_end_call_started",
+          "_other_call_started",
+          "test_end_call_with_no_question_does_not_cancel",
+          "test_regression_end_call_with_a_question_cancels_the_hangup",
+          "test_a_different_tool_call_is_ignored",
+          "test_text_is_never_modified"
+        ]
+      },
+      {
+        "path": "backend/tests/test_silence_watchdog.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_blank_transcript",
+          "_real_transcript",
+          "test_silence_prompts_then_hangs_up_after_two_unanswered_nudges",
+          "test_blank_transcript_does_not_reset_or_count_as_reply",
+          "test_real_transcript_resets_strikes_and_cancels_timer",
+          "test_end_call_ends_after_the_closing_line_finishes_playing",
+          "test_guest_speaking_again_cancels_a_pending_end_call",
+          "test_request_end_marks_conversation_state_farewell_pending",
+          "test_guest_speaking_again_resets_conversation_state_to_open",
+          "test_premature_end_call_guard_cancellation_also_reopens_conversation_state",
+          "test_end_call_completing_marks_conversation_state_closed",
+          "test_second_close_later_in_the_same_call_is_treated_as_a_fresh_legitimate_close",
+          "test_no_conversation_state_is_a_no_op_for_closing_lifecycle"
+        ]
+      },
+      {
+        "path": "backend/tests/test_voice_tools.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_FakeFunctionCallParams",
+          "test_check_calendar_available",
+          "test_check_calendar_invalid_args_returns_graceful_message",
+          "test_get_pricing_includes_total",
+          "test_dispatch_technician_uses_bound_call_session_id",
+          "test_send_whatsapp_uses_bound_property_id",
+          "test_send_whatsapp_falls_back_to_caller_number_when_phone_omitted",
+          "test_send_whatsapp_explicit_phone_wins_over_caller_number",
+          "test_send_whatsapp_no_phone_and_no_caller_number_asks_instead_of_erroring",
+          "test_send_photos_falls_back_to_caller_number",
+          "test_update_lead_falls_back_to_caller_number_for_phone",
+          "test_recommend_properties_filters_by_host_and_guests",
+          "test_recommend_properties_no_match_suggests_escalation",
+          "test_update_lead_creates_and_updates_lead_record",
+          "test_search_faq_returns_verified_entry",
+          "test_search_faq_no_match_signals_escalation",
+          "test_end_call_arms_the_silence_watchdog",
+          "test_end_call_without_a_watchdog_still_returns_a_result",
+          "test_decline_irrelevant_call_arms_the_silence_watchdog",
+          "test_decline_irrelevant_call_without_a_watchdog_still_returns_a_result"
+        ]
+      }
+    ],
+    "backend/app/voice/slow_tool_filler.py": [
+      {
+        "path": "backend/tests/test_slow_tool_filler.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_started",
+          "_result",
+          "test_speaks_filler_if_scoped_tool_still_running_after_delay",
+          "test_no_filler_if_result_arrives_before_delay_elapses",
+          "test_no_filler_if_call_is_cancelled_before_delay_elapses",
+          "test_unscoped_tool_never_triggers_a_filler",
+          "test_a_tool_call_that_errors_out_does_not_permanently_block_later_fillers",
+          "test_fillers_rotate_across_multiple_calls_in_the_same_call_session"
+        ]
+      }
+    ],
+    "backend/app/voice/state_prompt_sync.py": [
+      {
+        "path": "backend/tests/test_state_prompt_sync.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_style_from_turns",
+          "_is_injected_state_block",
+          "_context_frame",
+          "test_build_state_block_content_empty_when_nothing_known",
+          "test_build_state_block_content_includes_known_slots",
+          "test_build_state_block_content_orders_slots_by_attention_most_salient_first",
+          "test_build_state_block_content_annotates_a_slot_restated_twice_or_more",
+          "test_build_state_block_content_does_not_annotate_a_slot_set_only_once",
+          "test_build_state_block_content_backfilled_unchanged_value_is_not_annotated_as_restated",
+          "test_build_state_block_content_includes_recommendations_shown",
+          "test_build_state_block_content_includes_goal_hint",
+          "test_build_state_block_content_includes_closing_hint_once_farewell_is_pending",
+          "test_build_state_block_content_drops_closing_hint_once_reopened",
+          "test_build_state_block_content_soft_close_when_guest_never_committed",
+          "test_build_state_block_content_hard_close_when_guest_accepted_property_and_was_quoted",
+          "test_build_state_block_content_soft_close_when_only_price_quoted_no_property_accepted",
+          "test_build_state_block_content_soft_close_when_only_property_accepted_no_price_quoted",
+          "test_build_state_block_content_soft_close_when_quote_is_stale_for_a_different_property",
+          "test_no_op_when_state_has_nothing_to_surface",
+          "test_injects_state_block_right_after_system_prompt",
+          "test_injected_message_has_no_extra_keys_beyond_role_and_content",
+          "test_updates_existing_state_block_in_place_rather_than_appending",
+          "test_real_system_prompt_message_is_never_mutated",
+          "test_build_state_block_content_includes_conversation_style_block",
+          "test_build_state_block_content_english_conversation_style",
+          "test_build_state_block_content_no_style_block_before_any_speech_detected",
+          "test_conversation_style_block_flows_through_the_real_processor",
+          "test_build_state_block_content_includes_quoted_price",
+          "test_build_state_block_content_no_quoted_price_line_when_unset",
+          "test_pending_style_correction_renders_emphasized_block",
+          "test_no_pending_correction_renders_plain_block",
+          "test_consuming_pending_correction_clears_the_flag",
+          "test_no_quality_object_is_a_no_op_not_an_error",
+          "test_validator_never_writes_prompt_text_directly",
+          "test_pending_correction_flows_through_the_real_processor"
+        ]
+      }
+    ],
+    "backend/app/voice/style_compliance_monitor.py": [
+      {
+        "path": "backend/tests/test_style_compliance_monitor.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_response",
+          "_style_from_turns",
+          "test_reproduces_real_call_regression",
+          "test_passes_correct_hinglish_reply",
+          "test_passes_devanagari_reply_when_hindi_expected",
+          "test_passes_english_reply_when_english_expected",
+          "test_fails_devanagari_reply_when_english_expected",
+          "test_no_style_known_yet_is_info",
+          "test_short_response_is_warning_not_fail",
+          "test_check_never_takes_conversation_state_only_style",
+          "test_never_buffers_text_frames_are_forwarded_immediately",
+          "test_forwards_each_chunk_before_the_response_ends",
+          "test_no_conversation_state_is_a_no_op_not_an_error",
+          "test_empty_response_does_not_crash",
+          "test_records_fail_to_conversation_quality",
+          "test_fail_sets_pending_style_correction_on_quality",
+          "test_pass_does_not_set_pending_style_correction",
+          "test_works_without_a_quality_object",
+          "test_recorded_validation_result_carries_turn_index",
+          "test_result_is_a_validation_result_instance"
+        ]
+      }
+    ],
+    "backend/app/voice/tools.py": [
+      {
+        "path": "backend/app/database.py",
+        "batchIndex": 1,
+        "symbols": [
+          "Base",
+          "get_db"
+        ]
+      },
+      {
+        "path": "backend/app/schemas/tool.py",
+        "batchIndex": 12,
+        "symbols": [
+          "_normalize_phone",
+          "CheckCalendarArgs",
+          "GetPricingArgs",
+          "DispatchTechnicianArgs",
+          "SendWhatsappArgs",
+          "EscalateToHostArgs",
+          "NegotiateRateArgs",
+          "RecommendPropertiesArgs",
+          "UpdateLeadArgs",
+          "SearchFaqArgs",
+          "SendPhotosArgs"
+        ]
+      },
+      {
+        "path": "backend/app/services/__init__.py",
+        "batchIndex": 7,
+        "symbols": []
+      },
+      {
+        "path": "backend/app/services/amenity_taxonomy.py",
+        "batchIndex": 2,
+        "symbols": [
+          "canonicalize_amenity",
+          "canonicalize_amenities",
+          "rank_amenities_for_pitch"
+        ]
+      },
+      {
+        "path": "backend/app/services/property/pitch_formatter.py",
+        "batchIndex": 12,
+        "symbols": [
+          "RecommendationResult",
+          "confidence_for_result",
+          "_number_word",
+          "_join_natural",
+          "format_property_pitch_line",
+          "render_recommendation_text"
+        ]
+      },
+      {
+        "path": "backend/app/services/tool_handlers.py",
+        "batchIndex": 11,
+        "symbols": [
+          "_phone_confirmation_warning",
+          "_build_escalation_whatsapp_text",
+          "_send_escalation_email",
+          "_send_escalation_whatsapp",
+          "_get_property",
+          "handle_check_calendar",
+          "handle_get_pricing",
+          "handle_dispatch_technician",
+          "handle_send_whatsapp",
+          "handle_send_photos",
+          "handle_escalate_to_host",
+          "handle_negotiate_rate",
+          "handle_recommend_properties",
+          "_resolve_property_names",
+          "handle_update_lead",
+          "handle_search_faq"
+        ]
+      },
+      {
+        "path": "backend/app/voice/property_recommendation_guard.py",
+        "batchIndex": 12,
+        "symbols": [
+          "_extract_amounts",
+          "_amount_present",
+          "strip_property_ids",
+          "_fallback_recommendation_text",
+          "_fallback_price_text",
+          "_fallback_availability_text",
+          "PropertyRecommendationGuardProcessor"
+        ]
+      },
+      {
+        "path": "backend/tests/test_conversation_state_slot_wiring.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_FakeFunctionCallParams",
+          "_small_property",
+          "test_update_lead_writes_slots_without_clobbering_earlier_fields",
+          "test_update_lead_writes_dates_as_iso_strings",
+          "test_check_calendar_sets_slots_and_checking_availability_goal",
+          "test_get_pricing_records_quoted_price_in_state",
+          "test_get_pricing_later_quote_overwrites_earlier_one",
+          "test_escalate_to_host_marks_escalated_and_freezes_goal",
+          "test_recommend_properties_backfills_num_guests_from_state_slots",
+          "test_recommend_properties_explicit_arg_still_wins_over_state",
+          "test_recommend_properties_records_shown_options_and_sets_awaiting_selection",
+          "test_lock_property_after_recommendation_sets_guest_accepted_id",
+          "test_recommend_properties_wrapper_excludes_booked_property_using_state_dates"
+        ]
+      },
+      {
+        "path": "backend/tests/test_explicit_language_preference.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_FakeFunctionCallParams",
+          "test_update_lead_sets_explicit_language_preference_hindi",
+          "test_update_lead_sets_explicit_language_preference_english",
+          "test_update_lead_unset_preferred_language_does_not_clobber_existing_preference",
+          "test_update_lead_unrecognized_preferred_language_is_ignored",
+          "test_update_lead_preferred_language_never_written_to_lead_record"
+        ]
+      },
+      {
+        "path": "backend/tests/test_property_lock.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_FakeFunctionCallParams",
+          "_second_property",
+          "test_search_faq_locks_to_property_named_via_check_calendar",
+          "test_property_switch_updates_lock",
+          "test_recommend_properties_refuses_redundant_rebrowse_once_locked",
+          "test_recommend_properties_allows_explicit_compare_with_new_criteria",
+          "test_guest_support_call_search_faq_unaffected_by_conversation_state"
+        ]
+      },
+      {
+        "path": "backend/tests/test_recommend_properties_refinement.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_FakeFunctionCallParams",
+          "_property",
+          "test_preferred_location_backfilled_from_state_when_omitted",
+          "test_purpose_of_stay_backfilled_from_state_when_omitted",
+          "test_explicit_location_this_call_overrides_and_updates_state",
+          "test_required_amenities_accumulate_across_calls_not_replace",
+          "test_recommend_properties_touches_attention_for_newly_mentioned_amenities_only",
+          "test_recommend_properties_amenity_attention_breaks_a_match_count_tie_by_emphasis",
+          "test_amenity_soft_match_still_returns_property_missing_one_requested_amenity",
+          "test_cheaper_than_shown_resolves_to_real_budget_and_excludes_cheapest_shown",
+          "test_cheaper_than_shown_derived_budget_is_not_persisted_to_state",
+          "test_larger_than_shown_resolves_to_real_guest_count_from_recommendations_shown",
+          "test_explicit_budget_wins_over_cheaper_than_shown_flag",
+          "test_more_premium_than_shown_ranks_premium_property_first",
+          "test_relative_refinement_flags_count_as_new_criteria_for_lock_backstop"
+        ]
+      },
+      {
+        "path": "backend/tests/test_voice_tools.py",
+        "batchIndex": 9,
+        "symbols": [
+          "_FakeFunctionCallParams",
+          "test_check_calendar_available",
+          "test_check_calendar_invalid_args_returns_graceful_message",
+          "test_get_pricing_includes_total",
+          "test_dispatch_technician_uses_bound_call_session_id",
+          "test_send_whatsapp_uses_bound_property_id",
+          "test_send_whatsapp_falls_back_to_caller_number_when_phone_omitted",
+          "test_send_whatsapp_explicit_phone_wins_over_caller_number",
+          "test_send_whatsapp_no_phone_and_no_caller_number_asks_instead_of_erroring",
+          "test_send_photos_falls_back_to_caller_number",
+          "test_update_lead_falls_back_to_caller_number_for_phone",
+          "test_recommend_properties_filters_by_host_and_guests",
+          "test_recommend_properties_no_match_suggests_escalation",
+          "test_update_lead_creates_and_updates_lead_record",
+          "test_search_faq_returns_verified_entry",
+          "test_search_faq_no_match_signals_escalation",
+          "test_end_call_arms_the_silence_watchdog",
+          "test_end_call_without_a_watchdog_still_returns_a_result",
+          "test_decline_irrelevant_call_arms_the_silence_watchdog",
+          "test_decline_irrelevant_call_without_a_watchdog_still_returns_a_result"
+        ]
+      }
+    ],
+    "backend/app/voice/turn_strategies.py": [
+      {
+        "path": "backend/tests/test_turn_strategies.py",
+        "batchIndex": 9,
+        "symbols": [
+          "test_is_incomplete_trailing_english_conjunction",
+          "test_is_incomplete_trailing_hindi_conjunction_devanagari",
+          "test_is_incomplete_trailing_hinglish_conjunction_romanized",
+          "test_is_incomplete_trailing_comma",
+          "test_is_incomplete_very_short_with_no_terminal_punctuation",
+          "test_is_incomplete_empty_string",
+          "test_is_complete_full_sentence_with_terminal_punctuation",
+          "test_is_complete_short_but_punctuated",
+          "test_strategy_instantiates_with_defaults",
+          "test_strategy_instantiates_with_custom_timeouts"
+        ]
+      }
+    ]
+  }
+}
