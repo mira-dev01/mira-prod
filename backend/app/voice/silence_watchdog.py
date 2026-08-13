@@ -116,6 +116,7 @@ class SilenceWatchdogProcessor(FrameProcessor):
         BotStoppedSpeakingFrame -- i.e. once that closing line has actually
         finished playing, not when this method is called -- ends the call
         instead of starting another nudge cycle."""
+        logger.info("call_end_requested")
         self._end_requested = True
         if self._conversation_state is not None:
             self._conversation_state.mark_farewell_pending()
@@ -142,6 +143,7 @@ class SilenceWatchdogProcessor(FrameProcessor):
         if isinstance(frame, BotStoppedSpeakingFrame) and not self._ended:
             if self._end_requested:
                 self._ended = True
+                logger.info("final_audio_completed")
                 logger.info("SilenceWatchdogProcessor: ending call after agent's closing line")
                 if self._conversation_state is not None:
                     self._conversation_state.mark_closed()

@@ -5,11 +5,44 @@ import { DictationInput } from "@/components/ui/dictation-input";
 import { DictationTextarea } from "@/components/ui/dictation-textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { PropertyFormSection } from "@/components/property-form-section";
-import type { PropertyCreate, SeasonalNote } from "@/lib/types";
+import { cn } from "@/lib/utils";
+import type { CallHandlingMode, PropertyCreate, SeasonalNote } from "@/lib/types";
 
 type PropertyFormValue = PropertyCreate;
+
+// Small, deliberately non-exhaustive list -- not every IANA zone, just
+// every region an actual host is plausible in today (India-only fleet per
+// CLAUDE.md, plus common Airbnb host regions) so the picker is a short,
+// scrollable list rather than Intl.supportedValuesOf("timeZone")'s several
+// hundred entries. Backend validation (app/schemas/property.py's
+// _check_timezone) is authoritative and accepts any real IANA identifier
+// regardless of what's offered here -- this list is a UI convenience, not
+// a source of truth.
+const CALL_HANDLING_TIMEZONES = [
+  { value: "Asia/Kolkata", label: "India (Asia/Kolkata)" },
+  { value: "Asia/Dubai", label: "UAE (Asia/Dubai)" },
+  { value: "Asia/Kathmandu", label: "Nepal (Asia/Kathmandu)" },
+  { value: "Asia/Colombo", label: "Sri Lanka (Asia/Colombo)" },
+  { value: "Europe/London", label: "United Kingdom (Europe/London)" },
+  { value: "America/New_York", label: "US Eastern (America/New_York)" },
+  { value: "America/Los_Angeles", label: "US Pacific (America/Los_Angeles)" },
+  { value: "Asia/Singapore", label: "Singapore (Asia/Singapore)" },
+  { value: "Australia/Sydney", label: "Australia (Australia/Sydney)" },
+  { value: "UTC", label: "UTC" },
+] as const;
+
+const CALL_HANDLING_MODES: { value: CallHandlingMode; label: string; description: string }[] = [
+  { value: "MIRA", label: "Mira", description: "Mira handles all guest calls." },
+  { value: "HOST", label: "Host", description: "You handle all guest calls." },
+  {
+    value: "SCHEDULED",
+    label: "Scheduled",
+    description: "You handle calls during your configured host hours. Mira handles calls outside those hours.",
+  },
+];
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return <p className="text-micro pt-2 text-muted-foreground">{children}</p>;
@@ -18,9 +51,21 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 export function PropertyFormFields({
   form,
   onChange,
+  showCallHandling = true,
 }: {
   form: PropertyFormValue;
   onChange: (next: PropertyFormValue) => void;
+  // Hidden on the "Add property" panel -- the backend's PropertyCreate
+  // schema (app/schemas/property.py) deliberately has no
+  // call_handling_mode/schedule/timezone fields (Phase 1: a schedule
+  // shouldn't be required at creation time), so anything set here during
+  // creation would silently be dropped by the API with no error and no
+  // indication to the host. Rather than teaching PropertyCreate to accept
+  // fields it's designed not to, Call Handling is only editable once the
+  // property exists (the Edit panel, which posts through PropertyUpdate
+  // and does support these fields) -- same shape as amenities/FAQ/photos,
+  // which are also edit-only, not part of the create flow.
+  showCallHandling?: boolean;
 }) {
   const amenitiesText = (form.amenities ?? []).join(", ");
   const seasonalNotes = form.seasonal_notes ?? [];
@@ -185,6 +230,83 @@ export function PropertyFormFields({
           />
         </div>
       </div>
+
+      {showCallHandling && (
+        <PropertyFormSection
+          icon="C"
+          title="Call Handling"
+          helpText="Who answers guest calls to this property, and when."
+        >
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <div className="flex flex-wrap gap-2">
+                {CALL_HANDLING_MODES.map((mode) => (
+                  <Button
+                    key={mode.value}
+                    type="button"
+                    variant={(form.call_handling_mode ?? "MIRA") === mode.value ? "default" : "outline"}
+                    size="sm"
+                    aria-pressed={(form.call_handling_mode ?? "MIRA") === mode.value}
+                    className={cn((form.call_handling_mode ?? "MIRA") === mode.value && "pointer-events-none")}
+                    onClick={() => onChange({ ...form, call_handling_mode: mode.value })}
+                  >
+                    {mode.label}
+                  </Button>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {CALL_HANDLING_MODES.find((m) => m.value === (form.call_handling_mode ?? "MIRA"))?.description}
+              </p>
+            </div>
+
+            {form.call_handling_mode === "SCHEDULED" && (
+              <div className="grid grid-cols-2 gap-4 rounded-lg border bg-muted/50 p-3">
+                <div className="space-y-2">
+                  <Label htmlFor="call_handling_schedule_start">Host hours start</Label>
+                  <Input
+                    id="call_handling_schedule_start"
+                    type="time"
+                    required
+                    value={form.call_handling_schedule_start ?? ""}
+                    onChange={(e) => onChange({ ...form, call_handling_schedule_start: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="call_handling_schedule_end">Host hours end</Label>
+                  <Input
+                    id="call_handling_schedule_end"
+                    type="time"
+                    required
+                    value={form.call_handling_schedule_end ?? ""}
+                    onChange={(e) => onChange({ ...form, call_handling_schedule_end: e.target.value })}
+                  />
+                </div>
+                <div className="col-span-2 space-y-2">
+                  <Label htmlFor="call_handling_timezone">Timezone</Label>
+                  <Select
+                    value={form.timezone ?? "Asia/Kolkata"}
+                    onValueChange={(v) => v && onChange({ ...form, timezone: v })}
+                  >
+                    <SelectTrigger id="call_handling_timezone" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CALL_HANDLING_TIMEZONES.map((tz) => (
+                        <SelectItem key={tz.value} value={tz.value}>
+                          {tz.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <p className="col-span-2 text-xs text-muted-foreground">
+                  An overnight window (e.g. 22:00 → 06:00) is valid -- host hours span past midnight.
+                </p>
+              </div>
+            )}
+          </div>
+        </PropertyFormSection>
+      )}
 
       <PropertyFormSection
         title="Description"

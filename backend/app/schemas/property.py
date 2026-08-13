@@ -1,10 +1,12 @@
 import ipaddress
+import re
 import uuid
 from datetime import datetime
 from typing import Literal
 from urllib.parse import urlsplit
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 def _validate_ical_url(value: str | None) -> str | None:
@@ -83,6 +85,10 @@ class PropertyCreate(BaseModel):
         return _validate_ical_url(value)
 
 
+_CALL_HANDLING_MODES = {"MIRA", "HOST", "SCHEDULED"}
+_HH_MM_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+
+
 class PropertyUpdate(BaseModel):
     name: str | None = None
     display_name: str | None = Field(default=None, max_length=120)
@@ -111,6 +117,10 @@ class PropertyUpdate(BaseModel):
     saturday_minimum_stay_enabled: bool | None = None
     exact_airbnb_pricing: bool | None = None
     is_premium: bool | None = None
+    call_handling_mode: str | None = None
+    call_handling_schedule_start: str | None = None
+    call_handling_schedule_end: str | None = None
+    timezone: str | None = None
 
     @field_validator("exophone", "twilio_number")
     @classmethod
@@ -121,6 +131,83 @@ class PropertyUpdate(BaseModel):
     @classmethod
     def _check_ical_url(cls, value: str | None) -> str | None:
         return _validate_ical_url(value)
+
+    @field_validator("call_handling_mode")
+    @classmethod
+    def _check_call_handling_mode(cls, value: str | None) -> str | None:
+        # Deliberately just membership -- no schedule ownership logic, no
+        # start/end comparison, no overnight-window rejection belongs at
+        # this boundary. resolve_effective_call_owner (a later phase) is
+        # where "22:00 -> 06:00" gets interpreted; here it's just a string.
+        if value is not None and value not in _CALL_HANDLING_MODES:
+            raise ValueError(f"call_handling_mode must be one of {sorted(_CALL_HANDLING_MODES)}")
+        return value
+
+    @field_validator("call_handling_schedule_start", "call_handling_schedule_end")
+    @classmethod
+    def _check_call_handling_schedule_format(cls, value: str | None) -> str | None:
+        # Format only (HH:MM, 00:00-23:59) -- same "just a string" scope as
+        # the mode check above. Overnight windows (start > end) are valid
+        # values, not rejected here; a later phase's resolver interprets
+        # the wraparound. Mirrors check_in_time/check_out_time's own lack
+        # of stricter validation, except this field additionally gates
+        # SCHEDULED mode's correctness (see _check_schedule_required_for_
+        # scheduled_mode below), so a garbage string here would silently
+        # break that mode -- worth the extra format check that
+        # check_in_time/check_out_time don't bother with.
+        if value is not None and not _HH_MM_RE.match(value):
+            raise ValueError("must be in HH:MM 24-hour format, e.g. '09:00' or '22:00'")
+        return value
+
+    @field_validator("timezone")
+    @classmethod
+    def _check_timezone(cls, value: str | None) -> str | None:
+        # Real IANA-identifier check via the stdlib zoneinfo database
+        # (already used elsewhere in this codebase, see
+        # app/prompts/system_prompt.py's IST = ZoneInfo("Asia/Kolkata") --
+        # no new dependency). User.timezone (app/schemas/user.py) has no
+        # equivalent check today and is left as-is here, out of this
+        # phase's scope -- but a garbage value in THIS new column would
+        # silently break the future resolve_effective_call_owner the
+        # moment it tries ZoneInfo(property.timezone), with no chance to
+        # catch it before then. Worth the asymmetry versus User.timezone
+        # for a field that gates a not-yet-built but already-planned
+        # comparison, rather than leaving it to fail loudly (or silently
+        # fall back) deep inside a live call much later.
+        if value is not None:
+            try:
+                ZoneInfo(value)
+            except ZoneInfoNotFoundError:
+                raise ValueError(f"'{value}' is not a valid IANA timezone identifier, e.g. 'Asia/Kolkata'")
+        return value
+
+    @model_validator(mode="after")
+    def _check_schedule_required_for_scheduled_mode(self) -> "PropertyUpdate":
+        # Cross-field: SCHEDULED mode is meaningless without both bounds of
+        # the window it's supposed to switch on -- a property saved as
+        # SCHEDULED with one or both times still null has no way to
+        # actually be evaluated later (resolve_effective_call_owner would
+        # have nothing to compare against). Only enforced when THIS
+        # request is setting mode to SCHEDULED, and requires THIS same
+        # request to also supply both start and end -- a request that only
+        # touches unrelated fields never reaches here with
+        # call_handling_mode populated, so it can't retroactively
+        # invalidate an already-SCHEDULED property. This deliberately does
+        # NOT try to check "does the property already have a schedule from
+        # an earlier request" -- that needs the persisted row, not just
+        # this request's payload, so a host switching TO SCHEDULED must
+        # always (re-)supply both times in the same request, even if a
+        # stale schedule happens to already be sitting on the row from a
+        # prior HOST/MIRA-mode edit. Stricter than strictly necessary, but
+        # unambiguous and requires no DB round-trip inside a pure schema
+        # validator.
+        if self.call_handling_mode == "SCHEDULED":
+            if self.call_handling_schedule_start is None or self.call_handling_schedule_end is None:
+                raise ValueError(
+                    "call_handling_schedule_start and call_handling_schedule_end are required "
+                    "when call_handling_mode is SCHEDULED"
+                )
+        return self
 
 
 class PropertyGalleryOut(BaseModel):
@@ -171,6 +258,10 @@ class PropertyOut(BaseModel):
     smart_price_updated_at: datetime | None
     exact_airbnb_pricing: bool
     is_premium: bool
+    call_handling_mode: str
+    call_handling_schedule_start: str | None
+    call_handling_schedule_end: str | None
+    timezone: str
     created_at: datetime
 
     model_config = {"from_attributes": True}

@@ -1,7 +1,7 @@
 import uuid
-from datetime import date
+from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, ForeignKey, Numeric, String, Text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -75,6 +75,23 @@ class Lead(UUIDPkMixin, TimestampMixin, Base):
     lead_source: Mapped[str] = mapped_column(String(64), default="voice_call", server_default="voice_call")
     entry_channel: Mapped[str] = mapped_column(String(32), default="phone_call", server_default="phone_call")
     recovery_reason: Mapped[str | None] = mapped_column(String(32))
+
+    # --- Busy-recovery availability follow-up (separate from both status
+    # and recovery_reason above -- see app/services/recovery_service.py's
+    # process_availability_recovery for the full state machine). Whether
+    # Mira still owes this busy-recovery guest an "I'm available now"
+    # WhatsApp message. Always null for a lead with no recovery_reason;
+    # never read/written by anything sales-lifecycle-related (Kanban,
+    # _REUSABLE_LEAD_STATUSES, host-facing status changes).
+    busy_recovery_availability_status: Mapped[str | None] = mapped_column(String(16), index=True)
+    # When THIS busy call happened -- not Lead.created_at/updated_at, see
+    # migration 8f1c4b9e2a67's own comment for why those don't work here.
+    busy_recovery_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Set only while busy_recovery_availability_status == "processing";
+    # lets a crashed worker's stuck claim become reclaimable after a short
+    # staleness threshold instead of blocking that guest's notification
+    # forever.
+    busy_recovery_claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     conversation_summary: Mapped[str | None] = mapped_column(Text)
     next_follow_up: Mapped[str | None] = mapped_column(String(255))

@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TechniciansSection } from "@/components/settings/technicians-section";
+import { CallOwnershipCard } from "@/components/settings/call-ownership-card";
 import { API_BASE_URL, ApiError, api, getToken } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 
@@ -179,13 +180,14 @@ function SettingsPageContent() {
 
             <Card>
               <CardHeader>
-                <CardTitle>WhatsApp Assist</CardTitle>
+                <CardTitle>Host transfer number</CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="mb-3 text-sm text-muted-foreground">
-                  Your phone number for escalation WhatsApp messages, in addition to email. After saving,
-                  text &quot;join &lt;code&gt;&quot; to the Twilio Sandbox number from this phone — the
-                  sandbox only delivers to numbers that have opted in.
+                  This is the number Mira uses when a guest needs to speak with you — guest escalations,
+                  scheduled call ownership, and live call takeover. After saving, text &quot;join
+                  &lt;code&gt;&quot; to the Twilio Sandbox number from this phone — the sandbox only
+                  delivers WhatsApp messages to numbers that have opted in.
                 </p>
                 <form onSubmit={handleSavePhone} className="flex gap-2">
                   <Input
@@ -199,6 +201,8 @@ function SettingsPageContent() {
                 </form>
               </CardContent>
             </Card>
+
+            <CallOwnershipCard />
 
             <Card>
               <CardHeader>

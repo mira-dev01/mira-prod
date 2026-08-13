@@ -21,7 +21,7 @@ import aiohttp
 from fastapi import WebSocket
 from openai import RateLimitError
 from pipecat.audio.vad.vad_analyzer import VADParams
-from pipecat.frames.frames import ErrorFrame, TTSSpeakFrame
+from pipecat.frames.frames import EndFrame, ErrorFrame, TTSSpeakFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.worker import PipelineParams, PipelineWorker
 from pipecat.processors.aggregators.llm_context import LLMContext
@@ -62,6 +62,7 @@ from app.services import (
     call_service,
     call_summary_service,
     faq_service,
+    guest_calling_notification,
     guest_memory_service,
     lead_service,
     recovery_service,
@@ -71,6 +72,7 @@ from app.voice.conversation_state import ConversationState
 from app.voice.conversation_style import ConversationStyleProcessor
 from app.voice.end_call_reliability_guard import EndCallReliabilityGuardProcessor
 from app.voice.escalation_phrase_guard import EscalationPhraseGuardProcessor
+from app.voice.handoff_signal import register_call, unregister_call, wait_for_handoff_request
 from app.voice.language_sync import DEFAULT_TTS_LANGUAGE, LanguageSyncProcessor
 from app.voice.meta_commentary_guard import MetaCommentaryGuardProcessor
 from app.voice.premature_end_call_guard import PrematureEndCallGuardProcessor
@@ -88,6 +90,47 @@ from app.voice.turn_strategies import HybridCompletenessUserTurnStopStrategy
 from app.voice.vad import create_vad_analyzer
 
 logger = logging.getLogger(__name__)
+
+# Holds strong references to detached "fire and forget" tasks created below
+# (currently the Exotel hangup task, spawned from both on_pipeline_finished
+# and _run_pipeline's own construction-failure safety net -- see
+# _hangup_exotel_call) for their entire lifetime. asyncio.create_task()
+# itself only returns a Task; per
+# asyncio's own documentation, if nothing keeps a reference to that Task
+# object, it "can be garbage collected at any time, even before it's done" --
+# discarding the return value (as `asyncio.create_task(coro())` does with no
+# assignment) is exactly that case. This set is that reference: each task
+# adds itself on creation and removes itself via a done-callback once it
+# actually finishes, so the set's steady-state size is just "how many of
+# these are in flight right now," not an ever-growing leak.
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _spawn_background_task(coro) -> asyncio.Task:
+    """asyncio.create_task() that survives GC -- see _background_tasks."""
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    return task
+
+
+async def _hangup_exotel_call(exotel_call_id: str) -> None:
+    """The one place that calls exotel_client.hangup_call from this module --
+    shared by on_pipeline_finished (normal end-of-call) and _run_pipeline's
+    own finally block (construction-failure safety net, see its call site's
+    comment) so the try/except/log shape and the "call_terminated" log line
+    exist exactly once, not duplicated per caller. Always run via
+    _spawn_background_task, never awaited inline -- see either call site for
+    why (Exotel's REST latency must never gate pipeline/sink teardown).
+    Safe to call from both: exotel_client.hangup_call's own per-call_sid
+    idempotency guard makes a second call here a same-process no-op, not a
+    second real HTTP request."""
+    try:
+        await exotel_client.hangup_call(exotel_call_id)
+        logger.info("call_terminated call_id=%s", exotel_call_id)
+    except Exception:
+        logger.exception("Failed to hang up Exotel call %s", exotel_call_id)
+
 
 # Defaults (confidence=0.7, min_volume=0.6) let quiet background noise or a
 # second voice near the caller's mic register as "user speaking" -- which
@@ -398,6 +441,64 @@ def _build_openrouter_llm():
 # wide safety margin against a single missed tick.
 _LEASE_RENEWAL_INTERVAL_SECONDS = 20
 
+# Phase 7: spoken exactly once, deterministically (queued directly as a
+# TTSSpeakFrame, same "bot speaks first" mechanism the initial greeting
+# already uses -- see _on_connected_greeting below -- never an LLM request),
+# when a live call's host has successfully claimed Take Call (Phase 6).
+# Fixed text, not configurable per host/property -- CLAUDE.md's own
+# documented anti-pattern is regex-patching individual bad LLM phrasings
+# after the fact; the durable fix used here is the same one already applied
+# to escalation acknowledgements (app/voice/escalation_phrase_guard.py):
+# when the correct text is fixed and known regardless of context, speak
+# exactly that text deterministically rather than asking the LLM to
+# generate/paraphrase anything.
+_HOST_HANDOFF_PHRASE = "Excuse me for a moment while the host takes up your query."
+
+# EndFrame.reason sentinel (see pipecat's own EndFrame/CancelFrame -- both
+# carry an optional `reason`) -- read back inside on_pipeline_finished to
+# distinguish an intentional host handoff from every other way a call ends
+# (caller hangup, silence-watchdog timeout, end_call tool, a construction
+# failure). Deliberately NOT a new instance/closure-captured flag: reusing
+# the frame's own native field means the "why did this call end" signal
+# travels through the exact same mechanism pipecat already uses to reach
+# on_pipeline_finished, instead of adding a second, parallel channel for
+# the same information.
+_HOST_HANDOFF_END_REASON = "host_handoff"
+
+
+def _is_host_handoff_frame(frame) -> bool:
+    """Pure, standalone (no pipecat runtime required) so this one decision
+    -- was THIS terminal frame an intentional host handoff, as opposed to
+    every other way a call ends -- is directly unit-testable without
+    constructing a real pipeline/worker/frame instance. getattr(...,
+    None): CancelFrame/EndFrame both carry `reason`, but nothing guarantees
+    every possible terminal frame type does, so this must not assume the
+    attribute exists (a plain object() or a frame type that never sets
+    `reason` must return False here, not raise)."""
+    return getattr(frame, "reason", None) == _HOST_HANDOFF_END_REASON
+
+
+class _HandoffOutcome:
+    """A single mutable field, passed BY REFERENCE from _run_pipeline into
+    _run_pipeline_inner, purely so _run_pipeline's own finally block (which
+    has no visibility into on_pipeline_finished's local `frame` -- that
+    closure lives entirely inside _run_pipeline_inner) can learn whether
+    THIS call ended via an intentional host handoff, without a second
+    parallel "why did it end" mechanism. _run_pipeline_inner's own
+    on_pipeline_finished handler is the only writer (see
+    _HOST_HANDOFF_END_REASON's own comment for why it reads this off
+    frame.reason rather than tracking it independently); _run_pipeline's
+    finally block is the only reader. A plain class instance, not a dict/
+    list, so the one field has a name instead of an index -- deliberately
+    not reusing CallSession.handoff_status for this in-process signal:
+    that column is the durable, cross-request state Phase 6 already claims
+    atomically in Postgres; this is a same-call-stack, same-process detail
+    of how THIS pipeline invocation is currently unwinding, needed for
+    exactly one decision (does the finally block's OWN safety-net
+    hangup_call still fire) and nothing else."""
+
+    is_host_handoff: bool = False
+
 
 async def _renew_call_lease_periodically(
     host_user_id: uuid.UUID, property_id: uuid.UUID | None, token: str
@@ -482,6 +583,7 @@ async def _run_pipeline(
         if call_lease_token is not None
         else None
     )
+    handoff_outcome = _HandoffOutcome()
     try:
         await _run_pipeline_inner(
             transport,
@@ -497,6 +599,7 @@ async def _run_pipeline(
             exotel_call_id=exotel_call_id,
             ringing_audio_task=ringing_audio_task,
             voice_gender=voice_gender,
+            handoff_outcome=handoff_outcome,
         )
     finally:
         if renewal_task is not None and not renewal_task.done():
@@ -519,6 +622,52 @@ async def _run_pipeline(
             except asyncio.CancelledError:
                 pass
 
+        # Guarantees Exotel is told to hang up even if _run_pipeline_inner
+        # raises during construction (STT/LLM/TTS/Pipeline/PipelineWorker
+        # all fallible, all built before on_pipeline_finished is registered
+        # -- see that handler's own docstring inside _run_pipeline_inner)
+        # -- confirmed as a real gap: on a construction failure,
+        # on_pipeline_finished never registers, so its hangup_call never
+        # fires, and the guest is left connected on a line no code is
+        # driving toward hangup (the websocket itself stays open; only
+        # runner.run() returning, or the transport, would close it, and
+        # neither happens here). Same fire-and-forget shape as
+        # on_pipeline_finished's own hangup (_spawn_background_task, not
+        # awaited -- Exotel's REST latency must not gate this finally
+        # block returning), and the SAME exotel_client.hangup_call, whose
+        # own per-call_sid idempotency guard (see app/integrations/
+        # exotel_client.py) is what makes it safe to call unconditionally
+        # here rather than only on the exception path: on the success path
+        # on_pipeline_finished has typically already requested (or is
+        # already requesting) the real hangup, so this becomes a same-
+        # process no-op (an in-memory set lookup, no second HTTP call) --
+        # no new "did construction fail" flag needed, no risk of masking
+        # which path actually ran, and no behavior change on success.
+        # Phase 7 exception, mirroring on_pipeline_finished's own -- this
+        # safety net exists specifically to catch a CONSTRUCTION failure
+        # (a case on_pipeline_finished's own guard, inside
+        # _run_pipeline_inner, cannot see: it never even runs when
+        # construction itself raises). A genuine host handoff never raises
+        # out of _run_pipeline_inner -- it returns normally after
+        # on_pipeline_finished has already run and already made this exact
+        # decision -- so handoff_outcome.is_host_handoff being True here
+        # means the real on_pipeline_finished handler already correctly
+        # skipped the hangup for this call_id; this block must not
+        # second-guess that and hang up anyway.
+        if exotel_call_id and not handoff_outcome.is_host_handoff:
+            # Deliberately unconditional otherwise (not "only if
+            # _run_pipeline_inner raised") -- see the comment above for why
+            # that's safe and simpler than tracking a separate failure
+            # flag. Logged as its own event name (not call_hangup_requested,
+            # which on_pipeline_finished already logs on the normal path)
+            # so a real construction failure is distinguishable in logs
+            # from this finally block's routine, idempotent no-op on every
+            # ordinary successful call.
+            logger.info("call_hangup_finally_block_requested call_id=%s", exotel_call_id)
+            _spawn_background_task(_hangup_exotel_call(exotel_call_id))
+        elif handoff_outcome.is_host_handoff:
+            logger.info("call_hangup_finally_block_skipped_for_host_handoff call_id=%s", exotel_call_id)
+
         # Guarantees the CallCoordinator lease acquired in run_voice_pipeline
         # (see app/services/call_coordinator.py) is always released here too,
         # not just on the happy path through on_pipeline_finished -- same
@@ -536,13 +685,82 @@ async def _run_pipeline(
         # Postgres UPDATE.
         if call_lease_token is not None:
             try:
-                await call_coordinator.release(host_user_id, property_id, call_lease_token)
+                lease_actually_released = await call_coordinator.release(host_user_id, property_id, call_lease_token)
             except Exception:
+                lease_actually_released = False
                 logger.exception(
                     "Failed to release CallCoordinator lease for host_user_id=%s property_id=%s",
                     host_user_id,
                     property_id,
                 )
+
+            # Busy Call Recovery, availability half: fires ONLY when THIS
+            # call's release() call actually freed the (host, property)
+            # lease (release() returns True only for that case -- False
+            # for a Redis outage, a stale token, or a token that never held
+            # anything; see call_coordinator.release's own docstring for
+            # why that distinction is safe to expose). CallCoordinator/
+            # lease state is deliberately the trigger, not "pipeline
+            # finished" or "on_pipeline_finished ran" -- a call that never
+            # actually held the lease (e.g. BUSY_RECOVERY's own fail-open
+            # path) or a stale/duplicate release must never fire this, or
+            # a busy-recovery guest could be told "Mira is available now"
+            # while Mira is, from CallCoordinator's own source of truth,
+            # still busy. Fired detached (_spawn_background_task, same
+            # GC-safety mechanism as the Exotel hangup task above) --
+            # process_availability_recovery does its own WhatsApp sends,
+            # which must never delay this already-ending call's teardown.
+            # CallCoordinator itself has no idea this happens: this is
+            # pipeline.py, the lease-owning caller, reacting to release()'s
+            # own return value -- see recovery_service.py's own docstring
+            # for the CallCoordinator-stays-unaware half of this contract.
+            if lease_actually_released:
+                logger.info(
+                    "availability_processing_triggered host_user_id=%s property_id=%s",
+                    host_user_id,
+                    property_id,
+                )
+                _spawn_background_task(recovery_service.process_availability_recovery(host_user_id, property_id))
+
+
+async def _wait_and_trigger_handoff(worker: PipelineWorker, call_session_id: uuid.UUID) -> None:
+    """Runs as a background task alongside a live call's pipeline (started
+    in _run_pipeline_inner, cancelled in that same function's finally
+    block -- identical lifecycle shape to _renew_call_lease_periodically).
+    Blocks on handoff_signal.wait_for_handoff_request until the host
+    successfully claims Take Call for this exact call_session_id (Phase 6's
+    take_call.py calls handoff_signal.request_handoff right after its own
+    atomic DB claim succeeds) -- or forever, for the overwhelming majority
+    of calls that are never claimed, which is exactly why this is a
+    cancellable background task and not something awaited inline.
+
+    On firing: queues the handoff phrase, then an EndFrame carrying
+    _HOST_HANDOFF_END_REASON, via worker.queue_frame -- the SAME mechanism
+    and SAME "downstream from the pipeline's true source" semantics the
+    existing greeting already uses (see _on_connected_greeting above), and
+    the SAME "spoken text, then EndFrame" shape pipecat's own flows/
+    actions.py uses for its built-in end_conversation action with an
+    optional goodbye message -- not a new pattern invented for this
+    feature. EndFrame is a control frame ("received in the order it was
+    sent" -- see pipecat's own EndFrame docstring), so the phrase is
+    guaranteed to reach TTS before the EndFrame reaches the sink and
+    triggers on_pipeline_finished; nothing in this function needs to wait
+    for the audio to finish playing itself, only queue the two frames in
+    the right order.
+
+    append_to_context=False, matching the greeting's own reasoning: this
+    phrase is not part of the guest's actual conversation with Mira and
+    must never be replayed/paraphrased by the LLM on a hypothetical future
+    turn (there is no future turn -- the EndFrame right behind it ends the
+    pipeline), so it has no reason to enter context.messages at all.
+    """
+    try:
+        await wait_for_handoff_request(call_session_id)
+    except asyncio.CancelledError:
+        raise
+    logger.info("host_handoff_triggered call_session_id=%s", call_session_id)
+    await worker.queue_frame(TTSSpeakFrame(_HOST_HANDOFF_PHRASE, append_to_context=False))
+    await worker.queue_frame(EndFrame(reason=_HOST_HANDOFF_END_REASON))
 
 
 async def _run_pipeline_inner(
@@ -559,6 +777,7 @@ async def _run_pipeline_inner(
     exotel_call_id: str | None = None,
     ringing_audio_task: asyncio.Task | None = None,
     voice_gender: str = "female",
+    handoff_outcome: _HandoffOutcome | None = None,
 ) -> None:
     stt = _ReconnectingSarvamSTTService(
         api_key=settings.sarvam_api_key,
@@ -833,13 +1052,72 @@ async def _run_pipeline_inner(
             # silent line because nothing was telling Exotel's platform the
             # call itself should end. Never for browser test calls
             # (exotel_call_id is None there -- no real telephony call to
-            # hang up), and never allowed to break the rest of teardown
-            # below if Exotel's API call fails.
-            if exotel_call_id:
-                try:
-                    await exotel_client.hangup_call(exotel_call_id)
-                except Exception:
-                    logger.exception("Failed to hang up Exotel call %s", exotel_call_id)
+            # hang up).
+            #
+            # Fired as a detached task, NOT awaited, deliberately: this
+            # handler runs synchronously inside the pipeline worker's own
+            # EndFrame drain (worker.py's _sink_push_frame awaits
+            # on_pipeline_finished directly), so awaiting hangup_call's real
+            # httpx round trip to Exotel's REST API here gated the entire
+            # pipeline/sink teardown on Exotel's API latency -- confirmed as
+            # the source of a 2-3s caller-perceived delay after the final
+            # TTS audio had already finished playing (BotStoppedSpeakingFrame
+            # had already fired; the wait was purely for this HTTP call).
+            # There is nothing below in this handler that depends on the
+            # hangup having completed, so detaching it changes only when the
+            # REST call fires relative to teardown bookkeeping, never
+            # whether it fires, and never cuts off audio (which is already
+            # gated upstream in silence_watchdog.py on BotStoppedSpeakingFrame,
+            # not touched here). A failure is logged from inside the task,
+            # same as before -- it never propagates back into this handler.
+            #
+            # Lifecycle safety, traced against pipecat 1.6.0's actual
+            # WorkerRunner/TaskManager (see venv/.../pipecat/workers/runner.py
+            # and .../pipecat/utils/asyncio/task_manager.py): neither
+            # WorkerRunner._cancel_spawned_tasks() (only cancels each worker's
+            # own registered runner_task) nor TaskManager.cleanup() (only
+            # tracks tasks created through ITS OWN create_task(), which this
+            # bare asyncio.create_task() call never goes through) has any way
+            # to see or cancel this task -- pipeline/sink teardown proceeding
+            # in parallel cannot reach in and cancel it. The one real risk is
+            # a plain Python/asyncio footgun, not a pipecat one: a Task with
+            # no surviving reference is eligible for GC before it completes
+            # (see asyncio.create_task's own docs). _spawn_background_task
+            # (module-level, above) closes that by holding a strong reference
+            # in _background_tasks for the task's entire lifetime.
+            #
+            # Phase 7 exception, and the ONLY one: an intentional host
+            # handoff must NOT hang up the underlying Exotel call -- the
+            # whole point is letting Exotel's own flow continue past the
+            # Voicebot applet to the existing Next Applet (Connect), which
+            # can only happen if the PSTN leg stays alive. Set by the
+            # handoff-listener task below, immediately before it queues
+            # this same EndFrame with reason=_HOST_HANDOFF_END_REASON --
+            # _is_host_handoff_frame reads frame.reason (rather than a
+            # separate flag) so this check uses the exact same signal
+            # pipecat itself already threaded through to this handler, not
+            # a second parallel channel that could drift out of sync with
+            # it. See that function's own docstring for why it's a
+            # standalone, directly unit-testable function.
+            is_host_handoff = _is_host_handoff_frame(frame)
+            if handoff_outcome is not None:
+                # Communicates this same decision out to _run_pipeline's own
+                # finally block (see _HandoffOutcome's own docstring) -- set
+                # unconditionally to whatever this handler determined, not
+                # just when True, so a call that reaches this handler
+                # normally (the overwhelming majority) explicitly confirms
+                # is_host_handoff stays False rather than relying on the
+                # dataclass default alone.
+                handoff_outcome.is_host_handoff = is_host_handoff
+            if exotel_call_id and not is_host_handoff:
+                logger.info("call_hangup_requested call_id=%s", exotel_call_id)
+                _spawn_background_task(_hangup_exotel_call(exotel_call_id))
+            elif is_host_handoff:
+                logger.info(
+                    "call_hangup_skipped_for_host_handoff call_id=%s call_session_id=%s",
+                    exotel_call_id,
+                    call_session_id,
+                )
 
             transcript = "\n".join(
                 f"{message.get('role')}: {message.get('content')}"
@@ -848,7 +1126,29 @@ async def _run_pipeline_inner(
                 and message.get("content") is not None  # skip tool-call turns (content=null)
             )
             async with AsyncSessionLocal() as finalize_db:
-                finalized_session = await call_service.finalize_call_session(finalize_db, call_session_id, transcript)
+                # Phase 8 fix: finalize_call_session defaults status to
+                # "completed" -- correct for every normal end, but WRONG for
+                # an intentional host handoff, where the guest's call is
+                # still live and about to be connected to the host via
+                # Exotel's own Connect applet. Without this override,
+                # exotel_connect_routing's own _ACTIVE_CALL_STATUSES check
+                # (webhooks/exotel.py) would see status="completed" for
+                # every single handoff and refuse to route it -- confirmed
+                # by re-tracing this exact call sequence during the Phase 8
+                # review: this bug made the live-handoff feature entirely
+                # non-functional end-to-end despite passing its own tests
+                # (those tests construct a CallSession with status=
+                # "in_progress" directly and never exercise this real
+                # on_pipeline_finished -> finalize_call_session path).
+                # "in_progress" is the correct value here, not a new status
+                # string: it's the same value _ACTIVE_CALL_STATUSES already
+                # checks for, and analytics.py's own "completed" call counts
+                # (app/api/v1/analytics.py) should not count a call that
+                # hasn't actually ended yet from the guest's perspective.
+                finalize_status = "in_progress" if is_host_handoff else "completed"
+                finalized_session = await call_service.finalize_call_session(
+                    finalize_db, call_session_id, transcript, status=finalize_status
+                )
 
                 duration_seconds = None
                 if finalized_session is not None and finalized_session.started_at and finalized_session.ended_at:
@@ -994,9 +1294,44 @@ async def _run_pipeline_inner(
             except asyncio.CancelledError:
                 pass
 
-        runner = WorkerRunner()
-        await runner.add_workers(worker)
-        await runner.run()
+        # Phase 7: only real property calls are ever reachable via Take
+        # Call (a Lead Agent call has no single property_id -- Phase 5's
+        # guest_calling_notification is scoped the same way, never fired
+        # for property_id=None; see that module's own pipeline.py call
+        # sites). Registering a Lead Agent or browser-test call here would
+        # just be a registry entry nothing could ever legitimately signal
+        # -- not harmful, but not reused elsewhere in this codebase's
+        # pattern of only allocating state a call can actually use.
+        handoff_registered = property_id is not None
+        handoff_listener_task: asyncio.Task | None = None
+        if handoff_registered:
+            register_call(call_session_id)
+            handoff_listener_task = asyncio.create_task(
+                _wait_and_trigger_handoff(worker, call_session_id)
+            )
+
+        try:
+            runner = WorkerRunner()
+            await runner.add_workers(worker)
+            await runner.run()
+        finally:
+            # Mirrors the ringing-tone task's own cancel-and-await
+            # discipline immediately above -- this task must never outlive
+            # the pipeline it was watching on behalf of, regardless of
+            # which of the many ways _run_pipeline_inner's own control flow
+            # could reach this point (normal end, caller hangup, an
+            # exception from runner.run() itself). Already-finished (the
+            # handoff fired and this task's own queue_frame calls already
+            # returned) is the common case and .cancel() on a done task is
+            # a safe no-op.
+            if handoff_listener_task is not None and not handoff_listener_task.done():
+                handoff_listener_task.cancel()
+                try:
+                    await handoff_listener_task
+                except asyncio.CancelledError:
+                    pass
+            if handoff_registered:
+                unregister_call(call_session_id)
 
 
 async def _reject_call_as_busy(
@@ -1014,6 +1349,7 @@ async def _reject_call_as_busy(
     is new behavior -- same steps, same order, same fail-open exception
     handling as before this was extracted.
     """
+    logger.info("busy_recovery_started call_id=%s", exotel_call_id)
     if ringing_audio_task is not None:
         ringing_audio_task.cancel()
         try:
@@ -1023,6 +1359,7 @@ async def _reject_call_as_busy(
     if call_data.stream_id:
         await play_busy_message(websocket, call_data.stream_id)
     if exotel_call_id:
+        logger.info("busy_recovery_hangup call_id=%s", exotel_call_id)
         try:
             await exotel_client.hangup_call(exotel_call_id)
         except Exception:
@@ -1169,6 +1506,18 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
                     guest_profile_id=guest.id if guest else None,
                     caller_number=caller_number,
                     user_id=property_.user_id,
+                )
+                # Phase 5: "guest is calling Mira" host notification --
+                # fired detached, its own DB session (this one is tied to
+                # the live call's websocket lifetime), never awaited so a
+                # slow/misconfigured WhatsApp send can't add latency to the
+                # guest's call. See guest_calling_notification.py's own
+                # docstring for the full reasoning (re-checks MIRA
+                # ownership itself, idempotent per call_session_id).
+                asyncio.create_task(
+                    guest_calling_notification.maybe_notify_guest_calling(
+                        property_.id, session.id, caller_number
+                    )
                 )
                 verified_faq_entries = await faq_service.list_verified_property_faq(db, property_.id)
                 system_prompt = build_system_prompt(
@@ -1383,6 +1732,13 @@ async def run_voice_pipeline_twilio(websocket: WebSocket, call_data: CallData) -
                     guest_profile_id=guest.id if guest else None,
                     caller_number=caller_number,
                     user_id=property_.user_id,
+                )
+                # Phase 5: same "guest is calling Mira" notification as the
+                # Exotel path above -- see that call site's comment.
+                asyncio.create_task(
+                    guest_calling_notification.maybe_notify_guest_calling(
+                        property_.id, session.id, caller_number
+                    )
                 )
                 verified_faq_entries = await faq_service.list_verified_property_faq(db, property_.id)
                 system_prompt = build_system_prompt(
