@@ -12,8 +12,14 @@ export function cn(...inputs: ClassValue[]) {
 // of five copies drifting apart. Only meaningful over something worth
 // blurring (the page's own gradient mesh); other consumers of these
 // components leave `glass` unset and stay fully opaque.
+//
+// Base tint is card color with a little foreground (ink) mixed in before
+// the transparency is applied -- straight bg-card/NN can only ever get
+// lighter as opacity drops (there's nothing dark behind it in this warm
+// palette to reveal), so darkening the *color itself* is what actually
+// reads as "darker glass" rather than just "more/less see-through".
 export const glassCardClassName =
-  "bg-card/55 ring-1 ring-white/60 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_1px_2px_rgba(42,36,32,0.04)]"
+  "bg-[color-mix(in_oklch,color-mix(in_oklch,var(--card)_88%,var(--foreground)_12%)_58%,transparent)] ring-1 ring-white/50 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_1px_2px_rgba(42,36,32,0.06)]"
 
 // Matches app/services/call_service.py's BROWSER_TEST_CALLER_NUMBER -- the
 // placeholder caller identity used by the dashboard's "test in browser"

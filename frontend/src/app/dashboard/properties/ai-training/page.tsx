@@ -46,7 +46,7 @@ export default function AiTrainingPage() {
 
   if (loading) {
     return (
-      <div className="space-y-8">
+      <div className="space-y-6">
         <div>
           <h1 className="page-title">AI Training</h1>
           <p className="text-sm text-muted-foreground">Voice agent personalization and negotiation policy</p>

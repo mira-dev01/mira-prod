@@ -69,8 +69,13 @@ export default function OverviewPage() {
         glassCardClassName
       )}
       style={{
+        // Retuned darker/less orange: accent-warm (mustard) blobs cut
+        // roughly in half so they read as a hint, not the dominant hue;
+        // a wide, faint --foreground wash added underneath everything for
+        // depth (this is what actually darkens it -- the color blobs alone
+        // can only add hue, not reduce lightness).
         backgroundImage:
-          "radial-gradient(50% 40% at 10% 6%, color-mix(in oklch, var(--accent-warm) 24%, transparent), transparent 70%), radial-gradient(45% 35% at 90% 4%, color-mix(in oklch, var(--primary) 14%, transparent), transparent 70%), radial-gradient(40% 30% at 52% 28%, color-mix(in oklch, var(--chart-2) 14%, transparent), transparent 70%), radial-gradient(40% 30% at 22% 70%, color-mix(in oklch, var(--accent-warm) 10%, transparent), transparent 70%), radial-gradient(45% 35% at 82% 88%, color-mix(in oklch, var(--primary) 8%, transparent), transparent 70%)",
+          "radial-gradient(70% 60% at 50% 50%, color-mix(in oklch, var(--foreground) 5%, transparent), transparent 80%), radial-gradient(50% 40% at 10% 6%, color-mix(in oklch, var(--accent-warm) 12%, transparent), transparent 70%), radial-gradient(45% 35% at 90% 4%, color-mix(in oklch, var(--primary) 13%, transparent), transparent 70%), radial-gradient(40% 30% at 52% 28%, color-mix(in oklch, var(--chart-2) 13%, transparent), transparent 70%), radial-gradient(40% 30% at 22% 70%, color-mix(in oklch, var(--accent-warm) 5%, transparent), transparent 70%), radial-gradient(45% 35% at 82% 88%, color-mix(in oklch, var(--primary) 7%, transparent), transparent 70%)",
       }}
     >
       <div

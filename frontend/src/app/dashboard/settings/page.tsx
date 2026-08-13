@@ -22,7 +22,7 @@ type SettingsTab = (typeof VALID_TABS)[number];
 function ComingSoonTab({ icon: Icon, label }: { icon: React.ComponentType<{ className?: string }>; label: string }) {
   return (
     <Card className="max-w-md">
-      <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
+      <CardContent className="flex flex-col items-center gap-3 py-8 text-center">
         <span className="flex size-10 items-center justify-center rounded-full bg-muted">
           <Icon className="size-5 text-muted-foreground" />
         </span>

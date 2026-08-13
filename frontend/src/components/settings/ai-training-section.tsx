@@ -220,7 +220,7 @@ export function AiTrainingSection() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="font-heading text-lg font-medium">AI Negotiation Training</h2>
+        <h2 className="font-heading text-base leading-snug font-medium">AI Negotiation Training</h2>
         <p className="text-sm text-muted-foreground">
           Teach Mira how to negotiate -- discounts, minimum stays, and fees -- and review anything she&apos;s
           learned before it goes live.
@@ -233,11 +233,8 @@ export function AiTrainingSection() {
             <CardHeader>
               <CardTitle>Negotiation policy</CardTitle>
               <CardDescription>
-                Describe how you handle discounts, minimum stays, and fees, in your own words -- e.g. &quot;If a
-                guest doesn&apos;t ask, I keep the price as offered. If they ask for a discount, I offer 5%.
-                Repeat guests across my properties get 8%. Saturdays need a 2-night minimum. Early check-in is an
-                extra 1,500 rupees.&quot; Mira will turn this into specific rules below for you to review and
-                approve -- nothing changes until you approve it.
+                Describe how you handle discounts, minimum stays, and fees, in your own words. Mira turns this into
+                specific rules for you to review below -- nothing changes until you approve it.
               </CardDescription>
             </CardHeader>
             <CardContent>

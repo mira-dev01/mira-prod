@@ -144,7 +144,7 @@ export default function CallDetailPage() {
                         : "bg-[var(--status-orange)] text-white"
                     )}
                   >
-                    <p className="mb-0.5 text-[0.7rem] font-medium opacity-70">
+                    <p className="mb-0.5 text-xs font-medium opacity-70">
                       {turn.role === "mira" ? "Mira" : isTest ? "Browser test" : call.guest_name ?? "Guest"}
                     </p>
                     {turn.text}

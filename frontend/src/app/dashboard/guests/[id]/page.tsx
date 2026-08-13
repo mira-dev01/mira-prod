@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { Plus, Trash2, UserRound } from "lucide-react";
+import { BedDouble, Languages, Phone, Plus, Trash2, UserRound, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ListRow, ListRowHeader } from "@/components/ui/list-row";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StatCard } from "@/components/stat-card";
 import { StatusChip, type StatusTone } from "@/components/status-chip";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError } from "@/lib/api";
@@ -30,6 +31,10 @@ const callStatusTone: Record<string, StatusTone> = {
   failed: "destructive",
   missed: "destructive",
 };
+
+function capitalize(value: string): string {
+  return value.length === 0 ? value : value[0].toUpperCase() + value.slice(1);
+}
 
 function guestInitials(name: string | null): string | null {
   const trimmed = name?.trim();
@@ -133,24 +138,18 @@ export default function GuestProfilePage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-lg border bg-card p-4">
-          <p className="text-xs text-muted-foreground">Total stays</p>
-          <p className="text-2xl font-semibold">{detail.total_stays}</p>
-        </div>
-        <div className="rounded-lg border bg-card p-4">
-          <p className="text-xs text-muted-foreground">Lifetime revenue</p>
-          <p className="text-2xl font-semibold">₹{detail.lifetime_revenue.toLocaleString("en-IN")}</p>
-        </div>
-        <div className="rounded-lg border bg-card p-4">
-          <p className="text-xs text-muted-foreground">Preferred language</p>
-          <p className="text-2xl font-semibold capitalize">{detail.preferred_language ?? "—"}</p>
-        </div>
-        <div className="rounded-lg border bg-card p-4">
-          <p className="text-xs text-muted-foreground">Last call</p>
-          <p className="text-2xl font-semibold">
-            {detail.last_call_at ? new Date(detail.last_call_at).toLocaleDateString() : "—"}
-          </p>
-        </div>
+        <StatCard icon={BedDouble} label="Total stays" value={detail.total_stays} />
+        <StatCard icon={Wallet} label="Lifetime revenue" value={`₹${detail.lifetime_revenue.toLocaleString("en-IN")}`} />
+        <StatCard
+          icon={Languages}
+          label="Preferred language"
+          value={detail.preferred_language ? capitalize(detail.preferred_language) : undefined}
+        />
+        <StatCard
+          icon={Phone}
+          label="Last call"
+          value={detail.last_call_at ? new Date(detail.last_call_at).toLocaleDateString() : undefined}
+        />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -241,10 +240,7 @@ export default function GuestProfilePage() {
             </CardHeader>
             <CardContent className="space-y-3">
               {prefEntries.length === 0 && (
-                <p className="text-sm text-muted-foreground">
-                  No preferences recorded yet — add what this guest likes (room type, floor,
-                  dietary needs, etc.) so future stays can be tailored automatically.
-                </p>
+                <p className="text-sm text-muted-foreground">No preferences recorded yet.</p>
               )}
               {prefEntries.map((entry, i) => (
                 <div key={i} className="flex items-center gap-2">

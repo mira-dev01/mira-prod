@@ -203,7 +203,7 @@ function LeadCard({
           ) : (
             <span />
           )}
-          <span className="whitespace-nowrap text-[11px] text-muted-foreground">{leadReceivedLabel(lead)}</span>
+          <span className="whitespace-nowrap text-xs text-muted-foreground">{leadReceivedLabel(lead)}</span>
         </div>
         {onMarkHot && isReadyForHotLead(lead) && (
           <Button
