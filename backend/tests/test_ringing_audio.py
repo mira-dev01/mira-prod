@@ -115,7 +115,12 @@ async def test_busy_message_plays_once_and_returns_without_looping():
     await play_busy_message(ws, "stream-busy")
 
     frames_in_clip = len(range(0, len(_BUSY_MESSAGE_PCM), _CHUNK_BYTES))
-    assert len(ws.sent) == frames_in_clip
+    # TEMPORARY (Phase 6 diagnostic scaffolding, 2026-08-12, uncommitted):
+    # play_busy_message now also sends one trailing Exotel "mark" event
+    # after the media frames -- +1 to the expected count. Remove this +1
+    # (and this comment) along with the rest of the scaffolding once the
+    # chunk-size A/B test concludes.
+    assert len(ws.sent) == frames_in_clip + 1
 
 
 async def test_busy_message_frames_are_well_formed_exotel_media_events():
@@ -335,3 +340,49 @@ async def test_stream_pcm_does_not_accumulate_drift_under_send_latency(monkeypat
     # (40% over nominal) -- deadline-based pacing keeps total elapsed time
     # close to the clip's real duration regardless of per-chunk send cost.
     assert elapsed < nominal_duration * 1.15
+
+
+def test_resolve_test_chunk_bytes_falls_back_instead_of_raising_on_invalid_value(monkeypatch):
+    # Regression: _resolve_test_chunk_bytes runs at MODULE IMPORT time, and
+    # ringing_audio is imported transitively by app/main.py itself (main ->
+    # app.api.v1 -> voice.py -> pipeline.py -> ringing_audio.py). An earlier
+    # version of this function raised ValueError for an out-of-range value --
+    # confirmed live, that crashed the ENTIRE backend process on boot for a
+    # single typo'd env var, taking down every call type, not just busy
+    # calls. Must log and fall back to the safe default instead.
+    monkeypatch.setenv("BUSY_AUDIO_TEST_CHUNK_BYTES", "999")
+    assert ringing_audio._resolve_test_chunk_bytes() == ringing_audio._CHUNK_BYTES
+
+
+def test_resolve_test_chunk_bytes_falls_back_instead_of_raising_on_non_integer(monkeypatch):
+    monkeypatch.setenv("BUSY_AUDIO_TEST_CHUNK_BYTES", "not-a-number")
+    assert ringing_audio._resolve_test_chunk_bytes() == ringing_audio._CHUNK_BYTES
+
+
+def test_resolve_test_chunk_bytes_accepts_every_supported_value(monkeypatch):
+    for value in (320, 640, 1600, 3200):
+        monkeypatch.setenv("BUSY_AUDIO_TEST_CHUNK_BYTES", str(value))
+        assert ringing_audio._resolve_test_chunk_bytes() == value
+
+
+def test_resolve_test_chunk_bytes_defaults_when_unset(monkeypatch):
+    monkeypatch.delenv("BUSY_AUDIO_TEST_CHUNK_BYTES", raising=False)
+    assert ringing_audio._resolve_test_chunk_bytes() == ringing_audio._CHUNK_BYTES
+
+
+async def test_busy_message_mark_event_uses_camel_case_stream_sid_field():
+    # Regression: an earlier version of the mark event used "stream_sid"
+    # (snake_case), inconsistent with every other outbound event this
+    # module and pipecat's own ExotelFrameSerializer send ("streamSid",
+    # camelCase) -- Exotel's wire convention is asymmetric (inbound start
+    # event uses snake_case, every outbound event uses camelCase), so the
+    # wrong-case field would very likely be silently ignored by Exotel.
+    ws = _FakeWebSocket()
+
+    await play_busy_message(ws, "case-test-sid")
+
+    mark_messages = [json.loads(m) for m in ws.sent if json.loads(m).get("event") == "mark"]
+    assert len(mark_messages) == 1
+    assert "streamSid" in mark_messages[0]
+    assert mark_messages[0]["streamSid"] == "case-test-sid"
+    assert "stream_sid" not in mark_messages[0]

@@ -54,6 +54,8 @@ import asyncio
 import base64
 import json
 import logging
+import os
+import time
 import wave
 from pathlib import Path
 
@@ -87,6 +89,72 @@ _CHUNK_DURATION_S = 0.02
 _SAMPLE_RATE = 8000
 _SAMPLE_WIDTH = 2
 _CHUNK_BYTES = int(_SAMPLE_RATE * _CHUNK_DURATION_S) * _SAMPLE_WIDTH
+
+# ============================================================================
+# TEMPORARY DIAGNOSTIC SCAFFOLDING -- Phase 6 live Exotel chunk-size A/B test
+# (2026-08-12). NOT part of the permanent architecture. Uncommitted; must be
+# removed once the test matrix is complete and a production decision is made.
+# Affects ONLY play_busy_message's own chunk size -- play_ringing_tone (the
+# normal-call setup path) is completely untouched, still always uses the
+# fixed 320-byte/_CHUNK_BYTES constant above, regardless of this env var.
+#
+# BUSY_AUDIO_TEST_CHUNK_BYTES: optional override for the busy-message chunk
+# size only. Absent/unset => existing 320-byte behavior, byte-for-byte
+# unchanged from before this scaffolding existed. Only exact multiples of
+# 320 that evenly divide Exotel's documented safe range are accepted (320,
+# 640, 1600, 3200); anything else is rejected at import time (fails loudly,
+# not a silent fallback to a wrong value) so a typo in the env var can't
+# silently run the wrong test.
+_BUSY_AUDIO_TEST_CHUNK_BYTES_ALLOWED = (320, 640, 1600, 3200)
+
+
+def _resolve_test_chunk_bytes() -> int:
+    """Never raises: this runs at MODULE IMPORT time, and this module is
+    imported transitively by app/main.py itself (main -> app.api.v1 ->
+    voice.py -> pipeline.py -> ringing_audio.py) -- an earlier version of
+    this function raised ValueError for an invalid env var, which meant a
+    single typo'd BUSY_AUDIO_TEST_CHUNK_BYTES value would crash the ENTIRE
+    backend process on boot, taking down every call type (not just busy
+    calls), directly violating this scaffolding's own "must not affect
+    normal calls" constraint. Logs loudly and falls back to the safe
+    existing default (_CHUNK_BYTES, 320) instead."""
+    raw = os.environ.get("BUSY_AUDIO_TEST_CHUNK_BYTES")
+    if raw is None:
+        return _CHUNK_BYTES
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.error(
+            "BUSY_AUDIO_TEST_CHUNK_BYTES=%r is not an integer -- "
+            "must be one of %s or unset. Falling back to the default (%d).",
+            raw,
+            _BUSY_AUDIO_TEST_CHUNK_BYTES_ALLOWED,
+            _CHUNK_BYTES,
+        )
+        return _CHUNK_BYTES
+    if value not in _BUSY_AUDIO_TEST_CHUNK_BYTES_ALLOWED:
+        logger.error(
+            "BUSY_AUDIO_TEST_CHUNK_BYTES=%d is not one of the supported test values %s -- "
+            "falling back to the default (%d) rather than guessing.",
+            value,
+            _BUSY_AUDIO_TEST_CHUNK_BYTES_ALLOWED,
+            _CHUNK_BYTES,
+        )
+        return _CHUNK_BYTES
+    return value
+
+
+# Resolved once at import time, same lifecycle as every other module-level
+# constant here -- a mid-process env var change was never supported by this
+# module for anything else either (_SAMPLE_RATE, _CHUNK_BYTES, etc. are all
+# import-time constants too).
+_BUSY_AUDIO_TEST_CHUNK_BYTES = _resolve_test_chunk_bytes()
+# chunk_duration = chunk_bytes / (sample_rate * channels * bytes_per_sample)
+# -- exactly the formula requested, derived (not hardcoded per chunk size)
+# so the deadline-pacing math below stays correct for whichever value is
+# selected: 320->20ms, 640->40ms, 1600->100ms, 3200->200ms.
+_BUSY_AUDIO_TEST_CHUNK_DURATION_S = _BUSY_AUDIO_TEST_CHUNK_BYTES / (_SAMPLE_RATE * 1 * _SAMPLE_WIDTH)
+# ============================================================================
 
 
 class _UnexpectedWavFormat(ValueError):
@@ -148,7 +216,15 @@ except (FileNotFoundError, wave.Error, _UnexpectedWavFormat) as exc:
     _BUSY_MESSAGE_PCM = _load_pcm("busy_message_8000.wav")
 
 
-async def _stream_pcm(websocket: WebSocket, stream_sid: str, pcm: bytes) -> None:
+async def _stream_pcm(
+    websocket: WebSocket,
+    stream_sid: str,
+    pcm: bytes,
+    *,
+    chunk_bytes: int = _CHUNK_BYTES,
+    chunk_duration_s: float = _CHUNK_DURATION_S,
+    on_chunk_sent=None,
+) -> None:
     """Writes one pass of `pcm` to `websocket` as real-time-paced Exotel
     media-event chunks. The one place both playback modes below encode
     Exotel's wire format and pace chunks -- see module docstring.
@@ -173,17 +249,36 @@ async def _stream_pcm(websocket: WebSocket, stream_sid: str, pcm: bytes) -> None
     a NEGATIVE amount) keeps drift from accumulating: a late chunk sleeps
     less to catch back up, instead of every later chunk inheriting the
     previous one's lateness on top of its own.
+
+    chunk_bytes/chunk_duration_s/on_chunk_sent: TEMPORARY Phase 6 diagnostic
+    parameters (2026-08-12), all defaulting to the pre-existing fixed
+    behavior -- play_ringing_tone's call site below passes none of these,
+    so it is byte-for-byte unaffected. Only play_busy_message threads
+    through the (possibly env-var-overridden) test chunk size/duration and
+    an optional per-chunk diagnostic callback. Remove this parameterization
+    once the chunk-size A/B test is complete.
     """
     loop = asyncio.get_running_loop()
     start = loop.time()
     chunk_index = 0
-    for offset in range(0, len(pcm), _CHUNK_BYTES):
-        chunk = pcm[offset : offset + _CHUNK_BYTES]
+    for offset in range(0, len(pcm), chunk_bytes):
+        chunk = pcm[offset : offset + chunk_bytes]
         payload = base64.b64encode(chunk).decode("ascii")
         message = {"event": "media", "streamSid": stream_sid, "media": {"payload": payload}}
+        scheduled_elapsed = chunk_index * chunk_duration_s
+        send_start = loop.time()
         await websocket.send_text(json.dumps(message))
+        send_end = loop.time()
+        if on_chunk_sent is not None:
+            on_chunk_sent(
+                chunk_index=chunk_index,
+                chunk_bytes=len(chunk),
+                scheduled_elapsed_s=scheduled_elapsed,
+                actual_elapsed_s=send_end - start,
+                send_latency_s=send_end - send_start,
+            )
         chunk_index += 1
-        target_time = start + chunk_index * _CHUNK_DURATION_S
+        target_time = start + chunk_index * chunk_duration_s
         remaining = target_time - loop.time()
         if remaining > 0:
             await asyncio.sleep(remaining)
@@ -221,10 +316,97 @@ async def play_busy_message(websocket: WebSocket, stream_sid: str) -> None:
     No network call, no TTS, no LLM -- see module docstring. Best-effort,
     same as play_ringing_tone: a failed/partial play is never worth raising
     into the caller, which still needs to hang up the call either way.
+
+    TEMPORARY Phase 6 diagnostic (2026-08-12): chunk size/duration are read
+    from BUSY_AUDIO_TEST_CHUNK_BYTES (see _resolve_test_chunk_bytes above)
+    instead of the fixed module constants, purely to support the live
+    Exotel chunk-size A/B test -- absent/unset, behavior is byte-for-byte
+    identical to before this scaffolding existed. Diagnostic logs below are
+    metadata only (byte counts, timing, hashes) -- never PCM, base64
+    payloads, phone numbers, or transcripts.
     """
+    total_pcm_bytes = len(_BUSY_MESSAGE_PCM)
+    chunk_count = len(range(0, total_pcm_bytes, _BUSY_AUDIO_TEST_CHUNK_BYTES))
+    expected_duration_s = chunk_count * _BUSY_AUDIO_TEST_CHUNK_DURATION_S
+
+    logger.info(
+        "busy_audio_started stream_sid=%s busy_audio_test_chunk_bytes=%d sample_rate=%d "
+        "total_pcm_bytes=%d expected_duration_s=%.3f chunk_count=%d",
+        stream_sid,
+        _BUSY_AUDIO_TEST_CHUNK_BYTES,
+        _SAMPLE_RATE,
+        total_pcm_bytes,
+        expected_duration_s,
+        chunk_count,
+    )
     logger.info("busy_recovery_audio_started stream_sid=%s", stream_sid)
+
+    first_sent_wall_time = None
+    last_sent_wall_time = None
+
+    def _on_chunk_sent(chunk_index, chunk_bytes, scheduled_elapsed_s, actual_elapsed_s, send_latency_s):
+        nonlocal first_sent_wall_time, last_sent_wall_time
+        now = time.monotonic()
+        if first_sent_wall_time is None:
+            first_sent_wall_time = now
+            logger.info("first_media_sent stream_sid=%s", stream_sid)
+        last_sent_wall_time = now
+        if chunk_index < 3 or chunk_index == chunk_count - 1:
+            logger.debug(
+                "busy_audio_chunk stream_sid=%s chunk_index=%d chunk_bytes=%d "
+                "scheduled_elapsed_s=%.4f actual_elapsed_s=%.4f send_latency_s=%.4f",
+                stream_sid,
+                chunk_index,
+                chunk_bytes,
+                scheduled_elapsed_s,
+                actual_elapsed_s,
+                send_latency_s,
+            )
+
     try:
-        await _stream_pcm(websocket, stream_sid, _BUSY_MESSAGE_PCM)
+        await _stream_pcm(
+            websocket,
+            stream_sid,
+            _BUSY_MESSAGE_PCM,
+            chunk_bytes=_BUSY_AUDIO_TEST_CHUNK_BYTES,
+            chunk_duration_s=_BUSY_AUDIO_TEST_CHUNK_DURATION_S,
+            on_chunk_sent=_on_chunk_sent,
+        )
+        logger.info("last_media_sent stream_sid=%s", stream_sid)
+        if first_sent_wall_time is not None and last_sent_wall_time is not None:
+            logger.info(
+                "busy_audio_elapsed stream_sid=%s actual_elapsed_duration_s=%.3f",
+                stream_sid,
+                last_sent_wall_time - first_sent_wall_time,
+            )
+
+        # Optional Exotel "mark" event (Phase 6 Section 6) -- sent, never
+        # awaited-for-receipt: this raw-websocket busy path has never read
+        # inbound messages (no websocket.receive() call exists anywhere on
+        # this path, confirmed before adding this), and adding a concurrent
+        # receive-loop here would be exactly the kind of call-lifecycle
+        # complication the investigation was told to avoid introducing.
+        # Fire-and-forget, matches this whole module's existing "never let
+        # playback machinery block/risk the hangup that follows" discipline.
+        try:
+            mark_name = f"busy-audio-test-{_BUSY_AUDIO_TEST_CHUNK_BYTES}"
+            await websocket.send_text(
+                # streamSid (camelCase), NOT stream_sid -- matches this
+                # module's own "media" event above and pipecat's own
+                # ExotelFrameSerializer's "media"/"clear" events exactly.
+                # Exotel's wire convention is asymmetric: INBOUND events
+                # (its own "start" event) use stream_sid (snake_case,
+                # confirmed via pipecat's parse_telephony_websocket), but
+                # every OUTBOUND event this codebase sends uses camelCase --
+                # an earlier version of this line used stream_sid here,
+                # which would very likely have been silently ignored by
+                # Exotel as an unrecognized field.
+                json.dumps({"event": "mark", "streamSid": stream_sid, "mark": {"name": mark_name}})
+            )
+            logger.info("busy_audio_mark_sent stream_sid=%s mark_name=%s", stream_sid, mark_name)
+        except Exception:
+            logger.warning("busy_audio_mark_sent failed (non-fatal, diagnostic only)", exc_info=True)
+
         logger.info("busy_recovery_audio_completed stream_sid=%s", stream_sid)
     except asyncio.CancelledError:
         raise
