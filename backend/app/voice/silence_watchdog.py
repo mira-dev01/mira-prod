@@ -19,10 +19,64 @@ on the guest hanging up their end.
 SilenceWatchdogProcessor sits between stt and language_sync (see
 app/voice/pipeline.py) so it sees every TranscriptionFrame plus the upstream
 copy of BotStoppedSpeakingFrame that base_output.py always pushes once TTS
-audio finishes draining. It ignores blank/whitespace-only transcripts
-entirely (they never reset the timer or count as a real reply), nudges the
-guest once per timeout with a spoken prompt, and ends the call after the
-second consecutive nudge goes unanswered.
+audio finishes draining.
+
+Phase 5D (documentation/agent-conversation-improvement.md) rewrote what
+"the guest responded" actually means. Phases 5A-5C established that a plain
+non-blank TranscriptionFrame is too weak a signal -- Exotel's mono audio
+means a background/bystander utterance produces a TranscriptionFrame
+indistinguishable, at that layer, from a genuine guest reply, so resetting
+the nudge cycle on any transcript let a background-noisy, truly-unresponsive
+call defer its own hangup indefinitely (Phase 5A/5C's own characterization
+tests). Phase 5D found the fix was NOT a new classifier or a shorter timeout,
+but a WIRING BUG: pipecat 1.6.0 moved `vad_analyzer` from `TransportParams`
+to `LLMUserAggregatorParams`, and this codebase was still passing it to the
+transport, where Pydantic's default extra="ignore" silently dropped it with
+no error -- local VAD-driven turn detection was dead in the live pipeline
+before this phase (see app/voice/pipeline.py's _VAD_PARAMS comment for the
+full story). With that fixed, pipecat's own LLMUserAggregator broadcasts two
+much stronger, already-built signals UPSTREAM to this processor's position:
+
+- UserStartedSpeakingFrame: fires the moment VAD confirms the guest began
+  speaking (confirmed directly by tracing pipecat's own
+  VADUserTurnStartStrategy/TranscriptionUserTurnStartStrategy). Used here to
+  CANCEL the pending nudge timer the instant the guest starts talking, so a
+  nudge can never fire mid-utterance and interrupt them (Phase 5D's own
+  "guest actively speaking" requirement) -- confirmed empirically during this
+  phase's investigation that this frame reaches this processor's pipeline
+  position once the VAD wiring bug above is fixed.
+- UserStoppedSpeakingFrame: fires ONLY once pipecat's own turn-stop strategy
+  (SpeechTimeoutUserTurnStopStrategy, wait_for_transcript=True by default)
+  has confirmed BOTH that VAD detected the guest stop speaking AND that a
+  non-empty transcript actually arrived for that utterance -- confirmed
+  directly, by tracing pipecat's own aggregator source, that a pure VAD-stop
+  with zero transcript (ambient noise, a mic click, breathing) never
+  produces this frame at all. This is the real "meaningful guest turn
+  completed" boundary Phase 5D asked for -- structurally stronger than "any
+  non-blank TranscriptionFrame", and reused from pipecat's own machinery
+  rather than reinvented here.
+
+The strike counter (_prompts_sent) now resets ONLY on UserStoppedSpeakingFrame
+(a genuinely completed turn), not on raw TranscriptionFrame -- and even then,
+only when the completed turn's text does NOT look like a repeated/background
+pattern per the repetition-shadow signal (Phase 5C, graduated from
+observation-only to load-bearing in this phase -- see _observe_repetition_
+shadow's own docstring for exactly what it does and does not claim). This is
+what satisfies Phase 5D's "irrelevant/background input must not indefinitely
+reset the watchdog" requirement without a new classifier, an LLM call, or a
+length/word-count heuristic (all explicitly ruled out) -- reusing the same
+deterministic, already-tested signal Phase 5C built and intentionally left
+inert pending exactly this kind of explicit, evidenced product decision.
+TranscriptionFrame itself is still handled (feeds the repetition-shadow
+observation, and still cancels a pending end-of-call request the moment ANY
+transcript arrives -- deliberately kept on the earliest possible signal for
+that one narrow case, not gated on full turn completion, so a guest who
+speaks up while a closing line is still playing is never hung up on top of),
+but no longer resets the strike counter or the timer on its own.
+
+It nudges the guest once per timeout with a spoken prompt, and ends the call
+after the second consecutive nudge goes unanswered -- unchanged from Phase
+5A/5C, just re-gated on the stronger signal above.
 
 request_end_after_current_turn() is the other entry point: the end_call tool
 calls it the moment the LLM commits to closing the call (after speaking its
@@ -60,6 +114,8 @@ from pipecat.frames.frames import (
     Frame,
     TranscriptionFrame,
     TTSSpeakFrame,
+    UserStartedSpeakingFrame,
+    UserStoppedSpeakingFrame,
 )
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
@@ -77,19 +133,24 @@ DEFAULT_PROMPT_TEXTS = ["Hello?", "Hello, are you there?"]
 DEFAULT_GOODBYE_TEXT = "I'll go ahead and end the call here. Feel free to call back anytime -- have a great day!"
 
 # ---------------------------------------------------------------------------
-# Phase 5C -- SHADOW-MODE repetition observation only (documentation/
-# agent-conversation-improvement.md, Phase 5B's investigation report).
+# Phase 5C built this signal in SHADOW MODE (observation/logging only).
+# Phase 5D (documentation/agent-conversation-improvement.md) is the explicit,
+# evidenced product decision Phase 5C's own report said was required before
+# graduating it -- these values now DO gate real behavior (see
+# process_frame's own UserStoppedSpeakingFrame branch below): a completed
+# turn whose text matches this signal does not reset the nudge strike
+# counter, though the timer is
+# still restarted (the guest still gets another full window -- this only
+# stops repeated/background-shaped turns from resetting the 2-follow-up
+# cap indefinitely, it never shortens anyone's response time).
 #
-# EXPERIMENTAL SHADOW-MODE THRESHOLDS ONLY. NOT PRODUCTION-APPROVED.
-# These three values were never validated against real call data -- Phase
-# 5B explicitly found no evidence basis exists yet for "N repeats in X
-# seconds" and explicitly prohibited inventing one. They exist ONLY so the
-# shadow computation below has some window/threshold to compute against for
-# log-collection purposes; they must never be treated as tuned, and must
-# never gate a change to watchdog reset behavior (see
-# _observe_repetition_shadow's own docstring). Do not promote these
-# to "production" values without a Phase 5D decision backed by the log data
-# this phase's logging exists to collect.
+# STILL EXPERIMENTAL THRESHOLDS -- not validated against real call data.
+# Phase 5B found no evidence basis for a specific "N repeats in X seconds"
+# number and Phase 5C explicitly deferred choosing one; Phase 5D's product
+# decision was to accept that risk now rather than continue waiting (see
+# this phase's own report for the tradeoff), NOT that these particular
+# numbers have since been validated. Revisit against real production logs
+# (the repetition_shadow_observation log line below) once available.
 _REPETITION_SHADOW_WINDOW_SECONDS = 12.0
 _REPETITION_SHADOW_MIN_MATCHES = 3
 _REPETITION_SHADOW_SIMILARITY_THRESHOLD = 0.8
@@ -137,6 +198,22 @@ class SilenceWatchdogProcessor(FrameProcessor):
         self._recent_transcripts: deque[tuple[str, float]] = deque(
             maxlen=_REPETITION_SHADOW_HISTORY_MAXLEN
         )
+        # Phase 5D: the repetition-shadow verdict for the MOST RECENT
+        # non-blank transcript observed since the last completed turn --
+        # UserStoppedSpeakingFrame carries no text of its own (it's a bare
+        # marker frame), so this is how process_frame's own
+        # UserStoppedSpeakingFrame branch knows whether the turn that just
+        # completed looked like a repeated/background pattern. Cleared
+        # after every UserStoppedSpeakingFrame consumes it and on every
+        # BotStoppedSpeakingFrame (a stale verdict must never leak into a
+        # later, unrelated turn) -- NOT cleared on UserStartedSpeakingFrame,
+        # since a new turn's own TranscriptionFrame always arrives and
+        # overwrites this before the new turn's own UserStoppedSpeakingFrame
+        # could ever read it (confirmed directly: SpeechTimeoutUserTurnStop
+        # Strategy's wait_for_transcript=True gate means UserStoppedSpeaking
+        # Frame structurally cannot fire without a TranscriptionFrame having
+        # arrived first for that same turn).
+        self._pending_turn_is_repetition_candidate = False
 
     @property
     def hangup_pending(self) -> bool:
@@ -199,66 +276,107 @@ class SilenceWatchdogProcessor(FrameProcessor):
                 # relying on this frame coming back around -- see the
                 # comment there.
                 await self._restart_timer()
-            # Phase 5C: real bot activity just happened (a genuine reply, a
-            # nudge, or the greeting) -- clears the shadow-repetition history
-            # unconditionally (even on the _end_requested/hangup branch
-            # above, since a bot turn genuinely completed either way; no
-            # more transcripts matter once _ended is set regardless). This
-            # is what makes "guest says Yes -> bot responds -> guest says
-            # Yes again" read as two independent, unrelated observations
-            # rather than a two-in-a-row repeated streak -- see Step 6 of
-            # this phase's own brief for why that distinction is required.
+            # A real bot turn just completed (greeting, a genuine reply, or
+            # a nudge) -- clears the shadow-repetition history unconditionally
+            # (even on the _end_requested/hangup branch above, since a bot
+            # turn genuinely completed either way; no more transcripts matter
+            # once _ended is set regardless). This is what makes "guest says
+            # Yes -> bot responds -> guest says Yes again" read as two
+            # independent, unrelated observations rather than a two-in-a-row
+            # repeated streak.
             self._recent_transcripts.clear()
+            self._pending_turn_is_repetition_candidate = False
+        elif isinstance(frame, UserStartedSpeakingFrame):
+            # Phase 5D: the guest is ACTIVELY speaking right now (this frame
+            # only exists once pipecat's own VAD-driven turn-start strategy
+            # has fired -- see this module's own docstring for the wiring
+            # fix that made this frame reach this processor's position at
+            # all). Cancel any pending nudge timer so a nudge can never fire
+            # mid-utterance and talk over the guest -- confirmed empirically
+            # during this phase's investigation that this frame arrives
+            # upstream at exactly this processor's pipeline position.
+            # Deliberately does NOT reset _prompts_sent here: speech having
+            # STARTED is not yet proof of a meaningful completed response
+            # (Step 9 of this phase's brief) -- only a genuinely completed
+            # turn (UserStoppedSpeakingFrame, below) counts as that.
+            logger.debug("silence_watchdog_timer_paused_guest_speaking")
+            await self._cancel_timer()
+        elif isinstance(frame, UserStoppedSpeakingFrame):
+            # Phase 5D: THE meaningful-response boundary. This frame only
+            # ever fires once pipecat's own turn-stop strategy has confirmed
+            # BOTH a VAD-detected stop AND a non-empty transcript for that
+            # utterance (SpeechTimeoutUserTurnStopStrategy's own
+            # wait_for_transcript=True gate, confirmed directly against its
+            # source) -- structurally stronger than "any non-blank
+            # TranscriptionFrame", which is what this replaces as the
+            # strike-counter reset trigger.
+            if self._pending_turn_is_repetition_candidate:
+                # The completed turn's text matched the repetition-shadow
+                # signal (Phase 5C, graduated to load-bearing this phase) --
+                # do NOT reset the strike counter, so a sustained repeated/
+                # background pattern can still exhaust the 2-follow-up cap
+                # instead of resetting it forever. The guest still gets a
+                # full fresh timeout window below (restarting the timer is
+                # unconditional) -- this only withholds "that counted as
+                # real progress", never shortens anyone's response time.
+                logger.debug("silence_watchdog_turn_completed_but_repetition_candidate_not_resetting_strikes")
+            else:
+                logger.debug("silence_watchdog_turn_completed_resetting_strikes")
+                self._prompts_sent = 0
+            if self._end_requested and self._conversation_state is not None:
+                self._conversation_state.mark_reopened()
+            self._end_requested = False
+            self._pending_turn_is_repetition_candidate = False
+            # A genuine turn just ended -- start a fresh full window for
+            # whatever comes next, same "restart from here, not from call
+            # start" reasoning as the BotStoppedSpeakingFrame branch above.
+            await self._restart_timer()
         elif isinstance(frame, TranscriptionFrame):
             if frame.text and frame.text.strip():
-                # A real transcript -- the guest is actually there. Reset the
-                # strike count and let the normal turn-taking flow continue;
-                # the timer will restart on the next BotStoppedSpeakingFrame
-                # once the agent replies. Also cancels a pending end-of-call
-                # request: if the guest speaks again while/after the agent's
-                # closing line is still playing (e.g. they thought of one
-                # more question), that's a clear sign the call isn't actually
-                # over -- don't hang up on top of them.
                 # Phase 5A observability: length only, never the transcript
                 # text itself (guest content) -- enough to reconstruct, from
-                # logs alone, that SOME transcript reset the idle timer at
-                # this point in the call, without logging what was said.
+                # logs alone, that a transcript arrived at this point in the
+                # call, without logging what was said.
                 logger.debug(
-                    "silence_watchdog_timer_reset transcript_chars={}",
+                    "silence_watchdog_transcript_observed transcript_chars={}",
                     len(frame.text.strip()),
                 )
-                # Phase 5C: SHADOW OBSERVATION ONLY -- computed and logged,
-                # never allowed to influence anything below this point. The
-                # reset behavior (strike count, timer cancellation) that
-                # follows is byte-identical regardless of what this method
-                # returns; see its own docstring for why.
-                self._observe_repetition_shadow(frame.text)
-                self._prompts_sent = 0
+                # Phase 5D: feeds the repetition-shadow signal and caches its
+                # verdict for the UserStoppedSpeakingFrame handler above to
+                # consult once this utterance's turn actually completes --
+                # UserStoppedSpeakingFrame itself carries no text (it's a
+                # bare marker frame), so this is the only point where the
+                # text is available to judge.
+                self._pending_turn_is_repetition_candidate = self._observe_repetition_shadow(frame.text)
+                # Cancels a pending end-of-call request the moment ANY
+                # transcript arrives, deliberately NOT gated on full turn
+                # completion: if the guest speaks up again while/after the
+                # agent's closing line is still playing (e.g. they thought
+                # of one more question), that's already a clear enough
+                # signal the call isn't actually over -- don't hang up on
+                # top of them while waiting for turn-completion latency.
                 if self._end_requested and self._conversation_state is not None:
                     self._conversation_state.mark_reopened()
                 self._end_requested = False
-                await self._cancel_timer()
             # Blank/whitespace-only transcripts (background noise, breathing)
             # are exactly the false-positive case that caused an unprompted
-            # reply live -- swallow them here too so they can't reset the
-            # timer or be mistaken for a real reply.  They're still forwarded
+            # reply live -- swallow them here too; they're still forwarded
             # downstream unchanged below since other processors may care
             # (e.g. the turn-stop strategy's own empty-transcript handling).
 
         await self.push_frame(frame, direction)
 
-    def _observe_repetition_shadow(self, text: str) -> None:
-        """Phase 5C SHADOW-MODE ONLY. Computes and logs whether this
-        transcript participates in a repeated pattern -- see the module-level
-        EXPERIMENTAL SHADOW-MODE THRESHOLDS comment for why the specific
-        numbers used here are not production-approved.
+    def _observe_repetition_shadow(self, text: str) -> bool:
+        """Computes, logs, and returns whether this transcript participates
+        in a repeated pattern -- see the module-level EXPERIMENTAL
+        SHADOW-MODE THRESHOLDS comment for why the specific numbers used
+        here are not validated against real call data.
 
-        This method's return value is discarded by design (it returns
-        None) -- it exists to LOG a metadata-only observation, never to be
-        consulted by anything that changes watchdog behavior. Do not change
-        this method to return a value process_frame acts on without an
-        explicit Phase 5D decision; see this phase's own brief (Step 9,
-        "SHADOW MODE MUST NOT CHANGE CURRENT CALL BEHAVIOR") for why.
+        Phase 5C built this as observation-only (return value discarded).
+        Phase 5D graduated it to load-bearing: the return value is now
+        consulted by process_frame's UserStoppedSpeakingFrame branch to
+        decide whether a completed turn counts as real engagement-progress
+        for the strike counter -- see that branch's own comment.
 
         This does NOT claim the transcript is background/noise/invalid
         guest speech -- deliberately named/logged as "repetition_shadow_
@@ -267,17 +385,24 @@ class SilenceWatchdogProcessor(FrameProcessor):
         here can support that stronger claim. It only observes "does this
         transcript textually resemble other very recent transcripts, with
         no bot turn in between" -- a knowingly weaker, purely structural
-        property.
+        property. Consulted only alongside a genuinely completed turn
+        (UserStoppedSpeakingFrame already requires VAD-confirmed stop +
+        non-empty transcript) -- never used to reject a turn outright or to
+        suppress the guest's own speech, only to decide whether the strike
+        counter treats it as fresh progress.
 
         Deliberately conservative about STT re-finalization (Phase 5B
-        Section 7/10 of this phase's brief): Sarvam can emit a corrected
-        finalized TranscriptionFrame for the same utterance shortly after
-        the first one. This method cannot distinguish that from genuine
-        repeated background speech -- both look identical (near-identical
-        text, no bot turn in between, close in time) -- so it does not try
-        to. It simply records what happened; a human (or Phase 5D's
-        analysis of these logs) decides what any given pattern of matches
-        actually means, using real call context this method does not have.
+        Section 7/10, re-confirmed relevant in Phase 5D): Sarvam can emit a
+        corrected finalized TranscriptionFrame for the same utterance
+        shortly after the first one. This method cannot distinguish that
+        from genuine repeated background speech -- both look identical
+        (near-identical text, no bot turn in between, close in time) -- so
+        it does not try to. A false positive here (a genuine STT correction
+        misread as repetition) costs the guest nothing but a strike-counter
+        reset they'd have gotten anyway from the NEXT genuine turn a moment
+        later -- the timer itself still restarts unconditionally either way
+        (see the UserStoppedSpeakingFrame branch), so no response window is
+        ever shortened by this signal being wrong.
         """
         normalized = _normalize(text)
         now = time.monotonic()
@@ -320,6 +445,7 @@ class SilenceWatchdogProcessor(FrameProcessor):
         )
 
         self._recent_transcripts.append((normalized, now))
+        return repetition_shadow_candidate
 
     async def _restart_timer(self):
         await self._cancel_timer()

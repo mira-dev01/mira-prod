@@ -25,7 +25,19 @@ import enum
 from datetime import datetime, time
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from app.config import settings
 from app.models.property import Property
+
+# TEMPORARY fixed-hours override, see Settings.fixed_host_hours_start/_end's
+# own comment in config.py: while dynamic per-property Exotel wiring isn't
+# ready, every property is forced onto one hardcoded Asia/Kolkata HOST
+# window instead of its own call_handling_mode/schedule/timezone columns.
+# Both settings unset (the default) = this block never applies, zero
+# behavior change from before this override existed. Delete this constant
+# and the override branch in resolve_effective_call_owner below once
+# per-property scheduling is wired end-to-end -- do not build anything
+# further on top of this, it exists to be removed.
+_FIXED_HOST_HOURS_TIMEZONE = "Asia/Kolkata"
 
 
 class CallOwner(enum.Enum):
@@ -119,6 +131,16 @@ def resolve_effective_call_owner(property_: Property, current_time_utc: datetime
         raise InvalidCallOwnershipConfigError(
             "current_time_utc must be timezone-aware; a naive datetime cannot be safely assumed to be UTC"
         )
+
+    if settings.fixed_host_hours_start and settings.fixed_host_hours_end:
+        # TEMPORARY: bypasses property_.call_handling_mode/schedule/timezone
+        # entirely -- see _FIXED_HOST_HOURS_TIMEZONE's comment above.
+        zone = ZoneInfo(_FIXED_HOST_HOURS_TIMEZONE)
+        local_time = current_time_utc.astimezone(zone).time()
+        start = _parse_hh_mm(settings.fixed_host_hours_start, field_name="fixed_host_hours_start")
+        end = _parse_hh_mm(settings.fixed_host_hours_end, field_name="fixed_host_hours_end")
+        in_host_hours = _time_in_half_open_interval(local_time, start, end)
+        return CallOwner.HOST if in_host_hours else CallOwner.MIRA
 
     mode = property_.call_handling_mode
     if mode == "MIRA":

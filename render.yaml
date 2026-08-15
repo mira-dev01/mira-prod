@@ -73,6 +73,16 @@ services:
         generateValue: true
       - key: EXOTEL_VIRTUAL_NUMBER
         sync: false
+      # TEMPORARY global override (see Settings.fixed_host_hours_start/_end
+      # in app/config.py) -- forces every property onto one fixed Asia/
+      # Kolkata HOST window (11:00-17:00) instead of each property's own
+      # call_handling_mode/schedule, until per-property dynamic Exotel
+      # wiring is ready. Remove both keys to fall back to per-property
+      # config once that's done.
+      - key: FIXED_HOST_HOURS_START
+        value: "11:00"
+      - key: FIXED_HOST_HOURS_END
+        value: "17:00"
 
   - type: web
     name: mira-frontend
