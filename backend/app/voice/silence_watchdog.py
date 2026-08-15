@@ -76,7 +76,33 @@ but no longer resets the strike counter or the timer on its own.
 
 It nudges the guest once per timeout with a spoken prompt, and ends the call
 after the second consecutive nudge goes unanswered -- unchanged from Phase
-5A/5C, just re-gated on the stronger signal above.
+5A/5C, just re-gated on the stronger signal above. Both the nudge lines and
+the goodbye line are now spoken WITH append_to_context=True (previously
+False) so they appear on the calls-page transcript like any other spoken
+line -- see _on_timeout's own comments for the accepted consecutive-
+assistant-role risk this carries on a non-Groq llm_provider.
+
+Post-Phase-5D live-call finding: Phase 5D's own state model listed
+BOT_SPEAKING as a state but never actually gated the timer on it --
+BotStartedSpeakingFrame was never watched here at all, only
+BotStoppedSpeakingFrame. Confirmed live: this let the countdown keep
+running while the bot was still generating/speaking a genuine reply, or
+while a slow tool call was still in flight (see slow_tool_filler.py's own
+documented ~30s worst case for recommend_properties/the SearchApi.io
+pricing path) -- a nudge could fire mid-answer ("hello? hello?" right after
+the bot finished talking), and in the worst case enough nudge cycles could
+elapse to hang up on a guest who was still waiting for an answer they'd
+never had a chance to respond to, since nothing resets _prompts_sent except
+a completed GUEST turn. Fixed by also cancelling the timer on
+BotStartedSpeakingFrame, symmetric with the existing UserStartedSpeakingFrame
+handling below -- confirmed via pipecat's own frame docstrings that
+BotStartedSpeakingFrame, like BotStoppedSpeakingFrame, is broadcast BOTH
+upstream and downstream by the transport layer, so it reaches this
+processor's position with no new wiring required (the same mechanism
+BotStoppedSpeakingFrame already relied on). This also means slow_tool_
+filler's own filler line (a real TTSSpeakFrame, once actually spoken)
+now correctly pauses/resumes this timer too, for free -- not a coincidence,
+the two modules were built on top of the same transport-level frame pair.
 
 request_end_after_current_turn() is the other entry point: the end_call tool
 calls it the moment the LLM commits to closing the call (after speaking its
@@ -109,6 +135,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from pipecat.frames.frames import (
+    BotStartedSpeakingFrame,
     BotStoppedSpeakingFrame,
     EndWorkerFrame,
     Frame,
@@ -258,7 +285,27 @@ class SilenceWatchdogProcessor(FrameProcessor):
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
 
-        if isinstance(frame, BotStoppedSpeakingFrame) and not self._ended:
+        if isinstance(frame, BotStartedSpeakingFrame) and not self._ended:
+            # The bot (a real reply, a slow_tool_filler filler line, or one
+            # of this processor's own nudges) is now actually producing
+            # audio on the line. Confirmed live: this frame was previously
+            # never watched here at all, so the countdown kept running
+            # while the bot was mid-answer or a slow tool call was still in
+            # flight -- if generation+speaking (or a slow tool) took close
+            # to or over timeout_seconds, a nudge could fire DURING the
+            # bot's own answer, and in the worst case (a slow tool call
+            # with no fast reply, e.g. the ~30s recommend_properties/
+            # SearchApi.io paths documented in slow_tool_filler.py) enough
+            # nudge cycles could elapse to hang up on a guest who was still
+            # waiting for an answer they'd never gotten a chance to respond
+            # to -- confirmed reachable since nothing previously reset
+            # _prompts_sent except a completed GUEST turn. Cancelling the
+            # timer here, symmetric with the UserStartedSpeakingFrame branch
+            # below, closes both: BotStoppedSpeakingFrame (unchanged) is
+            # still what restarts it once the bot actually finishes.
+            logger.debug("silence_watchdog_timer_paused_bot_speaking")
+            await self._cancel_timer()
+        elif isinstance(frame, BotStoppedSpeakingFrame) and not self._ended:
             if self._end_requested:
                 self._ended = True
                 logger.info("final_audio_completed")
@@ -474,7 +521,23 @@ class SilenceWatchdogProcessor(FrameProcessor):
                 "SilenceWatchdogProcessor: guest unresponsive after {} prompts, ending call",
                 self._max_prompts,
             )
-            await self.push_frame(TTSSpeakFrame(self._goodbye_text, append_to_context=False))
+            # append_to_context=True (previously False): confirmed live this
+            # left every nudge/goodbye line invisible on the calls-page
+            # transcript, which is built directly from context.messages
+            # (app/voice/pipeline.py's on_pipeline_finished) -- a host
+            # reviewing a call had no way to see that Mira ever spoke here
+            # at all. Known, accepted risk: pipecat's own aggregator never
+            # merges consecutive same-role messages (confirmed directly
+            # against LLMContext.add_message -- a plain list.append, no
+            # alternation logic), so two unanswered nudges in a row now
+            # produce two consecutive "assistant" entries in context.
+            # Harmless on Groq (this app's current production
+            # llm_provider), but Anthropic's Messages API requires strict
+            # user/assistant alternation and would reject a request built
+            # from a context containing this shape -- if llm_provider is
+            # ever switched to "anthropic" (config.py), this needs
+            # revisiting before that switch, not after.
+            await self.push_frame(TTSSpeakFrame(self._goodbye_text, append_to_context=True))
             # A processor can't just push EndFrame downstream itself and
             # expect the pipeline worker to notice -- PipelineWorker only
             # treats the pipeline as finished when its own push-queue loop
@@ -497,7 +560,10 @@ class SilenceWatchdogProcessor(FrameProcessor):
         # you there?"); clamp to the last entry if max_prompts ever exceeds
         # how many distinct lines are configured.
         prompt_index = min(self._prompts_sent, len(self._prompt_texts)) - 1
-        await self.push_frame(TTSSpeakFrame(self._prompt_texts[prompt_index], append_to_context=False))
+        # append_to_context=True -- see the goodbye TTSSpeakFrame earlier in
+        # this same method for why, and the documented consecutive-
+        # assistant-role / Anthropic-alternation risk this accepts.
+        await self.push_frame(TTSSpeakFrame(self._prompt_texts[prompt_index], append_to_context=True))
         # Restart the clock directly rather than waiting for TTS to actually
         # speak the nudge and transport to report BotStoppedSpeakingFrame --
         # that round trip works too (this frame will still arrive and no-op
