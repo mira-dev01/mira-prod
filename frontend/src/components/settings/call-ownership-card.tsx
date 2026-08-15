@@ -46,6 +46,24 @@ const MODE_SUMMARY: Record<CallHandlingMode, { label: string; tone: "live" | "or
   SCHEDULED: { label: "Scheduled", tone: "neutral" },
 };
 
+// TEMPORARY: while backend/app/services/call_ownership.py's fixed-hours
+// override (Settings.fixed_host_hours_start/_end) is active, every
+// property is forced onto one global 11 AM-5 PM host window regardless of
+// what's configured here -- this per-property editor's Save still works
+// but has no effect until the override is removed. Delete this banner and
+// the `disabled` prop plumbing below in the same change that removes that
+// backend override.
+const FIXED_HOURS_BANNER =
+  "Host hours are currently fixed to 11:00 AM–5:00 PM for all properties; per-property scheduling is temporarily unavailable.";
+
+function FixedHoursBanner() {
+  return (
+    <div className="rounded-md border border-dashed bg-muted/50 p-3 text-sm text-muted-foreground">
+      {FIXED_HOURS_BANNER}
+    </div>
+  );
+}
+
 function formatHourMinute(value: string | null): string {
   if (!value) return "--";
   const [hourStr, minuteStr] = value.split(":");
@@ -85,9 +103,11 @@ function formFromProperty(property: PropertyOut): FormState {
 function ScheduleEditor({
   form,
   onChange,
+  disabled,
 }: {
   form: FormState;
   onChange: (next: FormState) => void;
+  disabled?: boolean;
 }) {
   return (
     <div className="space-y-4 rounded-lg border bg-muted/50 p-4">
@@ -98,6 +118,7 @@ function ScheduleEditor({
             id="schedule-start"
             type="time"
             required
+            disabled={disabled}
             value={form.call_handling_schedule_start}
             onChange={(e) => onChange({ ...form, call_handling_schedule_start: e.target.value })}
           />
@@ -108,13 +129,18 @@ function ScheduleEditor({
             id="schedule-end"
             type="time"
             required
+            disabled={disabled}
             value={form.call_handling_schedule_end}
             onChange={(e) => onChange({ ...form, call_handling_schedule_end: e.target.value })}
           />
         </div>
         <div className="space-y-2">
           <Label htmlFor="schedule-timezone">Timezone</Label>
-          <Select value={form.timezone} onValueChange={(v) => v && onChange({ ...form, timezone: v })}>
+          <Select
+            value={form.timezone}
+            onValueChange={(v) => v && onChange({ ...form, timezone: v })}
+            disabled={disabled}
+          >
             <SelectTrigger id="schedule-timezone" className="w-full">
               <SelectValue />
             </SelectTrigger>
@@ -158,9 +184,11 @@ function ScheduleEditor({
 function PropertyOwnershipEditor({
   property,
   onSaved,
+  disabled,
 }: {
   property: PropertyOut;
   onSaved: () => Promise<void>;
+  disabled?: boolean;
 }) {
   const [form, setForm] = useState<FormState>(() => formFromProperty(property));
   const [saving, setSaving] = useState(false);
@@ -206,6 +234,7 @@ function PropertyOwnershipEditor({
             variant={form.call_handling_mode === mode.value ? "default" : "outline"}
             size="sm"
             aria-pressed={form.call_handling_mode === mode.value}
+            disabled={disabled}
             className={cn(form.call_handling_mode === mode.value && "pointer-events-none")}
             onClick={() => setForm({ ...form, call_handling_mode: mode.value })}
           >
@@ -220,12 +249,14 @@ function PropertyOwnershipEditor({
         </p>
       )}
 
-      {form.call_handling_mode === "SCHEDULED" && <ScheduleEditor form={form} onChange={setForm} />}
+      {form.call_handling_mode === "SCHEDULED" && (
+        <ScheduleEditor form={form} onChange={setForm} disabled={disabled} />
+      )}
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       <div className="flex justify-end">
-        <Button type="button" onClick={handleSave} disabled={saving}>
+        <Button type="button" onClick={handleSave} disabled={disabled || saving}>
           {saving ? "Saving…" : "Save changes"}
         </Button>
       </div>
@@ -283,10 +314,11 @@ export function CallOwnershipCard() {
           <CardTitle>Call ownership</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <FixedHoursBanner />
           <p className="text-sm text-muted-foreground">
             Choose when Mira answers guest calls and when you take them yourself.
           </p>
-          <PropertyOwnershipEditor property={property} onSaved={async () => void (await refetch())} />
+          <PropertyOwnershipEditor property={property} onSaved={async () => void (await refetch())} disabled />
         </CardContent>
       </Card>
     );
@@ -298,6 +330,7 @@ export function CallOwnershipCard() {
         <CardTitle>Call ownership</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        <FixedHoursBanner />
         <p className="text-sm text-muted-foreground">
           Choose when Mira answers guest calls and when you take them yourself, per property. Click a row
           to configure it.
@@ -357,6 +390,7 @@ export function CallOwnershipCard() {
                         <PropertyOwnershipEditor
                           property={property}
                           onSaved={async () => void (await refetch())}
+                          disabled
                         />
                       </TableCell>
                     </TableRow>
