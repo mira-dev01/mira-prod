@@ -1,15 +1,23 @@
+import logging
 import uuid
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.call_quality_event import CallQualityEvent
 from app.models.call_session import CallSession
 from app.models.guest_profile import GuestProfile
 from app.models.property import Property
 from app.models.user import User
 from app.schemas.call_classification import ClassificationResult
 from app.schemas.call_summary import CallSummary
+
+if TYPE_CHECKING:
+    from app.voice.conversation_quality import ConversationQuality
+
+logger = logging.getLogger(__name__)
 
 # Placeholder caller identity for the dashboard's "test in browser" feature
 # (no real phone number exists for a WebRTC test call). The frontend renders
@@ -178,6 +186,51 @@ async def set_call_summary(db: AsyncSession, call_session_id: uuid.UUID | None, 
 
     session.ai_summary = summary.model_dump()
     await db.commit()
+
+
+async def record_quality_events(
+    db: AsyncSession, call_session_id: uuid.UUID | None, quality: "ConversationQuality"
+) -> None:
+    """Persists ConversationQuality's in-memory ValidationResults (app/voice/
+    conversation_quality.py) once a call has ended, for cross-call
+    aggregation only (docs/tasks/building-intelligence.md, Implementation 1)
+    -- ConversationQuality itself stays exactly as observational/per-call as
+    documented in its own module docstring; nothing here reads this data
+    back into a live call. Called from on_pipeline_finished alongside
+    set_call_classification/set_call_summary. No-op if there are no
+    validations to record. Never raises: a telemetry write must not be able
+    to break call teardown, matching the fail-open discipline
+    _update_guest_memory (app/voice/pipeline.py) already follows for its own
+    best-effort, post-call write.
+    """
+    if call_session_id is None or not quality.validations:
+        return
+    try:
+        # Mirrors set_call_classification/set_call_summary's own
+        # None-tolerant existence check -- cheaper than relying on the FK
+        # constraint to reject a stale/nonexistent call_session_id, and
+        # avoids an insert-then-rollback on every such call.
+        session = await db.get(CallSession, call_session_id)
+        if session is None:
+            return
+        db.add_all(
+            [
+                CallQualityEvent(
+                    call_session_id=call_session_id,
+                    rule=result.rule,
+                    severity=result.severity,
+                    confidence=result.confidence,
+                    turn_index=result.turn_index,
+                    processing_time_ms=result.processing_time_ms,
+                    metadata_json=result.metadata,
+                )
+                for result in quality.validations
+            ]
+        )
+        await db.commit()
+    except Exception:
+        logger.exception("Failed to record quality events for call_session_id=%s", call_session_id)
+        await db.rollback()
 
 
 def _map_exotel_status(exotel_status: str) -> str:

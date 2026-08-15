@@ -1,5 +1,6 @@
 from app.models.booking import Booking
 from app.models.call_lease import CallLease
+from app.models.call_quality_event import CallQualityEvent
 from app.models.call_session import CallSession
 from app.models.faq_entry import FaqEntry
 from app.models.guest_profile import GuestProfile
@@ -16,6 +17,7 @@ from app.models.user import User
 __all__ = [
     "Booking",
     "CallLease",
+    "CallQualityEvent",
     "CallSession",
     "FaqEntry",
     "GuestProfile",
