@@ -1,0 +1,994 @@
+{
+  "nodes": [
+    {
+      "id": "file:backend/app/schemas/faq_gap.py",
+      "type": "file",
+      "name": "faq_gap.py",
+      "filePath": "backend/app/schemas/faq_gap.py",
+      "summary": "Pydantic schemas for FAQ gap analysis: output shape for unanswered question samples, an input for answering a gap, and an analytics rollup of gap patterns across properties.",
+      "tags": ["type-definition", "serialization", "api-handler"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:backend/app/schemas/lead.py",
+      "type": "file",
+      "name": "lead.py",
+      "filePath": "backend/app/schemas/lead.py",
+      "summary": "Pydantic schemas defining the full lead output shape (LeadOut) with all guest qualification fields and a partial update schema (LeadUpdate) for host-driven status changes.",
+      "tags": ["type-definition", "serialization", "data-model"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:backend/app/schemas/negotiation_rule.py",
+      "type": "file",
+      "name": "negotiation_rule.py",
+      "filePath": "backend/app/schemas/negotiation_rule.py",
+      "summary": "Pydantic schemas for negotiation rules: request/response types for LLM-based policy parsing, read/update shapes for individual discount rules.",
+      "tags": ["type-definition", "serialization", "api-handler"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:backend/app/schemas/notification.py",
+      "type": "file",
+      "name": "notification.py",
+      "filePath": "backend/app/schemas/notification.py",
+      "summary": "Single Pydantic output schema for host notifications, capturing channel, urgency, message text, and status fields.",
+      "tags": ["type-definition", "serialization"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:backend/app/schemas/pricing_rule.py",
+      "type": "file",
+      "name": "pricing_rule.py",
+      "filePath": "backend/app/schemas/pricing_rule.py",
+      "summary": "Pydantic schemas for property-level pricing rules: a creation input and a full read output with timestamps.",
+      "tags": ["type-definition", "serialization"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:backend/app/schemas/property.py",
+      "type": "file",
+      "name": "property.py",
+      "filePath": "backend/app/schemas/property.py",
+      "summary": "Comprehensive Pydantic schemas for property management including creation, update (with validators for iCal URLs, call-handling modes, timezones, and schedules), read output, gallery view, and Airbnb import request/response shapes.",
+      "tags": ["type-definition", "serialization", "validation"],
+      "complexity": "complex",
+      "languageNotes": "Uses Pydantic field validators for iCal URL safety checks (private IP blocking, scheme enforcement) and cross-field schedule validation."
+    },
+    {
+      "id": "file:backend/app/schemas/service_request.py",
+      "type": "file",
+      "name": "service_request.py",
+      "filePath": "backend/app/schemas/service_request.py",
+      "summary": "Pydantic output schema for guest service requests derived from call sessions, including room number, urgency level, and dismissal timestamp.",
+      "tags": ["type-definition", "serialization"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:backend/app/schemas/technician.py",
+      "type": "file",
+      "name": "technician.py",
+      "filePath": "backend/app/schemas/technician.py",
+      "summary": "Pydantic schemas for property maintenance technicians: a creation input and a full read output with rating and timestamps.",
+      "tags": ["type-definition", "serialization"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:backend/app/schemas/user.py",
+      "type": "file",
+      "name": "user.py",
+      "filePath": "backend/app/schemas/user.py",
+      "summary": "Pydantic schemas for host user management including onboarding, profile update (with validator blocking dangerous escalation phrasing), full read output, and Airbnb onboarding response.",
+      "tags": ["type-definition", "serialization", "validation"],
+      "complexity": "moderate",
+      "languageNotes": "Contains a _reject_loop_in_host_phrasing validator that prevents agent escalation phrases matching a known degenerate pattern (loop...host variants)."
+    },
+    {
+      "id": "file:backend/app/services/airbnb_import.py",
+      "type": "file",
+      "name": "airbnb_import.py",
+      "filePath": "backend/app/services/airbnb_import.py",
+      "summary": "Parses raw Airbnb listing JSON (both the GraphQL PDP format and Bright Data DATASET format) into normalized property field dictionaries, extracting name, city, amenities, house rules, check-in/out times, and structured FAQ entries from multiple content sections.",
+      "tags": ["service", "serialization", "data-model"],
+      "complexity": "complex",
+      "languageNotes": "Two distinct parsing paths: parse_airbnb_listing for scraped Airbnb PDP GraphQL payloads, parse_bright_data_listing for Bright Data's structured dataset records with photo upload support."
+    },
+    {
+      "id": "file:backend/app/services/amenity_taxonomy.py",
+      "type": "file",
+      "name": "amenity_taxonomy.py",
+      "filePath": "backend/app/services/amenity_taxonomy.py",
+      "summary": "Normalizes raw amenity strings to a canonical taxonomy using a synonym map, deduplicates and sorts amenity lists, and ranks amenities by notability for voice-agent pitch ordering.",
+      "tags": ["service", "utility", "serialization"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:backend/app/services/calendar_service.py",
+      "type": "file",
+      "name": "calendar_service.py",
+      "filePath": "backend/app/services/calendar_service.py",
+      "summary": "Provides async calendar operations: availability checks, batch unavailability queries, next-available-window search, iCal feed sync (upsert/delete bookings by UID), and a bulk sync across all properties.",
+      "tags": ["service", "data-model"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:backend/app/services/property/chunking.py",
+      "type": "file",
+      "name": "chunking.py",
+      "filePath": "backend/app/services/property/chunking.py",
+      "summary": "Builds and persists structured text chunks (overview, amenities, location, house-rules) from a property record for vector-embedding RAG retrieval, replacing stale chunks and triggering asynchronous embedding backfill.",
+      "tags": ["service", "data-model", "utility"],
+      "complexity": "moderate",
+      "languageNotes": "Fires asyncio.create_task for embedding backfill so chunk sync returns quickly without blocking the write path."
+    },
+    {
+      "id": "file:backend/app/services/property_normalizer.py",
+      "type": "file",
+      "name": "property_normalizer.py",
+      "filePath": "backend/app/services/property_normalizer.py",
+      "summary": "Deterministic regex-based property name normalization that extracts display name, spoken name, property type/style, brand, and bedroom/bathroom counts from raw listing titles; falls back to an LLM (Groq/Anthropic/OpenRouter) when regex confidence is low.",
+      "tags": ["service", "utility", "serialization"],
+      "complexity": "complex",
+      "languageNotes": "Multi-provider LLM fallback chain (Anthropic → Groq → OpenRouter) with structured JSON output parsing and word-boundary-safe truncation for DB column widths."
+    },
+    {
+      "id": "file:backend/app/services/request_feed_service.py",
+      "type": "file",
+      "name": "request_feed_service.py",
+      "filePath": "backend/app/services/request_feed_service.py",
+      "summary": "Queries and formats guest service-request call sessions for the host dashboard feed, supporting filtering, pagination, and bulk dismissal with host-scoped authorization.",
+      "tags": ["service", "api-handler"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:backend/scripts/seed_demo_data.py",
+      "type": "file",
+      "name": "seed_demo_data.py",
+      "filePath": "backend/scripts/seed_demo_data.py",
+      "summary": "Idempotent async seed script that creates the demo@mira.ai account with 12 realistic Indian properties, date-anchored bookings, technicians, and sample notifications for dashboard demonstrations.",
+      "tags": ["entry-point", "utility", "service"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:backend/tests/conftest.py",
+      "type": "file",
+      "name": "conftest.py",
+      "filePath": "backend/tests/conftest.py",
+      "summary": "Pytest shared fixtures providing a real async Postgres test session, AsyncClient wired to the FastAPI app with auth override, and pre-created test user, property, and call session objects.",
+      "tags": ["test", "utility"],
+      "complexity": "moderate",
+      "languageNotes": "Auth override uses a raw UUID in the Authorization header rather than JWT to avoid crypto overhead in tests; _clean_call_leases also clears Redis call-lease keys between tests."
+    },
+    {
+      "id": "file:backend/tests/test_airbnb_import.py",
+      "type": "file",
+      "name": "test_airbnb_import.py",
+      "filePath": "backend/tests/test_airbnb_import.py",
+      "summary": "Integration and unit tests for the Airbnb import pipeline covering field extraction, canonical name fields, FAQ entries, property chunk creation/idempotency, re-import deduplication, Bright Data photo upload, and pathological SEO title clamping.",
+      "tags": ["test", "api-handler"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:backend/tests/test_amenity_taxonomy.py",
+      "type": "file",
+      "name": "test_amenity_taxonomy.py",
+      "filePath": "backend/tests/test_amenity_taxonomy.py",
+      "summary": "Unit tests for amenity canonicalization and ranking: synonym mapping, fallback to lowercased self, deduplication, blank-entry skipping, and pitch-priority ordering.",
+      "tags": ["test"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:backend/tests/test_bookings_api.py",
+      "type": "file",
+      "name": "test_bookings_api.py",
+      "filePath": "backend/tests/test_bookings_api.py",
+      "summary": "Integration tests for the bookings REST API verifying that cancellation unblocks calendar dates, returns 404 for unknown bookings, and enforces cross-host ownership restrictions.",
+      "tags": ["test", "api-handler"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:backend/tests/test_calendar_service.py",
+      "type": "file",
+      "name": "test_calendar_service.py",
+      "filePath": "backend/tests/test_calendar_service.py",
+      "summary": "Integration tests for the calendar service covering availability checks, next-available-window search with blocked ranges, and batch unavailability queries with status filtering.",
+      "tags": ["test", "service"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:backend/tests/test_ical_sync.py",
+      "type": "file",
+      "name": "test_ical_sync.py",
+      "filePath": "backend/tests/test_ical_sync.py",
+      "summary": "Integration tests for iCal feed sync covering event parsing, booking upsert via UID matching, idempotency on re-sync, and removal of bookings dropped from the feed.",
+      "tags": ["test", "service"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:backend/tests/test_main.py",
+      "type": "file",
+      "name": "test_main.py",
+      "filePath": "backend/tests/test_main.py",
+      "summary": "Tests for the FastAPI app's scheduled iCal sync task verifying that exceptions do not propagate to the scheduler and that successful runs emit the expected log lines.",
+      "tags": ["test"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:backend/tests/test_property_chunking.py",
+      "type": "file",
+      "name": "test_property_chunking.py",
+      "filePath": "backend/tests/test_property_chunking.py",
+      "summary": "Unit tests for property chunk text builders verifying that overview, amenities, location, and house-rules chunks are produced correctly and that a reviews chunk is never generated.",
+      "tags": ["test", "service"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:backend/tests/test_property_normalizer.py",
+      "type": "file",
+      "name": "test_property_normalizer.py",
+      "filePath": "backend/tests/test_property_normalizer.py",
+      "summary": "Unit tests for the property name normalizer covering BHK extraction, star-rating stripping, delimiter splitting, confidence scoring, pipe-in-name safety, and column-width clamping.",
+      "tags": ["test", "service"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:backend/tests/test_service_requests_api.py",
+      "type": "file",
+      "name": "test_service_requests_api.py",
+      "filePath": "backend/tests/test_service_requests_api.py",
+      "summary": "Integration tests for the service-requests API covering guest-support call visibility, lead-agent fallback to AI summary, booking-lead exclusion, notification message priority, dismiss lifecycle, and host-scoped dismiss authorization.",
+      "tags": ["test", "api-handler"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:backend/tests/test_user_schemas.py",
+      "type": "file",
+      "name": "test_user_schemas.py",
+      "filePath": "backend/tests/test_user_schemas.py",
+      "summary": "Unit tests for UserUpdate Pydantic validators verifying that escalation phrases matching dangerous loop-in-host patterns are rejected and that valid values and None are accepted.",
+      "tags": ["test", "validation"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:backend/tests/test_voice_ice_servers.py",
+      "type": "file",
+      "name": "test_voice_ice_servers.py",
+      "filePath": "backend/tests/test_voice_ice_servers.py",
+      "summary": "Unit tests for the voice ICE server configuration helper verifying STUN-only defaults and TURN server inclusion when environment variables are set.",
+      "tags": ["test"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:backend/app/services/airbnb_import.py:parse_airbnb_listing",
+      "type": "function",
+      "name": "parse_airbnb_listing",
+      "filePath": "backend/app/services/airbnb_import.py",
+      "lineRange": [230, 290],
+      "summary": "Orchestrates parsing of a raw Airbnb GraphQL PDP response into a normalized property field dictionary by coordinating all the private extract helpers and the amenity canonicalizer.",
+      "tags": ["service", "serialization", "utility"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:backend/app/services/airbnb_import.py:parse_bright_data_listing",
+      "type": "function",
+      "name": "parse_bright_data_listing",
+      "filePath": "backend/app/services/airbnb_import.py",
+      "lineRange": [293, 405],
+      "summary": "Parses a Bright Data dataset record into a normalized property dictionary, including photo upload to Cloudinary and generation of FAQ entries for description, rules, and cancellation policy.",
+      "tags": ["service", "serialization", "utility"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:backend/app/services/calendar_service.py:sync_property_ical",
+      "type": "function",
+      "name": "sync_property_ical",
+      "filePath": "backend/app/services/calendar_service.py",
+      "lineRange": [73, 120],
+      "summary": "Fetches an iCal feed, upserts bookings by source UID (updating existing, creating new), removes bookings whose UIDs no longer appear in the feed, then commits and returns counts.",
+      "tags": ["service", "data-model"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:backend/app/services/calendar_service.py:unavailable_property_ids",
+      "type": "function",
+      "name": "unavailable_property_ids",
+      "filePath": "backend/app/services/calendar_service.py",
+      "lineRange": [29, 55],
+      "summary": "Batch-queries which properties from a candidate list have confirmed bookings overlapping the given date range, returning a set of unavailable property IDs.",
+      "tags": ["service", "utility"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:backend/app/services/property/chunking.py:sync_property_chunks",
+      "type": "function",
+      "name": "sync_property_chunks",
+      "filePath": "backend/app/services/property/chunking.py",
+      "lineRange": [84, 113],
+      "summary": "Atomically replaces all PropertyChunk records for a property by deleting stale chunks, writing fresh ones from build_property_chunks, then firing an async embedding backfill task.",
+      "tags": ["service", "data-model"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:backend/app/services/property/chunking.py:build_property_chunks",
+      "type": "function",
+      "name": "build_property_chunks",
+      "filePath": "backend/app/services/property/chunking.py",
+      "lineRange": [65, 81],
+      "summary": "Assembles a dict of chunk-type to text-content pairs for a property, omitting empty chunks so only populated sections are persisted.",
+      "tags": ["service", "utility"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:backend/app/services/property_normalizer.py:normalize_property_name",
+      "type": "function",
+      "name": "normalize_property_name",
+      "filePath": "backend/app/services/property_normalizer.py",
+      "lineRange": [204, 281],
+      "summary": "Primary deterministic property name normalizer: splits on pipe/hyphen delimiters, extracts BHK/bedroom/bathroom counts, strips star ratings and type words, derives spoken name, and truncates to DB column limits — returning a NormalizedName with a confidence score.",
+      "tags": ["service", "utility", "serialization"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:backend/app/services/property_normalizer.py:normalize_property_name_llm_fallback",
+      "type": "function",
+      "name": "normalize_property_name_llm_fallback",
+      "filePath": "backend/app/services/property_normalizer.py",
+      "lineRange": [358, 380],
+      "summary": "LLM-based fallback for property name normalization: tries Anthropic then Groq then OpenRouter in sequence, parses structured JSON from the response, and returns None on total failure.",
+      "tags": ["service", "utility"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:backend/app/services/request_feed_service.py:list_service_requests",
+      "type": "function",
+      "name": "list_service_requests",
+      "filePath": "backend/app/services/request_feed_service.py",
+      "lineRange": [90, 111],
+      "summary": "Queries service-request call sessions for a host with optional dismissal filtering and a since-timestamp cursor, returning formatted ServiceRequestOut objects.",
+      "tags": ["service", "api-handler"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:backend/app/services/request_feed_service.py:bulk_dismiss",
+      "type": "function",
+      "name": "bulk_dismiss",
+      "filePath": "backend/app/services/request_feed_service.py",
+      "lineRange": [114, 127],
+      "summary": "Sets dismissed_at on a list of call sessions scoped to the requesting host, committing the batch in one transaction and returning the dismissed count.",
+      "tags": ["service", "api-handler"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:backend/scripts/seed_demo_data.py:main",
+      "type": "function",
+      "name": "main",
+      "filePath": "backend/scripts/seed_demo_data.py",
+      "lineRange": [153, 170],
+      "summary": "Async entry point: date-anchors booking windows, opens a DB session, creates the demo user and 12 properties with bookings/technicians, then seeds sample notifications.",
+      "tags": ["entry-point", "utility"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:backend/scripts/seed_demo_data.py:get_or_create_property",
+      "type": "function",
+      "name": "get_or_create_property",
+      "filePath": "backend/scripts/seed_demo_data.py",
+      "lineRange": [83, 104],
+      "summary": "Idempotently creates a Property record with full Indian-market attributes (exophone, iCal URL, amenities, house rules) for a given demo host, skipping if already present.",
+      "tags": ["utility", "service"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:backend/app/schemas/property.py:PropertyUpdate",
+      "type": "class",
+      "name": "PropertyUpdate",
+      "filePath": "backend/app/schemas/property.py",
+      "lineRange": [92, 210],
+      "summary": "Full property update schema with six Pydantic field validators enforcing iCal URL safety, call-handling mode enum membership, HH:MM schedule format, IANA timezone validity, and cross-field consistency between scheduled mode and time window fields.",
+      "tags": ["type-definition", "validation", "serialization"],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:backend/app/schemas/property.py:PropertyOut",
+      "type": "class",
+      "name": "PropertyOut",
+      "filePath": "backend/app/schemas/property.py",
+      "lineRange": [225, 267],
+      "summary": "Complete property read schema returned from API endpoints, including all display, pricing, calendar, call-handling, and smart-pricing fields.",
+      "tags": ["type-definition", "serialization"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:backend/app/schemas/property.py:PropertyCreate",
+      "type": "class",
+      "name": "PropertyCreate",
+      "filePath": "backend/app/schemas/property.py",
+      "lineRange": [54, 85],
+      "summary": "Property creation input schema with validators for blank exophone normalization and iCal URL security checks.",
+      "tags": ["type-definition", "validation", "serialization"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:backend/app/schemas/user.py:UserUpdate",
+      "type": "class",
+      "name": "UserUpdate",
+      "filePath": "backend/app/schemas/user.py",
+      "lineRange": [60, 97],
+      "summary": "Host profile update schema covering agent persona, voice settings, language policy, discount policy, and notification preferences, with a validator that rejects escalation phrases containing degenerate loop-in-host patterns.",
+      "tags": ["type-definition", "validation", "serialization"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:backend/app/services/property_normalizer.py:NormalizedName",
+      "type": "class",
+      "name": "NormalizedName",
+      "filePath": "backend/app/services/property_normalizer.py",
+      "lineRange": [120, 134],
+      "summary": "Dataclass-like result container for property name normalization output: display name, spoken name, property type/style, brand, bedroom/bathroom counts, and a confidence float.",
+      "tags": ["type-definition", "data-model"],
+      "complexity": "simple"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:backend/app/services/airbnb_import.py",
+      "target": "file:backend/app/integrations/cloudinary_client.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/services/airbnb_import.py",
+      "target": "file:backend/app/services/amenity_taxonomy.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/services/airbnb_import.py",
+      "target": "file:backend/app/services/property_normalizer.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/services/calendar_service.py",
+      "target": "file:backend/app/integrations/ical_client.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/services/calendar_service.py",
+      "target": "file:backend/app/models/booking.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/services/calendar_service.py",
+      "target": "file:backend/app/models/property.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/services/property_normalizer.py",
+      "target": "file:backend/app/config.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/services/request_feed_service.py",
+      "target": "file:backend/app/models/call_session.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/services/request_feed_service.py",
+      "target": "file:backend/app/models/notification.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/services/request_feed_service.py",
+      "target": "file:backend/app/schemas/service_request.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/scripts/seed_demo_data.py",
+      "target": "file:backend/app/database.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/scripts/seed_demo_data.py",
+      "target": "file:backend/app/models/booking.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/scripts/seed_demo_data.py",
+      "target": "file:backend/app/models/notification.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/scripts/seed_demo_data.py",
+      "target": "file:backend/app/models/property.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/scripts/seed_demo_data.py",
+      "target": "file:backend/app/models/technician.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/scripts/seed_demo_data.py",
+      "target": "file:backend/app/models/user.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/tests/conftest.py",
+      "target": "file:backend/app/auth/dependencies.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/tests/conftest.py",
+      "target": "file:backend/app/database.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/tests/conftest.py",
+      "target": "file:backend/app/main.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/tests/conftest.py",
+      "target": "file:backend/app/models/call_session.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/tests/conftest.py",
+      "target": "file:backend/app/models/property.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/tests/conftest.py",
+      "target": "file:backend/app/models/user.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/tests/test_airbnb_import.py",
+      "target": "file:backend/app/integrations/bright_data_client.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/tests/test_airbnb_import.py",
+      "target": "file:backend/app/services/airbnb_import.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/tests/test_amenity_taxonomy.py",
+      "target": "file:backend/app/services/amenity_taxonomy.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/tests/test_bookings_api.py",
+      "target": "file:backend/app/models/booking.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/tests/test_calendar_service.py",
+      "target": "file:backend/app/models/booking.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/tests/test_calendar_service.py",
+      "target": "file:backend/app/services/calendar_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/tests/test_ical_sync.py",
+      "target": "file:backend/app/integrations/ical_client.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/tests/test_ical_sync.py",
+      "target": "file:backend/app/models/booking.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/tests/test_ical_sync.py",
+      "target": "file:backend/app/services/calendar_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/tests/test_main.py",
+      "target": "file:backend/app/main.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/tests/test_property_chunking.py",
+      "target": "file:backend/app/models/property.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/tests/test_property_chunking.py",
+      "target": "file:backend/app/services/property/chunking.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/tests/test_property_normalizer.py",
+      "target": "file:backend/app/services/property_normalizer.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/tests/test_service_requests_api.py",
+      "target": "file:backend/app/models/call_session.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/tests/test_service_requests_api.py",
+      "target": "file:backend/app/models/notification.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/tests/test_user_schemas.py",
+      "target": "file:backend/app/schemas/user.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/tests/test_voice_ice_servers.py",
+      "target": "file:backend/app/api/v1/voice.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/services/airbnb_import.py",
+      "target": "function:backend/app/services/airbnb_import.py:parse_airbnb_listing",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/services/airbnb_import.py",
+      "target": "function:backend/app/services/airbnb_import.py:parse_bright_data_listing",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/services/airbnb_import.py",
+      "target": "function:backend/app/services/airbnb_import.py:parse_airbnb_listing",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/services/airbnb_import.py",
+      "target": "function:backend/app/services/airbnb_import.py:parse_bright_data_listing",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/services/calendar_service.py",
+      "target": "function:backend/app/services/calendar_service.py:sync_property_ical",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/services/calendar_service.py",
+      "target": "function:backend/app/services/calendar_service.py:unavailable_property_ids",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/services/calendar_service.py",
+      "target": "function:backend/app/services/calendar_service.py:sync_property_ical",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/services/calendar_service.py",
+      "target": "function:backend/app/services/calendar_service.py:unavailable_property_ids",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/services/property/chunking.py",
+      "target": "function:backend/app/services/property/chunking.py:sync_property_chunks",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/services/property/chunking.py",
+      "target": "function:backend/app/services/property/chunking.py:build_property_chunks",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/services/property/chunking.py",
+      "target": "function:backend/app/services/property/chunking.py:sync_property_chunks",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/services/property/chunking.py",
+      "target": "function:backend/app/services/property/chunking.py:build_property_chunks",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/services/property_normalizer.py",
+      "target": "function:backend/app/services/property_normalizer.py:normalize_property_name",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/services/property_normalizer.py",
+      "target": "function:backend/app/services/property_normalizer.py:normalize_property_name_llm_fallback",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/services/property_normalizer.py",
+      "target": "class:backend/app/services/property_normalizer.py:NormalizedName",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/services/property_normalizer.py",
+      "target": "function:backend/app/services/property_normalizer.py:normalize_property_name",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/services/property_normalizer.py",
+      "target": "function:backend/app/services/property_normalizer.py:normalize_property_name_llm_fallback",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/services/property_normalizer.py",
+      "target": "class:backend/app/services/property_normalizer.py:NormalizedName",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/services/request_feed_service.py",
+      "target": "function:backend/app/services/request_feed_service.py:list_service_requests",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/services/request_feed_service.py",
+      "target": "function:backend/app/services/request_feed_service.py:bulk_dismiss",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/services/request_feed_service.py",
+      "target": "function:backend/app/services/request_feed_service.py:list_service_requests",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/services/request_feed_service.py",
+      "target": "function:backend/app/services/request_feed_service.py:bulk_dismiss",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/scripts/seed_demo_data.py",
+      "target": "function:backend/scripts/seed_demo_data.py:main",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/scripts/seed_demo_data.py",
+      "target": "function:backend/scripts/seed_demo_data.py:get_or_create_property",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/schemas/property.py",
+      "target": "class:backend/app/schemas/property.py:PropertyUpdate",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/schemas/property.py",
+      "target": "class:backend/app/schemas/property.py:PropertyOut",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/schemas/property.py",
+      "target": "class:backend/app/schemas/property.py:PropertyCreate",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/schemas/property.py",
+      "target": "class:backend/app/schemas/property.py:PropertyUpdate",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/schemas/property.py",
+      "target": "class:backend/app/schemas/property.py:PropertyOut",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/schemas/property.py",
+      "target": "class:backend/app/schemas/property.py:PropertyCreate",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/schemas/user.py",
+      "target": "class:backend/app/schemas/user.py:UserUpdate",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/schemas/user.py",
+      "target": "class:backend/app/schemas/user.py:UserUpdate",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/services/airbnb_import.py",
+      "target": "file:backend/app/services/amenity_taxonomy.py",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/services/airbnb_import.py",
+      "target": "file:backend/app/services/property_normalizer.py",
+      "type": "calls",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/tests/test_airbnb_import.py",
+      "target": "file:backend/app/services/airbnb_import.py",
+      "type": "tested_by",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:backend/tests/test_amenity_taxonomy.py",
+      "target": "file:backend/app/services/amenity_taxonomy.py",
+      "type": "tested_by",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:backend/tests/test_calendar_service.py",
+      "target": "file:backend/app/services/calendar_service.py",
+      "type": "tested_by",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:backend/tests/test_ical_sync.py",
+      "target": "file:backend/app/services/calendar_service.py",
+      "type": "tested_by",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:backend/tests/test_property_chunking.py",
+      "target": "file:backend/app/services/property/chunking.py",
+      "type": "tested_by",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:backend/tests/test_property_normalizer.py",
+      "target": "file:backend/app/services/property_normalizer.py",
+      "type": "tested_by",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:backend/tests/test_user_schemas.py",
+      "target": "file:backend/app/schemas/user.py",
+      "type": "tested_by",
+      "direction": "forward",
+      "weight": 0.5
+    }
+  ]
+}

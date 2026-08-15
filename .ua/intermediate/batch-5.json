@@ -1,0 +1,1384 @@
+{
+  "nodes": [
+    {
+      "id": "file:frontend/src/components/opportunities-card.tsx",
+      "type": "file",
+      "name": "opportunities-card.tsx",
+      "filePath": "frontend/src/components/opportunities-card.tsx",
+      "summary": "Dashboard card component that displays a filtered, sorted list of opportunity-type leads, subscribing to a real-time notification stream to trigger refreshes.",
+      "tags": ["component", "dashboard", "real-time", "leads"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:frontend/src/components/opportunities-card.tsx:OpportunitiesCard",
+      "type": "function",
+      "name": "OpportunitiesCard",
+      "filePath": "frontend/src/components/opportunities-card.tsx",
+      "lineRange": [22, 67],
+      "summary": "Renders a card wrapper around OpportunityList, filtering and sorting leads by opportunity type and subscribing to live notification events to auto-refresh.",
+      "tags": ["component", "real-time", "leads"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:frontend/src/components/opportunity-list.tsx",
+      "type": "file",
+      "name": "opportunity-list.tsx",
+      "filePath": "frontend/src/components/opportunity-list.tsx",
+      "summary": "Renders a scrollable list of opportunity leads with per-row guest info, status badges, and click-through navigation for each lead.",
+      "tags": ["component", "leads", "list"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:frontend/src/components/opportunity-list.tsx:OpportunityList",
+      "type": "function",
+      "name": "OpportunityList",
+      "filePath": "frontend/src/components/opportunity-list.tsx",
+      "lineRange": [27, 80],
+      "summary": "Maps a list of leads into individual row items with guest name, phone, timestamp, status chip, and a badge indicating opportunity type.",
+      "tags": ["component", "leads", "list"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:frontend/src/components/pending-import-banner.tsx",
+      "type": "file",
+      "name": "pending-import-banner.tsx",
+      "filePath": "frontend/src/components/pending-import-banner.tsx",
+      "summary": "Banner component that polls the Airbnb import status from sessionStorage on mount and shows progress notifications until the import completes or errors out.",
+      "tags": ["component", "import", "polling", "notification"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:frontend/src/components/pending-import-banner.tsx:PendingImportBanner",
+      "type": "function",
+      "name": "PendingImportBanner",
+      "filePath": "frontend/src/components/pending-import-banner.tsx",
+      "lineRange": [34, 120],
+      "summary": "Reads a pending Airbnb import job from sessionStorage and runs a 4-second polling loop (up to 75 attempts) to check status, displaying toast notifications on completion or error.",
+      "tags": ["component", "polling", "import"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:frontend/src/components/property-combobox.tsx",
+      "type": "file",
+      "name": "property-combobox.tsx",
+      "filePath": "frontend/src/components/property-combobox.tsx",
+      "summary": "Searchable combobox input for selecting a property from a list, with filtered dropdown and keyboard-accessible item selection.",
+      "tags": ["component", "form", "combobox", "property"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:frontend/src/components/property-combobox.tsx:PropertyCombobox",
+      "type": "function",
+      "name": "PropertyCombobox",
+      "filePath": "frontend/src/components/property-combobox.tsx",
+      "lineRange": [16, 90],
+      "summary": "Controlled combobox that filters a property list by name query, shows a dropdown on focus, and fires onChange with the selected property id.",
+      "tags": ["component", "form", "combobox"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:frontend/src/components/property-faq-manager.tsx",
+      "type": "file",
+      "name": "property-faq-manager.tsx",
+      "filePath": "frontend/src/components/property-faq-manager.tsx",
+      "summary": "Inline CRUD manager for a property's FAQ entries, supporting adding, editing on blur, and removing Q&A pairs with optimistic UI and API persistence.",
+      "tags": ["component", "faq", "crud", "property"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:frontend/src/components/property-faq-manager.tsx:PropertyFaqManager",
+      "type": "function",
+      "name": "PropertyFaqManager",
+      "filePath": "frontend/src/components/property-faq-manager.tsx",
+      "lineRange": [20, 125],
+      "summary": "Manages a list of FAQ entries for a property: renders editable rows, calls api.faq.create/update/remove on user actions, and propagates changes via the onChange callback.",
+      "tags": ["component", "faq", "crud"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:frontend/src/components/property-form-fields.tsx",
+      "type": "file",
+      "name": "property-form-fields.tsx",
+      "filePath": "frontend/src/components/property-form-fields.tsx",
+      "summary": "Large controlled form component rendering all editable fields for a property, including basic info, pricing, call handling mode, timezone, amenities, and seasonal pricing notes.",
+      "tags": ["component", "form", "property", "settings"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:frontend/src/components/property-form-fields.tsx:PropertyFormFields",
+      "type": "function",
+      "name": "PropertyFormFields",
+      "filePath": "frontend/src/components/property-form-fields.tsx",
+      "lineRange": [51, 437],
+      "summary": "Renders ~30 labeled inputs covering all property fields (name, address, capacity, pricing, call handling, timezone, amenities, seasonal notes), forwarding changes via onChange callbacks.",
+      "tags": ["component", "form", "property"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:frontend/src/components/property-form-section.tsx",
+      "type": "file",
+      "name": "property-form-section.tsx",
+      "filePath": "frontend/src/components/property-form-section.tsx",
+      "summary": "Reusable card-based section wrapper for property form layouts, displaying a title, optional count badge, action slot, and help text above a children region.",
+      "tags": ["component", "layout", "form", "property"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:frontend/src/components/property-form-section.tsx:PropertyFormSection",
+      "type": "function",
+      "name": "PropertyFormSection",
+      "filePath": "frontend/src/components/property-form-section.tsx",
+      "lineRange": [13, 45],
+      "summary": "Renders a Card with a header row (title + optional count + action), optional help text, and a content region for child form fields.",
+      "tags": ["component", "layout", "form"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:frontend/src/components/property-photo-carousel.tsx",
+      "type": "file",
+      "name": "property-photo-carousel.tsx",
+      "filePath": "frontend/src/components/property-photo-carousel.tsx",
+      "summary": "Image carousel component for displaying a property's photo gallery with previous/next navigation controls and lightbox expansion on click.",
+      "tags": ["component", "photo", "carousel", "property"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:frontend/src/components/property-photo-carousel.tsx:PropertyPhotoCarousel",
+      "type": "function",
+      "name": "PropertyPhotoCarousel",
+      "filePath": "frontend/src/components/property-photo-carousel.tsx",
+      "lineRange": [12, 92],
+      "summary": "Renders an image carousel with index state, prev/next buttons, dot indicators, and a lightbox overlay triggered on image click.",
+      "tags": ["component", "photo", "carousel"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:frontend/src/components/property-photos-manager.tsx",
+      "type": "file",
+      "name": "property-photos-manager.tsx",
+      "filePath": "frontend/src/components/property-photos-manager.tsx",
+      "summary": "Admin photo manager component that handles uploading, reordering, setting cover, and removing property photos via the API, with a lightbox preview.",
+      "tags": ["component", "photo", "upload", "property"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:frontend/src/components/property-photos-manager.tsx:PropertyPhotosManager",
+      "type": "function",
+      "name": "PropertyPhotosManager",
+      "filePath": "frontend/src/components/property-photos-manager.tsx",
+      "lineRange": [21, 183],
+      "summary": "Manages property photos with upload (file input), reorder (move left/right), set-as-cover, and remove actions, using api.properties.uploadPhoto and providing a lightbox preview.",
+      "tags": ["component", "photo", "crud"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:frontend/src/components/recovery-analytics-card.tsx",
+      "type": "file",
+      "name": "recovery-analytics-card.tsx",
+      "filePath": "frontend/src/components/recovery-analytics-card.tsx",
+      "summary": "Dashboard card that fetches and visualizes Busy Call Recovery funnel analytics including reply rates, menu selections, conversion metrics, and time-to-first-reply.",
+      "tags": ["component", "analytics", "dashboard", "recovery"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:frontend/src/components/recovery-analytics-card.tsx:RecoveryAnalyticsCard",
+      "type": "function",
+      "name": "RecoveryAnalyticsCard",
+      "filePath": "frontend/src/components/recovery-analytics-card.tsx",
+      "lineRange": [27, 121],
+      "summary": "Fetches recovery analytics data via useAsync and renders a funnel visualization with stat rows showing reply counts, conversion rates, and formatted duration metrics.",
+      "tags": ["component", "analytics", "dashboard"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:frontend/src/components/service-requests-table.tsx",
+      "type": "file",
+      "name": "service-requests-table.tsx",
+      "filePath": "frontend/src/components/service-requests-table.tsx",
+      "summary": "Table component for displaying active service/maintenance requests with completion actions, plus a collapsible panel for viewing completed requests.",
+      "tags": ["component", "service-requests", "table", "maintenance"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:frontend/src/components/service-requests-table.tsx:ServiceRequestsTable",
+      "type": "function",
+      "name": "ServiceRequestsTable",
+      "filePath": "frontend/src/components/service-requests-table.tsx",
+      "lineRange": [108, 150],
+      "summary": "Renders the service requests list with completion tracking state and a toggle button to show/hide the CompletedRequestsPanel drawer.",
+      "tags": ["component", "service-requests", "table"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:frontend/src/components/settings/ai-training-section.tsx",
+      "type": "file",
+      "name": "ai-training-section.tsx",
+      "filePath": "frontend/src/components/settings/ai-training-section.tsx",
+      "summary": "Settings section for managing AI negotiation rules: paste a pricing policy to parse into rules, review pending AI-extracted rules, and approve/edit/toggle/remove decided rules.",
+      "tags": ["component", "settings", "ai-training", "negotiation"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:frontend/src/components/settings/ai-training-section.tsx:AiTrainingSection",
+      "type": "function",
+      "name": "AiTrainingSection",
+      "filePath": "frontend/src/components/settings/ai-training-section.tsx",
+      "lineRange": [81, 424],
+      "summary": "Full negotiation rules UI: parse policy text via api.negotiationRules.parse, review pending rules with property-scope selectors, approve/reject with discount-percent editing, and manage decided rules.",
+      "tags": ["component", "settings", "negotiation", "ai-training"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:frontend/src/components/settings/call-ownership-card.tsx",
+      "type": "file",
+      "name": "call-ownership-card.tsx",
+      "filePath": "frontend/src/components/settings/call-ownership-card.tsx",
+      "summary": "Settings card for configuring per-property call handling mode, available hours, and timezone, with a property selector and save action.",
+      "tags": ["component", "settings", "call-handling", "property"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:frontend/src/components/settings/call-ownership-card.tsx:CallOwnershipCard",
+      "type": "function",
+      "name": "CallOwnershipCard",
+      "filePath": "frontend/src/components/settings/call-ownership-card.tsx",
+      "lineRange": [77, 296],
+      "summary": "Lets the host select a property, then edit its call handling mode (AI/shared/host-only), available hours window, and timezone, saving changes via api.properties.update.",
+      "tags": ["component", "settings", "call-handling"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:frontend/src/components/settings/technicians-section.tsx",
+      "type": "file",
+      "name": "technicians-section.tsx",
+      "filePath": "frontend/src/components/settings/technicians-section.tsx",
+      "summary": "Settings section for managing maintenance technicians: add new contacts with name, specialty, and phone, and remove existing ones per property.",
+      "tags": ["component", "settings", "technicians", "maintenance"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:frontend/src/components/settings/technicians-section.tsx:TechniciansSection",
+      "type": "function",
+      "name": "TechniciansSection",
+      "filePath": "frontend/src/components/settings/technicians-section.tsx",
+      "lineRange": [22, 163],
+      "summary": "Renders a form to create new technicians via api.technicians.create and a list of existing ones with delete actions via api.technicians.remove.",
+      "tags": ["component", "settings", "technicians"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:frontend/src/components/sidebar-nav.tsx",
+      "type": "file",
+      "name": "sidebar-nav.tsx",
+      "filePath": "frontend/src/components/sidebar-nav.tsx",
+      "summary": "Responsive sidebar navigation component with desktop persistent rail, mobile slide-out drawer, dashboard links, user avatar, and a Talk-to-Mira voice test trigger.",
+      "tags": ["component", "navigation", "layout", "sidebar"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:frontend/src/components/sidebar-nav.tsx:SidebarNav",
+      "type": "function",
+      "name": "SidebarNav",
+      "filePath": "frontend/src/components/sidebar-nav.tsx",
+      "lineRange": [128, 203],
+      "summary": "Renders a desktop fixed sidebar and a mobile hamburger-triggered Sheet overlay, both containing NavLinks and the TalkToMiraDialog for the voice test feature.",
+      "tags": ["component", "navigation", "layout"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:frontend/src/components/stat-card.tsx",
+      "type": "file",
+      "name": "stat-card.tsx",
+      "filePath": "frontend/src/components/stat-card.tsx",
+      "summary": "Reusable summary statistic card with an icon, numeric value, label, optional loading skeleton, and optional glass/interactive styling variants.",
+      "tags": ["component", "dashboard", "stat-card", "utility"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:frontend/src/components/stat-card.tsx:StatCard",
+      "type": "function",
+      "name": "StatCard",
+      "filePath": "frontend/src/components/stat-card.tsx",
+      "lineRange": [28, 58],
+      "summary": "Renders a Card containing a colored icon box and a stat label/value pair, with optional loading skeleton and interactive/glass style modifiers.",
+      "tags": ["component", "dashboard", "utility"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:frontend/src/components/status-chip.tsx",
+      "type": "file",
+      "name": "status-chip.tsx",
+      "filePath": "frontend/src/components/status-chip.tsx",
+      "summary": "Tiny presentational chip component that maps a status string and tone (positive/negative/neutral/warning) to a color-coded inline badge.",
+      "tags": ["component", "utility", "status", "badge"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:frontend/src/components/talk-to-mira-dialog.tsx",
+      "type": "file",
+      "name": "talk-to-mira-dialog.tsx",
+      "filePath": "frontend/src/components/talk-to-mira-dialog.tsx",
+      "summary": "Modal dialog that lets a host choose a property and launch the real-time voice test UI in a new browser window, using the current auth token.",
+      "tags": ["component", "voice-test", "dialog", "dashboard"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:frontend/src/components/talk-to-mira-dialog.tsx:TalkToMiraDialog",
+      "type": "function",
+      "name": "TalkToMiraDialog",
+      "filePath": "frontend/src/components/talk-to-mira-dialog.tsx",
+      "lineRange": [33, 80],
+      "summary": "Renders a dialog listing available properties; on confirm, calls openVoiceTest to construct the voice-test URL and open it in a new tab.",
+      "tags": ["component", "voice-test", "dialog"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:frontend/src/components/ui/avatar.tsx",
+      "type": "file",
+      "name": "avatar.tsx",
+      "filePath": "frontend/src/components/ui/avatar.tsx",
+      "summary": "shadcn/ui-style avatar component family: Avatar (with size variants), AvatarImage, AvatarFallback, AvatarBadge, AvatarGroup, and AvatarGroupCount.",
+      "tags": ["component", "ui-primitive", "avatar"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:frontend/src/components/ui/badge.tsx",
+      "type": "file",
+      "name": "badge.tsx",
+      "filePath": "frontend/src/components/ui/badge.tsx",
+      "summary": "shadcn/ui Badge primitive with variant-based styling (default, secondary, destructive, outline) and a render-prop pattern for custom element composition.",
+      "tags": ["component", "ui-primitive", "badge"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:frontend/src/components/ui/button.tsx",
+      "type": "file",
+      "name": "button.tsx",
+      "filePath": "frontend/src/components/ui/button.tsx",
+      "summary": "shadcn/ui Button primitive exporting the Button component and buttonVariants cva helper, supporting default/destructive/outline/secondary/ghost/link variants and sm/default/lg/icon sizes.",
+      "tags": ["component", "ui-primitive", "button"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:frontend/src/components/ui/calendar.tsx",
+      "type": "file",
+      "name": "calendar.tsx",
+      "filePath": "frontend/src/components/ui/calendar.tsx",
+      "summary": "Full-featured date picker calendar built on react-day-picker v9, with tailored Tailwind class overrides, caption layout options, and a custom CalendarDayButton for focus management.",
+      "tags": ["component", "ui-primitive", "calendar", "date-picker"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:frontend/src/components/ui/calendar.tsx:Calendar",
+      "type": "function",
+      "name": "Calendar",
+      "filePath": "frontend/src/components/ui/calendar.tsx",
+      "lineRange": [15, 181],
+      "summary": "Wraps DayPicker with a comprehensive set of custom Tailwind classNames for all calendar sub-elements, supporting label/dropdown caption layouts and ghost/outline nav button variants.",
+      "tags": ["component", "calendar", "date-picker"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:frontend/src/components/ui/card.tsx",
+      "type": "file",
+      "name": "card.tsx",
+      "filePath": "frontend/src/components/ui/card.tsx",
+      "summary": "shadcn/ui Card component family: Card (with size variants), CardHeader, CardTitle, CardDescription, CardAction, CardContent, and CardFooter.",
+      "tags": ["component", "ui-primitive", "card", "layout"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:frontend/src/components/ui/checkbox.tsx",
+      "type": "file",
+      "name": "checkbox.tsx",
+      "filePath": "frontend/src/components/ui/checkbox.tsx",
+      "summary": "shadcn/ui Checkbox primitive wrapping a native checkbox input with Tailwind styling and an indeterminate-state check icon.",
+      "tags": ["component", "ui-primitive", "form", "checkbox"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:frontend/src/components/ui/definition-row.tsx",
+      "type": "file",
+      "name": "definition-row.tsx",
+      "filePath": "frontend/src/components/ui/definition-row.tsx",
+      "summary": "Simple definition list row component rendering a label-value pair as a two-column flex row, used in detail panels and info cards.",
+      "tags": ["component", "ui-primitive", "layout", "utility"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:frontend/src/components/ui/dialog.tsx",
+      "type": "file",
+      "name": "dialog.tsx",
+      "filePath": "frontend/src/components/ui/dialog.tsx",
+      "summary": "shadcn/ui Dialog component family built on Radix UI: Dialog, DialogTrigger, DialogPortal, DialogClose, DialogOverlay, DialogContent, DialogHeader, DialogFooter, DialogTitle, and DialogDescription.",
+      "tags": ["component", "ui-primitive", "dialog", "modal"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:frontend/src/components/ui/dictation-input.tsx",
+      "type": "file",
+      "name": "dictation-input.tsx",
+      "filePath": "frontend/src/components/ui/dictation-input.tsx",
+      "summary": "Speech-to-text enabled text input that integrates the useDictation hook with the Sarvam AI dictation API, appending transcribed words to the current value.",
+      "tags": ["component", "ui-primitive", "dictation", "voice"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:frontend/src/components/ui/dictation-input.tsx:DictationInput",
+      "type": "function",
+      "name": "DictationInput",
+      "filePath": "frontend/src/components/ui/dictation-input.tsx",
+      "lineRange": [17, 54],
+      "summary": "Renders an input with a microphone toggle button; on dictation transcript events, appends the new word to the current value via onValueChange.",
+      "tags": ["component", "dictation", "voice"],
+      "complexity": "simple"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:frontend/src/components/opportunities-card.tsx",
+      "target": "function:frontend/src/components/opportunities-card.tsx:OpportunitiesCard",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:frontend/src/components/opportunities-card.tsx",
+      "target": "function:frontend/src/components/opportunities-card.tsx:OpportunitiesCard",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:frontend/src/components/opportunities-card.tsx",
+      "target": "file:frontend/src/components/opportunity-list.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/opportunities-card.tsx",
+      "target": "file:frontend/src/components/ui/badge.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/opportunities-card.tsx",
+      "target": "file:frontend/src/components/ui/card.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/opportunities-card.tsx",
+      "target": "file:frontend/src/hooks/use-notification-stream.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/opportunities-card.tsx",
+      "target": "file:frontend/src/lib/opportunities.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/opportunities-card.tsx",
+      "target": "file:frontend/src/lib/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/opportunities-card.tsx",
+      "target": "file:frontend/src/lib/utils.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/opportunity-list.tsx",
+      "target": "function:frontend/src/components/opportunity-list.tsx:OpportunityList",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:frontend/src/components/opportunity-list.tsx",
+      "target": "function:frontend/src/components/opportunity-list.tsx:OpportunityList",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:frontend/src/components/opportunity-list.tsx",
+      "target": "file:frontend/src/components/status-chip.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/opportunity-list.tsx",
+      "target": "file:frontend/src/components/ui/badge.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/opportunity-list.tsx",
+      "target": "file:frontend/src/components/ui/list-row.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/opportunity-list.tsx",
+      "target": "file:frontend/src/lib/leads.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/opportunity-list.tsx",
+      "target": "file:frontend/src/lib/opportunities.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/opportunity-list.tsx",
+      "target": "file:frontend/src/lib/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/pending-import-banner.tsx",
+      "target": "function:frontend/src/components/pending-import-banner.tsx:PendingImportBanner",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:frontend/src/components/pending-import-banner.tsx",
+      "target": "function:frontend/src/components/pending-import-banner.tsx:PendingImportBanner",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:frontend/src/components/pending-import-banner.tsx",
+      "target": "file:frontend/src/components/ui/card.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/pending-import-banner.tsx",
+      "target": "file:frontend/src/lib/api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/pending-import-banner.tsx",
+      "target": "file:frontend/src/lib/auth-context.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/pending-import-banner.tsx",
+      "target": "file:frontend/src/lib/tone.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/property-combobox.tsx",
+      "target": "function:frontend/src/components/property-combobox.tsx:PropertyCombobox",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:frontend/src/components/property-combobox.tsx",
+      "target": "function:frontend/src/components/property-combobox.tsx:PropertyCombobox",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:frontend/src/components/property-combobox.tsx",
+      "target": "file:frontend/src/components/ui/input.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/property-combobox.tsx",
+      "target": "file:frontend/src/lib/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/property-combobox.tsx",
+      "target": "file:frontend/src/lib/utils.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/property-faq-manager.tsx",
+      "target": "function:frontend/src/components/property-faq-manager.tsx:PropertyFaqManager",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:frontend/src/components/property-faq-manager.tsx",
+      "target": "function:frontend/src/components/property-faq-manager.tsx:PropertyFaqManager",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:frontend/src/components/property-faq-manager.tsx",
+      "target": "file:frontend/src/components/property-form-section.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/property-faq-manager.tsx",
+      "target": "file:frontend/src/components/ui/button.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/property-faq-manager.tsx",
+      "target": "file:frontend/src/components/ui/dictation-textarea.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/property-faq-manager.tsx",
+      "target": "file:frontend/src/components/ui/input.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/property-faq-manager.tsx",
+      "target": "file:frontend/src/lib/api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/property-faq-manager.tsx",
+      "target": "file:frontend/src/lib/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/property-form-fields.tsx",
+      "target": "function:frontend/src/components/property-form-fields.tsx:PropertyFormFields",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:frontend/src/components/property-form-fields.tsx",
+      "target": "function:frontend/src/components/property-form-fields.tsx:PropertyFormFields",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:frontend/src/components/property-form-fields.tsx",
+      "target": "file:frontend/src/components/property-form-section.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/property-form-fields.tsx",
+      "target": "file:frontend/src/components/ui/button.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/property-form-fields.tsx",
+      "target": "file:frontend/src/components/ui/input.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/property-form-fields.tsx",
+      "target": "file:frontend/src/components/ui/label.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/property-form-fields.tsx",
+      "target": "file:frontend/src/components/ui/select.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/property-form-fields.tsx",
+      "target": "file:frontend/src/components/ui/textarea.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/property-form-fields.tsx",
+      "target": "file:frontend/src/lib/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/property-form-fields.tsx",
+      "target": "file:frontend/src/lib/utils.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/property-form-section.tsx",
+      "target": "function:frontend/src/components/property-form-section.tsx:PropertyFormSection",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:frontend/src/components/property-form-section.tsx",
+      "target": "function:frontend/src/components/property-form-section.tsx:PropertyFormSection",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:frontend/src/components/property-form-section.tsx",
+      "target": "file:frontend/src/components/ui/card.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/property-photo-carousel.tsx",
+      "target": "function:frontend/src/components/property-photo-carousel.tsx:PropertyPhotoCarousel",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:frontend/src/components/property-photo-carousel.tsx",
+      "target": "function:frontend/src/components/property-photo-carousel.tsx:PropertyPhotoCarousel",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:frontend/src/components/property-photo-carousel.tsx",
+      "target": "file:frontend/src/lib/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/property-photo-carousel.tsx",
+      "target": "file:frontend/src/lib/utils.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/property-photos-manager.tsx",
+      "target": "function:frontend/src/components/property-photos-manager.tsx:PropertyPhotosManager",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:frontend/src/components/property-photos-manager.tsx",
+      "target": "function:frontend/src/components/property-photos-manager.tsx:PropertyPhotosManager",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:frontend/src/components/property-photos-manager.tsx",
+      "target": "file:frontend/src/components/image-lightbox.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/property-photos-manager.tsx",
+      "target": "file:frontend/src/components/ui/button.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/property-photos-manager.tsx",
+      "target": "file:frontend/src/lib/api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/property-photos-manager.tsx",
+      "target": "file:frontend/src/lib/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/recovery-analytics-card.tsx",
+      "target": "function:frontend/src/components/recovery-analytics-card.tsx:RecoveryAnalyticsCard",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:frontend/src/components/recovery-analytics-card.tsx",
+      "target": "function:frontend/src/components/recovery-analytics-card.tsx:RecoveryAnalyticsCard",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:frontend/src/components/recovery-analytics-card.tsx",
+      "target": "file:frontend/src/components/ui/card.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/recovery-analytics-card.tsx",
+      "target": "file:frontend/src/components/ui/skeleton.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/recovery-analytics-card.tsx",
+      "target": "file:frontend/src/hooks/use-async.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/recovery-analytics-card.tsx",
+      "target": "file:frontend/src/lib/api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/service-requests-table.tsx",
+      "target": "function:frontend/src/components/service-requests-table.tsx:ServiceRequestsTable",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:frontend/src/components/service-requests-table.tsx",
+      "target": "function:frontend/src/components/service-requests-table.tsx:ServiceRequestsTable",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:frontend/src/components/service-requests-table.tsx",
+      "target": "file:frontend/src/components/status-chip.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/service-requests-table.tsx",
+      "target": "file:frontend/src/components/ui/badge.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/service-requests-table.tsx",
+      "target": "file:frontend/src/components/ui/skeleton.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/service-requests-table.tsx",
+      "target": "file:frontend/src/lib/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/service-requests-table.tsx",
+      "target": "file:frontend/src/lib/utils.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/settings/ai-training-section.tsx",
+      "target": "function:frontend/src/components/settings/ai-training-section.tsx:AiTrainingSection",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:frontend/src/components/settings/ai-training-section.tsx",
+      "target": "function:frontend/src/components/settings/ai-training-section.tsx:AiTrainingSection",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:frontend/src/components/settings/ai-training-section.tsx",
+      "target": "file:frontend/src/components/property-form-section.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/settings/ai-training-section.tsx",
+      "target": "file:frontend/src/components/ui/button.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/settings/ai-training-section.tsx",
+      "target": "file:frontend/src/components/ui/dictation-textarea.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/settings/ai-training-section.tsx",
+      "target": "file:frontend/src/components/ui/input.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/settings/ai-training-section.tsx",
+      "target": "file:frontend/src/components/ui/label.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/settings/ai-training-section.tsx",
+      "target": "file:frontend/src/components/ui/select.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/settings/ai-training-section.tsx",
+      "target": "file:frontend/src/components/ui/skeleton.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/settings/ai-training-section.tsx",
+      "target": "file:frontend/src/components/ui/textarea.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/settings/ai-training-section.tsx",
+      "target": "file:frontend/src/hooks/use-async.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/settings/ai-training-section.tsx",
+      "target": "file:frontend/src/lib/api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/settings/ai-training-section.tsx",
+      "target": "file:frontend/src/lib/auth-context.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/settings/ai-training-section.tsx",
+      "target": "file:frontend/src/lib/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/settings/ai-training-section.tsx",
+      "target": "file:frontend/src/lib/utils.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/settings/call-ownership-card.tsx",
+      "target": "function:frontend/src/components/settings/call-ownership-card.tsx:CallOwnershipCard",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:frontend/src/components/settings/call-ownership-card.tsx",
+      "target": "function:frontend/src/components/settings/call-ownership-card.tsx:CallOwnershipCard",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:frontend/src/components/settings/call-ownership-card.tsx",
+      "target": "file:frontend/src/components/property-combobox.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/settings/call-ownership-card.tsx",
+      "target": "file:frontend/src/components/ui/badge.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/settings/call-ownership-card.tsx",
+      "target": "file:frontend/src/components/ui/button.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/settings/call-ownership-card.tsx",
+      "target": "file:frontend/src/components/ui/card.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/settings/call-ownership-card.tsx",
+      "target": "file:frontend/src/components/ui/input.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/settings/call-ownership-card.tsx",
+      "target": "file:frontend/src/components/ui/label.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/settings/call-ownership-card.tsx",
+      "target": "file:frontend/src/components/ui/select.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/settings/call-ownership-card.tsx",
+      "target": "file:frontend/src/components/ui/skeleton.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/settings/call-ownership-card.tsx",
+      "target": "file:frontend/src/hooks/use-async.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/settings/call-ownership-card.tsx",
+      "target": "file:frontend/src/lib/api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/settings/call-ownership-card.tsx",
+      "target": "file:frontend/src/lib/auth-context.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/settings/call-ownership-card.tsx",
+      "target": "file:frontend/src/lib/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/settings/technicians-section.tsx",
+      "target": "function:frontend/src/components/settings/technicians-section.tsx:TechniciansSection",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:frontend/src/components/settings/technicians-section.tsx",
+      "target": "function:frontend/src/components/settings/technicians-section.tsx:TechniciansSection",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:frontend/src/components/settings/technicians-section.tsx",
+      "target": "file:frontend/src/components/ui/button.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/settings/technicians-section.tsx",
+      "target": "file:frontend/src/components/ui/card.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/settings/technicians-section.tsx",
+      "target": "file:frontend/src/components/ui/dialog.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/settings/technicians-section.tsx",
+      "target": "file:frontend/src/components/ui/input.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/settings/technicians-section.tsx",
+      "target": "file:frontend/src/components/ui/label.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/settings/technicians-section.tsx",
+      "target": "file:frontend/src/components/ui/skeleton.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/settings/technicians-section.tsx",
+      "target": "file:frontend/src/hooks/use-async.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/settings/technicians-section.tsx",
+      "target": "file:frontend/src/lib/api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/settings/technicians-section.tsx",
+      "target": "file:frontend/src/lib/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/sidebar-nav.tsx",
+      "target": "function:frontend/src/components/sidebar-nav.tsx:SidebarNav",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:frontend/src/components/sidebar-nav.tsx",
+      "target": "function:frontend/src/components/sidebar-nav.tsx:SidebarNav",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:frontend/src/components/sidebar-nav.tsx",
+      "target": "file:frontend/src/components/talk-to-mira-dialog.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/sidebar-nav.tsx",
+      "target": "file:frontend/src/lib/auth-context.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/stat-card.tsx",
+      "target": "function:frontend/src/components/stat-card.tsx:StatCard",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:frontend/src/components/stat-card.tsx",
+      "target": "function:frontend/src/components/stat-card.tsx:StatCard",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:frontend/src/components/stat-card.tsx",
+      "target": "file:frontend/src/components/ui/card.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/stat-card.tsx",
+      "target": "file:frontend/src/lib/utils.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/talk-to-mira-dialog.tsx",
+      "target": "function:frontend/src/components/talk-to-mira-dialog.tsx:TalkToMiraDialog",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:frontend/src/components/talk-to-mira-dialog.tsx",
+      "target": "function:frontend/src/components/talk-to-mira-dialog.tsx:TalkToMiraDialog",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:frontend/src/components/talk-to-mira-dialog.tsx",
+      "target": "file:frontend/src/lib/api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/ui/badge.tsx",
+      "target": "file:frontend/src/lib/utils.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/ui/button.tsx",
+      "target": "file:frontend/src/lib/utils.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/ui/calendar.tsx",
+      "target": "function:frontend/src/components/ui/calendar.tsx:Calendar",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:frontend/src/components/ui/calendar.tsx",
+      "target": "function:frontend/src/components/ui/calendar.tsx:Calendar",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:frontend/src/components/ui/calendar.tsx",
+      "target": "file:frontend/src/components/ui/button.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/ui/calendar.tsx",
+      "target": "file:frontend/src/lib/utils.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/ui/card.tsx",
+      "target": "file:frontend/src/lib/utils.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/ui/definition-row.tsx",
+      "target": "file:frontend/src/lib/utils.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/ui/dialog.tsx",
+      "target": "file:frontend/src/lib/utils.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/ui/dictation-input.tsx",
+      "target": "function:frontend/src/components/ui/dictation-input.tsx:DictationInput",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:frontend/src/components/ui/dictation-input.tsx",
+      "target": "function:frontend/src/components/ui/dictation-input.tsx:DictationInput",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:frontend/src/components/ui/dictation-input.tsx",
+      "target": "file:frontend/src/lib/api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    }
+  ]
+}

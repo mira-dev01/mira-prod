@@ -78,8 +78,17 @@ export default function OverviewPage() {
         // toward the light page background, never deepen it; mixing in
         // ink first is what actually makes the same palette read darker.
         // Wide, faint --foreground wash underneath for overall depth.
+        //
+        // `in srgb`, not `in oklch`: confirmed live that mixing these
+        // opaque warm colors (accent-warm/primary/chart-2/foreground) in
+        // oklch was producing a grey/lavender cast instead of the intended
+        // bronze/oxblood/forest tones -- oklch interpolation between warm
+        // colors of very different lightness can dip through a
+        // desaturated, hue-shifted midpoint. srgb is plain linear channel
+        // averaging, which is what a simple "darken toward ink" blend
+        // needs (see glassCardClassName in lib/utils.ts for the same fix).
         backgroundImage:
-          "radial-gradient(70% 60% at 50% 50%, color-mix(in oklch, var(--foreground) 6%, transparent), transparent 80%), radial-gradient(50% 40% at 10% 6%, color-mix(in oklch, color-mix(in oklch, var(--accent-warm) 65%, var(--foreground) 35%) 20%, transparent), transparent 70%), radial-gradient(45% 35% at 90% 4%, color-mix(in oklch, color-mix(in oklch, var(--primary) 65%, var(--foreground) 35%) 18%, transparent), transparent 70%), radial-gradient(40% 30% at 52% 28%, color-mix(in oklch, color-mix(in oklch, var(--chart-2) 65%, var(--foreground) 35%) 18%, transparent), transparent 70%), radial-gradient(40% 30% at 22% 70%, color-mix(in oklch, color-mix(in oklch, var(--accent-warm) 65%, var(--foreground) 35%) 10%, transparent), transparent 70%), radial-gradient(45% 35% at 82% 88%, color-mix(in oklch, color-mix(in oklch, var(--primary) 65%, var(--foreground) 35%) 12%, transparent), transparent 70%)",
+          "radial-gradient(70% 60% at 50% 50%, color-mix(in srgb, var(--foreground) 6%, transparent), transparent 80%), radial-gradient(50% 40% at 10% 6%, color-mix(in srgb, color-mix(in srgb, var(--accent-warm) 65%, var(--foreground) 35%) 20%, transparent), transparent 70%), radial-gradient(45% 35% at 90% 4%, color-mix(in srgb, color-mix(in srgb, var(--primary) 65%, var(--foreground) 35%) 18%, transparent), transparent 70%), radial-gradient(40% 30% at 52% 28%, color-mix(in srgb, color-mix(in srgb, var(--chart-2) 65%, var(--foreground) 35%) 18%, transparent), transparent 70%), radial-gradient(40% 30% at 22% 70%, color-mix(in srgb, color-mix(in srgb, var(--accent-warm) 65%, var(--foreground) 35%) 10%, transparent), transparent 70%), radial-gradient(45% 35% at 82% 88%, color-mix(in srgb, color-mix(in srgb, var(--primary) 65%, var(--foreground) 35%) 12%, transparent), transparent 70%)",
       }}
     >
       <div

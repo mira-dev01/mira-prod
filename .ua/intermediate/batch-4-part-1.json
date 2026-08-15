@@ -1,0 +1,911 @@
+{
+  "nodes": [
+    {
+      "id": "file:frontend/src/app/dashboard/calendar/page.tsx",
+      "type": "file",
+      "name": "page.tsx",
+      "filePath": "frontend/src/app/dashboard/calendar/page.tsx",
+      "summary": "Calendar dashboard page providing a monthly grid view of bookings across all properties, with the ability to filter by booking source, block/unblock dates, and add manual bookings with guest name lookup.",
+      "tags": ["component", "api-handler", "event-handler", "dashboard"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:frontend/src/app/dashboard/calendar/page.tsx:CalendarPage",
+      "type": "function",
+      "name": "CalendarPage",
+      "filePath": "frontend/src/app/dashboard/calendar/page.tsx",
+      "lineRange": [37, 405],
+      "summary": "Main calendar page component: fetches properties, bookings, and guests, renders a month-by-property grid, and handles booking block/unblock operations.",
+      "tags": ["component", "event-handler", "api-handler"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:frontend/src/app/dashboard/calls/[id]/page.tsx",
+      "type": "file",
+      "name": "page.tsx",
+      "filePath": "frontend/src/app/dashboard/calls/[id]/page.tsx",
+      "summary": "Call detail page showing metadata, escalation records, transcript turns, and AI-generated summary for a single call, with the ability to mark escalations as handled.",
+      "tags": ["component", "api-handler", "dashboard"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:frontend/src/app/dashboard/calls/[id]/page.tsx:CallDetailPage",
+      "type": "function",
+      "name": "CallDetailPage",
+      "filePath": "frontend/src/app/dashboard/calls/[id]/page.tsx",
+      "lineRange": [43, 173],
+      "summary": "Fetches a single call by URL param and renders its full detail view including status, duration, transcript, escalations, and call summary card.",
+      "tags": ["component", "api-handler"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:frontend/src/app/dashboard/calls/page.tsx",
+      "type": "file",
+      "name": "page.tsx",
+      "filePath": "frontend/src/app/dashboard/calls/page.tsx",
+      "summary": "Calls list page with tab-based status filtering, date range picker, text search, and delegated rendering via CallsTable.",
+      "tags": ["component", "api-handler", "dashboard"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:frontend/src/app/dashboard/calls/page.tsx:CallsPage",
+      "type": "function",
+      "name": "CallsPage",
+      "filePath": "frontend/src/app/dashboard/calls/page.tsx",
+      "lineRange": [36, 121],
+      "summary": "Fetches the call log with date range and status filters applied and renders the calls table with search and tab UI controls.",
+      "tags": ["component", "api-handler"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:frontend/src/app/dashboard/faq/page.tsx",
+      "type": "file",
+      "name": "page.tsx",
+      "filePath": "frontend/src/app/dashboard/faq/page.tsx",
+      "summary": "FAQ management page allowing hosts to create, verify, and delete FAQ entries scoped to individual properties, with search and per-property filtering.",
+      "tags": ["component", "api-handler", "dashboard"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:frontend/src/app/dashboard/faq/page.tsx:FaqPage",
+      "type": "function",
+      "name": "FaqPage",
+      "filePath": "frontend/src/app/dashboard/faq/page.tsx",
+      "lineRange": [22, 216],
+      "summary": "Manages FAQ CRUD operations: fetches properties and FAQ entries, filters by search/property, and renders inline create form with verify/delete actions per entry.",
+      "tags": ["component", "api-handler", "event-handler"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:frontend/src/app/dashboard/guests/[id]/page.tsx",
+      "type": "file",
+      "name": "page.tsx",
+      "filePath": "frontend/src/app/dashboard/guests/[id]/page.tsx",
+      "summary": "Guest profile detail page showing lifetime metrics, conversation history, recent calls, and an editable key-value preferences form.",
+      "tags": ["component", "api-handler", "dashboard"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:frontend/src/app/dashboard/guests/[id]/page.tsx:GuestProfilePage",
+      "type": "function",
+      "name": "GuestProfilePage",
+      "filePath": "frontend/src/app/dashboard/guests/[id]/page.tsx",
+      "lineRange": [65, 308],
+      "summary": "Fetches the full guest profile by ID and renders stats, conversation summaries, recent call list, and an editable preferences form with save capability.",
+      "tags": ["component", "api-handler", "event-handler"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:frontend/src/app/dashboard/guests/page.tsx",
+      "type": "file",
+      "name": "page.tsx",
+      "filePath": "frontend/src/app/dashboard/guests/page.tsx",
+      "summary": "Guests list page rendering a card grid of all known guests with avatar initials, lifetime call counts, and navigation to individual guest profiles.",
+      "tags": ["component", "api-handler", "dashboard"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:frontend/src/app/dashboard/guests/page.tsx:GuestsPage",
+      "type": "function",
+      "name": "GuestsPage",
+      "filePath": "frontend/src/app/dashboard/guests/page.tsx",
+      "lineRange": [24, 97],
+      "summary": "Fetches the guest list and renders a responsive card grid with avatar initials, suppression of browser-test identities, and navigation to detail pages.",
+      "tags": ["component", "api-handler"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:frontend/src/app/dashboard/layout.tsx",
+      "type": "file",
+      "name": "layout.tsx",
+      "filePath": "frontend/src/app/dashboard/layout.tsx",
+      "summary": "Dashboard route layout that enforces authentication by redirecting unauthenticated users to the login page and renders the sidebar navigation around child pages.",
+      "tags": ["component", "middleware", "entry-point"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:frontend/src/app/dashboard/layout.tsx:DashboardLayout",
+      "type": "function",
+      "name": "DashboardLayout",
+      "filePath": "frontend/src/app/dashboard/layout.tsx",
+      "lineRange": [10, 46],
+      "summary": "Auth guard layout component: checks auth state on mount and redirects to /login if not authenticated, otherwise renders the sidebar nav with child slot.",
+      "tags": ["component", "middleware"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:frontend/src/app/dashboard/leads/page.tsx",
+      "type": "file",
+      "name": "page.tsx",
+      "filePath": "frontend/src/app/dashboard/leads/page.tsx",
+      "summary": "Leads management page with dual views (table and kanban), booking-request and service-request tabs, drag-and-drop status transitions, hot-lead marking, and a slide-out lead detail panel.",
+      "tags": ["component", "api-handler", "event-handler", "dashboard"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:frontend/src/app/dashboard/leads/page.tsx:LeadsTable",
+      "type": "function",
+      "name": "LeadsTable",
+      "filePath": "frontend/src/app/dashboard/leads/page.tsx",
+      "lineRange": [83, 145],
+      "summary": "Renders a sortable table of leads with guest name, properties discussed, date range, status chip, and phone number columns.",
+      "tags": ["component", "data-model"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:frontend/src/app/dashboard/leads/page.tsx:LeadCard",
+      "type": "function",
+      "name": "LeadCard",
+      "filePath": "frontend/src/app/dashboard/leads/page.tsx",
+      "lineRange": [168, 224],
+      "summary": "Draggable kanban card for a lead showing status badge, guest info, property list, dates, and a conditional hot-lead action button.",
+      "tags": ["component", "event-handler"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:frontend/src/app/dashboard/leads/page.tsx:LeadsKanban",
+      "type": "function",
+      "name": "LeadsKanban",
+      "filePath": "frontend/src/app/dashboard/leads/page.tsx",
+      "lineRange": [226, 297],
+      "summary": "Kanban board with drag-and-drop columns for each lead status; handles dragover, dragleave, and drop to trigger status transitions.",
+      "tags": ["component", "event-handler"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:frontend/src/app/dashboard/leads/page.tsx:BookingRequestsTabContent",
+      "type": "function",
+      "name": "BookingRequestsTabContent",
+      "filePath": "frontend/src/app/dashboard/leads/page.tsx",
+      "lineRange": [342, 563],
+      "summary": "Full booking-requests tab: fetches leads, manages filter/search/view state, handles optimistic status-drop and mark-hot, and orchestrates the table or kanban view with lead detail panel.",
+      "tags": ["component", "api-handler", "event-handler"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:frontend/src/app/dashboard/onboarding/page.tsx",
+      "type": "file",
+      "name": "page.tsx",
+      "filePath": "frontend/src/app/dashboard/onboarding/page.tsx",
+      "summary": "Multi-step host onboarding wizard collecting personal info, business details, voice greeting recording, and first property details before submitting and routing to the dashboard.",
+      "tags": ["component", "api-handler", "entry-point", "event-handler"],
+      "complexity": "complex"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:frontend/src/app/dashboard/calendar/page.tsx",
+      "target": "file:frontend/src/components/guest-combobox.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/calendar/page.tsx",
+      "target": "file:frontend/src/components/ui/button.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/calendar/page.tsx",
+      "target": "file:frontend/src/components/ui/input.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/calendar/page.tsx",
+      "target": "file:frontend/src/components/ui/label.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/calendar/page.tsx",
+      "target": "file:frontend/src/components/ui/right-panel.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/calendar/page.tsx",
+      "target": "file:frontend/src/components/ui/select.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/calendar/page.tsx",
+      "target": "file:frontend/src/components/ui/skeleton.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/calendar/page.tsx",
+      "target": "file:frontend/src/hooks/use-async.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/calendar/page.tsx",
+      "target": "file:frontend/src/lib/api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/calendar/page.tsx",
+      "target": "file:frontend/src/lib/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/calendar/page.tsx",
+      "target": "file:frontend/src/lib/utils.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/calendar/page.tsx",
+      "target": "function:frontend/src/app/dashboard/calendar/page.tsx:CalendarPage",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/calendar/page.tsx",
+      "target": "function:frontend/src/app/dashboard/calendar/page.tsx:CalendarPage",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/calls/[id]/page.tsx",
+      "target": "file:frontend/src/components/call-summary-card.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/calls/[id]/page.tsx",
+      "target": "file:frontend/src/components/status-chip.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/calls/[id]/page.tsx",
+      "target": "file:frontend/src/components/ui/badge.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/calls/[id]/page.tsx",
+      "target": "file:frontend/src/components/ui/button.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/calls/[id]/page.tsx",
+      "target": "file:frontend/src/components/ui/card.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/calls/[id]/page.tsx",
+      "target": "file:frontend/src/components/ui/skeleton.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/calls/[id]/page.tsx",
+      "target": "file:frontend/src/hooks/use-async.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/calls/[id]/page.tsx",
+      "target": "file:frontend/src/lib/api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/calls/[id]/page.tsx",
+      "target": "file:frontend/src/lib/utils.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/calls/[id]/page.tsx",
+      "target": "function:frontend/src/app/dashboard/calls/[id]/page.tsx:CallDetailPage",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/calls/[id]/page.tsx",
+      "target": "function:frontend/src/app/dashboard/calls/[id]/page.tsx:CallDetailPage",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/calls/page.tsx",
+      "target": "file:frontend/src/components/calls-table.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/calls/page.tsx",
+      "target": "file:frontend/src/components/date-range-picker.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/calls/page.tsx",
+      "target": "file:frontend/src/components/ui/input.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/calls/page.tsx",
+      "target": "file:frontend/src/components/ui/label.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/calls/page.tsx",
+      "target": "file:frontend/src/components/ui/select.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/calls/page.tsx",
+      "target": "file:frontend/src/components/ui/skeleton.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/calls/page.tsx",
+      "target": "file:frontend/src/hooks/use-async.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/calls/page.tsx",
+      "target": "file:frontend/src/lib/api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/calls/page.tsx",
+      "target": "function:frontend/src/app/dashboard/calls/page.tsx:CallsPage",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/calls/page.tsx",
+      "target": "function:frontend/src/app/dashboard/calls/page.tsx:CallsPage",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/faq/page.tsx",
+      "target": "file:frontend/src/components/property-combobox.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/faq/page.tsx",
+      "target": "file:frontend/src/components/property-faq-manager.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/faq/page.tsx",
+      "target": "file:frontend/src/components/ui/button.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/faq/page.tsx",
+      "target": "file:frontend/src/components/ui/card.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/faq/page.tsx",
+      "target": "file:frontend/src/components/ui/skeleton.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/faq/page.tsx",
+      "target": "file:frontend/src/hooks/use-async.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/faq/page.tsx",
+      "target": "file:frontend/src/lib/api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/faq/page.tsx",
+      "target": "file:frontend/src/lib/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/faq/page.tsx",
+      "target": "function:frontend/src/app/dashboard/faq/page.tsx:FaqPage",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/faq/page.tsx",
+      "target": "function:frontend/src/app/dashboard/faq/page.tsx:FaqPage",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/guests/[id]/page.tsx",
+      "target": "file:frontend/src/components/image-lightbox.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/guests/[id]/page.tsx",
+      "target": "file:frontend/src/components/ui/badge.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/guests/[id]/page.tsx",
+      "target": "file:frontend/src/components/ui/button.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/guests/[id]/page.tsx",
+      "target": "file:frontend/src/components/ui/card.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/guests/[id]/page.tsx",
+      "target": "file:frontend/src/components/ui/skeleton.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/guests/[id]/page.tsx",
+      "target": "file:frontend/src/hooks/use-async.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/guests/[id]/page.tsx",
+      "target": "file:frontend/src/lib/api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/guests/[id]/page.tsx",
+      "target": "file:frontend/src/lib/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/guests/[id]/page.tsx",
+      "target": "file:frontend/src/lib/utils.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/guests/[id]/page.tsx",
+      "target": "function:frontend/src/app/dashboard/guests/[id]/page.tsx:GuestProfilePage",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/guests/[id]/page.tsx",
+      "target": "function:frontend/src/app/dashboard/guests/[id]/page.tsx:GuestProfilePage",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/guests/page.tsx",
+      "target": "file:frontend/src/components/ui/badge.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/guests/page.tsx",
+      "target": "file:frontend/src/components/ui/button.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/guests/page.tsx",
+      "target": "file:frontend/src/components/ui/input.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/guests/page.tsx",
+      "target": "file:frontend/src/components/ui/skeleton.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/guests/page.tsx",
+      "target": "file:frontend/src/hooks/use-async.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/guests/page.tsx",
+      "target": "file:frontend/src/lib/api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/guests/page.tsx",
+      "target": "file:frontend/src/lib/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/guests/page.tsx",
+      "target": "file:frontend/src/lib/utils.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/guests/page.tsx",
+      "target": "function:frontend/src/app/dashboard/guests/page.tsx:GuestsPage",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/guests/page.tsx",
+      "target": "function:frontend/src/app/dashboard/guests/page.tsx:GuestsPage",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/layout.tsx",
+      "target": "file:frontend/src/components/sidebar-nav.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/layout.tsx",
+      "target": "file:frontend/src/lib/auth-context.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/layout.tsx",
+      "target": "function:frontend/src/app/dashboard/layout.tsx:DashboardLayout",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/layout.tsx",
+      "target": "function:frontend/src/app/dashboard/layout.tsx:DashboardLayout",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/leads/page.tsx",
+      "target": "file:frontend/src/components/close-lead-dialog.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/leads/page.tsx",
+      "target": "file:frontend/src/components/date-range-context.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/leads/page.tsx",
+      "target": "file:frontend/src/components/date-range-picker.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/leads/page.tsx",
+      "target": "file:frontend/src/components/expandable-text.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/leads/page.tsx",
+      "target": "file:frontend/src/components/lead-detail-panel.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/leads/page.tsx",
+      "target": "file:frontend/src/components/property-combobox.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/leads/page.tsx",
+      "target": "file:frontend/src/components/status-chip.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/leads/page.tsx",
+      "target": "file:frontend/src/components/ui/badge.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/leads/page.tsx",
+      "target": "file:frontend/src/components/ui/button.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/leads/page.tsx",
+      "target": "file:frontend/src/components/ui/card.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/leads/page.tsx",
+      "target": "file:frontend/src/components/ui/input.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/leads/page.tsx",
+      "target": "file:frontend/src/components/ui/label.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/leads/page.tsx",
+      "target": "file:frontend/src/components/ui/select.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/leads/page.tsx",
+      "target": "file:frontend/src/components/ui/skeleton.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/leads/page.tsx",
+      "target": "file:frontend/src/hooks/use-async.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/leads/page.tsx",
+      "target": "file:frontend/src/lib/api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/leads/page.tsx",
+      "target": "file:frontend/src/lib/leads.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/leads/page.tsx",
+      "target": "file:frontend/src/lib/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/leads/page.tsx",
+      "target": "file:frontend/src/lib/utils.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/leads/page.tsx",
+      "target": "function:frontend/src/app/dashboard/leads/page.tsx:LeadsTable",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/leads/page.tsx",
+      "target": "function:frontend/src/app/dashboard/leads/page.tsx:LeadCard",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/leads/page.tsx",
+      "target": "function:frontend/src/app/dashboard/leads/page.tsx:LeadsKanban",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/leads/page.tsx",
+      "target": "function:frontend/src/app/dashboard/leads/page.tsx:BookingRequestsTabContent",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/onboarding/page.tsx",
+      "target": "file:frontend/src/components/ui/button.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/onboarding/page.tsx",
+      "target": "file:frontend/src/components/ui/card.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/onboarding/page.tsx",
+      "target": "file:frontend/src/components/ui/input.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/onboarding/page.tsx",
+      "target": "file:frontend/src/components/ui/label.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/onboarding/page.tsx",
+      "target": "file:frontend/src/components/ui/skeleton.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/onboarding/page.tsx",
+      "target": "file:frontend/src/components/ui/textarea.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/onboarding/page.tsx",
+      "target": "file:frontend/src/hooks/use-async.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/onboarding/page.tsx",
+      "target": "file:frontend/src/lib/api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/onboarding/page.tsx",
+      "target": "file:frontend/src/lib/auth-context.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/onboarding/page.tsx",
+      "target": "file:frontend/src/lib/utils.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    }
+  ]
+}
