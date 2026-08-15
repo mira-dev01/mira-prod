@@ -196,6 +196,94 @@ def _language_hint(state: ConversationState, quality: "ConversationQuality | Non
     return render_style_block(state.conversation_style, emphasized=emphasized)
 
 
+def _negotiation_hint(state: ConversationState) -> str:
+    """Phase 4F -- turns state.last_negotiation_decision (set by
+    app/voice/tools.py's negotiate_rate wrapper, see
+    ConversationState.record_negotiation_decision's own docstring) into a
+    plain-English fact line, same "hand the model a derived fact, don't
+    make it guess" principle every other hint in this module already
+    follows. Deliberately states ONLY facts already computed by
+    pricing_engine.py (asking price, resulting price, whether this event
+    progressed, whether negotiation is exhausted) -- never a percentage,
+    never a stage count phrased as "stage N of M" (guests don't think in
+    stage numbers), never a fixed sentence the model must repeat verbatim.
+    The model chooses its own natural phrasing from these facts, same as
+    every other hint here.
+
+    No case below is host-specific: a host with a flat (non-staged) policy
+    simply never has is_staged=True, so this always falls into the first,
+    simplest branch for them -- nothing about this function assumes any
+    particular stage count or value exists.
+
+    Self-review finding: exhausted=True means the STAGE LADDER has reached
+    its last rung, not that counter_offer itself equals the true floor --
+    pricing_engine.negotiate_rate's accepted branch sets counter_offer to
+    the guest's own (unclamped) offer, which can be strictly ABOVE
+    floor_price when the guest offered more than the minimum required.
+    Phrasing that case as "this is the maximum you're authorized to
+    offer" was confirmed reachable and false: real floor_price could be
+    materially lower, and the LLM would wrongly refuse further guest
+    pushback it was still authorized to grant. at_true_floor below gates
+    the exhausted-specific wording on counter_offer actually being at (or
+    below, accounting for float rounding) floor_price -- an accepted
+    offer above the floor while exhausted now falls through to the
+    ordinary progressed/non-progressed staged wording instead, which
+    makes no false claim about how much room is left."""
+    decision = state.last_negotiation_decision
+    if not decision:
+        return ""
+
+    asking = decision["asking_price"]
+    final = decision["counter_offer"]
+    floor = decision["floor_price"]
+    genuinely_lower = final < asking - 0.5  # tolerate float rounding, not a real discount signal
+    at_true_floor = final <= floor + 0.5  # tolerate float rounding, not a real equality signal
+
+    if not decision["is_staged"]:
+        # Flat/no-staging case (every pre-Phase-4D host, and any Phase 4D+
+        # host who never configured a staged ladder) -- the only fact that
+        # matters is whether the resulting price is actually below asking.
+        if genuinely_lower:
+            return (
+                f"You just offered a concession on {decision['property_name']}: the standard price is "
+                f"₹{asking:,.0f}, and you brought it down to ₹{final:,.0f}. Communicate this clearly as a "
+                "real concession, not just a price -- the guest should understand a discount was actually "
+                "granted."
+            )
+        return (
+            f"You just confirmed ₹{final:,.0f} for {decision['property_name']} -- no discount was applied "
+            "beyond what was already quoted. Do not imply a further concession was granted."
+        )
+
+    # Staged case -- the four Phase 4D facts (progressed_this_event,
+    # exhausted, stage_index, stage_count) together determine which of the
+    # three distinct guest-facing situations this is, without this
+    # function inventing a fourth. exhausted must ALSO be paired with
+    # at_true_floor (self-review addition) -- see this function's own
+    # docstring for why exhausted alone isn't sufficient to claim "no
+    # further concession available."
+    if decision["exhausted"] and at_true_floor:
+        return (
+            f"You just offered ₹{final:,.0f} for {decision['property_name']} (standard price ₹{asking:,.0f}) "
+            "-- this is the maximum you're authorized to offer; there is no further concession available "
+            "no matter how the guest pushes back. Communicate that this is genuinely your best price, "
+            "naturally -- do not invent an additional discount."
+        )
+    if decision["progressed_this_event"]:
+        return (
+            f"The guest's pushback just earned a BETTER concession on {decision['property_name']}: standard "
+            f"price is ₹{asking:,.0f}, and you can now offer ₹{final:,.0f}, an improvement on what was "
+            "offered before. Make clear this is a genuinely better offer than last time, not the same one "
+            "repeated."
+        )
+    return (
+        f"The guest is still at the same authorized price for {decision['property_name']}: ₹{final:,.0f} "
+        f"(standard price ₹{asking:,.0f}). This is not a new or improved concession -- if they're asking "
+        "again without a genuinely different offer, you can restate this price, but do not imply anything "
+        "changed or invent a further discount."
+    )
+
+
 def build_state_block_content(state: ConversationState, quality: "ConversationQuality | None" = None) -> str:
     """Returns "" when there's nothing worth surfacing yet (no slots known,
     still at the default greeting goal, no language detected yet) -- this
@@ -206,8 +294,9 @@ def build_state_block_content(state: ConversationState, quality: "ConversationQu
     slot_summary = _format_slots(state)
     goal_hint = _closing_hint(state) or _GOAL_HINTS.get(state.conversation_goal, "")
     language_hint = _language_hint(state, quality)
+    negotiation_hint = _negotiation_hint(state)
 
-    if not slot_summary and not goal_hint and not language_hint and not state.quoted_price:
+    if not slot_summary and not goal_hint and not language_hint and not state.quoted_price and not negotiation_hint:
         return ""
 
     lines = []
@@ -216,7 +305,23 @@ def build_state_block_content(state: ConversationState, quality: "ConversationQu
     if state.recommendations_shown:
         names = ", ".join(o["name"] for o in state.recommendations_shown)
         lines.append(f"Already recommended: {names}. Do not re-list these unless asked or something new is known.")
-    if state.quoted_price:
+    # Phase 4F: negotiation_hint SUPERSEDES the plain quoted_price hint
+    # below when the most recent price event was itself a negotiation --
+    # app/voice/tools.py's negotiate_rate wrapper now calls BOTH
+    # record_quoted_price and record_negotiation_decision on every
+    # successful negotiation (record_quoted_price closes a real, separate
+    # gap: repetition_guard.py's cross-turn repeat check is keyed to
+    # quoted_price specifically, so negotiated prices need to populate it
+    # too), which would otherwise produce two overlapping/redundant lines
+    # about the same number. state.last_negotiation_decision being
+    # non-None IS the "is a negotiation still the current price fact"
+    # signal -- get_pricing's own wrapper explicitly clears it
+    # (ConversationState.clear_negotiation_decision) the moment a plain
+    # quote supersedes it, so no inference/comparison against quoted_price
+    # is needed here.
+    if negotiation_hint:
+        lines.append(negotiation_hint)
+    elif state.quoted_price:
         # Phase 4.1: a structured fact (real total, real dates, real
         # property) instead of asking the model to recall a specific number
         # from a long transcript -- same principle as recommendations_shown.

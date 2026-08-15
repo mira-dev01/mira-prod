@@ -247,6 +247,96 @@ class Settings(BaseSettings):
     sarvam_tts_model: str = "bulbul:v3"
     sarvam_tts_speaker: str = "roopa"
 
+    # Server-side STT VAD/noise-rejection tuning (saaras:v3 only -- see
+    # SarvamSTTSettings in pipecat/services/sarvam/stt.py). Distinct from,
+    # and currently unrelated to, app/voice/vad.py's _VAD_PARAMS: that tunes
+    # the LOCAL Silero VAD pipecat runs client-side for interruption/turn-
+    # timing purposes only. Local VAD does not gate what audio reaches
+    # Sarvam -- every AudioRawFrame is streamed to Sarvam continuously
+    # regardless of local VAD state (confirmed via pipecat's STTService.
+    # process_frame/process_audio_frame) -- so Sarvam's OWN server-side VAD
+    # is the actual, and until now unconfigured, gate on what counts as
+    # speech worth transcribing at all. Root cause: a background voice loud/
+    # sustained enough to clear Sarvam's own (currently default) speech-
+    # start threshold gets transcribed as if it were the guest, and nothing
+    # downstream (SilenceWatchdogProcessor's blank-only filter, the turn-stop
+    # strategy) can tell the difference -- there is no confidence field on
+    # the transcript that measures speech-authenticity (see
+    # language_probability's docstring: it measures LANGUAGE-detection
+    # confidence, not whether the segment is genuine caller speech, so it is
+    # deliberately not used as a noise-rejection signal here).
+    #
+    # Every field below defaults to None ("not sent, use Sarvam's own
+    # server default") -- a fresh deploy with none of these set is BYTE-
+    # IDENTICAL in behavior to before this setting existed. Starting points,
+    # not empirically tuned against real call logs yet (same "starting
+    # point" caveat semantic_search_timeout_seconds above documents for
+    # itself) -- Phase 0/1 investigation found no existing baseline in this
+    # repo to derive a specific number from, unlike the local VAD's
+    # start_secs=0.35 (which WAS tuned against real call logs). Deliberately
+    # conservative in the one direction that matters most: biased toward
+    # never cutting off a real guest, since a false negative here (rejecting
+    # real speech) is worse than a false positive (occasionally transcribing
+    # background noise) -- see CLAUDE.md-adjacent guidance on this tradeoff.
+    # Requires real-call validation before being trusted as a production
+    # default; see documentation/ for the Phase 1 validation matrix.
+    sarvam_vad_positive_speech_threshold: float | None = None
+    sarvam_vad_negative_speech_threshold: float | None = None
+    # Minimum consecutive speech frames required before Sarvam starts a
+    # speech segment at all -- the most direct lever against a short,
+    # single-syllable noise blip ("No", a mic bump) being transcribed,
+    # without touching turn-taking timing (unlike the local VAD's
+    # start_secs, this only affects whether Sarvam STARTS a segment, not
+    # pipecat's own interruption/turn-stop logic). 2 is a conservative
+    # starting point -- Sarvam's own unconfigured default already accepts
+    # 1, so this asks for one additional frame of sustained speech before a
+    # segment begins, without approaching an aggressive value that risks
+    # clipping a genuine short reply like "Yes."
+    sarvam_vad_min_speech_frames: int | None = 2
+    sarvam_vad_first_turn_min_speech_frames: int | None = None
+    sarvam_vad_negative_frames_count: int | None = None
+    sarvam_vad_negative_frames_window: int | None = None
+    # Volume floor (dB) below which audio is too quiet to be considered
+    # speech -- the most direct lever against a distant/background talker on
+    # a speakerphone call (quieter than the near-field guest) without
+    # affecting segment-start timing at all. Left unset (None) by default:
+    # unlike min_speech_frames' frame-count semantics (where "one extra
+    # frame" has an intuitive, bounded worst case), a dB threshold's safe
+    # value depends on real call audio levels this investigation has no
+    # measured baseline for -- setting a wrong value here risks silently
+    # rejecting a genuinely quiet guest, which constraint (18) explicitly
+    # prohibits trading off casually. Available to configure once real-call
+    # audio levels are observed (Phase 1 validation matrix).
+    sarvam_vad_start_speech_volume_threshold: float | None = None
+    sarvam_vad_interrupt_min_speech_frames: int | None = None
+    sarvam_vad_pre_speech_pad_frames: int | None = None
+    sarvam_vad_num_initial_ignored_frames: int | None = None
+
+    # Phase 2: independent hard ceiling on live-call lifetime -- a reliability
+    # backstop, NOT the primary background-audio fix (that's the sarvam_vad_*
+    # tuning above). SilenceWatchdogProcessor's inactivity detection depends
+    # entirely on trusting non-blank transcripts as real caller activity (see
+    # app/voice/silence_watchdog.py) -- if background noise/speech keeps
+    # generating non-blank transcripts, that mechanism can never fire, no
+    # matter how well-tuned. This setting exists to guarantee a call still
+    # ends even in that failure mode: a single, unconditional timer, started
+    # once per call, that never resets for any reason (not STT activity, not
+    # VAD, not LLM responses, not tool calls, not interruptions) -- see
+    # app/voice/pipeline.py's _enforce_max_call_duration.
+    #
+    # 600s (10 minutes) is a DELIBERATELY GENEROUS starting point, not a
+    # tuned production value -- this repository has no historical call-
+    # duration data (no logs, no fixtures, no analytics) to derive an
+    # optimal number from, confirmed by repo-wide search during Phase 2's
+    # investigation. Chosen to be safely above any real booking/pricing/
+    # negotiation conversation's plausible length (so a normal call should
+    # never come close to hitting it) while still being a genuine backstop
+    # against a call that's stuck open indefinitely. Needs real-call
+    # validation (real call-length distribution data) before being tuned
+    # down to a tighter production value -- same "starting point, not
+    # empirically tuned" discipline as the sarvam_vad_* settings above.
+    max_call_duration_seconds: int = 600
+
     # TURN relay for the in-dashboard "test in browser" WebRTC feature.
     # STUN alone (just discovering each side's public address) is enough on
     # localhost, but most cloud hosts don't allow the resulting direct UDP

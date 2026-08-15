@@ -70,10 +70,18 @@ class LanguageSyncProcessor(FrameProcessor):
 
             target = HINDI_TTS_LANGUAGE if frame.language in _HINDI_LANGUAGES else DEFAULT_TTS_LANGUAGE
             if target != self._current_tts_language:
-                logger.debug(
-                    "Guest speech detected as {}; switching TTS language to {}",
-                    frame.language,
+                # Phase 5A observability: every language switch is logged at
+                # info (not debug) -- this is the exact mechanism that lets a
+                # single mistranscribed/background utterance flip Mira's own
+                # spoken language mid-call (see this module's docstring and
+                # app/voice/pipeline.py's mono-audio note), so it needs to be
+                # reconstructable from production logs without needing to
+                # correlate against raw audio or guest transcript content.
+                logger.info(
+                    "tts_language_switch from={} to={} transcript_chars={}",
+                    self._current_tts_language,
                     target,
+                    len(frame.text.strip()) if frame.text else 0,
                 )
                 self._current_tts_language = target
                 await self.push_frame(
