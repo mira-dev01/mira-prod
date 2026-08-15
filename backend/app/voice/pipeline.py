@@ -1358,6 +1358,14 @@ async def _run_pipeline_inner(
                 summary = await call_summary_service.summarize_call(transcript, duration_seconds)
                 await call_service.set_call_summary(finalize_db, call_session_id, summary)
 
+                # Persists this call's guard/validator firings (see
+                # app/voice/conversation_quality.py's own docstring) purely
+                # for cross-call analytics -- record_quality_events never
+                # raises, so this can't crash on_pipeline_finished, and
+                # conversation_quality itself is read here only, never
+                # written to from this handler.
+                await call_service.record_quality_events(finalize_db, call_session_id, conversation_quality)
+
                 if any(m.get("role") == "user" for m in context.messages):
                     # Backfill the real caller's phone (from Exotel) and the
                     # property this call was about onto the lead the agent

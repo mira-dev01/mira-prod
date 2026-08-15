@@ -1,5 +1,6 @@
 import pytest
 from pipecat.frames.frames import (
+    BotStartedSpeakingFrame,
     BotStoppedSpeakingFrame,
     EndFrame,
     TranscriptionFrame,
@@ -1118,3 +1119,153 @@ def test_observe_repetition_shadow_returns_the_candidate_verdict():
     for _ in range(min_matches - 1):
         last_verdict = watchdog._observe_repetition_shadow("No")
     assert last_verdict is True
+
+
+# ---------------------------------------------------------------------------
+# Post-Phase-5D live-call fix: BotStartedSpeakingFrame pauses the watchdog.
+#
+# Confirmed live: the countdown previously ran unaware the bot was actively
+# speaking (a genuine answer, a slow_tool_filler filler line, or one of this
+# processor's own nudges), so a nudge could fire mid-answer, and repeated
+# occurrences of this could compound into a hangup on a guest who was still
+# waiting for a reply they'd never gotten a chance to respond to. These
+# tests exercise BotStartedSpeakingFrame directly, which no test before this
+# fix ever modeled (this processor never read that frame type at all).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_bot_started_speaking_pauses_the_timer_during_a_long_answer():
+    """The core reported bug: a bot answer that takes longer than
+    timeout_seconds to finish speaking must NOT trigger a nudge partway
+    through -- confirmed by holding BotStartedSpeakingFrame open (no
+    BotStoppedSpeakingFrame) for well past the configured timeout and
+    asserting zero nudges fired."""
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=0.1, max_prompts=2)
+
+    down_frames, _ = await run_test(
+        watchdog,
+        frames_to_send=[
+            BotStoppedSpeakingFrame(),  # a prior turn ends, starting the clock
+            SleepFrame(sleep=0.05),
+            BotStartedSpeakingFrame(),  # the bot begins a long answer
+            SleepFrame(sleep=0.3),  # far longer than timeout_seconds -- still mid-answer
+        ],
+    )
+
+    assert not any(isinstance(f, TTSSpeakFrame) for f in down_frames)
+
+
+@pytest.mark.asyncio
+async def test_bot_stopped_speaking_after_long_answer_restarts_a_fresh_window():
+    """Once the long answer actually finishes, BotStoppedSpeakingFrame must
+    still correctly restart a full, fresh window -- the pause must not
+    leave the timer permanently disabled."""
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=0.1, max_prompts=2)
+
+    down_frames, _ = await run_test(
+        watchdog,
+        frames_to_send=[
+            BotStoppedSpeakingFrame(),
+            SleepFrame(sleep=0.05),
+            BotStartedSpeakingFrame(),
+            SleepFrame(sleep=0.2),  # long answer in progress
+            BotStoppedSpeakingFrame(),  # the answer finally finishes
+            SleepFrame(sleep=0.15),  # long enough for a fresh 0.1s window to elapse
+        ],
+    )
+
+    speak_frames = [f for f in down_frames if isinstance(f, TTSSpeakFrame)]
+    assert len(speak_frames) == 1
+    assert speak_frames[0].text == "Hello?"
+
+
+@pytest.mark.asyncio
+async def test_repeated_slow_bot_turns_no_longer_compound_into_a_hangup():
+    """The confirmed auto-disconnect mechanism: before this fix, nothing
+    reset _prompts_sent except a completed GUEST turn, so a sequence of
+    slow bot responses (no guest silence at all -- the guest is waiting on
+    Mira, not the other way around) could still accumulate enough strikes
+    to hang up. Simulates three consecutive slow bot turns, each one
+    started well before its own timeout would have elapsed, and confirms
+    the call neither nudges nor ends."""
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=0.1, max_prompts=2)
+
+    frames = [BotStoppedSpeakingFrame()]
+    for _ in range(3):
+        frames += [
+            SleepFrame(sleep=0.05),  # some processing time before the bot starts talking
+            BotStartedSpeakingFrame(),
+            SleepFrame(sleep=0.15),  # the bot speaks for longer than timeout_seconds
+            BotStoppedSpeakingFrame(),
+        ]
+
+    down_frames, _ = await run_test(watchdog, frames_to_send=frames)
+
+    assert not any(isinstance(f, TTSSpeakFrame) for f in down_frames)
+    assert not any(isinstance(f, EndFrame) for f in down_frames)
+    assert watchdog._prompts_sent == 0
+
+
+@pytest.mark.asyncio
+async def test_bot_started_speaking_after_ended_is_a_safe_no_op():
+    """BotStartedSpeakingFrame arriving after the watchdog has already
+    ended the call (e.g. a race during teardown) must not raise or
+    misbehave -- mirrors the existing not self._ended guard already used
+    for BotStoppedSpeakingFrame."""
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=0.05, max_prompts=0)
+
+    down_frames, _ = await run_test(
+        watchdog,
+        frames_to_send=[BotStoppedSpeakingFrame(), SleepFrame(sleep=0.15), BotStartedSpeakingFrame()],
+        send_end_frame=False,
+    )
+
+    assert watchdog._ended is True
+    assert isinstance(down_frames[-1], EndFrame)
+
+
+# ---------------------------------------------------------------------------
+# Post-Phase-5D live-call fix: nudge/goodbye lines are now visible in the
+# saved call transcript (append_to_context=True, previously False).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_nudges_are_marked_append_to_context_true():
+    """Confirmed live: nudges were previously invisible on the calls page
+    because the transcript is built directly from context.messages
+    (app/voice/pipeline.py), and append_to_context=False kept them out of
+    it entirely. Both nudge lines must now carry append_to_context=True.
+
+    Uses the same timeout_seconds=0.1 / sleep=0.25 ratio as the existing
+    test_6_no_response_after_nudge_1_triggers_nudge_2 (2.5 timeout windows
+    fit in the sleep, landing cleanly after nudge 2 but before a third
+    cycle would fire) rather than a tighter ratio that leaves too little
+    margin against scheduling jitter."""
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=0.1, max_prompts=2)
+
+    down_frames, _ = await run_test(
+        watchdog,
+        frames_to_send=[BotStoppedSpeakingFrame(), SleepFrame(sleep=0.25)],
+    )
+
+    speak_frames = [f for f in down_frames if isinstance(f, TTSSpeakFrame)]
+    assert len(speak_frames) == 2
+    assert all(f.append_to_context is True for f in speak_frames)
+
+
+@pytest.mark.asyncio
+async def test_goodbye_line_is_marked_append_to_context_true():
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=0.05, max_prompts=1)
+
+    down_frames, _ = await run_test(
+        watchdog,
+        frames_to_send=[BotStoppedSpeakingFrame(), SleepFrame(sleep=0.3)],
+        send_end_frame=False,
+    )
+
+    speak_frames = [f for f in down_frames if isinstance(f, TTSSpeakFrame)]
+    goodbye_frame = speak_frames[-1]
+    assert "end the call" in goodbye_frame.text.lower()
+    assert goodbye_frame.append_to_context is True
