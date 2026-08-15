@@ -151,6 +151,35 @@ async def _hangup_exotel_call(exotel_call_id: str) -> None:
 # this is the right number, not just a plausible one.
 _VAD_PARAMS = VADParams(confidence=0.85, min_volume=0.7, start_secs=0.35)
 
+# Phase 5A (documentation/agent-conversation-improvement.md): explicit
+# product decision to tighten SilenceWatchdogProcessor's normal idle-nudge
+# timeout from 9.0s to 4.0s. Pulled out as a named module constant -- not
+# because SilenceWatchdogProcessor's own DEFAULT_SILENCE_TIMEOUT_SECONDS
+# (5.0) should change (that default exists for callers that don't care what
+# the production value is, e.g. most of this file's own tests), but so this
+# specific wired-in production value is directly importable/assertable from
+# tests instead of only verifiable by reading _run_pipeline_inner's source.
+#
+# 9.0s's own history, preserved here since this was the only place it was
+# documented before this edit: confirmed live on 2026-07-23, a guest
+# recalling specific dates and phrasing an availability question in Hindi
+# hadn't finished formulating their reply by the then-current 5s (their real
+# answer landed 4s after the nudge already fired, mid-thought) -- 9.0s was
+# the fix at the time. Phase 5A's own investigation (background audio
+# indefinitely deferring this timer via ordinary non-blank transcripts, see
+# silence_watchdog.py's process_frame) found that same generosity was
+# letting unresponsive-with-background-noise calls sit open far longer than
+# intended, and reduced it back down -- accepting a small risk of
+# re-introducing the 2026-07-23 failure mode as the explicit tradeoff. Any
+# future report of the bot nudging/hanging up on a guest who was still
+# genuinely mid-thought should be checked against this history first.
+#
+# This alone does not fully solve the background-audio problem this phase
+# investigates -- any non-blank TranscriptionFrame, including one produced
+# by background/non-guest speech, still resets this timer (see
+# silence_watchdog.py's own process_frame and this phase's final report).
+_SILENCE_WATCHDOG_TIMEOUT_SECONDS = 4.0
+
 # Per-host voice gender (User.agent_voice_gender, "female" | "male") maps to
 # one representative Sarvam bulbul:v3 speaker name each -- the v3 speaker
 # enum itself carries no gender metadata (unlike the older v2 enum, which
@@ -915,22 +944,18 @@ async def _run_pipeline_inner(
     # app/voice/conversation_style.py.
     conversation_style_engine = ConversationStyleProcessor(conversation_state)
     # Auto-cuts a call where the guest has gone silent/unresponsive: nudges
-    # ("Hello? Are you still there?") after each ~9s of silence, hangs up
+    # ("Hello? Are you still there?") after each ~4s of silence, hangs up
     # after the second nudge goes unanswered. See app/voice/silence_watchdog.py
     # for why this has to live as its own processor rather than piggybacking
-    # on the turn-stop strategy.
-    #
-    # 9.0s, not the module default of 5.0s -- confirmed live on 2026-07-23: a
-    # guest recalling specific dates and phrasing an availability question in
-    # Hindi hadn't finished formulating their reply by 5s (their real answer
-    # landed 4s after the nudge already fired, mid-thought). 5s is plausible
-    # for a yes/no but too tight for anything requiring the guest to actually
-    # think and construct a sentence.
+    # on the turn-stop strategy, and this file's own _SILENCE_WATCHDOG_
+    # TIMEOUT_SECONDS for why the value is 4.0s, not the module default.
     # Phase 5 (documentation/agent-conversation-improvement.md): passes
     # conversation_state so the closing lifecycle (armed/reopened/closed) is
     # tracked as real state the prompt layer can read, not just this
     # processor's own internal hangup bookkeeping.
-    silence_watchdog = SilenceWatchdogProcessor(timeout_seconds=9.0, conversation_state=conversation_state)
+    silence_watchdog = SilenceWatchdogProcessor(
+        timeout_seconds=_SILENCE_WATCHDOG_TIMEOUT_SECONDS, conversation_state=conversation_state
+    )
     # Code-level backstop for the "let me loop in the host" ban in
     # GOLDEN_RULES -- prompting alone has failed on this exact wording
     # repeatedly across real calls. See app/voice/escalation_phrase_guard.py.

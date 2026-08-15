@@ -48,6 +48,8 @@ spurious re-invocation).
 """
 
 import asyncio
+import time
+from collections import deque
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -61,6 +63,8 @@ from pipecat.frames.frames import (
 )
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
+from app.voice.repetition_guard import _normalize, _word_overlap
+
 if TYPE_CHECKING:
     from app.voice.conversation_state import ConversationState
 
@@ -71,6 +75,29 @@ DEFAULT_MAX_PROMPTS = 2
 # sentence" rule, same underlying reasoning applied here).
 DEFAULT_PROMPT_TEXTS = ["Hello?", "Hello, are you there?"]
 DEFAULT_GOODBYE_TEXT = "I'll go ahead and end the call here. Feel free to call back anytime -- have a great day!"
+
+# ---------------------------------------------------------------------------
+# Phase 5C -- SHADOW-MODE repetition observation only (documentation/
+# agent-conversation-improvement.md, Phase 5B's investigation report).
+#
+# EXPERIMENTAL SHADOW-MODE THRESHOLDS ONLY. NOT PRODUCTION-APPROVED.
+# These three values were never validated against real call data -- Phase
+# 5B explicitly found no evidence basis exists yet for "N repeats in X
+# seconds" and explicitly prohibited inventing one. They exist ONLY so the
+# shadow computation below has some window/threshold to compute against for
+# log-collection purposes; they must never be treated as tuned, and must
+# never gate a change to watchdog reset behavior (see
+# _observe_repetition_shadow's own docstring). Do not promote these
+# to "production" values without a Phase 5D decision backed by the log data
+# this phase's logging exists to collect.
+_REPETITION_SHADOW_WINDOW_SECONDS = 12.0
+_REPETITION_SHADOW_MIN_MATCHES = 3
+_REPETITION_SHADOW_SIMILARITY_THRESHOLD = 0.8
+# Bounds the rolling history itself (independent of the window above) so a
+# pathologically long call can't grow this list without bound -- deliberately
+# small, since only very recent transcripts are ever relevant to a shadow
+# window measured in seconds, not minutes.
+_REPETITION_SHADOW_HISTORY_MAXLEN = 8
 
 
 class SilenceWatchdogProcessor(FrameProcessor):
@@ -96,6 +123,20 @@ class SilenceWatchdogProcessor(FrameProcessor):
         self._timer_task: asyncio.Task | None = None
         self._ended = False
         self._end_requested = False
+
+        # Phase 5C shadow-mode repetition observation state -- see the
+        # module-level EXPERIMENTAL SHADOW-MODE THRESHOLDS comment above.
+        # Bounded deque of (normalized_text, monotonic_timestamp) for the
+        # most recent non-blank transcripts THIS PROCESSOR HAS SEEN SINCE
+        # THE LAST BOT TURN -- never persisted, never longer than
+        # _REPETITION_SHADOW_HISTORY_MAXLEN, cleared whenever a
+        # BotStoppedSpeakingFrame occurs (see Step 6 of this phase's own
+        # brief: a guest saying "Yes" -> bot responds -> guest saying "Yes"
+        # again must NOT read as the same suspicious streak a guest's
+        # background repeating "No" with no intervening bot turn would).
+        self._recent_transcripts: deque[tuple[str, float]] = deque(
+            maxlen=_REPETITION_SHADOW_HISTORY_MAXLEN
+        )
 
     @property
     def hangup_pending(self) -> bool:
@@ -158,6 +199,16 @@ class SilenceWatchdogProcessor(FrameProcessor):
                 # relying on this frame coming back around -- see the
                 # comment there.
                 await self._restart_timer()
+            # Phase 5C: real bot activity just happened (a genuine reply, a
+            # nudge, or the greeting) -- clears the shadow-repetition history
+            # unconditionally (even on the _end_requested/hangup branch
+            # above, since a bot turn genuinely completed either way; no
+            # more transcripts matter once _ended is set regardless). This
+            # is what makes "guest says Yes -> bot responds -> guest says
+            # Yes again" read as two independent, unrelated observations
+            # rather than a two-in-a-row repeated streak -- see Step 6 of
+            # this phase's own brief for why that distinction is required.
+            self._recent_transcripts.clear()
         elif isinstance(frame, TranscriptionFrame):
             if frame.text and frame.text.strip():
                 # A real transcript -- the guest is actually there. Reset the
@@ -168,6 +219,20 @@ class SilenceWatchdogProcessor(FrameProcessor):
                 # closing line is still playing (e.g. they thought of one
                 # more question), that's a clear sign the call isn't actually
                 # over -- don't hang up on top of them.
+                # Phase 5A observability: length only, never the transcript
+                # text itself (guest content) -- enough to reconstruct, from
+                # logs alone, that SOME transcript reset the idle timer at
+                # this point in the call, without logging what was said.
+                logger.debug(
+                    "silence_watchdog_timer_reset transcript_chars={}",
+                    len(frame.text.strip()),
+                )
+                # Phase 5C: SHADOW OBSERVATION ONLY -- computed and logged,
+                # never allowed to influence anything below this point. The
+                # reset behavior (strike count, timer cancellation) that
+                # follows is byte-identical regardless of what this method
+                # returns; see its own docstring for why.
+                self._observe_repetition_shadow(frame.text)
                 self._prompts_sent = 0
                 if self._end_requested and self._conversation_state is not None:
                     self._conversation_state.mark_reopened()
@@ -181,6 +246,80 @@ class SilenceWatchdogProcessor(FrameProcessor):
             # (e.g. the turn-stop strategy's own empty-transcript handling).
 
         await self.push_frame(frame, direction)
+
+    def _observe_repetition_shadow(self, text: str) -> None:
+        """Phase 5C SHADOW-MODE ONLY. Computes and logs whether this
+        transcript participates in a repeated pattern -- see the module-level
+        EXPERIMENTAL SHADOW-MODE THRESHOLDS comment for why the specific
+        numbers used here are not production-approved.
+
+        This method's return value is discarded by design (it returns
+        None) -- it exists to LOG a metadata-only observation, never to be
+        consulted by anything that changes watchdog behavior. Do not change
+        this method to return a value process_frame acts on without an
+        explicit Phase 5D decision; see this phase's own brief (Step 9,
+        "SHADOW MODE MUST NOT CHANGE CURRENT CALL BEHAVIOR") for why.
+
+        This does NOT claim the transcript is background/noise/invalid
+        guest speech -- deliberately named/logged as "repetition_shadow_
+        candidate", never "is_background"/"is_noise"/"reject_guest": this
+        stack has no speaker attribution (Phase 5B), so no signal available
+        here can support that stronger claim. It only observes "does this
+        transcript textually resemble other very recent transcripts, with
+        no bot turn in between" -- a knowingly weaker, purely structural
+        property.
+
+        Deliberately conservative about STT re-finalization (Phase 5B
+        Section 7/10 of this phase's brief): Sarvam can emit a corrected
+        finalized TranscriptionFrame for the same utterance shortly after
+        the first one. This method cannot distinguish that from genuine
+        repeated background speech -- both look identical (near-identical
+        text, no bot turn in between, close in time) -- so it does not try
+        to. It simply records what happened; a human (or Phase 5D's
+        analysis of these logs) decides what any given pattern of matches
+        actually means, using real call context this method does not have.
+        """
+        normalized = _normalize(text)
+        now = time.monotonic()
+
+        # Drop history entries older than the shadow window -- "recent" is
+        # defined relative to THIS transcript's arrival, not wall-clock
+        # buckets, so a slow trickle of otherwise-unrelated transcripts
+        # can't accumulate matches across an unbounded span.
+        while self._recent_transcripts and now - self._recent_transcripts[0][1] > _REPETITION_SHADOW_WINDOW_SECONDS:
+            self._recent_transcripts.popleft()
+
+        prior_match_count = sum(
+            1
+            for prior_text, _ in self._recent_transcripts
+            if _word_overlap(normalized, prior_text) >= _REPETITION_SHADOW_SIMILARITY_THRESHOLD
+        )
+        # +1: this transcript counts as a match with itself for the purpose
+        # of "how many transcripts in the current streak", so a genuinely
+        # repeated pattern of exactly _REPETITION_SHADOW_MIN_MATCHES total
+        # occurrences (not _MIN_MATCHES prior ones) is what the threshold
+        # below actually measures.
+        total_matches = prior_match_count + 1
+        repetition_shadow_candidate = total_matches >= _REPETITION_SHADOW_MIN_MATCHES
+
+        elapsed_since_previous_ms = (
+            int((now - self._recent_transcripts[-1][1]) * 1000) if self._recent_transcripts else None
+        )
+
+        # Metadata only -- normalized text is never logged (it's still
+        # guest content, just lightly transformed), matching Phase 5A's
+        # existing "length/counts only" discipline for this processor.
+        logger.debug(
+            "repetition_shadow_observation repetition_shadow_candidate={} prior_match_count={} "
+            "transcript_chars={} elapsed_since_previous_transcript_ms={} history_size={}",
+            repetition_shadow_candidate,
+            prior_match_count,
+            len(text.strip()),
+            elapsed_since_previous_ms,
+            len(self._recent_transcripts),
+        )
+
+        self._recent_transcripts.append((normalized, now))
 
     async def _restart_timer(self):
         await self._cancel_timer()
