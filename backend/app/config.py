@@ -369,6 +369,18 @@ class Settings(BaseSettings):
             )
         return value
 
+    # TEMPORARY global override for call_ownership.resolve_effective_call_owner,
+    # bypassing each Property's own call_handling_mode/schedule/timezone
+    # entirely: while dynamic per-property Exotel wiring isn't ready yet, every
+    # property uses this single fixed Asia/Kolkata HOST window instead (Mira
+    # active 17:00-11:00, host active 11:00-17:00). Both unset (the default) =
+    # zero behavior change, resolver reads each Property row exactly as before.
+    # Set both to enable; remove/unset both once per-property scheduling is
+    # actually wired end-to-end and delete the override block in
+    # call_ownership.py that reads these.
+    fixed_host_hours_start: str | None = None
+    fixed_host_hours_end: str | None = None
+
     exotel_sid: str | None = None
     exotel_api_key: str | None = None
     exotel_api_token: str | None = None

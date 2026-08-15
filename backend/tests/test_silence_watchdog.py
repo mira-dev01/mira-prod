@@ -1,5 +1,12 @@
 import pytest
-from pipecat.frames.frames import BotStoppedSpeakingFrame, EndFrame, TranscriptionFrame, TTSSpeakFrame
+from pipecat.frames.frames import (
+    BotStoppedSpeakingFrame,
+    EndFrame,
+    TranscriptionFrame,
+    TTSSpeakFrame,
+    UserStartedSpeakingFrame,
+    UserStoppedSpeakingFrame,
+)
 from pipecat.tests.utils import SleepFrame, run_test
 
 from app.voice import pipeline
@@ -14,6 +21,23 @@ def _blank_transcript() -> TranscriptionFrame:
 
 def _real_transcript(text: str) -> TranscriptionFrame:
     return TranscriptionFrame(text=text, user_id="guest", timestamp="", finalized=True)
+
+
+def _completed_turn(text: str, gap: float = 0.02) -> list:
+    """Phase 5D: the real pipeline sequence for one genuine, completed guest
+    turn -- a TranscriptionFrame (carries the text, feeds the repetition-
+    shadow signal) followed by UserStoppedSpeakingFrame (the actual
+    meaningful-response boundary; carries no text of its own, see pipecat's
+    own UserStoppedSpeakingFrame -- a bare marker dataclass). Confirmed
+    directly against pipecat's own LLMUserAggregator source and via a live
+    synthetic pipeline trace during this phase's investigation: with a real
+    transcript, TranscriptionFrame is pushed downstream, then
+    UserStoppedSpeakingFrame is broadcast upstream -- this ordering is what
+    SilenceWatchdogProcessor now depends on. A SleepFrame gap is included
+    since pipecat's own test harness does not guarantee frames_to_send
+    delivery order is preserved across mixed frame types without one
+    (confirmed directly during Phase 5C; see this file's own history)."""
+    return [_real_transcript(text), SleepFrame(sleep=gap), UserStoppedSpeakingFrame()]
 
 
 @pytest.mark.asyncio
@@ -69,7 +93,47 @@ async def test_blank_transcript_does_not_reset_or_count_as_reply():
 
 
 @pytest.mark.asyncio
-async def test_real_transcript_resets_strikes_and_cancels_timer():
+async def test_completed_turn_resets_strikes_and_cancels_timer():
+    """Phase 5D: the real signal is now UserStoppedSpeakingFrame (a
+    genuinely completed turn), not a bare TranscriptionFrame -- see
+    _completed_turn's own docstring.
+
+    Note: UserStoppedSpeakingFrame both resets the strike counter AND
+    starts a FRESH wait window (realistically, the bot would reply next,
+    producing its own BotStoppedSpeakingFrame) -- this test checks the
+    reset happened promptly, using a short window that ends before the
+    fresh timer itself would elapse, rather than sleeping long enough for
+    a whole new (correctly-firing) nudge cycle to start.
+
+    Non-vacuity note: a nudge must fire FIRST (making _prompts_sent
+    genuinely nonzero before the completed turn) -- confirmed during this
+    phase that asserting _prompts_sent == 0 without ever having driven it
+    above 0 first is vacuous (a disabled reset assignment still passes,
+    since the value was already 0)."""
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=0.1, max_prompts=2)
+
+    down_frames, _ = await run_test(
+        watchdog,
+        frames_to_send=[
+            BotStoppedSpeakingFrame(),
+            SleepFrame(sleep=0.15),  # nudge #1 fires at ~0.1s -- _prompts_sent becomes 1
+            *_completed_turn("I have a question"),
+            SleepFrame(sleep=0.05),  # well before the fresh 0.1s window elapses
+        ],
+    )
+
+    speak_frames = [f for f in down_frames if isinstance(f, TTSSpeakFrame)]
+    assert len(speak_frames) == 1  # only the one nudge that fired before the reset
+    assert watchdog._prompts_sent == 0
+
+
+@pytest.mark.asyncio
+async def test_transcript_alone_without_turn_completion_does_not_reset_strikes():
+    """Phase 5D core behavior change: a raw TranscriptionFrame with no
+    following UserStoppedSpeakingFrame must NOT reset the strike counter or
+    cancel the timer on its own anymore -- only a genuinely completed turn
+    does. This is the direct fix for the brief's central complaint (any
+    non-blank transcript was previously enough)."""
     watchdog = SilenceWatchdogProcessor(timeout_seconds=0.1, max_prompts=2)
 
     down_frames, _ = await run_test(
@@ -77,12 +141,48 @@ async def test_real_transcript_resets_strikes_and_cancels_timer():
         frames_to_send=[
             BotStoppedSpeakingFrame(),
             SleepFrame(sleep=0.05),
-            _real_transcript("I have a question"),  # guest is there -- cancels the pending timeout
-            SleepFrame(sleep=0.3),  # no BotStoppedSpeakingFrame follows, so no new timer starts
+            _real_transcript("I have a question"),  # no UserStoppedSpeakingFrame follows
+            # Land shortly after nudge #1 (fires at t~=0.1, restarting the
+            # timer for nudge #2 at t~=0.2) but well before nudge #2 -- long
+            # enough to prove a nudge fired at all, short enough to isolate
+            # which one.
+            SleepFrame(sleep=0.08),
         ],
     )
 
-    assert not any(isinstance(f, TTSSpeakFrame) for f in down_frames)
+    # The timer was never cancelled by the bare transcript -- a nudge fires.
+    speak_frames = [f for f in down_frames if isinstance(f, TTSSpeakFrame)]
+    assert len(speak_frames) == 1
+    assert speak_frames[0].text == "Hello?"
+
+
+@pytest.mark.asyncio
+async def test_user_started_speaking_pauses_the_timer_without_resetting_strikes():
+    """Phase 5D: guest actively speaking must cancel the pending nudge (so
+    it can never interrupt them), but starting to speak is not yet proof of
+    a meaningful completed response -- _prompts_sent must NOT reset here.
+
+    Non-vacuity note: confirmed during this phase that _prompts_sent == 0
+    is vacuous if nothing ever drove it above 0 first -- a nudge must fire
+    BEFORE the UserStartedSpeakingFrame for this assertion to mean
+    anything real."""
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=0.1, max_prompts=5)
+
+    down_frames, _ = await run_test(
+        watchdog,
+        frames_to_send=[
+            BotStoppedSpeakingFrame(),
+            SleepFrame(sleep=0.15),  # nudge #1 fires at ~0.1s -- _prompts_sent becomes 1
+            UserStartedSpeakingFrame(),  # guest starts talking
+            SleepFrame(sleep=0.3),  # no further frames -- timer must stay cancelled, no more nudges
+        ],
+    )
+
+    speak_frames = [f for f in down_frames if isinstance(f, TTSSpeakFrame)]
+    assert len(speak_frames) == 1  # only the one nudge before speech started
+    # Speech having merely STARTED must not count as a reset "win" either --
+    # it's paused, not credited. _prompts_sent stays at whatever it was.
+    assert watchdog._prompts_sent == 1
 
 
 @pytest.mark.asyncio
@@ -113,7 +213,9 @@ async def test_end_call_ends_after_the_closing_line_finishes_playing():
 async def test_guest_speaking_again_cancels_a_pending_end_call():
     # Guest thinks of one more question while/after the closing line is
     # playing -- a real transcript arriving must cancel the pending hangup,
-    # not race against it.
+    # not race against it. Deliberately kept on the raw TranscriptionFrame
+    # signal (not gated on full turn completion) -- see silence_watchdog.py's
+    # own TranscriptionFrame branch comment for why.
     watchdog = SilenceWatchdogProcessor(timeout_seconds=0.2, max_prompts=2)
     await watchdog.request_end_after_current_turn()
 
@@ -252,44 +354,53 @@ async def test_no_conversation_state_is_a_no_op_for_closing_lifecycle():
 
 
 @pytest.mark.asyncio
-async def test_repeated_background_transcripts_indefinitely_defer_the_nudge_cycle():
-    """Phase 5A root-cause characterization test (Step 15, item 3/7): this
-    is NOT a bug in SilenceWatchdogProcessor's own logic -- it is a direct,
-    faithful demonstration of the documented architectural limitation
-    (see app/config.py's sarvam_vad_* comment block and app/voice/
-    pipeline.py's mono-audio note): every non-blank TranscriptionFrame is
-    trusted as real guest activity, with no signal available anywhere in
-    this stack to distinguish a genuine guest reply from a background
-    voice picked up by the same mono call audio. A guest who says nothing
-    else for the rest of the call, but whose background keeps producing
-    short transcribable utterances, can defer this processor's own
-    nudge/hangup cycle indefinitely -- confirmed here by asserting zero
-    TTSSpeakFrame nudges fire despite a span far exceeding several
-    timeout cycles. This is exactly why max_call_duration_seconds
-    (app/voice/pipeline.py's _enforce_max_call_duration, see
-    test_max_call_duration.py) exists as an INDEPENDENT backstop that
-    cannot be deferred this way -- this test documents why that backstop
-    is necessary, it does not claim this processor alone is sufficient."""
-    watchdog = SilenceWatchdogProcessor(timeout_seconds=0.1, max_prompts=2)
+async def test_repeated_background_completed_turns_do_not_reset_strikes_but_still_get_time():
+    """Phase 5D update of Phase 5A's own root-cause characterization test:
+    with the VAD wiring bug fixed and UserStoppedSpeakingFrame now the real
+    reset signal, a background voice that happens to complete several
+    near-identical "turns" (same text, no real bot activity between them)
+    is now caught by the repetition-shadow signal once it reaches
+    _REPETITION_SHADOW_MIN_MATCHES -- the strike counter stops resetting,
+    so the 2-follow-up cap can no longer be deferred forever by this
+    pattern. This directly closes the gap Phase 5A's own test documented
+    as NOT yet closed. The guest (or background voice) still always gets a
+    full fresh timeout window per completed turn -- this signal only
+    withholds "that counted as real progress", it never shortens anyone's
+    response time (see silence_watchdog.py's own docstring).
 
+    Non-vacuity note: confirmed during this phase that asserting only "the
+    call eventually ends" is vacuous here -- the call ends regardless of
+    whether the repetition gate does anything, because the very LAST
+    completed turn in the sequence is always followed by an unanswered
+    fresh timer window that elapses on its own either way. The real,
+    distinguishing property is checked directly below: once the
+    repetition threshold is reached, _prompts_sent must NOT return to 0
+    on a subsequent matching completed turn -- with the gate disabled,
+    it does."""
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=0.05, max_prompts=10)
+    min_matches = silence_watchdog_module._REPETITION_SHADOW_MIN_MATCHES
+
+    # Drive to exactly the repetition threshold -- one nudge fires in the
+    # gap before the threshold-th completed turn arrives (0.06s > 0.05s
+    # timeout), making _prompts_sent nonzero right as the gate engages.
     frames = [BotStoppedSpeakingFrame()]
-    for _ in range(8):
-        frames.append(SleepFrame(sleep=0.05))
-        frames.append(_real_transcript("No"))  # short, noise-shaped, like a background voice
+    for _ in range(min_matches):
+        frames += [SleepFrame(sleep=0.06), *_completed_turn("No")]
 
     down_frames, _ = await run_test(watchdog, frames_to_send=frames)
 
-    assert not any(isinstance(f, TTSSpeakFrame) for f in down_frames)
-    assert not any(isinstance(f, EndFrame) for f in down_frames)
-    assert watchdog._prompts_sent == 0
+    # The real, non-vacuous assertion: strikes accumulated from the nudges
+    # that fired during the repeated-pattern gaps, and were NOT reset back
+    # to 0 once the repetition threshold was reached.
+    assert watchdog._prompts_sent > 0
 
 
 @pytest.mark.asyncio
-async def test_duplicate_transcript_events_do_not_double_reset_or_misbehave():
-    """Step 15, item 11: two real transcripts arriving close together
-    (STT correcting/re-finalizing the same utterance, or two genuinely
-    separate quick replies) must not cause any double-counting or
-    incorrect state -- each is just another reset, idempotent in effect."""
+async def test_duplicate_completed_turns_do_not_double_reset_or_misbehave():
+    """Step 15/matrix item 11 (Phase 5C origin, re-verified under Phase 5D
+    semantics): two genuinely completed turns with the same text arriving
+    close together (STT correcting/re-finalizing, or two real quick
+    replies) must not cause any double-counting or incorrect state."""
     watchdog = SilenceWatchdogProcessor(timeout_seconds=0.2, max_prompts=2)
 
     down_frames, _ = await run_test(
@@ -297,9 +408,9 @@ async def test_duplicate_transcript_events_do_not_double_reset_or_misbehave():
         frames_to_send=[
             BotStoppedSpeakingFrame(),
             SleepFrame(sleep=0.02),
-            _real_transcript("I have a question"),
-            _real_transcript("I have a question"),  # duplicate/corrected re-finalization
-            SleepFrame(sleep=0.3),
+            *_completed_turn("I have a question"),
+            *_completed_turn("I have a question"),  # duplicate/corrected re-finalization
+            SleepFrame(sleep=0.05),  # well before the fresh 0.2s window elapses
         ],
     )
 
@@ -307,29 +418,321 @@ async def test_duplicate_transcript_events_do_not_double_reset_or_misbehave():
     assert watchdog._prompts_sent == 0
 
 
-def test_production_wired_timeout_is_four_seconds():
-    """Phase 5A: explicit product decision to tighten the normal idle-nudge
-    timeout from 9.0s to 4.0s (app/voice/pipeline.py's own
+def test_production_wired_timeout_is_nine_seconds():
+    """Phase 5D: restored the normal idle-nudge timeout from Phase 5A's
+    4.0s stopgap back to 9.0s (app/voice/pipeline.py's own
     _SILENCE_WATCHDOG_TIMEOUT_SECONDS, used to construct the real
-    SilenceWatchdogProcessor inside _run_pipeline_inner) -- this is the
-    value that actually governs a live call, distinct from this
-    processor's own DEFAULT_SILENCE_TIMEOUT_SECONDS (5.0), which only
-    matters for a caller that doesn't pass timeout_seconds explicitly
-    (most of this file's own tests). A regression here means either the
-    Phase 5A product decision was reverted, or pipeline.py stopped using
-    the named constant to construct the real processor."""
-    assert pipeline._SILENCE_WATCHDOG_TIMEOUT_SECONDS == 4.0
+    SilenceWatchdogProcessor inside _run_pipeline_inner) -- safe again once
+    the actual root cause (dead VAD wiring, unreliable turn-completion
+    signal) was fixed instead of merely shortened. This is the value that
+    actually governs a live call, distinct from this processor's own
+    DEFAULT_SILENCE_TIMEOUT_SECONDS (5.0), which only matters for a caller
+    that doesn't pass timeout_seconds explicitly (most of this file's own
+    tests). A regression here means either the Phase 5D product decision
+    was reverted, or pipeline.py stopped using the named constant to
+    construct the real processor."""
+    assert pipeline._SILENCE_WATCHDOG_TIMEOUT_SECONDS == 9.0
 
 
 # ---------------------------------------------------------------------------
-# Phase 5C -- SHADOW-MODE repetition observation (documentation/
-# agent-conversation-improvement.md). All tests in this section verify the
-# shadow computation itself (via a monkeypatched logger.debug capturing the
-# exact metadata that would be logged -- caplog does NOT capture loguru
-# output in this repo without an explicit propagation bridge, confirmed by
-# direct probe during this phase; using caplog here would have produced
-# tests that always fail regardless of correctness) AND separately verify
-# watchdog reset behavior is byte-identical with the feature present.
+# Phase 5D -- VAD-driven pause/resume around UserStartedSpeakingFrame/
+# UserStoppedSpeakingFrame. Matches the brief's own numbered test matrix
+# (items 1-18) as closely as the frame-level unit-test boundary allows.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_1_guest_answers_after_2_seconds_no_nudge():
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=9.0, max_prompts=2)
+    down_frames, _ = await run_test(
+        watchdog,
+        frames_to_send=[
+            BotStoppedSpeakingFrame(),
+            SleepFrame(sleep=0.05),  # stand-in for "2 sec" at test-appropriate scale
+            *_completed_turn("Yes"),
+            SleepFrame(sleep=0.05),
+        ],
+    )
+    assert not any(isinstance(f, TTSSpeakFrame) for f in down_frames)
+
+
+@pytest.mark.asyncio
+async def test_2_and_3_guest_answers_just_before_timeout_no_nudge():
+    """Items 2/3 (7s / 8.9s of a 9s window): answering with any real margin
+    before the deadline, however small, must never trigger a nudge.
+
+    Note: UserStartedSpeakingFrame is what actually protects a guest who is
+    mid-utterance right at the deadline (test_8) -- this test instead
+    exercises the case where VAD confirms speech well before the deadline
+    (via UserStartedSpeakingFrame, which cancels the pending timer), and
+    the transcript/turn-completion follows shortly after. A bare
+    TranscriptionFrame arriving without a preceding UserStartedSpeakingFrame
+    does NOT cancel the timer on its own (Phase 5D's whole point), so
+    real production calls rely on VAD start, not transcript arrival, to
+    protect an in-progress utterance -- see test_8."""
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=0.2, max_prompts=2)
+    down_frames, _ = await run_test(
+        watchdog,
+        frames_to_send=[
+            BotStoppedSpeakingFrame(),
+            SleepFrame(sleep=0.1),  # guest starts answering partway through the window
+            UserStartedSpeakingFrame(),  # VAD confirms -- pauses the timer
+            SleepFrame(sleep=0.15),  # takes a while to finish speaking (would exceed the original window)
+            *_completed_turn("Yes"),
+            SleepFrame(sleep=0.05),
+        ],
+    )
+    assert not any(isinstance(f, TTSSpeakFrame) for f in down_frames)
+
+
+@pytest.mark.asyncio
+async def test_4_no_response_for_full_window_triggers_nudge_1():
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=0.1, max_prompts=2)
+    down_frames, _ = await run_test(
+        watchdog,
+        frames_to_send=[BotStoppedSpeakingFrame(), SleepFrame(sleep=0.15)],
+    )
+    speak_frames = [f for f in down_frames if isinstance(f, TTSSpeakFrame)]
+    assert len(speak_frames) == 1
+    assert speak_frames[0].text == "Hello?"
+
+
+@pytest.mark.asyncio
+async def test_5_guest_answers_after_nudge_1_no_nudge_2():
+    """After nudge #1 fires, the guest answers -- the completed turn resets
+    strikes and starts a FRESH window.
+
+    Non-vacuity note: confirmed during this phase that checking only
+    "no second nudge yet" within a short trailing window is vacuous --
+    that assertion holds whether or not the reset assignment actually ran,
+    since the fresh timer wouldn't have elapsed either way in that short a
+    window. Asserting watchdog._prompts_sent directly is what actually
+    distinguishes the two cases."""
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=0.15, max_prompts=2)
+    down_frames, _ = await run_test(
+        watchdog,
+        frames_to_send=[
+            BotStoppedSpeakingFrame(),
+            SleepFrame(sleep=0.2),  # nudge #1 fires at ~0.15s -- _prompts_sent becomes 1
+            *_completed_turn("Sorry, still here"),
+            SleepFrame(sleep=0.05),  # well inside the fresh 0.15s window
+        ],
+    )
+    speak_frames = [f for f in down_frames if isinstance(f, TTSSpeakFrame)]
+    assert len(speak_frames) == 1  # only nudge #1, never a second
+    assert watchdog._prompts_sent == 0  # the real, non-vacuous assertion
+
+
+@pytest.mark.asyncio
+async def test_6_no_response_after_nudge_1_triggers_nudge_2():
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=0.1, max_prompts=2)
+    down_frames, _ = await run_test(
+        watchdog,
+        frames_to_send=[BotStoppedSpeakingFrame(), SleepFrame(sleep=0.25)],
+    )
+    speak_frames = [f for f in down_frames if isinstance(f, TTSSpeakFrame)]
+    assert len(speak_frames) == 2
+    assert speak_frames[0].text == "Hello?"
+    assert speak_frames[1].text == "Hello, are you there?"
+
+
+@pytest.mark.asyncio
+async def test_7_no_response_after_nudge_2_ends_call():
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=0.1, max_prompts=2)
+    down_frames, _ = await run_test(
+        watchdog,
+        frames_to_send=[BotStoppedSpeakingFrame(), SleepFrame(sleep=0.5)],
+        send_end_frame=False,
+    )
+    speak_frames = [f for f in down_frames if isinstance(f, TTSSpeakFrame)]
+    assert len(speak_frames) == 3
+    assert isinstance(down_frames[-1], EndFrame)
+    assert down_frames[-1].reason == "silent caller"
+
+
+@pytest.mark.asyncio
+async def test_8_guest_actively_speaking_at_boundary_is_not_interrupted():
+    """Item 8: the guest starts speaking right as the window would expire --
+    the nudge must NOT fire while they're mid-utterance."""
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=0.1, max_prompts=2)
+    down_frames, _ = await run_test(
+        watchdog,
+        frames_to_send=[
+            BotStoppedSpeakingFrame(),
+            SleepFrame(sleep=0.09),  # just before the 0.1s deadline
+            UserStartedSpeakingFrame(),  # guest starts talking right at the boundary
+            SleepFrame(sleep=0.3),  # they keep going -- no UserStoppedSpeakingFrame yet
+        ],
+    )
+    assert not any(isinstance(f, TTSSpeakFrame) for f in down_frames)
+
+
+@pytest.mark.asyncio
+async def test_9_hesitation_umm_one_second_is_not_treated_as_silence():
+    """Item 9: 'umm, one second' is a single, non-repeated utterance -- a
+    genuinely completed turn like any other, must reset the strike counter
+    normally (the repetition-shadow signal only fires on a REPEATED
+    pattern, never a single occurrence, so no phrase-specific allowlist is
+    needed for this to work correctly)."""
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=0.2, max_prompts=2)
+    down_frames, _ = await run_test(
+        watchdog,
+        frames_to_send=[
+            BotStoppedSpeakingFrame(),
+            SleepFrame(sleep=0.05),
+            *_completed_turn("umm, one second"),
+            SleepFrame(sleep=0.05),  # well inside the fresh 0.2s window started by the reset
+        ],
+    )
+    assert not any(isinstance(f, TTSSpeakFrame) for f in down_frames)
+    assert watchdog._prompts_sent == 0
+
+
+@pytest.mark.asyncio
+async def test_10_clearly_irrelevant_background_phrase_does_not_indefinitely_reset():
+    """Item 10: a repeated irrelevant/background-shaped phrase must not
+    indefinitely reset the inactivity cycle -- covered end-to-end by
+    test_repeated_background_completed_turns_do_not_reset_strikes_but_still_get_time
+    above; this test names it explicitly to match the brief's own numbering."""
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=0.1, max_prompts=2)
+    min_matches = silence_watchdog_module._REPETITION_SHADOW_MIN_MATCHES
+
+    frames = [BotStoppedSpeakingFrame()]
+    for _ in range(min_matches + 2):
+        frames += [SleepFrame(sleep=0.02), *_completed_turn("background chatter")]
+
+    down_frames, _ = await run_test(watchdog, frames_to_send=frames, send_end_frame=False)
+
+    assert isinstance(down_frames[-1], EndFrame)
+    assert down_frames[-1].reason == "silent caller"
+
+
+@pytest.mark.asyncio
+async def test_11_repeated_background_transcripts_cannot_keep_the_call_alive_forever():
+    """Item 11: same property as item 10, phrased as the brief's own
+    'cannot keep the call alive forever' framing -- confirms the call
+    genuinely ends (not just that nudges eventually fire)."""
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=0.1, max_prompts=2)
+    min_matches = silence_watchdog_module._REPETITION_SHADOW_MIN_MATCHES
+
+    frames = [BotStoppedSpeakingFrame()]
+    for _ in range(min_matches + 4):
+        frames += [SleepFrame(sleep=0.02), *_completed_turn("No")]
+
+    down_frames, _ = await run_test(watchdog, frames_to_send=frames, send_end_frame=False)
+
+    assert isinstance(down_frames[-1], EndFrame)
+    assert down_frames[-1].reason == "silent caller"
+
+
+@pytest.mark.asyncio
+async def test_12_normal_multiturn_conversation_watchdog_never_interferes():
+    """Item 12: a normal back-and-forth (bot turn, guest turn, bot turn,
+    guest turn, distinct content each time) must never nudge or hang up."""
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=0.1, max_prompts=2)
+    down_frames, _ = await run_test(
+        watchdog,
+        frames_to_send=[
+            BotStoppedSpeakingFrame(),
+            SleepFrame(sleep=0.02),
+            *_completed_turn("I'd like to book a villa in Goa"),
+            SleepFrame(sleep=0.02),
+            BotStoppedSpeakingFrame(),
+            SleepFrame(sleep=0.02),
+            *_completed_turn("Two guests, next weekend"),
+            SleepFrame(sleep=0.02),
+            BotStoppedSpeakingFrame(),
+            SleepFrame(sleep=0.02),
+            *_completed_turn("Sounds good, book it"),
+            SleepFrame(sleep=0.05),
+        ],
+    )
+    assert not any(isinstance(f, TTSSpeakFrame) for f in down_frames)
+    assert not any(isinstance(f, EndFrame) for f in down_frames)
+
+
+@pytest.mark.asyncio
+async def test_13_guest_interrupts_mid_bot_speech_existing_behavior_intact():
+    """Item 13: UserStartedSpeakingFrame arriving BEFORE any
+    BotStoppedSpeakingFrame (i.e. the guest interrupts while the bot is
+    still speaking) must not error or misbehave -- there's no timer running
+    yet at that point (none was ever started), so this is a pure no-op for
+    this processor, matching pipecat's own interruption handling being
+    entirely independent of this watchdog."""
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=0.1, max_prompts=2)
+    down_frames, _ = await run_test(
+        watchdog,
+        frames_to_send=[
+            UserStartedSpeakingFrame(),  # guest interrupts before any bot turn completed
+            SleepFrame(sleep=0.05),
+        ],
+    )
+    assert not any(isinstance(f, TTSSpeakFrame) for f in down_frames)
+    assert not any(isinstance(f, EndFrame) for f in down_frames)
+
+
+@pytest.mark.asyncio
+async def test_14_bot_stopped_speaking_starts_the_correct_waiting_period():
+    """Item 14: explicit timing check that BotStoppedSpeakingFrame starts a
+    timer of exactly timeout_seconds, not some other value."""
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=0.15, max_prompts=2)
+    down_frames, _ = await run_test(
+        watchdog,
+        frames_to_send=[
+            BotStoppedSpeakingFrame(),
+            SleepFrame(sleep=0.1),  # before the 0.15s deadline
+        ],
+    )
+    assert not any(isinstance(f, TTSSpeakFrame) for f in down_frames)
+
+    watchdog2 = SilenceWatchdogProcessor(timeout_seconds=0.05, max_prompts=2)
+    down_frames2, _ = await run_test(
+        watchdog2,
+        frames_to_send=[
+            BotStoppedSpeakingFrame(),
+            SleepFrame(sleep=0.15),  # comfortably after the 0.05s deadline
+        ],
+    )
+    assert any(isinstance(f, TTSSpeakFrame) for f in down_frames2)
+
+
+def test_15_reset_negotiation_context_style_state_clears_relevant_watchdog_state():
+    """Item 15: this processor's own equivalent of a context reset --
+    constructing a fresh SilenceWatchdogProcessor (the real-world analog of
+    a new call/new context) starts with completely clean state. Directly
+    inspects the actual attributes rather than inferring cleanliness from
+    behavior alone."""
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=5.0)
+    assert watchdog._prompts_sent == 0
+    assert watchdog._timer_task is None
+    assert watchdog._ended is False
+    assert watchdog._end_requested is False
+    assert len(watchdog._recent_transcripts) == 0
+    assert watchdog._pending_turn_is_repetition_candidate is False
+
+
+# Item 16 (max call duration remains independent) -- covered by the existing,
+# untouched tests/test_max_call_duration.py, which already proves the hard
+# ceiling fires regardless of what this processor observes; re-run as part
+# of this phase's own regression rather than duplicated here.
+
+# Item 17 (existing Phase 5A/5B/5C tests remain valid) -- this file's own
+# pre-existing tests above (renamed/updated only where the underlying
+# signal genuinely changed, per this phase's investigation) ARE that
+# validation; the shadow-mode test section below is carried forward
+# unmodified in its own logic (only the module-level default timeout
+# reference below was updated).
+
+
+# ---------------------------------------------------------------------------
+# Phase 5C -- repetition-shadow signal. Logic itself is UNCHANGED by Phase
+# 5D (only its consumer, process_frame's UserStoppedSpeakingFrame branch,
+# changed) -- these tests exercise _observe_repetition_shadow directly and
+# remain valid as written. All tests in this section verify the shadow
+# computation itself (via a monkeypatched logger.debug capturing the exact
+# metadata that would be logged -- caplog does NOT capture loguru output in
+# this repo without an explicit propagation bridge, confirmed by direct
+# probe during Phase 5C) AND separately verify watchdog reset behavior.
 # ---------------------------------------------------------------------------
 
 
@@ -465,7 +868,7 @@ async def test_b8_repeated_pattern_with_no_bot_activity_is_a_candidate(monkeypat
 
 @pytest.mark.asyncio
 async def test_c9_yes_bot_responds_yes_again_is_not_a_candidate(monkeypatch):
-    """The exact VALID example from this phase's own brief (Step 6):
+    """The exact VALID example from the Phase 5C brief (Step 6):
     guest says Yes, bot responds, guest says Yes again -- a real
     BotStoppedSpeakingFrame between the two must clear the shadow history
     so this reads as two independent observations, not a two-in-a-row
@@ -474,7 +877,7 @@ async def test_c9_yes_bot_responds_yes_again_is_not_a_candidate(monkeypatch):
     Non-vacuity note: pipecat's own QueuedFrameProcessor/test harness does
     NOT guarantee frames_to_send delivery order is preserved across mixed
     control/data frame types without SleepFrame separators forcing
-    sequential delivery -- confirmed directly during this phase (a
+    sequential delivery -- confirmed directly during Phase 5C (a
     same-batch BotStoppedSpeakingFrame was observed arriving at
     process_frame BEFORE both TranscriptionFrames despite being sent
     between them, which would have made this test pass for the wrong
@@ -560,10 +963,10 @@ async def test_c12_slow_hesitant_confirmation_across_bot_turns_remains_valid(mon
     Uses SleepFrame separators to force sequential delivery -- see
     test_c9's own docstring for why this is required for the test to
     exercise the intended order rather than passing vacuously (confirmed
-    live during this phase: without the separators, this exact test
-    failed because ALL BotStoppedSpeakingFrames in a mixed batch arrived
-    before ANY TranscriptionFrame, which is a real pipecat test-harness
-    ordering behavior, not a bug in the implementation under test)."""
+    live during Phase 5C: without the separators, this exact test failed
+    because ALL BotStoppedSpeakingFrames in a mixed batch arrived before
+    ANY TranscriptionFrame, which is a real pipecat test-harness ordering
+    behavior, not a bug in the implementation under test)."""
     calls = _capture_shadow_log(monkeypatch)
     watchdog = SilenceWatchdogProcessor(timeout_seconds=5.0)
 
@@ -592,9 +995,13 @@ async def test_d13_stt_refinalization_duplicate_records_evidence_but_does_not_ch
     documented late-refinalization behavior, per turn_strategies.py's own
     comment) -- the shadow layer MAY record this as matching evidence (it
     cannot distinguish this from genuine repeated background speech, by
-    design -- see _observe_repetition_shadow's own docstring), but the
-    watchdog's own reset behavior (the actual, load-bearing assertion
-    here) must be completely unaffected either way."""
+    design -- see _observe_repetition_shadow's own docstring). Note this
+    test deliberately sends bare TranscriptionFrames with NO
+    UserStoppedSpeakingFrame (Phase 5D: the realistic shape of a
+    same-utterance re-finalization -- both transcripts belong to ONE
+    still-in-progress turn, so only one UserStoppedSpeakingFrame would
+    ever really follow) -- confirms the watchdog's own reset behavior is
+    unaffected regardless."""
     watchdog = SilenceWatchdogProcessor(timeout_seconds=0.2, max_prompts=2)
 
     down_frames, _ = await run_test(
@@ -621,83 +1028,43 @@ async def test_d14_corrected_transcript_goa_then_kerala_is_not_identical_repetit
     assert _shadow_candidate(calls[1]) is False
 
 
-# --- E. Watchdog invariance -- the absolute behavioral requirement (Step 9). ---
+# --- E. Watchdog invariance -- Phase 5C's own absolute behavioral
+# requirement, now superseded in spirit by Phase 5D (repetition candidates
+# DO now withhold the strike-counter reset -- see
+# test_repeated_background_completed_turns_do_not_reset_strikes_but_still_get_time
+# above), kept here to prove the TIMER itself (not the strike counter) is
+# still always restarted regardless of the shadow verdict. ---
 
 
 @pytest.mark.asyncio
-async def test_e15_every_shadow_candidate_still_resets_the_watchdog(monkeypatch):
-    """Even once repetition_shadow_candidate becomes True, _prompts_sent
-    must still reset to 0 and the timer must still be cancelled -- proven
-    by driving well past _REPETITION_SHADOW_MIN_MATCHES occurrences with a
-    short real timeout and confirming no nudge ever fires."""
-    watchdog = SilenceWatchdogProcessor(timeout_seconds=0.15, max_prompts=2)
+async def test_e15_shadow_candidate_still_gets_a_fresh_timer_window():
+    """Even once repetition_shadow_candidate becomes True, the TIMER is
+    still unconditionally restarted (the guest/background source still
+    gets a full fresh window) -- only the strike counter withholds its
+    reset. Proven here by driving exactly to the shadow threshold and
+    confirming the call has NOT ended yet (still within its follow-up
+    budget), unlike test_11 which drives well past it."""
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=0.1, max_prompts=2)
     min_matches = silence_watchdog_module._REPETITION_SHADOW_MIN_MATCHES
 
-    frames = []
-    for _ in range(min_matches + 3):
-        frames.append(_real_transcript("No"))
-        frames.append(SleepFrame(sleep=0.05))
-
-    down_frames, _ = await run_test(watchdog, frames_to_send=frames)
-
-    assert not any(isinstance(f, TTSSpeakFrame) for f in down_frames)
-    assert watchdog._prompts_sent == 0
-
-
-@pytest.mark.asyncio
-async def test_e16_existing_background_defer_characterization_test_is_unchanged():
-    """Direct re-run of Phase 5A's own characterization test, unmodified in
-    spirit -- confirms adding shadow observation didn't alter this
-    already-established behavior at all."""
-    watchdog = SilenceWatchdogProcessor(timeout_seconds=0.1, max_prompts=2)
-
     frames = [BotStoppedSpeakingFrame()]
-    for _ in range(8):
-        frames.append(SleepFrame(sleep=0.05))
-        frames.append(_real_transcript("No"))
+    for _ in range(min_matches):
+        frames += [SleepFrame(sleep=0.02), *_completed_turn("No")]
 
     down_frames, _ = await run_test(watchdog, frames_to_send=frames)
 
-    assert not any(isinstance(f, TTSSpeakFrame) for f in down_frames)
+    # Exactly at threshold -- the call must not have ended yet (still has
+    # follow-up budget remaining), proving the timer kept restarting giving
+    # each occurrence a real window rather than fast-forwarding to hangup.
     assert not any(isinstance(f, EndFrame) for f in down_frames)
-    assert watchdog._prompts_sent == 0
-
-
-@pytest.mark.asyncio
-async def test_e17_real_transcript_still_resets_strikes_and_cancels_timer():
-    """Direct re-run of the pre-existing test with the same name/intent --
-    confirms the single-transcript reset path is untouched.
-
-    Non-vacuity note: the original pre-existing version of this test only
-    ever asserted "no nudge fired within the window" -- confirmed during
-    this phase's own non-vacuity probe that this assertion alone can hold
-    even with _prompts_sent left un-reset (a break that sets it to a
-    stale nonzero value doesn't necessarily produce a visible nudge within
-    THIS test's short window either way). Added a direct assertion on
-    _prompts_sent itself, matching test_e16/test_e18's own stronger
-    pattern, so a regression in the reset assignment itself is actually
-    caught here."""
-    watchdog = SilenceWatchdogProcessor(timeout_seconds=0.1, max_prompts=2)
-
-    down_frames, _ = await run_test(
-        watchdog,
-        frames_to_send=[
-            BotStoppedSpeakingFrame(),
-            SleepFrame(sleep=0.05),
-            _real_transcript("I have a question"),
-            SleepFrame(sleep=0.3),
-        ],
-    )
-
-    assert not any(isinstance(f, TTSSpeakFrame) for f in down_frames)
-    assert watchdog._prompts_sent == 0
 
 
 @pytest.mark.asyncio
 async def test_e18_true_silence_timeout_behavior_is_unchanged():
     """Direct re-run of the pre-existing full nudge-then-hangup sequence --
     confirms true silence (no transcripts at all, so _observe_repetition_
-    shadow never even runs) is completely unaffected by this phase."""
+    shadow never even runs) is completely unaffected by the repetition
+    signal existing."""
     watchdog = SilenceWatchdogProcessor(timeout_seconds=0.1, max_prompts=2)
 
     down_frames, _ = await run_test(
@@ -735,3 +1102,19 @@ def test_shadow_history_is_bounded_by_maxlen():
     for i in range(silence_watchdog_module._REPETITION_SHADOW_HISTORY_MAXLEN + 5):
         watchdog._observe_repetition_shadow(f"utterance {i}")
     assert len(watchdog._recent_transcripts) == silence_watchdog_module._REPETITION_SHADOW_HISTORY_MAXLEN
+
+
+def test_observe_repetition_shadow_returns_the_candidate_verdict():
+    """Phase 5D: _observe_repetition_shadow's return value is no longer
+    discarded (Phase 5C left it unread) -- process_frame's
+    UserStoppedSpeakingFrame branch now consults it directly. Confirms the
+    method actually returns the bool, not None, for both verdicts."""
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=5.0)
+    min_matches = silence_watchdog_module._REPETITION_SHADOW_MIN_MATCHES
+
+    first_verdict = watchdog._observe_repetition_shadow("No")
+    assert first_verdict is False
+
+    for _ in range(min_matches - 1):
+        last_verdict = watchdog._observe_repetition_shadow("No")
+    assert last_verdict is True

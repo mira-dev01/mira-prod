@@ -149,36 +149,67 @@ async def _hangup_exotel_call(exotel_call_id: str) -> None:
 # confirming an interruption, without being so long it makes the bot feel
 # unresponsive to a genuine interruption -- needs a real call to confirm
 # this is the right number, not just a plausible one.
+#
+# Phase 5D correction: the analyzer built from these params was, until this
+# phase, constructed and then handed to TransportParams/FastAPIWebsocketParams
+# as vad_analyzer=... -- a field that does NOT exist on TransportParams in
+# installed pipecat-ai==1.6.0 (confirmed directly: Pydantic's default
+# extra="ignore" silently drops it, no error, no warning, even under
+# `python -W error`; `hasattr(constructed_params, "vad_analyzer")` is False).
+# vad_analyzer only exists on LLMUserAggregatorParams in this pipecat
+# version -- it must have moved there in a pipecat release after this
+# constant/comment block was originally written (requirements.txt pins
+# pipecat-ai to an unpinned >=1.5.0,<2.0 range). The practical effect: local
+# VAD-driven interruption (and any VADUserStartedSpeakingFrame/
+# VADUserStoppedSpeakingFrame signal at all) was silently NOT WIRED into the
+# live pipeline for an unknown period before this phase -- the guest-facing
+# "cuts the guest off too readily" behavior above must have been produced by
+# a different mechanism (most likely Sarvam's own STT-side interruption path,
+# see _ReconnectingSarvamSTTService) rather than this analyzer, since this
+# analyzer was never actually receiving audio. Fixed in this phase by
+# constructing the analyzer where it's actually consumed -- see
+# _run_pipeline_inner's own vad_analyzer=create_vad_analyzer(_VAD_PARAMS)
+# passed into LLMUserAggregatorParams, not the transport. These threshold
+# values themselves are UNCHANGED and UNVALIDATED against this newly-real
+# code path -- the guest-feedback-driven tuning history above describes
+# calls made under the old (also-broken) local-VAD-analyzer-on-transport
+# config, not this fixed wiring. Needs real-call validation.
 _VAD_PARAMS = VADParams(confidence=0.85, min_volume=0.7, start_secs=0.35)
 
-# Phase 5A (documentation/agent-conversation-improvement.md): explicit
-# product decision to tighten SilenceWatchdogProcessor's normal idle-nudge
-# timeout from 9.0s to 4.0s. Pulled out as a named module constant -- not
-# because SilenceWatchdogProcessor's own DEFAULT_SILENCE_TIMEOUT_SECONDS
-# (5.0) should change (that default exists for callers that don't care what
-# the production value is, e.g. most of this file's own tests), but so this
+# Pulled out as a named module constant -- not because
+# SilenceWatchdogProcessor's own DEFAULT_SILENCE_TIMEOUT_SECONDS (5.0)
+# should change (that default exists for callers that don't care what the
+# production value is, e.g. most of this file's own tests), but so this
 # specific wired-in production value is directly importable/assertable from
 # tests instead of only verifiable by reading _run_pipeline_inner's source.
 #
-# 9.0s's own history, preserved here since this was the only place it was
-# documented before this edit: confirmed live on 2026-07-23, a guest
-# recalling specific dates and phrasing an availability question in Hindi
-# hadn't finished formulating their reply by the then-current 5s (their real
-# answer landed 4s after the nudge already fired, mid-thought) -- 9.0s was
-# the fix at the time. Phase 5A's own investigation (background audio
-# indefinitely deferring this timer via ordinary non-blank transcripts, see
-# silence_watchdog.py's process_frame) found that same generosity was
-# letting unresponsive-with-background-noise calls sit open far longer than
-# intended, and reduced it back down -- accepting a small risk of
-# re-introducing the 2026-07-23 failure mode as the explicit tradeoff. Any
-# future report of the bot nudging/hanging up on a guest who was still
-# genuinely mid-thought should be checked against this history first.
+# Full history: confirmed live on 2026-07-23, a guest recalling specific
+# dates and phrasing an availability question in Hindi hadn't finished
+# formulating their reply by the then-current 5s (their real answer landed
+# 4s after the nudge already fired, mid-thought) -- 9.0s was the fix at the
+# time. Phase 5A's own investigation found that same generosity was letting
+# unresponsive-with-background-noise calls sit open far longer than
+# intended, and reduced it to 4.0s as a stopgap, accepting a known risk of
+# re-introducing the 2026-07-23 failure mode -- Phase 5A's report was
+# explicit that this did NOT fix the underlying problem (any non-blank
+# TranscriptionFrame, including a background/non-guest one, still reset the
+# timer), only shortened how long the symptom could persist per cycle.
 #
-# This alone does not fully solve the background-audio problem this phase
-# investigates -- any non-blank TranscriptionFrame, including one produced
-# by background/non-guest speech, still resets this timer (see
-# silence_watchdog.py's own process_frame and this phase's final report).
-_SILENCE_WATCHDOG_TIMEOUT_SECONDS = 4.0
+# Phase 5D restored this to 9.0s. Root-caused and fixed the ACTUAL problem
+# instead: a real, previously-silent bug where local VAD was never wired
+# into the live pipeline at all (see _VAD_PARAMS's own comment for the full
+# story). With VAD genuinely live, SilenceWatchdogProcessor no longer resets
+# its strike counter on raw TranscriptionFrame -- it resets only on
+# UserStoppedSpeakingFrame (a pipecat-confirmed COMPLETED guest turn, not
+# mere audio activity), and even then not for a turn the repetition-shadow
+# signal flags as a repeated/background pattern (see silence_watchdog.py's
+# own module docstring for the full mechanism). This closes the actual gap
+# Phase 5A's 4.0s stopgap could only ever shorten, so the 2026-07-23
+# mid-thought-cutoff risk that motivated 9.0s in the first place no longer
+# needs to be traded against it -- restoring the more generous value is safe
+# again. See silence_watchdog.py's own docstring for the complete mechanism
+# and this phase's final report for the full investigation.
+_SILENCE_WATCHDOG_TIMEOUT_SECONDS = 9.0
 
 # Per-host voice gender (User.agent_voice_gender, "female" | "male") maps to
 # one representative Sarvam bulbul:v3 speaker name each -- the v3 speaker
@@ -944,11 +975,11 @@ async def _run_pipeline_inner(
     # app/voice/conversation_style.py.
     conversation_style_engine = ConversationStyleProcessor(conversation_state)
     # Auto-cuts a call where the guest has gone silent/unresponsive: nudges
-    # ("Hello? Are you still there?") after each ~4s of silence, hangs up
+    # ("Hello? Are you still there?") after each ~9s of silence, hangs up
     # after the second nudge goes unanswered. See app/voice/silence_watchdog.py
     # for why this has to live as its own processor rather than piggybacking
     # on the turn-stop strategy, and this file's own _SILENCE_WATCHDOG_
-    # TIMEOUT_SECONDS for why the value is 4.0s, not the module default.
+    # TIMEOUT_SECONDS for the full 4s<->9s history and why 9.0s is safe again.
     # Phase 5 (documentation/agent-conversation-improvement.md): passes
     # conversation_state so the closing lifecycle (armed/reopened/closed) is
     # tracked as real state the prompt layer can read, not just this
@@ -1128,10 +1159,19 @@ async def _run_pipeline_inner(
             stop_strategy = HybridCompletenessUserTurnStopStrategy(base_timeout=0.9)
         else:
             stop_strategy = SpeechTimeoutUserTurnStopStrategy(user_speech_timeout=0.9)
+        # Phase 5D fix: vad_analyzer belongs on LLMUserAggregatorParams in
+        # installed pipecat-ai==1.6.0, not on TransportParams -- see
+        # _VAD_PARAMS's own comment for the full story of how this was
+        # silently dead before this phase. One fresh SileroVADAnalyzer
+        # instance per call (VAD state is per-stream, never shared across
+        # concurrent calls -- see app/voice/vad.py's own docstring), owned
+        # exclusively by this aggregator's VADController now that nothing
+        # else references it.
         user_aggregator, assistant_aggregator = LLMContextAggregatorPair(
             context,
             user_params=LLMUserAggregatorParams(
-                user_turn_strategies=UserTurnStrategies(stop=[stop_strategy])
+                user_turn_strategies=UserTurnStrategies(stop=[stop_strategy]),
+                vad_analyzer=create_vad_analyzer(_VAD_PARAMS),
             ),
         )
 
@@ -1748,7 +1788,6 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
             audio_out_enabled=True,
             add_wav_header=False,
             serializer=serializer,
-            vad_analyzer=create_vad_analyzer(_VAD_PARAMS),
         ),
     )
 
@@ -1967,7 +2006,6 @@ async def run_voice_pipeline_twilio(websocket: WebSocket, call_data: CallData) -
             audio_out_enabled=True,
             add_wav_header=False,
             serializer=serializer,
-            vad_analyzer=create_vad_analyzer(_VAD_PARAMS),
         ),
     )
 
@@ -2021,7 +2059,6 @@ async def run_browser_voice_pipeline(connection: SmallWebRTCConnection, property
         params=TransportParams(
             audio_in_enabled=True,
             audio_out_enabled=True,
-            vad_analyzer=create_vad_analyzer(_VAD_PARAMS),
         ),
     )
 
@@ -2065,7 +2102,6 @@ async def run_browser_lead_pipeline(connection: SmallWebRTCConnection, user: Use
         params=TransportParams(
             audio_in_enabled=True,
             audio_out_enabled=True,
-            vad_analyzer=create_vad_analyzer(_VAD_PARAMS),
         ),
     )
 

@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 
 import pytest
 
+from app.config import settings
 from app.models.property import Property
 from app.services.call_ownership import CallOwner, InvalidCallOwnershipConfigError, resolve_effective_call_owner
 
@@ -391,6 +392,62 @@ def test_naive_datetime_raises_instead_of_being_assumed_utc():
     naive_dt = datetime(2026, 8, 11, 6, 30)  # no tzinfo
     with pytest.raises(InvalidCallOwnershipConfigError, match="timezone-aware"):
         resolve_effective_call_owner(prop, naive_dt)
+
+
+# 17. TEMPORARY fixed_host_hours_start/_end override -----------------------
+# See Settings.fixed_host_hours_start/_end's own comment in config.py and
+# the override block at the top of resolve_effective_call_owner. When both
+# are set, EVERY property is forced onto one hardcoded Asia/Kolkata HOST
+# window regardless of its own call_handling_mode/schedule/timezone columns
+# -- these tests use MIRA-mode properties specifically to prove the override
+# actually bypasses per-property config, not just happens to agree with it.
+
+
+@pytest.fixture
+def fixed_host_hours_11_to_17(monkeypatch):
+    monkeypatch.setattr(settings, "fixed_host_hours_start", "11:00")
+    monkeypatch.setattr(settings, "fixed_host_hours_end", "17:00")
+
+
+def test_fixed_hours_override_ignores_mira_mode_during_host_window(fixed_host_hours_11_to_17):
+    prop = _property(call_handling_mode="MIRA", timezone="Asia/Kolkata")
+    at_noon_ist = datetime(2026, 8, 11, 6, 30, tzinfo=timezone.utc)  # 12:00 IST
+    assert resolve_effective_call_owner(prop, at_noon_ist) == CallOwner.HOST
+
+
+def test_fixed_hours_override_ignores_host_mode_outside_host_window(fixed_host_hours_11_to_17):
+    prop = _property(call_handling_mode="HOST", timezone="Asia/Kolkata")
+    at_8pm_ist = datetime(2026, 8, 11, 14, 30, tzinfo=timezone.utc)  # 20:00 IST
+    assert resolve_effective_call_owner(prop, at_8pm_ist) == CallOwner.MIRA
+
+
+def test_fixed_hours_override_ignores_property_timezone(fixed_host_hours_11_to_17):
+    """The override always evaluates in Asia/Kolkata, never property_.timezone
+    -- confirms a non-India property doesn't escape the fixed window. Noon IST
+    is 06:30 UTC; in America/New_York (EDT, UTC-4) that's 02:30 local -- if
+    the override wrongly consulted property_.timezone this would resolve
+    MIRA, not HOST."""
+    prop = _property(call_handling_mode="MIRA", timezone="America/New_York")
+    at_noon_ist = datetime(2026, 8, 11, 6, 30, tzinfo=timezone.utc)
+    assert resolve_effective_call_owner(prop, at_noon_ist) == CallOwner.HOST
+
+
+def test_fixed_hours_override_at_exact_boundaries(fixed_host_hours_11_to_17):
+    prop = _property(call_handling_mode="MIRA", timezone="Asia/Kolkata")
+    at_exactly_11am_ist = datetime(2026, 8, 11, 5, 30, tzinfo=timezone.utc)
+    at_exactly_5pm_ist = datetime(2026, 8, 11, 11, 30, tzinfo=timezone.utc)
+    assert resolve_effective_call_owner(prop, at_exactly_11am_ist) == CallOwner.HOST
+    assert resolve_effective_call_owner(prop, at_exactly_5pm_ist) == CallOwner.MIRA
+
+
+def test_fixed_hours_override_unset_falls_back_to_property_config():
+    """Both settings unset (the default/production-today state) -- resolver
+    behaves exactly as before the override existed."""
+    assert settings.fixed_host_hours_start is None
+    assert settings.fixed_host_hours_end is None
+    prop = _property(call_handling_mode="HOST", timezone="Asia/Kolkata")
+    at_3am_ist = datetime(2026, 8, 11, 21, 30, tzinfo=timezone.utc)  # 03:00 IST next day
+    assert resolve_effective_call_owner(prop, at_3am_ist) == CallOwner.HOST
 
 
 def test_same_input_produces_same_output_repeatedly():
