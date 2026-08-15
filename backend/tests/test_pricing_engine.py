@@ -452,6 +452,49 @@ async def test_custom_concession_above_default_ceiling_actually_applies(test_pro
     assert result.counter_offer < default_ceiling_floor
 
 
+async def test_two_custom_rules_on_the_same_property_resolve_to_the_higher_value(
+    test_property, db_session, test_user
+):
+    """PR-review regression: Phase 4 refactored the custom-rule resolution
+    loop (originally `discount_percent = max(discount_percent, ...)` applied
+    INCREMENTALLY inside a for-loop over each matching rule) into a single
+    call to negotiation_policy.resolve_custom_property_ceiling, which
+    resolves the best value across ALL matching rules first and applies it
+    ONCE. These are mathematically equivalent (max is associative:
+    max(max(a, x), y) == max(a, x, y)), but no existing test exercised TWO
+    simultaneous custom rules for one property to prove it -- both
+    pre-existing custom-rule tests use exactly one rule each. This closes
+    that gap directly."""
+    db_session.add(
+        NegotiationRule(
+            host_id=test_user.id,
+            rule_type="custom",
+            discount_percent=10,
+            property_ids=[str(test_property.id)],
+            status="approved",
+        )
+    )
+    db_session.add(
+        NegotiationRule(
+            host_id=test_user.id,
+            rule_type="custom",
+            discount_percent=20,
+            property_ids=[str(test_property.id)],
+            status="approved",
+        )
+    )
+    await db_session.commit()
+
+    monday = _next_weekday(date.today(), 0)
+    wednesday = monday + timedelta(days=2)
+
+    result = await negotiate_rate(
+        db_session, test_property, monday, wednesday, guest_offer=None, guest_loyalty="new", host_id=test_user.id
+    )
+    expected_floor = round(result.asking_price * (1 - 20 / 100), 2)
+    assert result.counter_offer == expected_floor  # the HIGHER (20%) of the two, not the lower or a sum
+
+
 async def test_property_pricing_rule_lookup_failure_falls_back_to_no_rules(
     test_property, db_session, test_user, monkeypatch
 ):

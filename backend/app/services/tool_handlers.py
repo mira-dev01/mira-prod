@@ -9,10 +9,13 @@ import asyncio
 import logging
 import uuid
 from datetime import date, timedelta
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+if TYPE_CHECKING:
+    from app.voice.conversation_state import NegotiationEvent
 
 from app.config import settings
 from app.integrations import email_client, twilio_client
@@ -593,6 +596,7 @@ async def handle_negotiate_rate(
     guest_profile_id: uuid.UUID | None = None,
     call_session_id: uuid.UUID | None = None,
     on_priced: Callable[[Property, NegotiationResult], None] | None = None,
+    prior_events: list["NegotiationEvent"] | None = None,
 ) -> str:
     """on_priced (Phase 4b.1, documentation/agent-conversation-improvement.md):
     same pattern as handle_get_pricing's own on_priced -- an optional
@@ -601,7 +605,13 @@ async def handle_negotiate_rate(
     negotiation (never on an error/not-found/non-positive-price path). Lets
     app/voice/tools.py's wrapper feed property_recommendation_guard the real
     counter_offer total to verify against, without this function's return
-    type changing or any existing call site being affected."""
+    type changing or any existing call site being affected.
+
+    prior_events (Phase 4D): this call's negotiation history within the
+    current call, already property-scoped by ConversationState -- passed
+    straight through to pricing_engine.negotiate_rate (see that function's
+    own docstring). Optional/None-default so every pre-Phase-4D call site
+    keeps resolving at stage 0, i.e. today's exact behavior."""
     property_ = await _get_property(db, args.property_id)
     if property_ is None:
         return "I couldn't find that property to negotiate a rate for."
@@ -630,6 +640,7 @@ async def handle_negotiate_rate(
         args.guest_loyalty,
         host_id=host_user_id,
         guest_profile_id=guest_profile_id,
+        prior_events=prior_events,
     )
     # Same non-positive-price guard as handle_get_pricing -- negotiate_rate
     # derives everything (asking price, floor, counter-offer) from

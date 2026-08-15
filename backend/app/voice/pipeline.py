@@ -465,6 +465,16 @@ _HOST_HANDOFF_PHRASE = "Excuse me for a moment while the host takes up your quer
 # the same information.
 _HOST_HANDOFF_END_REASON = "host_handoff"
 
+# Phase 2: same EndFrame.reason pattern as _HOST_HANDOFF_END_REASON above --
+# distinguishes a hard-ceiling-triggered end in logs/on_pipeline_finished
+# from every other termination path (silence watchdog, end_call, caller
+# hangup, construction failure), purely for observability. Does not change
+# on_pipeline_finished's behavior at all (unlike _HOST_HANDOFF_END_REASON,
+# which skips the Exotel hangup) -- a hard-ceiling end is a normal call end
+# in every other respect and must still hang up Exotel and run the usual
+# finalize/classify/summarize/cleanup sequence.
+_MAX_CALL_DURATION_END_REASON = "max_call_duration_exceeded"
+
 
 def _is_host_handoff_frame(frame) -> bool:
     """Pure, standalone (no pipecat runtime required) so this one decision
@@ -763,6 +773,75 @@ async def _wait_and_trigger_handoff(worker: PipelineWorker, call_session_id: uui
     await worker.queue_frame(EndFrame(reason=_HOST_HANDOFF_END_REASON))
 
 
+# Phase 2: fixed text spoken immediately before a hard-ceiling termination --
+# same "the SYSTEM is ending this call, not the LLM" discipline
+# SilenceWatchdogProcessor's own DEFAULT_GOODBYE_TEXT already establishes
+# (app/voice/silence_watchdog.py) for its own forced-hangup path. A real
+# guest call ending in total silence (no line at all) would be a worse
+# experience than a real call never reaching this ceiling in the first
+# place -- fixed, deterministic text, never LLM-generated, same reasoning
+# CLAUDE.md documents for _HOST_HANDOFF_PHRASE and the escalation
+# acknowledgement (app/voice/escalation_phrase_guard.py): when the correct
+# text is fixed and known regardless of context, speak exactly that text
+# rather than asking the LLM to generate/paraphrase anything.
+_MAX_CALL_DURATION_PHRASE = (
+    "I'm sorry, but I need to end this call now as we've been talking for a while -- "
+    "please feel free to call back and we can continue. Have a great day!"
+)
+
+
+async def _enforce_max_call_duration(worker: PipelineWorker, call_session_id: uuid.UUID) -> None:
+    """Phase 2: independent hard ceiling on live-call lifetime -- a
+    reliability BACKSTOP, not the primary background-audio fix (see
+    app/config.py's max_call_duration_seconds for the full reasoning).
+
+    Deliberately the simplest possible mechanism: ONE asyncio.sleep for the
+    configured duration, then unconditionally trigger termination. No loop,
+    no polling, no per-frame/per-transcript check, and critically, NOTHING
+    THIS FUNCTION DOES CAN EVER RESET THE SLEEP -- it isn't wired to
+    TranscriptionFrame, VAD events, LLM completions, tool calls, or
+    interruptions at all; it has no inputs besides the duration itself. This
+    is what makes it structurally independent of SilenceWatchdogProcessor's
+    inactivity detection (app/voice/silence_watchdog.py), which depends
+    entirely on trusting non-blank transcripts as real caller activity --
+    if background noise keeps generating non-blank transcripts, that
+    mechanism can never fire, but this one still will, since nothing about
+    transcript content can touch this function's single timer.
+
+    Runs as a background task started alongside the pipeline (in
+    _run_pipeline_inner, right next to handoff_listener_task) and cancelled
+    in that same function's finally block -- identical lifecycle shape to
+    _wait_and_trigger_handoff and _renew_call_lease_periodically. Started
+    right before runner.run() (same point handoff_listener_task starts), so
+    its clock begins at "the real pipeline is about to take over the
+    socket" -- i.e. it measures the lifetime of the actual live call
+    (including the greeting, which is spoken once runner.run() starts
+    driving the transport), not time spent in the earlier DB-resolution/
+    CallCoordinator/ringing-tone phase in run_voice_pipeline (which has its
+    own separate, already-bounded lifecycle -- see ringing_audio.py).
+
+    On firing: queues a goodbye phrase, then an EndFrame carrying
+    _MAX_CALL_DURATION_END_REASON, via worker.queue_frame -- the exact same
+    "speak, then end, via the pipeline's true source" mechanism
+    _wait_and_trigger_handoff already uses and this codebase's own test
+    suite (test_host_handoff.py) already proves reliably reaches
+    on_pipeline_finished. Unlike a host handoff, on_pipeline_finished must
+    NOT special-case this reason (see _MAX_CALL_DURATION_END_REASON's own
+    comment) -- a hard-ceiling end still needs the normal Exotel hangup and
+    the normal finalize/classify/summarize/lead-cleanup sequence to run, so
+    this deliberately reuses the exact same termination path as every other
+    normal call end rather than routing around it.
+    """
+    await asyncio.sleep(settings.max_call_duration_seconds)
+    logger.warning(
+        "max_call_duration_exceeded call_session_id=%s max_seconds=%s",
+        call_session_id,
+        settings.max_call_duration_seconds,
+    )
+    await worker.queue_frame(TTSSpeakFrame(_MAX_CALL_DURATION_PHRASE, append_to_context=False))
+    await worker.queue_frame(EndFrame(reason=_MAX_CALL_DURATION_END_REASON))
+
+
 async def _run_pipeline_inner(
     transport: BaseTransport,
     property_id: uuid.UUID | None,
@@ -781,8 +860,25 @@ async def _run_pipeline_inner(
 ) -> None:
     stt = _ReconnectingSarvamSTTService(
         api_key=settings.sarvam_api_key,
-        model=settings.sarvam_stt_model,
         mode="codemix",  # transcribe Hindi/English/Hinglish as spoken, no translation
+        # settings= (not the deprecated bare model= kwarg) so the server-side
+        # VAD/noise-rejection tuning below lands in the same Settings object
+        # as the model -- see config.py's sarvam_vad_* fields for why these
+        # exist and why every one of them defaults to None (Sarvam's own
+        # server default, i.e. no behavior change on a fresh deploy).
+        settings=SarvamSTTService.Settings(
+            model=settings.sarvam_stt_model,
+            positive_speech_threshold=settings.sarvam_vad_positive_speech_threshold,
+            negative_speech_threshold=settings.sarvam_vad_negative_speech_threshold,
+            min_speech_frames=settings.sarvam_vad_min_speech_frames,
+            first_turn_min_speech_frames=settings.sarvam_vad_first_turn_min_speech_frames,
+            negative_frames_count=settings.sarvam_vad_negative_frames_count,
+            negative_frames_window=settings.sarvam_vad_negative_frames_window,
+            start_speech_volume_threshold=settings.sarvam_vad_start_speech_volume_threshold,
+            interrupt_min_speech_frames=settings.sarvam_vad_interrupt_min_speech_frames,
+            pre_speech_pad_frames=settings.sarvam_vad_pre_speech_pad_frames,
+            num_initial_ignored_frames=settings.sarvam_vad_num_initial_ignored_frames,
+        ),
     )
     # Moved up from just before `tools`/`context` construction (Phase 1,
     # documentation/agent-conversation-improvement.md) -- state_prompt_sync
@@ -869,13 +965,17 @@ async def _run_pipeline_inner(
     # recommend_properties call whose result never actually got named to the
     # guest -- both confirmed live. See app/voice/property_recommendation_guard.py.
     property_recommendation_guard = PropertyRecommendationGuardProcessor()
-    # Speaks a short filler line ("Let me check that for you.") if
-    # recommend_properties is still running after ~1.2s -- confirmed live
-    # 2026-08-01: a ~30s silent gap between the guest's question and the
-    # spoken recommendation, with nothing telling the guest Mira was still
-    # working on it. Scoped to recommend_properties only; get_pricing/
-    # check_calendar resolve fast enough (~1.5s) that the delay timer never
-    # fires for them. See app/voice/slow_tool_filler.py.
+    # Speaks a short filler line ("Let me check that for you.") if a slow
+    # tool is still running after a short delay -- confirmed live
+    # 2026-08-01: recommend_properties left a ~30s silent gap between the
+    # guest's question and the spoken recommendation, with nothing telling
+    # the guest Mira was still working on it. Phase 3: also covers
+    # get_pricing/negotiate_rate now, at a separate, higher threshold
+    # (2.0s vs 1.2s) -- their common DB-only path is already close to 1.2s,
+    # but exact_airbnb_pricing properties can fall through to a live
+    # SearchApi.io fetch worth up to ~30s. check_calendar/search_faq stay
+    # unscoped -- DB-only, no equivalent external-API long-tail risk. See
+    # app/voice/slow_tool_filler.py for the full per-tool reasoning.
     slow_tool_filler = SlowToolFillerProcessor()
     # Cuts a response short, mid-stream, the moment it starts repeating
     # itself -- the deterministic guarantee max_completion_tokens alone
@@ -1154,6 +1254,30 @@ async def _run_pipeline_inner(
                 if finalized_session is not None and finalized_session.started_at and finalized_session.ended_at:
                     duration_seconds = (finalized_session.ended_at - finalized_session.started_at).total_seconds()
 
+                # Observability only -- logs the real duration of EVERY call
+                # that reaches this handler (normal end, host handoff, or
+                # the max_call_duration_seconds backstop alike), not just
+                # the rare case that actually hits the 600s ceiling (see
+                # _enforce_max_call_duration's own "max_call_duration_
+                # exceeded" warning above, which only fires on that one
+                # path). Reuses call_session_id as-is -- the same identifier
+                # already threaded through this whole function, not
+                # finalized_session.id -- so this log line correlates
+                # directly with every other call_session_id-keyed log
+                # emitted during this same call's lifetime. Deliberately
+                # does not touch max_call_duration_seconds itself: the
+                # point of this log is to let a real-call duration matrix
+                # be collected first: this ceiling was set at 600s with no
+                # historical duration data behind it (see config.py's own
+                # comment), and it must not be retuned from intuition
+                # before that data exists.
+                logger.info(
+                    "call_duration_seconds call_session_id=%s duration_seconds=%s max_seconds=%s",
+                    call_session_id,
+                    duration_seconds,
+                    settings.max_call_duration_seconds,
+                )
+
                 # Awaited inline (not fire-and-forget like guest memory below)
                 # because lead suppression a few lines down is gated on this
                 # result -- the guest has already disconnected by the time
@@ -1310,6 +1434,21 @@ async def _run_pipeline_inner(
                 _wait_and_trigger_handoff(worker, call_session_id)
             )
 
+        # Phase 2: independent hard ceiling on live-call lifetime -- see
+        # _enforce_max_call_duration's own docstring for the full reasoning.
+        # Unconditional (unlike handoff_listener_task above): every call
+        # gets this backstop regardless of property_id/call mode, since the
+        # background-audio failure mode it guards against isn't specific to
+        # Guest Support vs Lead Agent calls. Created here, right alongside
+        # handoff_listener_task and right before runner.run(), so its timer
+        # starts at the same "the real pipeline is about to take over"
+        # moment -- see that function's docstring for why this is the
+        # correct start point (includes the greeting, excludes the earlier
+        # DB-resolution/ringing-tone phase).
+        max_duration_task = asyncio.create_task(
+            _enforce_max_call_duration(worker, call_session_id)
+        )
+
         try:
             runner = WorkerRunner()
             await runner.add_workers(worker)
@@ -1332,6 +1471,21 @@ async def _run_pipeline_inner(
                     pass
             if handoff_registered:
                 unregister_call(call_session_id)
+
+            # Phase 2: same cancel-and-await discipline as every other
+            # background task in this finally block -- a call that ends
+            # normally (silence watchdog, end_call, caller hangup, host
+            # handoff, or an exception from runner.run() itself) must not
+            # leave this task running past the pipeline's own lifetime.
+            # Already-done is the overwhelming common case (a real call
+            # essentially never reaches max_call_duration_seconds) and
+            # .cancel() on a done task is a safe no-op, same as above.
+            if not max_duration_task.done():
+                max_duration_task.cancel()
+                try:
+                    await max_duration_task
+                except asyncio.CancelledError:
+                    pass
 
 
 async def _reject_call_as_busy(

@@ -97,6 +97,28 @@ ClosingState = Literal["open", "farewell_pending", "closed"]
 _DEFAULT_ATTENTION_HALF_LIFE = 6
 
 
+@dataclass(frozen=True)
+class NegotiationEvent:
+    """One negotiate_rate invocation, recorded for the lifetime of the
+    current negotiation context only (Phase 4D, implementing Phase 4C
+    Section F's minimum REQUIRED FOR DECISION field set -- see
+    documentation design docs "Phase 4C: Negotiation Semantics Contract").
+
+    guest_offer=None means the guest asked Mira to name a price outright
+    (pricing_engine.negotiate_rate's existing guest_offer=None branch) --
+    distinct from a numeric offer, and NEVER counted as a progressing
+    offer by resolve_stage_index (app/services/negotiation_policy.py)
+    regardless of how many stages a host's policy has, since it carries no
+    number to compare against. property_id is kept alongside each event
+    (not just once on the call) so a future context-invalidation check can
+    always tell, from the event list alone, whether every event still
+    belongs to the same negotiation -- see reset_negotiation_context below,
+    which is today's actual mechanism for that invalidation."""
+
+    guest_offer: float | None
+    property_id: str
+
+
 @dataclass
 class Salience:
     """One key's raw attention bookkeeping. Generic over what `key` means
@@ -226,6 +248,24 @@ class ConversationState:
     # with a discount applied) is always the current one to surface.
     quoted_price: dict[str, Any] | None = None
 
+    # Phase 4F (conversation-level negotiation integration) -- the
+    # structured facts from negotiate_rate's most recent NegotiationResult,
+    # same "hand the model a derived fact, don't make it guess" principle
+    # quoted_price above already applies, extended to the Phase 4D fields
+    # (is_staged/stage_index/stage_count/progressed_this_event/exhausted)
+    # that existed on NegotiationResult since Phase 4D but were never
+    # surfaced anywhere past pricing_engine.negotiate_rate's own return
+    # value -- tool_handlers.handle_negotiate_rate discarded all of them,
+    # returning only the bare message string (confirmed: no caller read
+    # anything but .message before this phase). Without this, the LLM had
+    # no way to know whether a price change was a genuine new concession,
+    # a repeat of what was already offered, or the final authorized value --
+    # exactly the "Mira changes the price without clearly communicating a
+    # discount was granted" problem this phase's own brief names. Always
+    # overwritten (never merged), matching quoted_price's own discipline --
+    # the most recent negotiation decision is always the one to reference.
+    last_negotiation_decision: dict[str, Any] | None = None
+
     # Attention/salience -- see Salience above. turn_index is a single
     # shared per-call counter (advanced by ConversationStyleProcessor on
     # every real guest TranscriptionFrame, the same "one real utterance = one
@@ -234,6 +274,69 @@ class ConversationState:
     # key, written only via touch_attention, never mutated directly.
     turn_index: int = 0
     attention: dict[str, Salience] = field(default_factory=dict)
+
+    # Phase 4D -- call-level negotiation event history (Phase 4C Section F:
+    # "Call-level (starts at call connect, discarded at hangup)"). Holds
+    # only NegotiationEvent entries for the property/dates currently being
+    # negotiated -- reset_negotiation_context (below) clears this whenever
+    # the guest changes property/dates/guest count, per the ratified Phase
+    # 4C decision that negotiation STATE resets on those changes while
+    # conversational context (everything else on this dataclass, and the
+    # LLM's own transcript) is left untouched. Deliberately NOT a stage
+    # counter -- see negotiation_policy.resolve_stage_index, which derives
+    # the current stage from this list every time rather than trusting a
+    # separately-maintained integer (Phase 4C Section G's own reasoning for
+    # why: a stored counter can drift from the event log it's supposed to
+    # summarize; a derived value structurally cannot).
+    negotiation_events: list[NegotiationEvent] = field(default_factory=list)
+
+    def record_negotiation_event(self, guest_offer: float | None, property_id: str) -> None:
+        """Called once per negotiate_rate invocation, AFTER pricing_engine
+        has already resolved this turn's decision (see app/voice/tools.py's
+        wrapper) -- appends, never overwrites, since stage derivation needs
+        the full history, not just the latest value.
+
+        The property-change guard below is a defensive backstop, not the
+        primary invalidation mechanism -- the wrapper itself now detects a
+        property change BEFORE calling into pricing_engine (comparing the
+        incoming property_id against negotiation_events[-1] itself) and
+        calls reset_negotiation_context() first, so by the time this method
+        runs, property_id should already match. Self-review fix: an earlier
+        version relied on THIS method as the only property-change reset,
+        which only ever ran after pricing_engine.negotiate_rate had already
+        resolved the turn against the stale, wrong-property history -- the
+        first negotiate_rate call after a property switch was silently
+        evaluated against the OLD property's progress. Kept here anyway as
+        a fail-safe for any future caller that appends directly without
+        going through the wrapper's own pre-check."""
+        if self.negotiation_events and self.negotiation_events[-1].property_id != property_id:
+            self.negotiation_events = []
+        self.negotiation_events.append(NegotiationEvent(guest_offer=guest_offer, property_id=property_id))
+
+    def reset_negotiation_context(self) -> None:
+        """Discards negotiation event history and the last negotiation
+        decision fact -- called when the guest changes property, dates, or
+        guest count (app/voice/tools.py's negotiate_rate wrapper, comparing
+        the incoming values against state's existing ones before this call
+        overwrites them). Per the ratified Phase 4C decision (Decisions Log
+        item 4): negotiation STAGE/PRICING state resets on a context
+        change, but conversational context is retained -- this method only
+        ever touches negotiation_events and last_negotiation_decision,
+        never slots/recommendations_shown/conversation_goal/etc., so the
+        LLM can still naturally reference what was already discussed.
+
+        Phase 4F addition: last_negotiation_decision must be cleared here
+        too, not just negotiation_events -- once the property/dates/guest
+        count the guest is now discussing has changed, the PREVIOUS
+        decision's concession no longer describes anything true about the
+        new context (e.g. "you can offer ₹X for Property A" would be a
+        stale, misleading fact once the guest has moved on to Property B).
+        Leaving it stale would have contradicted this method's own
+        "invalidate negotiation state on context change" purpose for
+        exactly the one negotiation-shaped field this dataclass gained
+        after Phase 4C's decision was ratified."""
+        self.negotiation_events = []
+        self.last_negotiation_decision = None
 
     def touch_attention(self, key: str) -> None:
         """Records one more mention of `key` at the current turn. Callers:
@@ -345,6 +448,77 @@ class ConversationState:
             "check_out": check_out,
             "total": total,
         }
+
+    def record_negotiation_decision(
+        self,
+        property_name: str,
+        asking_price: float,
+        counter_offer: float,
+        accepted: bool,
+        is_staged: bool,
+        stage_index: int | None,
+        stage_count: int | None,
+        progressed_this_event: bool,
+        exhausted: bool,
+        floor_price: float,
+    ) -> None:
+        """Phase 4F -- always overwrites, never merges, same discipline as
+        record_quoted_price above: the most recent negotiation decision is
+        always the one the model should reference. Called once per
+        successful negotiate_rate invocation (app/voice/tools.py's wrapper,
+        mirroring exactly how that same wrapper already calls
+        record_quoted_price for get_pricing) -- NOT called on a refused/
+        error path (property not found, negotiation_allowed=False's own
+        message already says enough on its own, non-positive-price guard),
+        matching handle_negotiate_rate's own on_priced callback contract
+        (only fires on a real successful negotiation).
+
+        No field here is a percentage or a host-specific value -- every
+        number is this call's own real asking_price/counter_offer/
+        floor_price, and is_staged/stage_index/stage_count/
+        progressed_this_event/exhausted are copied straight from
+        NegotiationResult (pricing_engine.py), never invented or
+        re-derived here. A host with no staged policy (the pre-Phase-4D/
+        flat-only case) simply has is_staged=False, stage_index=None,
+        stage_count=None -- this method makes no assumption about whether
+        staging is in play.
+
+        floor_price (self-review addition): the true policy floor this
+        turn, which is NOT always equal to counter_offer -- on the
+        accepted branch of pricing_engine.negotiate_rate, counter_offer is
+        the guest's own (unclamped) offer, which can legitimately be
+        ABOVE floor_price when the guest offered more than the minimum
+        required. Needed so _negotiation_hint (state_prompt_sync.py) can
+        tell "exhausted AND genuinely at the floor" apart from "exhausted
+        AND the guest happened to offer/accept something above the floor"
+        -- see that function's own docstring for the bug this closes."""
+        self.last_negotiation_decision = {
+            "property_name": property_name,
+            "asking_price": asking_price,
+            "counter_offer": counter_offer,
+            "accepted": accepted,
+            "is_staged": is_staged,
+            "stage_index": stage_index,
+            "stage_count": stage_count,
+            "progressed_this_event": progressed_this_event,
+            "exhausted": exhausted,
+            "floor_price": floor_price,
+        }
+
+    def clear_negotiation_decision(self) -> None:
+        """Phase 4F -- called by get_pricing's wrapper (app/voice/tools.py)
+        whenever a plain (non-negotiated) quote is produced, so
+        last_negotiation_decision can never outlive its own relevance.
+        Self-review-driven design: comparing quoted_price's total against
+        last_negotiation_decision's counter_offer to infer "is the
+        negotiation still the current price fact" would have a real, if
+        rare, false-positive edge case (a fresh flat quote that happens to
+        equal a previously negotiated total by coincidence) -- explicitly
+        clearing the fact at its own invalidation point (a new,
+        non-negotiated quote was just given) is unambiguous and needs no
+        inference. Mirrors reset_negotiation_context's own "invalidate at
+        the source, don't infer staleness later" discipline."""
+        self.last_negotiation_decision = None
 
     def mark_checking_availability(self) -> None:
         if self.escalated or self.closing_state != "open":

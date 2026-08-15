@@ -189,10 +189,11 @@ def build_voice_tools(
             check_in: Check-in date, ISO format (YYYY-MM-DD).
             check_out: Check-out date, ISO format (YYYY-MM-DD).
             num_guests: Number of guests.
-            apply_discounts: Only set true if the guest has already pushed back on price
-                (e.g. asked for a lower rate/discount) after hearing the full-price quote.
-                Always call this first with apply_discounts left false to get the standard
-                price -- never lead with the discounted number.
+            apply_discounts: Leave false for the standard, first-quoted price -- never lead with a
+                discounted number. If the guest pushes back and asks for a lower price after
+                hearing the standard quote, use negotiate_rate instead of calling this again with
+                apply_discounts=true; this flag only affects automatic, non-negotiated discounts
+                (e.g. a longer-stay rate) that already apply regardless of anything the guest asks.
             requested_early_checkin: Set True ONLY if the guest explicitly asked about
                 checking in earlier than the standard time (e.g. "can I check in early?").
                 Never set this proactively -- if the property has an early check-in fee
@@ -238,6 +239,14 @@ def build_voice_tools(
                 # recommend_properties above, not a new mechanism.
                 def _on_priced(property_, breakdown):
                     state.record_quoted_price(property_.name, check_in, check_out, breakdown.total)
+                    # Phase 4F: a plain get_pricing quote supersedes any
+                    # earlier negotiation as "the current price fact" --
+                    # clearing it here (at the point of invalidation) rather
+                    # than inferring staleness later avoids a real, if rare,
+                    # false-positive edge case where a fresh quote happens
+                    # to equal a previously negotiated total by coincidence.
+                    # See ConversationState.clear_negotiation_decision.
+                    state.clear_negotiation_decision()
                     if property_recommendation_guard is not None:
                         property_recommendation_guard.record_tool_result(
                             "get_pricing", {"property_name": property_.name, "total": breakdown.total}
@@ -400,21 +409,115 @@ def build_voice_tools(
                     guest_loyalty=guest_loyalty,
                 )
 
+                # Phase 4D (Phase 4C Section L, ratified Decisions Log item
+                # 4): a property/date/guest-count change resets negotiation
+                # STAGE state -- but never conversational context, so this
+                # only ever touches state.negotiation_events, nothing else
+                # on ConversationState. Compared against state's EXISTING
+                # values, i.e. what was known BEFORE this call, and done
+                # HERE -- before handle_negotiate_rate runs -- not after.
+                #
+                # Self-review fix: an earlier version left the property-
+                # change check inside record_negotiation_event, called only
+                # AFTER handle_negotiate_rate had already returned. That
+                # meant the FIRST negotiate_rate call on a newly-switched
+                # property still resolved its stage_index against the
+                # PREVIOUS property's stale event history (confirmed via a
+                # direct probe: a guest who reached stage 1 on property A,
+                # then asked for a price on property B, incorrectly got
+                # property B's stage-1 value, not stage 0, on that very
+                # first B call) -- the reset happened one call too late to
+                # protect the call that most needed it. Detecting every
+                # invalidation trigger up front, before dispatch, closes
+                # that gap: whichever property/date/guest-count change is
+                # about to happen is now visible to handle_negotiate_rate
+                # via an already-cleared state.negotiation_events.
+                existing_check_in = state.slots.get("check_in")
+                existing_check_out = state.slots.get("check_out")
+                existing_num_guests = state.slots.get("num_guests")
+                last_negotiated_property_id = (
+                    state.negotiation_events[-1].property_id if state.negotiation_events else None
+                )
+                context_changed = (
+                    (existing_check_in is not None and existing_check_in != args.check_in)
+                    or (existing_check_out is not None and existing_check_out != args.check_out)
+                    or (
+                        existing_num_guests is not None
+                        and args.num_guests is not None
+                        and existing_num_guests != args.num_guests
+                    )
+                    or (last_negotiated_property_id is not None and last_negotiated_property_id != args.property_id)
+                )
+                if context_changed:
+                    state.reset_negotiation_context()
+
                 # Phase 4b.1 (documentation/agent-conversation-improvement.md):
                 # same pattern as get_pricing's _on_priced above -- feeds the
                 # real counter_offer total to property_recommendation_guard
                 # so it can verify the model's actual reply states this same
                 # number before it reaches TTS.
+                #
+                # Phase 4F self-review finding: this callback previously did
+                # NOT call state.record_quoted_price, unlike get_pricing's own
+                # _on_priced -- confirmed by direct grep, the only
+                # record_quoted_price call site in this file was
+                # get_pricing's. That meant repetition_guard.py's cross-turn
+                # "did the model restate an already-quoted price, reworded"
+                # check (app/voice/repetition_guard.py's
+                # _is_unprompted_structured_repeat, keyed specifically to
+                # state.quoted_price) could never catch a negotiated price
+                # being repeated across turns -- a real, live gap in Step
+                # 6's "duplicate spoken output" concern, not a hypothetical.
+                # Wiring this call closes it using the exact same, already-
+                # tested mechanism, no new machinery.
+                #
+                # record_negotiation_decision (Phase 4F) surfaces the
+                # structured NegotiationResult fields (is_staged/stage_index/
+                # stage_count/progressed_this_event/exhausted) that have
+                # existed since Phase 4D but were never read past
+                # pricing_engine.negotiate_rate's own return value --
+                # handle_negotiate_rate only ever returned result.message
+                # (a bare string) to every caller. Without this, the LLM had
+                # no structured signal for "was this a genuine new
+                # concession," "is this the best available price," etc. --
+                # see state_prompt_sync.py's build_state_block_content for
+                # where this fact is turned into a natural-language hint.
                 def _on_negotiated(property_, negotiation_result):
+                    state.record_quoted_price(property_.name, check_in, check_out, negotiation_result.counter_offer)
+                    state.record_negotiation_decision(
+                        property_name=property_.name,
+                        asking_price=negotiation_result.asking_price,
+                        counter_offer=negotiation_result.counter_offer,
+                        accepted=negotiation_result.accepted,
+                        is_staged=negotiation_result.is_staged,
+                        stage_index=negotiation_result.stage_index,
+                        stage_count=negotiation_result.stage_count,
+                        progressed_this_event=negotiation_result.progressed_this_event,
+                        exhausted=negotiation_result.exhausted,
+                        floor_price=negotiation_result.floor_price,
+                    )
                     if property_recommendation_guard is not None:
                         property_recommendation_guard.record_tool_result(
                             "negotiate_rate",
                             {"property_name": property_.name, "total": negotiation_result.counter_offer},
                         )
 
+                # Phase 4D: prior_events is this call's negotiation history
+                # BEFORE this invocation -- state.negotiation_events is only
+                # appended to (via record_negotiation_event) AFTER the
+                # engine has already resolved this turn's decision against
+                # what came before it, never including the event currently
+                # being decided.
                 result = await tool_handlers.handle_negotiate_rate(
-                    db, args, host_user_id, guest_profile_id, call_session_id, on_priced=_on_negotiated
+                    db,
+                    args,
+                    host_user_id,
+                    guest_profile_id,
+                    call_session_id,
+                    on_priced=_on_negotiated,
+                    prior_events=state.negotiation_events,
                 )
+                state.record_negotiation_event(args.guest_offer, args.property_id)
                 state.set_slot("check_in", args.check_in)
                 state.set_slot("check_out", args.check_out)
                 state.set_slot("num_guests", args.num_guests)

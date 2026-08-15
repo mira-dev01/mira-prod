@@ -82,6 +82,17 @@ export type NegotiationRuleType =
   | "custom";
 export type NegotiationRuleStatus = "pending_validation" | "approved" | "rejected";
 
+// One entry in an OPTIONAL, host-defined negotiation ladder (backend
+// NegotiationStage, app/schemas/negotiation_rule.py). order is the
+// host-defined sequence position (0-based); value is that stage's
+// authorized percent -- same unit as discount_percent, just one of an
+// ordered list instead of a single scalar. No fixed count/value assumed
+// anywhere this type is used.
+export type NegotiationStage = {
+  order: number;
+  value: number;
+};
+
 export type NegotiationRuleOut = {
   id: string;
   host_id: string;
@@ -92,6 +103,12 @@ export type NegotiationRuleOut = {
   // non-numeric values. Matches PricingRuleOut.condition's own typing below.
   condition: Record<string, unknown>;
   discount_percent: number | null;
+  // null for every rule authored before this field existed and for any
+  // host who never describes a multi-step pushback progression -- see
+  // NegotiationStage's own comment. When populated (length >= 2), this
+  // takes precedence over discount_percent for the same rule (backend
+  // ratified decision: staged supersedes flat).
+  stages: NegotiationStage[] | null;
   label: string | null;
   property_ids: string[];
   source: string;
@@ -108,6 +125,7 @@ export type NegotiationRuleUpdate = {
   rule_type?: NegotiationRuleType;
   condition?: Record<string, unknown>;
   discount_percent?: number | null;
+  stages?: NegotiationStage[] | null;
   label?: string | null;
   property_ids?: string[];
   status?: NegotiationRuleStatus;

@@ -36,6 +36,24 @@ class NegotiationRule(UUIDPkMixin, TimestampMixin, Base):
     an explicit, host-picked non-empty subset before they take effect,
     exactly as PropertyPricingRule did -- this table doesn't change that
     per-type behavior, only where the data lives.
+
+    stages (Phase 4D, generalized negotiation policy model -- see
+    documentation design docs "Phase 4B: Generalized Negotiation Policy
+    Model" and "Phase 4C: Negotiation Semantics Contract"): an OPTIONAL,
+    nullable, ordered list of {"order": int, "value": float} objects
+    representing a host-defined negotiation ladder for THIS rule, e.g.
+    [{"order": 0, "value": 5}, {"order": 1, "value": 8}] -- arbitrary
+    length, arbitrary values, entirely host-configured; no code anywhere
+    reads a hardcoded stage count or stage value. NULL (the default, and
+    every existing row's value) means "no ladder -- use discount_percent
+    exactly as before," making this purely additive: a host who never
+    configures a staged policy sees zero behavior change, and the flat
+    discount_percent column keeps its existing meaning unchanged whether or
+    not stages is populated. Per the ratified Phase 4C decision, when BOTH
+    are set on approved rules of the same rule_type/scope, stages takes
+    precedence (see app/services/negotiation_policy.py's
+    resolve_staged_or_flat) -- discount_percent is never merged with a
+    populated stages list on the same or a competing row.
     """
 
     __tablename__ = "negotiation_rules"
@@ -49,5 +67,6 @@ class NegotiationRule(UUIDPkMixin, TimestampMixin, Base):
     source: Mapped[str] = mapped_column(String(16), default="ai_parsed", server_default="ai_parsed")
     status: Mapped[str] = mapped_column(String(32), default="pending_validation", server_default="pending_validation")
     raw_source_text: Mapped[str | None] = mapped_column(Text)
+    stages: Mapped[list[dict] | None] = mapped_column(JSONB, nullable=True, default=None)
 
     host: Mapped["User"] = relationship(back_populates="negotiation_rules")

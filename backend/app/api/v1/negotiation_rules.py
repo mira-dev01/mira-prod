@@ -92,7 +92,11 @@ async def update_negotiation_rule(
     if rule is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Negotiation rule not found")
 
-    updates = payload.model_dump(exclude_unset=True)
+    # mode="json" (Phase 4D): stages, when present, is a list[NegotiationStage]
+    # Pydantic model -- JSONB needs plain dicts, not model instances, or the
+    # commit below fails to serialize. Every other field here was already a
+    # JSON-primitive type, so this has no effect on them.
+    updates = payload.model_dump(exclude_unset=True, mode="json")
 
     if updates.get("property_ids"):
         owned_ids = {str(pid) for pid in await owned_property_ids(db, current_user)}
@@ -103,8 +107,12 @@ async def update_negotiation_rule(
     if updates.get("status") == "approved" and "source" not in updates:
         # A host edit (any rule field changed alongside approval) is worth
         # distinguishing from an as-parsed approval, for the "edited by you"
-        # badge in the reviewed-rules list.
-        if any(field in updates for field in ("rule_type", "condition", "discount_percent", "label")):
+        # badge in the reviewed-rules list. "stages" (Phase 4D) belongs in
+        # this list for the same reason discount_percent already is -- both
+        # are the substantive action value a host edits; self-review found
+        # stages-only edits weren't marking host_edited, an inconsistency
+        # with every other action-value field.
+        if any(field in updates for field in ("rule_type", "condition", "discount_percent", "label", "stages")):
             rule.source = "host_edited"
 
     for field, value in updates.items():
