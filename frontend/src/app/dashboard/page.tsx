@@ -69,26 +69,28 @@ export default function OverviewPage() {
         glassCardClassName
       )}
       style={{
-        // Same three palette tokens as before (accent-warm/primary/chart-2),
-        // but each one is genuinely darkened -- mixed 65/35 with
-        // --foreground to deepen the hue itself (mustard -> bronze,
-        // sindoor -> oxblood, sage -> forest) -- before that darkened color
-        // is blended toward transparent for the blob's softness. Reducing
-        // opacity alone (the previous version) can only fade a color
-        // toward the light page background, never deepen it; mixing in
-        // ink first is what actually makes the same palette read darker.
-        // Wide, faint --foreground wash underneath for overall depth.
-        //
-        // `in srgb`, not `in oklch`: confirmed live that mixing these
-        // opaque warm colors (accent-warm/primary/chart-2/foreground) in
-        // oklch was producing a grey/lavender cast instead of the intended
-        // bronze/oxblood/forest tones -- oklch interpolation between warm
-        // colors of very different lightness can dip through a
-        // desaturated, hue-shifted midpoint. srgb is plain linear channel
-        // averaging, which is what a simple "darken toward ink" blend
-        // needs (see glassCardClassName in lib/utils.ts for the same fix).
+        // Same three palette tokens as always (accent-warm/primary/
+        // chart-2), darkened by mixing 55/45 with --foreground before
+        // blending toward transparent for the blob's softness -- but two
+        // things from the previous version are gone, both confirmed live
+        // (isolated test page, bypassing the auth-gated app entirely) to
+        // be the actual source of a grey/lavender cast, not the oklch/srgb
+        // interpolation space:
+        //  1. The wide, faint standalone --foreground wash across the
+        //     whole panel -- a neutral tint layered under three already-
+        //     desaturating blobs just compounded the greyness. Removed;
+        //     the blobs alone now carry all the depth.
+        //  2. Low per-blob opacity (12-20%) diluted the already-darkened
+        //     color right back toward the (light, neutral-ish) card
+        //     background, which is what actually produced the grey --
+        //     not the mix space. Raised to 20-30% so the blob's own warm
+        //     hue stays visible instead of washing out.
+        // `in srgb` kept (not `in oklch`) since it's still the more
+        // predictable space for a plain "blend toward ink" step; see
+        // glassCardClassName in lib/utils.ts for the base-tint half of
+        // this same fix.
         backgroundImage:
-          "radial-gradient(70% 60% at 50% 50%, color-mix(in srgb, var(--foreground) 6%, transparent), transparent 80%), radial-gradient(50% 40% at 10% 6%, color-mix(in srgb, color-mix(in srgb, var(--accent-warm) 65%, var(--foreground) 35%) 20%, transparent), transparent 70%), radial-gradient(45% 35% at 90% 4%, color-mix(in srgb, color-mix(in srgb, var(--primary) 65%, var(--foreground) 35%) 18%, transparent), transparent 70%), radial-gradient(40% 30% at 52% 28%, color-mix(in srgb, color-mix(in srgb, var(--chart-2) 65%, var(--foreground) 35%) 18%, transparent), transparent 70%), radial-gradient(40% 30% at 22% 70%, color-mix(in srgb, color-mix(in srgb, var(--accent-warm) 65%, var(--foreground) 35%) 10%, transparent), transparent 70%), radial-gradient(45% 35% at 82% 88%, color-mix(in srgb, color-mix(in srgb, var(--primary) 65%, var(--foreground) 35%) 12%, transparent), transparent 70%)",
+          "radial-gradient(55% 45% at 12% 10%, color-mix(in srgb, color-mix(in srgb, var(--accent-warm) 55%, var(--foreground) 45%) 30%, transparent), transparent 72%), radial-gradient(50% 40% at 88% 6%, color-mix(in srgb, color-mix(in srgb, var(--primary) 55%, var(--foreground) 45%) 26%, transparent), transparent 72%), radial-gradient(45% 35% at 50% 55%, color-mix(in srgb, color-mix(in srgb, var(--chart-2) 55%, var(--foreground) 45%) 24%, transparent), transparent 72%), radial-gradient(40% 30% at 25% 78%, color-mix(in srgb, color-mix(in srgb, var(--accent-warm) 55%, var(--foreground) 45%) 16%, transparent), transparent 72%), radial-gradient(40% 30% at 80% 85%, color-mix(in srgb, color-mix(in srgb, var(--primary) 55%, var(--foreground) 45%) 14%, transparent), transparent 72%)",
       }}
     >
       <div

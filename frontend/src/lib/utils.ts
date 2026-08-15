@@ -13,22 +13,20 @@ export function cn(...inputs: ClassValue[]) {
 // blurring (the page's own gradient mesh); other consumers of these
 // components leave `glass` unset and stay fully opaque.
 //
-// Base tint is card color with a little foreground (ink) mixed in before
-// the transparency is applied -- straight bg-card/NN can only ever get
-// lighter as opacity drops (there's nothing dark behind it in this warm
-// palette to reveal), so darkening the *color itself* is what actually
-// reads as "darker glass" rather than just "more/less see-through".
-//
-// `in srgb`, not `in oklch`: mixing two OPAQUE colors of very different
-// lightness (dark ink into light cream) in oklch can dip through a
-// desaturated, hue-shifted midpoint -- confirmed live, it read as a grey/
-// lavender cast instead of warm cream. srgb mixing is plain linear
-// channel averaging, which is what "darken this warm color a bit"
-// actually needs here (oklch's perceptual evenness matters for color
-// *scales*, not a single blend-toward-ink step). Mixing toward transparent
-// afterward is fine in either space since transparent carries no hue.
+// Base tint is plain --card at a higher opacity -- NOT card mixed with
+// --foreground. An earlier version mixed in ~12% ink to try to darken the
+// base itself, but --card and --foreground are both very close to neutral
+// once blended (only ~14/255 of channel spread), so the result reads as
+// grey/mauve to the eye even though its hex is technically still warm --
+// confirmed by rendering both side by side in an isolated test page
+// (bypassing the color-mix interpolation space entirely: oklch and srgb
+// produced the same grey result, so that was never the actual cause).
+// All of the "darker" character now comes from the gradient mesh's own
+// blobs (page.tsx), which mix real saturated palette colors -- those stay
+// warm because they're not being diluted toward a neutral in the first
+// place. Keep this base plain; don't reintroduce a foreground mix here.
 export const glassCardClassName =
-  "bg-[color-mix(in_srgb,color-mix(in_srgb,var(--card)_88%,var(--foreground)_12%)_58%,transparent)] ring-1 ring-white/50 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_1px_2px_rgba(42,36,32,0.06)]"
+  "bg-[color-mix(in_srgb,var(--card)_62%,transparent)] ring-1 ring-white/50 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_1px_2px_rgba(42,36,32,0.06)]"
 
 // Matches app/services/call_service.py's BROWSER_TEST_CALLER_NUMBER -- the
 // placeholder caller identity used by the dashboard's "test in browser"
