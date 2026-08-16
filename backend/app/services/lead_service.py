@@ -6,7 +6,7 @@ the guest; the dashboard's Leads page reads back through list_leads/get_lead.
 import uuid
 from datetime import date
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.common import DateRange
@@ -343,3 +343,131 @@ async def get_active_booking(db: AsyncSession, guest_profile_id: uuid.UUID | Non
         if lead.check_out is None or lead.check_out >= today:
             return lead
     return None
+
+
+async def objection_conversion_analytics(
+    db: AsyncSession, user_id: uuid.UUID, date_range: DateRange | None = None
+) -> dict:
+    """Conversion rate by CallSummary.objection_tags (docs/tasks/
+    building-intelligence.md, Implementation 4) -- read-only, purely a
+    display/analytics aggregate. Deliberately does NOT write anything back
+    into NegotiationRule/PricingRule/pricing_engine.py: see this task's own
+    "Explicitly not in scope" note -- an automatic, unreviewed pricing
+    change from an aggregate correlation is a correctness/trust risk this
+    codebase's own smart_pricing_service.py already declined for the same
+    reason (never feeds comparable pricing into get_pricing/negotiate_rate
+    automatically). A host reads this and can act on it manually (e.g. by
+    editing their own NegotiationRule policy text).
+
+    Multi-tag handling (Implementation 2's review flagged this ambiguity
+    explicitly): a call carrying two tags (e.g. PRICE_TOO_HIGH and
+    DATES_UNAVAILABLE) counts toward BOTH tags' numerator/denominator --
+    achieved via jsonb_array_elements_text producing one row per tag per
+    call, so each tag's rate reflects "of calls where this specific
+    friction occurred," not a partitioning of calls into exclusive buckets.
+
+    Resolved-vs-unresolved handling (carried over from Implementation 2's
+    review: a tag fires whether or not the objection was actually overcome,
+    e.g. PRICE_TOO_HIGH appears on both a lost negotiation and a
+    successfully-discounted booking): rather than silently excluding
+    converted calls from a tag's denominator (which would answer a
+    different, narrower question than "conversion rate for calls with this
+    friction") or silently folding resolution into the same number, this
+    keeps every tagged call in the denominator -- the literal, honestly
+    labeled question -- and additionally reports resolved_count (tagged
+    calls that still converted) and unresolved_count (tagged calls that
+    didn't) as a separate, visible breakdown per tag, so a host isn't shown
+    a flat rate that hides whether the objection was actually a dealbreaker.
+
+    Takes date_range (app/api/v1/common.py's DateRange, same helper
+    analytics_summary already uses) rather than a bucket: str granularity
+    param -- this function's output has no time-series/trend dimension
+    (unlike quality_event_analytics's over_time), so a bucket param would
+    be dead weight; a start/end window filter is what this task actually
+    needs.
+
+    Uses raw SQL (sqlalchemy.text, still fully parameter-bound -- never
+    string-interpolated) for the tag-unnesting query specifically, not
+    SQLAlchemy Core's .table_valued(): reproduced consistently (8/8 runs, a
+    fresh connection each time) against the real dev DB that
+    .table_valued()'s query -- both the default comma-join and an explicit
+    `JOIN ... ON true` -- raises "column anon_1.tag does not exist" via
+    asyncpg at PREPARE time, before any parameters bind. NOTE: an
+    independent review of this task, on the same SQLAlchemy 2.0.51/asyncpg
+    0.31.0 versions against the same DB, reported the .table_valued()
+    version succeeding for them -- this discrepancy was not root-caused
+    (checked and ruled out: not a Neon pgbouncer/pooled-endpoint artifact,
+    since this connection string uses Neon's direct, non "-pooler" host;
+    not session/rollback-state-dependent, since the repro above used a
+    fresh session per attempt). Treat this as "known to fail
+    deterministically in this environment," not "impossible to ever
+    succeed" -- if you're revisiting this function and .table_valued()
+    works for you, that's plausible; the raw-SQL version is kept regardless
+    since it's simpler to reason about and already proven correct (see
+    Implementation 4's task-file verification notes), not because the ORM
+    path is understood to be broken everywhere. The one combination
+    confirmed to always execute is a literal SQL
+    `JOIN jsonb_array_elements_text(...) AS alias(column_name) ON true`
+    with the column name declared inside the function-call alias itself,
+    which SQLAlchemy Core's table_valued() has no option to emit. All
+    user-controlled values (user_id, date bounds) are still passed as
+    bound :params, never interpolated into the SQL string.
+    """
+    is_booked_sql = "CASE WHEN leads.status = 'booked' THEN 1 ELSE 0 END"
+    window_sql = ""
+    params: dict = {"user_id": user_id}
+    if date_range is not None:
+        if date_range.since is not None:
+            window_sql += " AND call_sessions.created_at >= :since"
+            params["since"] = date_range.since
+        if date_range.until is not None:
+            window_sql += " AND call_sessions.created_at < :until"
+            params["until"] = date_range.until
+
+    by_tag_stmt = text(
+        f"""
+        SELECT tag.value AS tag, count(*) AS total, sum({is_booked_sql}) AS booked
+        FROM call_sessions
+        JOIN jsonb_array_elements_text(call_sessions.ai_summary -> 'objection_tags') AS tag(value) ON true
+        LEFT OUTER JOIN leads ON call_sessions.lead_id = leads.id
+        WHERE call_sessions.user_id = :user_id AND call_sessions.ai_summary IS NOT NULL{window_sql}
+        GROUP BY tag.value
+        ORDER BY count(*) DESC
+        """
+    )
+    by_tag_rows = (await db.execute(by_tag_stmt, params)).all()
+    by_tag = [
+        {
+            "tag": row.tag,
+            "total_calls": row.total,
+            "resolved_count": row.booked,
+            "unresolved_count": row.total - row.booked,
+            "conversion_rate": round(row.booked / row.total, 3) if row.total else None,
+        }
+        for row in by_tag_rows
+        # NO_OBJECTION is a valid tag value but not an objection -- it
+        # belongs in the baseline, not the objection breakdown, since it
+        # would otherwise always show a 100%-ish rate that isn't a "this
+        # objection is fine" signal, just "there was no objection."
+        if row.tag != "NO_OBJECTION"
+    ]
+
+    baseline_stmt = text(
+        f"""
+        SELECT count(*) AS total, sum({is_booked_sql}) AS booked
+        FROM call_sessions
+        LEFT OUTER JOIN leads ON call_sessions.lead_id = leads.id
+        WHERE call_sessions.user_id = :user_id AND call_sessions.ai_summary IS NOT NULL{window_sql}
+        """
+    )
+    baseline_row = (await db.execute(baseline_stmt, params)).one()
+    baseline_total = baseline_row.total or 0
+    baseline_booked = baseline_row.booked or 0
+    baseline = {
+        "total_calls": baseline_total,
+        "resolved_count": baseline_booked,
+        "unresolved_count": baseline_total - baseline_booked,
+        "conversion_rate": round(baseline_booked / baseline_total, 3) if baseline_total else None,
+    }
+
+    return {"by_tag": by_tag, "baseline": baseline}
