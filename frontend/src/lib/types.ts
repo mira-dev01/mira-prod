@@ -276,6 +276,7 @@ export type CallSummary = {
   host_action: string[];
   key_details: string[];
   missing_information: string[];
+  objection_tags: string[];
 };
 
 export type CallSessionOut = {
@@ -596,4 +597,24 @@ export type FaqGapAnalytics = {
   most_frequent: { question: string; count: number }[];
   by_property: { property_id: string | null; count: number }[];
   over_time: { bucket: string; count: number }[];
+};
+
+export type ObjectionTagStats = {
+  tag: string;
+  total_calls: number;
+  resolved_count: number;
+  unresolved_count: number;
+  conversion_rate: number | null;
+};
+
+export type BaselineStats = {
+  total_calls: number;
+  resolved_count: number;
+  unresolved_count: number;
+  conversion_rate: number | null;
+};
+
+export type ObjectionInsights = {
+  by_tag: ObjectionTagStats[];
+  baseline: BaselineStats;
 };

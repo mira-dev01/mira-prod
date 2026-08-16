@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.call_quality_event import CallQualityEvent
@@ -262,3 +262,48 @@ async def finalize_call_session(
     await db.commit()
     await db.refresh(session)
     return session
+
+
+async def quality_event_analytics(db: AsyncSession, user_id: uuid.UUID, bucket: str = "week") -> dict:
+    """Cross-call aggregate over CallQualityEvent (docs/tasks/
+    building-intelligence.md, Implementation 3) -- read-only, mirrors
+    faq_service.faq_gap_analytics's shape/bucketing exactly (most-frequent
+    breakdown + a time trend), applied to guard/validator firings instead of
+    FAQ gaps. No "resolve"/write action exists for quality events, same as
+    faq_gap_analytics itself is read-only until a host acts via the separate
+    POST /faq/gaps/{gap_id}/answer endpoint -- this task adds no equivalent
+    action.
+    """
+    base_filters = [CallSession.user_id == user_id]
+
+    most_frequent_stmt = (
+        select(
+            CallQualityEvent.rule,
+            CallQualityEvent.severity,
+            func.count().label("count"),
+        )
+        .join(CallSession, CallQualityEvent.call_session_id == CallSession.id)
+        .where(*base_filters)
+        .group_by(CallQualityEvent.rule, CallQualityEvent.severity)
+        .order_by(func.count().desc())
+        .limit(20)
+    )
+    most_frequent = [
+        {"rule": row.rule, "severity": row.severity, "count": row.count}
+        for row in (await db.execute(most_frequent_stmt)).all()
+    ]
+
+    day = func.date_trunc(bucket, func.timezone("UTC", CallQualityEvent.created_at))
+    over_time_stmt = (
+        select(day.label("bucket"), func.count().label("count"))
+        .join(CallSession, CallQualityEvent.call_session_id == CallSession.id)
+        .where(*base_filters)
+        .group_by(day)
+        .order_by(day)
+    )
+    over_time = [
+        {"bucket": row.bucket.date().isoformat(), "count": row.count}
+        for row in (await db.execute(over_time_stmt)).all()
+    ]
+
+    return {"most_frequent": most_frequent, "over_time": over_time}

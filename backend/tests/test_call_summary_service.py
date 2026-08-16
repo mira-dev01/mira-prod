@@ -68,3 +68,56 @@ def test_parse_summary_response_rejects_invalid_json():
 def test_parse_summary_response_rejects_non_object():
     with pytest.raises(call_summary_service.CallSummaryError):
         call_summary_service._parse_summary_response(json.dumps(["a", "list"]))
+
+
+def test_parse_summary_response_keeps_valid_objection_tags():
+    raw = json.dumps(
+        {
+            "conversation_summary": "Guest pushed back on price then went silent.",
+            "objection_tags": ["PRICE_TOO_HIGH", "GUEST_STOPPED_RESPONDING"],
+        }
+    )
+    summary = call_summary_service._parse_summary_response(raw)
+    assert summary.objection_tags == ["PRICE_TOO_HIGH", "GUEST_STOPPED_RESPONDING"]
+
+
+def test_parse_summary_response_drops_hallucinated_objection_tags():
+    # A tag outside the fixed vocabulary (OBJECTION_TAGS) must never survive
+    # parsing, even if the model invents a plausible-looking one -- the
+    # controlled vocabulary is enforced in code, not just prompt wording.
+    raw = json.dumps(
+        {
+            "conversation_summary": "Guest asked something unusual.",
+            "objection_tags": ["PRICE_TOO_HIGH", "SOME_MADE_UP_TAG", "another_bad_one"],
+        }
+    )
+    summary = call_summary_service._parse_summary_response(raw)
+    assert summary.objection_tags == ["PRICE_TOO_HIGH"]
+
+
+def test_parse_summary_response_dedupes_objection_tags():
+    raw = json.dumps(
+        {
+            "conversation_summary": "Guest repeated their price concern.",
+            "objection_tags": ["PRICE_TOO_HIGH", "PRICE_TOO_HIGH"],
+        }
+    )
+    summary = call_summary_service._parse_summary_response(raw)
+    assert summary.objection_tags == ["PRICE_TOO_HIGH"]
+
+
+def test_parse_summary_response_defaults_objection_tags_to_empty_list():
+    raw = json.dumps({"conversation_summary": "No objection info present."})
+    summary = call_summary_service._parse_summary_response(raw)
+    assert summary.objection_tags == []
+
+
+def test_parse_summary_response_keeps_no_objection_tag():
+    raw = json.dumps(
+        {
+            "conversation_summary": "Smooth booking, no friction.",
+            "objection_tags": ["NO_OBJECTION"],
+        }
+    )
+    summary = call_summary_service._parse_summary_response(raw)
+    assert summary.objection_tags == ["NO_OBJECTION"]
