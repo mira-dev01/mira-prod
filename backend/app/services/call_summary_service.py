@@ -18,7 +18,7 @@ import json
 import logging
 
 from app.config import settings
-from app.schemas.call_summary import BookingSnapshot, CallSummary, SummaryOutcome
+from app.schemas.call_summary import OBJECTION_TAGS, BookingSnapshot, CallSummary, SummaryOutcome
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +60,25 @@ If the call is spam/telemarketing/wrong-number: set outcome.status to "Spam / Ju
 outcome.reason. If the guest disconnects early, say so in conversation_summary. If Mira transfers/escalates \
 the call, mention the reason. If multiple properties or dates are discussed, list/mention all of them.
 
+Also identify objection_tags: zero or more tags from this EXACT fixed list describing what friction, if any, \
+caused the call not to convert. This only applies to calls with genuine stay/booking intent (the guest was \
+actually considering or discussing a stay). Use ONLY these exact strings, never invent new ones:
+- PRICE_TOO_HIGH: guest pushed back on price/rate/discount
+- DATES_UNAVAILABLE: guest's requested dates were not available
+- LOCATION_MISMATCH: property location didn't match what the guest wanted
+- AMENITY_MISSING: guest wanted an amenity/feature the property doesn't have
+- POLICY_MISMATCH: guest's need conflicted with a stated policy (min stay, pets, cancellation, etc.)
+- HOST_UNRESPONSIVE: call required host input that wasn't available in time
+- GUEST_STOPPED_RESPONDING: guest was actively engaged in a booking conversation, then went silent/hung up \
+mid-conversation without resolution -- do NOT use this for a guest who said goodbye/ended the call normally, \
+or for a call that was never a real booking conversation to begin with
+- NO_OBJECTION: the guest had genuine stay/booking intent and the call ended smoothly, with no friction point
+
+For a call with NO genuine stay/booking intent (spam, telemarketing, wrong number, or any other off-topic \
+call) leave objection_tags as an empty list -- do not use NO_OBJECTION (that specifically means "a real \
+booking conversation with no friction," not "not applicable"), and do not force any other tag either.
+If more than one tag applies to a real booking conversation, include all that apply.
+
 Respond with ONLY a JSON object of this exact shape, no other text:
 {
   "booking_snapshot": {
@@ -82,7 +101,8 @@ Respond with ONLY a JSON object of this exact shape, no other text:
   },
   "host_action": ["only items requiring the host's attention, or [\\"No action required.\\"]"],
   "key_details": ["factual bullet points only, e.g. group size, preferences, city of origin, special requests"],
-  "missing_information": ["booking info Mira could not collect, e.g. Check-in date, Budget -- or [] if none missing"]
+  "missing_information": ["booking info Mira could not collect, e.g. Check-in date, Budget -- or [] if none missing"],
+  "objection_tags": ["zero or more of the exact tag strings listed above"]
 }
 
 Call transcript:
@@ -116,6 +136,18 @@ def _as_str_list(value: object) -> list[str]:
     if not isinstance(value, list):
         return []
     return [str(item).strip() for item in value if str(item).strip()]
+
+
+def _as_objection_tags(value: object) -> list[str]:
+    """Same shape as _as_str_list, but additionally enforces OBJECTION_TAGS'
+    fixed vocabulary in code -- the prompt asks the model to use only these
+    exact strings, but an LLM can and does ignore prompt-level constraints,
+    so any tag not in the controlled list is silently dropped rather than
+    stored. Order/duplicates from the model are collapsed via dict.fromkeys
+    (stable order, no duplicates) so a repeated tag can't inflate counts in
+    later aggregation (Implementation 3/4)."""
+    candidates = _as_str_list(value)
+    return list(dict.fromkeys(tag for tag in candidates if tag in OBJECTION_TAGS))
 
 
 def _parse_summary_response(raw_text: str) -> CallSummary:
@@ -164,6 +196,7 @@ def _parse_summary_response(raw_text: str) -> CallSummary:
         host_action=_as_str_list(parsed.get("host_action")),
         key_details=_as_str_list(parsed.get("key_details")),
         missing_information=_as_str_list(parsed.get("missing_information")),
+        objection_tags=_as_objection_tags(parsed.get("objection_tags")),
     )
 
 
