@@ -217,6 +217,22 @@ def test_negotiation_off_note_included_when_explicitly_disabled():
     assert "does not offer discounts" in prompt
 
 
+def test_pricing_order_rule_routes_unquantified_pushback_to_negotiate_rate():
+    """Phase 4D (Phase 4C/S.1 finding): unquantified pushback ("can you do
+    better?", no number named) must route to negotiate_rate, not a second
+    get_pricing(apply_discounts=true) call -- confirms the prompt no longer
+    tells the model apply_discounts=true is the pushback path."""
+    prompt = build_system_prompt(_property(), None, _user())
+    normalized = " ".join(prompt.split())  # collapse the prompt's own line-wrapping/indentation
+    assert "call negotiate_rate and present the revised price" in normalized
+    assert "leave guest_offer unset if they didn't name their own number" in normalized
+    # The old instruction routing unnamed pushback to a second get_pricing
+    # call must be gone -- this exact phrase is what Phase 4C/S.1 found was
+    # the structural gap (unquantified pushback never reaching policy
+    # resolution at all).
+    assert "call get_pricing again with apply_discounts=true" not in normalized
+
+
 def test_no_guest_profile_says_new_guest():
     prompt = build_system_prompt(_property(), None, _user())
     assert "not in our guest records" in prompt

@@ -8,6 +8,7 @@ import logging
 import uuid
 from dataclasses import dataclass
 from datetime import date, timedelta
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,6 +24,10 @@ from app.models.negotiation_rule import NegotiationRule
 from app.models.pricing_rule import PricingRule
 from app.models.property import Property
 from app.models.user import User
+from app.services import negotiation_policy
+
+if TYPE_CHECKING:
+    from app.voice.conversation_state import NegotiationEvent
 
 logger = logging.getLogger(__name__)
 
@@ -323,45 +328,69 @@ class NegotiationResult:
     asking_price: float
     message: str
     refused: bool = False
+    # Phase 4D -- structured Decision fields (Phase 4C Section M/Step 9),
+    # additive to the pre-existing fields above, which keep their exact
+    # pre-Phase-4D meaning for every caller that doesn't read the new ones.
+    # None/False are the correct values whenever no staged policy applies
+    # (every call before this phase, and every flat-only host after it),
+    # so nothing about existing behavior changes -- these only carry real
+    # information once a host has an approved rule with `stages` set.
+    is_staged: bool = False
+    stage_index: int | None = None
+    stage_count: int | None = None
+    progressed_this_event: bool = False
+    exhausted: bool = False
+    # Phase 4F self-review finding: the true policy floor for THIS turn,
+    # independent of counter_offer -- counter_offer is guest_offer itself
+    # (unclamped) on the accepted branch below, which can be strictly
+    # ABOVE floor_price whenever the guest offered more than the floor
+    # required. Without this, a caller has no way to tell "exhausted AND
+    # counter_offer is genuinely the max" apart from "exhausted AND the
+    # guest just happened to offer/accept a number above the max" -- see
+    # state_prompt_sync._negotiation_hint, which used to phrase the
+    # accepted branch as "this is the maximum you're authorized to offer"
+    # even when floor_price was materially lower, wrongly telling the LLM
+    # to refuse further guest pushback it was actually still authorized to
+    # grant. Always populated (never None) -- floor_price is computed
+    # unconditionally above, on every path through this function.
+    floor_price: float = 0.0
 
 
 @dataclass
 class HostNegotiationPolicy:
-    """Resolved, ready-to-use negotiation policy for one host -- either
-    derived from their approved discount_* NegotiationRule rows, or the
-    untouched global defaults if the host has none / the lookup fails.
-    Never constructed with a status other than "approved" rows -- see
-    _get_host_negotiation_policy."""
+    """Resolved, ready-to-use negotiation ALLOWANCE/CEILING for one host --
+    either derived from the host's own User row, or the untouched global
+    defaults if it has no override. Never constructed with a status other
+    than "approved" rows -- see _get_host_negotiation_policy.
+
+    Phase 4: no longer carries guest_requests_percent/repeat_guest_percent
+    -- those are resolved directly in negotiate_rate now, via
+    negotiation_policy.resolve_discount_trigger against the raw approved
+    rule list (that function needs rule-level data such as
+    source_rule_ids, which this already-flattened dataclass has no reason
+    to carry). This dataclass's remaining job is purely the two host-level
+    settings (negotiation_allowed, max_discount_percent) that come from
+    User itself, not from any NegotiationRule row."""
 
     negotiation_allowed: bool
     max_discount_percent: float
-    guest_requests_percent: float | None
-    repeat_guest_percent: float | None
 
 
 async def _get_host_negotiation_policy(db: AsyncSession, host_id: uuid.UUID | None) -> HostNegotiationPolicy:
-    """Derive-on-read from the host's approved discount_* NegotiationRule
-    rows (rule_type="discount_guest_requests"/"discount_repeat_guest" --
-    formerly a separate HostDiscountRule table's trigger_type, merged into
-    NegotiationRule) -- never materialized per property, so editing a
-    host-level rule applies everywhere immediately. These three discount_*
-    types are host-wide by definition (see NegotiationRule's docstring) --
-    read via _approved_negotiation_rules directly, not the property-scoped
-    _approved_property_pricing_rules, since there's no property to scope by
-    here.
+    """Derive-on-read from the host's User row (negotiation_allowed,
+    max_discount_percent_override) -- never materialized per property, so
+    an edit applies everywhere immediately.
 
-    Mandatory fallback: any failure here (no host_id, DB error, no approved
-    rows) returns today's exact pre-existing global-constant behavior.
-    negotiate_rate must never error, hang, or silently default to a 0%/100%
-    discount because of this lookup -- same "don't crash, don't block"
-    discipline as BRIGHT_DATA_API_KEY/SMTP_* elsewhere in this codebase,
-    since this runs live, mid-call, in the guest's negotiation path.
+    Mandatory fallback: any failure here (no host_id, DB error) returns
+    today's exact pre-existing global-constant behavior. negotiate_rate
+    must never error, hang, or silently default to a 0%/100% discount
+    because of this lookup -- same "don't crash, don't block" discipline as
+    BRIGHT_DATA_API_KEY/SMTP_* elsewhere in this codebase, since this runs
+    live, mid-call, in the guest's negotiation path.
     """
     default_policy = HostNegotiationPolicy(
         negotiation_allowed=True,
         max_discount_percent=MAX_NEGOTIATION_DISCOUNT_PERCENT,
-        guest_requests_percent=None,
-        repeat_guest_percent=None,
     )
     if host_id is None:
         return default_policy
@@ -371,7 +400,6 @@ async def _get_host_negotiation_policy(db: AsyncSession, host_id: uuid.UUID | No
     except Exception:
         logger.exception("Host negotiation policy lookup failed for host_id=%s -- using global defaults", host_id)
         return default_policy
-    rules = await _approved_negotiation_rules(db, host_id)
 
     # host.negotiation_allowed is only ever None for an in-memory User that
     # was never flushed through the DB (server_default populates real rows)
@@ -383,22 +411,9 @@ async def _get_host_negotiation_policy(db: AsyncSession, host_id: uuid.UUID | No
         else MAX_NEGOTIATION_DISCOUNT_PERCENT
     )
 
-    guest_requests_percent = None
-    repeat_guest_percent = None
-    for rule in rules:
-        if rule.discount_percent is None:
-            continue
-        percent = float(rule.discount_percent)
-        if rule.rule_type == "discount_guest_requests":
-            guest_requests_percent = percent if guest_requests_percent is None else max(guest_requests_percent, percent)
-        elif rule.rule_type == "discount_repeat_guest":
-            repeat_guest_percent = percent if repeat_guest_percent is None else max(repeat_guest_percent, percent)
-
     return HostNegotiationPolicy(
         negotiation_allowed=negotiation_allowed,
         max_discount_percent=max_discount_percent,
-        guest_requests_percent=guest_requests_percent,
-        repeat_guest_percent=repeat_guest_percent,
     )
 
 
@@ -431,7 +446,20 @@ async def negotiate_rate(
     guest_loyalty: str = "new",
     host_id: uuid.UUID | None = None,
     guest_profile_id: uuid.UUID | None = None,
+    prior_events: list["NegotiationEvent"] | None = None,
 ) -> NegotiationResult:
+    """prior_events (Phase 4D, generalized negotiation state -- see
+    documentation design docs "Phase 4C: Negotiation Semantics Contract"):
+    this call's negotiation history WITHIN THE CURRENT CALL, not including
+    the guest_offer being resolved right now -- app/voice/tools.py's
+    negotiate_rate wrapper passes state.negotiation_events (already
+    property-scoped by ConversationState.record_negotiation_event) BEFORE
+    appending this call's own event, so resolve_stage_index below only
+    ever sees PRIOR events when deciding whether this NEW offer progresses
+    a stage. Optional/None-default (-> stage 0, i.e. today's exact
+    pre-Phase-4D behavior) so every pre-existing call site -- including
+    every test in tests/test_pricing_engine.py that predates this phase --
+    continues to resolve identically without passing it."""
     breakdown = await calculate_price(db, property_, check_in, check_out, apply_discounts=False)
     asking_price = breakdown.total
 
@@ -442,6 +470,7 @@ async def negotiate_rate(
             accepted=False,
             counter_offer=asking_price,
             asking_price=asking_price,
+            floor_price=asking_price,
             refused=True,
             message=(
                 f"I checked, but ₹{asking_price:,.0f} for {breakdown.nights} nights is already our best price "
@@ -462,13 +491,65 @@ async def negotiate_rate(
     else:
         is_repeat_guest = guest_loyalty in ("returning", "frequent")
 
-    if is_repeat_guest and policy.repeat_guest_percent is not None:
-        discount_percent = policy.repeat_guest_percent
-    elif policy.guest_requests_percent is not None:
-        discount_percent = policy.guest_requests_percent
+    negotiation_rules = await _approved_negotiation_rules(db, host_id)
+    property_rules = await _approved_property_pricing_rules(db, host_id, property_.id)
+
+    # Phase 4D: the stage THIS TURN'S offer should be evaluated/authorized
+    # against is derived from prior events PLUS this call's own guest_offer
+    # -- resolve_stage_index's own progression rule (Phase 4C Section D)
+    # already guarantees a first numeric offer lands on stage 0 regardless
+    # of its size (there is no "highest_seen" yet to compare against), and
+    # that a repeated/lower/None offer never advances past whatever prior
+    # events already reached -- so including the current event in the
+    # derivation is what makes THIS turn's resolved discount reflect
+    # whether THIS offer just progressed, not the turn before it. The
+    # stage COUNT that bounds this derivation must come from whichever
+    # rule would actually be resolved -- but which rule resolves can
+    # itself depend on is_repeat_guest, which doesn't depend on
+    # stage_index at all, so there's no circularity: compute the candidate
+    # stage counts up front from the raw approved rules (cheap, pure,
+    # already-fetched data), independent of stage_index itself.
+    candidate_stage_counts = [
+        len(rule.stages) for rule in negotiation_rules + property_rules if rule.stages
+    ]
+    stage_count_for_derivation = max(candidate_stage_counts) if candidate_stage_counts else 0
+    events = prior_events or []
+    stage_index_before = negotiation_policy.resolve_stage_index(events, stage_count_for_derivation)
+    if guest_offer is not None:
+        # Deferred import -- see the identical note further below on why
+        # this stays a cheap, non-circular import rather than a
+        # module-level dependency on app/voice/*.
+        from app.voice.conversation_state import NegotiationEvent
+
+        current_event = NegotiationEvent(guest_offer=guest_offer, property_id=str(property_.id))
+        stage_index = negotiation_policy.resolve_stage_index(events + [current_event], stage_count_for_derivation)
+    else:
+        # guest_offer=None never progresses (Phase 4C Section E/S.1.6) --
+        # resolves against whatever stage prior events already reached.
+        stage_index = stage_index_before
+
+    # Phase 4: the repeat-guest-vs-guest-requests precedence itself is now
+    # the SAME live function negotiation_policy.py's own tests exercise
+    # (resolve_discount_trigger) -- previously this if/elif chain and that
+    # function were two separate implementations of one precedence rule,
+    # only the chain here was actually wired in. Fetches the raw approved
+    # rules directly via _approved_negotiation_rules (the same helper
+    # _approved_property_pricing_rules below also calls, just for a
+    # different, property-filtered purpose) since resolve_discount_trigger
+    # needs rule-level data (source_rule_ids), not the already-flattened
+    # HostNegotiationPolicy floats _get_host_negotiation_policy returns.
+    trigger_decision = negotiation_policy.resolve_discount_trigger(
+        negotiation_rules,
+        negotiation_policy.GuestNegotiationContext(is_repeat_guest=is_repeat_guest),
+        stage_index=stage_index,
+    )
+    if trigger_decision is not None:
+        discount_percent = trigger_decision.percent
+        discount_percent_source = trigger_decision
     else:
         loyalty_bonus_percent = {"new": 0.0, "returning": 5.0, "frequent": 10.0}.get(guest_loyalty, 0.0)
         discount_percent = loyalty_bonus_percent + 10.0
+        discount_percent_source = None
 
     # A rule_type="custom" NegotiationRule is a host-authored, per-property
     # freeform concession (e.g. "for this villa specifically, I can go to
@@ -483,13 +564,51 @@ async def negotiate_rate(
     # for any value above MAX_NEGOTIATION_DISCOUNT_PERCENT/the host's own
     # override, exactly the case this rule type exists for.
     custom_ceiling = policy.max_discount_percent
-    for rule in await _approved_property_pricing_rules(db, host_id, property_.id):
-        if rule.rule_type == "custom" and rule.discount_percent is not None:
-            discount_percent = max(discount_percent, float(rule.discount_percent))
-            custom_ceiling = max(custom_ceiling, float(rule.discount_percent))
+    custom = negotiation_policy.resolve_custom_property_ceiling(property_rules, stage_index=stage_index)
+    if custom is not None:
+        # Phase 4D correctness fix (caught in self-review, not by the
+        # original test suite): track which decision object actually
+        # produced the winning discount_percent AT THE MOMENT this max()
+        # is evaluated, not by re-comparing floats against the final
+        # max_discount_percent afterward. Re-deriving "who won" from a
+        # later float comparison breaks the moment custom.percent
+        # coincidentally ties max_discount_percent for a reason OTHER than
+        # actually being the winning candidate (e.g. custom_ceiling's own
+        # max() below happens to land on the same number) -- confirmed via
+        # a direct probe: a staged trigger_decision at 12% plus a flat
+        # custom rule ALSO at 12% silently reported is_staged=False,
+        # because custom.percent(12) == max_discount_percent(12) even
+        # though custom never actually raised discount_percent above
+        # trigger_decision's own 12%. This branch is evaluated inline with
+        # the max() itself, so it can never disagree with which operand
+        # actually won.
+        if custom.percent > discount_percent:
+            discount_percent_source = custom
+        discount_percent = max(discount_percent, custom.percent)
+        custom_ceiling = max(custom_ceiling, custom.percent)
 
     max_discount_percent = min(custom_ceiling, discount_percent)
     floor_price = round(asking_price * (1 - max_discount_percent / 100), 2)
+
+    # Phase 4D Decision-contract fields: winning_decision is whichever
+    # ResolvedDiscount actually produced discount_percent BEFORE the
+    # ceiling clamp (tracked above, inline, never re-derived from a float
+    # comparison after the fact). If the ceiling clamp (min() with
+    # custom_ceiling) is what reduced the final number, that's a separate
+    # concern from WHICH rule authorized the underlying percent -- this
+    # field answers "which policy is the guest negotiating under," not
+    # "which number happened to match the final price."
+    winning_decision = discount_percent_source
+    is_staged = winning_decision.is_staged if winning_decision is not None else False
+    stage_count = winning_decision.stage_count if winning_decision is not None else None
+    # progressed_this_event: did resolving THIS guest_offer move the stage
+    # index forward from where prior events alone had already reached?
+    # guest_offer=None can never progress (Phase 4C Section E/S.1.6) --
+    # already guaranteed above, since stage_index falls back to
+    # stage_index_before whenever guest_offer is None, making this
+    # comparison False by construction in that case, not a separate check.
+    progressed_this_event = is_staged and stage_index > stage_index_before
+    exhausted = is_staged and stage_count is not None and stage_index >= stage_count - 1
 
     if guest_offer is None:
         # Guest asked us to name a price rather than stating their own offer --
@@ -498,6 +617,12 @@ async def negotiate_rate(
             accepted=True,
             counter_offer=floor_price,
             asking_price=asking_price,
+            floor_price=floor_price,
+            is_staged=is_staged,
+            stage_index=stage_index if is_staged else None,
+            stage_count=stage_count,
+            progressed_this_event=False,
+            exhausted=exhausted,
             message=(
                 f"Good news -- for {property_.name} over {breakdown.nights} nights, I can bring it down to "
                 f"₹{floor_price:,.0f} (our standard rate is ₹{asking_price:,.0f})."
@@ -509,6 +634,12 @@ async def negotiate_rate(
             accepted=True,
             counter_offer=guest_offer,
             asking_price=asking_price,
+            floor_price=floor_price,
+            is_staged=is_staged,
+            stage_index=stage_index if is_staged else None,
+            stage_count=stage_count,
+            progressed_this_event=progressed_this_event,
+            exhausted=exhausted,
             message=(
                 f"Good news -- I was able to accept ₹{guest_offer:,.0f} for {property_.name} over "
                 f"{breakdown.nights} nights."
@@ -519,6 +650,12 @@ async def negotiate_rate(
         accepted=False,
         counter_offer=floor_price,
         asking_price=asking_price,
+        floor_price=floor_price,
+        is_staged=is_staged,
+        stage_index=stage_index if is_staged else None,
+        stage_count=stage_count,
+        progressed_this_event=progressed_this_event,
+        exhausted=exhausted,
         message=(
             f"I checked, but ₹{guest_offer:,.0f} is a bit below what I can do on {property_.name}. "
             f"The best I can offer for {breakdown.nights} nights is ₹{floor_price:,.0f} "
