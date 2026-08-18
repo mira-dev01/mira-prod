@@ -11,7 +11,8 @@ same RecommendationResult/PropertyCard objects directly -- this module's
 output is ONLY for speech, never re-parsed by anything downstream.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import date
 from typing import Literal
 
 from app.services.property.card import PropertyCard
@@ -27,12 +28,40 @@ _NUMBER_WORDS = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six"}
 RecommendationConfidence = Literal["strong", "moderate", "weak"]
 
 
+@dataclass(frozen=True)
+class PartiallyAvailableProperty:
+    """Availability-first recommendations, Implementation 3: a property that
+    is NOT eligible for the main recommended list (a real, guest-visible
+    conflict exists somewhere in the requested window -- see
+    calendar_service.AvailabilityWindowResult's own docstring for the
+    "partial" status definition this represents) but is retained here,
+    separately from PropertyCard.options, so the agent has the structured
+    data needed to name the actual conflicting dates rather than silently
+    dropping the property with no explanation -- matching the task's own
+    example phrasing: "There is a booking on this property from October 3rd
+    to 5th... once your dates are finalised I can check again." Deliberately
+    a SEPARATE, much smaller structure than PropertyCard (not another
+    PropertyCard field) -- a partially-available property is never a clean
+    recommendation, so it should be structurally impossible to render it
+    through format_property_pitch_line's normal per-option path."""
+
+    spoken_name: str
+    conflicting_bookings: list[tuple[date, date]] = field(default_factory=list)
+
+
 @dataclass
 class RecommendationResult:
     options: list[PropertyCard]
     combo_note: str = ""
     not_found: bool = False
     recommendation_confidence: RecommendationConfidence = "moderate"
+    # Availability-first recommendations, Implementation 3: see
+    # PartiallyAvailableProperty's own docstring. Empty on every existing
+    # caller/test that doesn't pass check_in/check_out through to
+    # orchestrator.recommend_properties -- purely additive, never populated
+    # unless a real availability check actually ran and found a partial
+    # conflict.
+    partially_available: list[PartiallyAvailableProperty] = field(default_factory=list)
 
 
 _NOT_FOUND_TEXT = "I couldn't find a property in our portfolio matching that -- let me connect you with the host directly."
@@ -124,8 +153,36 @@ def format_property_pitch_line(card: PropertyCard, index: int) -> str:
     )
 
 
+def _format_partial_availability_line(entry: PartiallyAvailableProperty) -> str:
+    # Availability-first recommendations, Implementation 3: names the actual
+    # conflicting dates, matching the task's own example phrasing precisely
+    # ("There is a booking on this property from October 3rd to 5th"). Never
+    # a generic "not available" -- the whole point of this structure existing
+    # separately from a hard exclusion is that the guest gets the real,
+    # specific reason instead of the property just silently disappearing.
+    conflicts = ", ".join(
+        f"{check_in.isoformat()} to {check_out.isoformat()}" for check_in, check_out in entry.conflicting_bookings
+    )
+    return (
+        f"{entry.spoken_name} has a booking from {conflicts} that overlaps part of the requested dates. "
+        f"Once the guest's exact dates are finalized, check again -- it may still work, or another "
+        f"property can be recommended instead."
+    )
+
+
 def render_recommendation_text(result: RecommendationResult) -> str:
-    if result.not_found or not result.options:
+    if result.not_found:
+        return _NOT_FOUND_TEXT
+    if not result.options:
+        # Availability-first recommendations, Implementation 3: zero clean
+        # ("full") matches but at least one "partial" one exists -- this is
+        # NOT the same as not_found (a property genuinely does exist), so
+        # the fixed not_found text ("let me connect you with the host
+        # directly") would be misleading here. Speak the partial-availability
+        # facts instead of the normal per-option pitch lines.
+        if result.partially_available:
+            lines = [_format_partial_availability_line(entry) for entry in result.partially_available]
+            return "\n".join(lines)
         return _NOT_FOUND_TEXT
 
     # One property per line, newline-joined -- never " | "-joined. Real
@@ -146,4 +203,15 @@ def render_recommendation_text(result: RecommendationResult) -> str:
     # framing language differs.
     intro = CONFIDENCE_INTROS[result.recommendation_confidence]
     lines = [format_property_pitch_line(card, i) for i, card in enumerate(result.options, 1)]
-    return intro + "\n" + "\n".join(lines) + result.combo_note
+    text = intro + "\n" + "\n".join(lines) + result.combo_note
+    # Availability-first recommendations, Implementation 3: at least one full
+    # match exists AND at least one partial one -- append the partial facts
+    # after the main pitch rather than dropping them, so the agent still has
+    # the option to mention "there's also X, but it has a conflicting
+    # booking" if the guest asks for more options. Kept structurally separate
+    # from the numbered options list (never merged into format_property_pitch_line's
+    # own per-option line) so it can't be mistaken for a clean recommendation.
+    if result.partially_available:
+        partial_lines = [_format_partial_availability_line(entry) for entry in result.partially_available]
+        text += "\n" + "\n".join(partial_lines)
+    return text

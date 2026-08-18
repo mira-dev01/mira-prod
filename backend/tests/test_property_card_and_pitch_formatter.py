@@ -184,6 +184,61 @@ def test_render_recommendation_text_not_found():
     assert "couldn't find" in text.lower()
 
 
+def test_render_recommendation_text_zero_full_but_partial_speaks_conflicting_dates_not_not_found():
+    """Availability-first recommendations, Implementation 3: zero clean
+    matches but a real partial one exists -- must NOT fall back to the
+    generic not_found text (a property genuinely exists), and must name the
+    real conflicting dates, matching the task's own example phrasing."""
+    from datetime import date
+
+    from app.services.property.pitch_formatter import PartiallyAvailableProperty
+
+    entry = PartiallyAvailableProperty(
+        spoken_name="Ocean View Villa",
+        conflicting_bookings=[(date(2026, 10, 3), date(2026, 10, 5))],
+    )
+    result = RecommendationResult(options=[], not_found=False, partially_available=[entry])
+    text = render_recommendation_text(result)
+    assert "couldn't find" not in text.lower()
+    assert "Ocean View Villa" in text
+    assert "2026-10-03" in text and "2026-10-05" in text
+
+
+def test_render_recommendation_text_appends_partial_availability_after_full_options():
+    """A mix of full options AND a partial one -- the partial facts must
+    still reach the spoken text, appended after the main pitch, not
+    silently dropped just because at least one clean match exists."""
+    from datetime import date
+
+    from app.services.property.pitch_formatter import PartiallyAvailableProperty
+
+    card = PropertyCard(
+        property_id=uuid.uuid4(), spoken_name="Clear Villa", display_name="Clear Villa",
+        city="Goa", property_type=None, bedroom_count=None,
+        base_price=4000, max_guests=3, top_amenities=[], usp=None, match_reasons=[],
+        comparison_note="",
+        is_premium=False,
+        amenity_checklist="",
+    )
+    entry = PartiallyAvailableProperty(
+        spoken_name="Conflicted Villa",
+        conflicting_bookings=[(date(2026, 10, 3), date(2026, 10, 5))],
+    )
+    result = RecommendationResult(options=[card], partially_available=[entry])
+    text = render_recommendation_text(result)
+    assert "Clear Villa" in text
+    assert "Conflicted Villa" in text
+    assert "2026-10-03" in text and "2026-10-05" in text
+
+
+def test_render_recommendation_text_still_not_found_when_truly_nothing_matches():
+    """Zero options AND zero partial matches -- the ONLY case that should
+    still fall back to the generic not_found text."""
+    result = RecommendationResult(options=[], not_found=True, partially_available=[])
+    text = render_recommendation_text(result)
+    assert "couldn't find" in text.lower()
+
+
 def test_render_recommendation_text_joins_options_by_newline_not_pipe():
     card_a = PropertyCard(
         property_id=uuid.uuid4(), spoken_name="Azure", display_name="Azure",
@@ -335,3 +390,33 @@ def test_build_recommendation_result_never_builds_a_price_comparison_from_an_exa
     # to compare IT against), and stale's own price is never spoken either.
     assert "₹" not in cards_by_name["Stale Listing"].comparison_note
     assert "₹" not in cards_by_name["Ocean View"].comparison_note
+
+
+def test_build_recommendation_result_converts_partially_available_tuples_into_entries():
+    """Availability-first recommendations, Implementation 3: confirms
+    build_recommendation_result (the real assembly point
+    orchestrator.recommend_properties calls) correctly converts
+    (Property, conflicting_bookings) tuples into PartiallyAvailableProperty
+    entries -- end-to-end through the real Property spoken_name fallback
+    chain, not just the pure dataclass construction in isolation."""
+    from datetime import date
+
+    conflicted = _property(name="Conflicted Villa", spoken_name="Conflicted Villa", base_price=4000, max_guests=3)
+    conflicting_bookings = [(date(2026, 10, 3), date(2026, 10, 5))]
+    result = build_recommendation_result(
+        [], partially_available=[(conflicted, conflicting_bookings)]
+    )
+    assert len(result.partially_available) == 1
+    assert result.partially_available[0].spoken_name == "Conflicted Villa"
+    assert result.partially_available[0].conflicting_bookings == conflicting_bookings
+    # A real partial match exists -- not_found must be False, not the
+    # default True a genuinely empty properties list would otherwise get.
+    assert result.not_found is False
+
+
+def test_build_recommendation_result_not_found_true_when_truly_nothing_at_all():
+    """Zero properties AND zero partial matches -- the only case
+    build_recommendation_result should still report not_found=True for."""
+    result = build_recommendation_result([], partially_available=[])
+    assert result.not_found is True
+    assert result.partially_available == []

@@ -1,4 +1,5 @@
 import uuid
+from datetime import date
 
 import pytest
 from pipecat.frames.frames import (
@@ -11,7 +12,7 @@ from pipecat.frames.frames import (
 from pipecat.tests.utils import run_test
 
 from app.services.property.card import PropertyCard
-from app.services.property.pitch_formatter import RecommendationResult
+from app.services.property.pitch_formatter import PartiallyAvailableProperty, RecommendationResult
 from app.voice.property_recommendation_guard import (
     PropertyRecommendationGuardProcessor,
     strip_property_ids,
@@ -390,6 +391,388 @@ async def test_recommend_properties_reply_with_correct_capacity_passes_through_u
 
     text = "".join(f.text for f in down_frames if isinstance(f, LLMTextFrame))
     assert text == "Azure 1BHK is a lovely spot, sleeps 2. Interested?"
+
+
+# --- Availability-first recommendations, Implementation 5: partial-availability fidelity ---
+
+
+def _partial_result(name: str, conflicts: list[tuple]) -> RecommendationResult:
+    return RecommendationResult(options=[], partially_available=[PartiallyAvailableProperty(name, conflicts)])
+
+
+@pytest.mark.asyncio
+async def test_recommend_properties_reply_falsely_claiming_a_partial_property_is_available_gets_corrected():
+    """Self-review fix: an earlier version of this check overrode the WHOLE
+    reply, which silently discarded anything else correctly said in the same
+    turn (confirmed live via a direct repro: a correctly-named full-match
+    property mentioned earlier in the same reply was erased). The
+    correction is now APPENDED -- the false claim itself stays in the text
+    (a real, if imperfect, tradeoff versus a full rewrite), but the real
+    conflicting dates always reach the guest immediately after it, and
+    nothing else correctly said in the same reply is ever silently dropped."""
+    guard = PropertyRecommendationGuardProcessor()
+    guard.record_tool_result(
+        "recommend_properties",
+        _partial_result("Riverbend Cottage", [(date(2026, 10, 3), date(2026, 10, 5))]),
+    )
+
+    down_frames, _ = await run_test(
+        guard,
+        frames_to_send=[_call_started("recommend_properties")]
+        + _response("Great news, Riverbend Cottage is available for those dates!"),
+    )
+
+    text = "".join(f.text for f in down_frames if isinstance(f, LLMTextFrame))
+    assert "2026-10-03 to 2026-10-05" in text
+    assert text.startswith("Great news, Riverbend Cottage is available for those dates!")
+
+
+@pytest.mark.asyncio
+async def test_recommend_properties_reply_falsely_claiming_availability_preserves_other_correct_content():
+    """The exact bug this fix closes: a reply correctly naming a full-match
+    property AND separately, falsely claiming a partial property is
+    available -- the full-match property's correct mention must survive."""
+    guard = PropertyRecommendationGuardProcessor()
+    result = RecommendationResult(
+        options=[_card("Azure 1BHK", guests=2)],
+        partially_available=[
+            PartiallyAvailableProperty("Riverbend Cottage", [(date(2026, 10, 3), date(2026, 10, 5))])
+        ],
+    )
+    guard.record_tool_result("recommend_properties", result)
+
+    down_frames, _ = await run_test(
+        guard,
+        frames_to_send=[_call_started("recommend_properties")]
+        + _response("Azure 1BHK sleeps 2 and is a great fit. Riverbend Cottage is available for those dates too!"),
+    )
+
+    text = "".join(f.text for f in down_frames if isinstance(f, LLMTextFrame))
+    assert "Azure 1BHK sleeps 2 and is a great fit." in text
+    assert "2026-10-03 to 2026-10-05" in text
+
+
+@pytest.mark.asyncio
+async def test_recommend_properties_reply_correctly_naming_partial_conflict_dates_passes_through_unmodified():
+
+    guard = PropertyRecommendationGuardProcessor()
+    guard.record_tool_result(
+        "recommend_properties",
+        _partial_result("Riverbend Cottage", [(date(2026, 10, 3), date(2026, 10, 5))]),
+    )
+    reply = (
+        "Riverbend Cottage has a booking from 2026-10-03 to 2026-10-05 that overlaps part of the "
+        "requested dates. Once your dates are finalized, I can check again."
+    )
+
+    down_frames, _ = await run_test(
+        guard,
+        frames_to_send=[_call_started("recommend_properties")] + _response(reply),
+    )
+
+    text = "".join(f.text for f in down_frames if isinstance(f, LLMTextFrame))
+    assert text == reply
+
+
+@pytest.mark.asyncio
+async def test_recommend_properties_reply_correctly_naming_partial_dates_rephrased_day_first_is_not_flagged():
+    """Self-review fix: a reply correctly stating the real conflicting dates
+    but rephrased ('the 3rd to the 5th of October' instead of an ISO/
+    month-first echo) must NOT be treated as an omission or a wrong-date
+    fabrication -- confirmed via a direct repro before this fix that it was
+    (redundant duplicate correction appended onto an already-correct
+    reply)."""
+    guard = PropertyRecommendationGuardProcessor()
+    guard.record_tool_result(
+        "recommend_properties",
+        _partial_result("Riverbend Cottage", [(date(2026, 10, 3), date(2026, 10, 5))]),
+    )
+    reply = (
+        "Riverbend Cottage has a booking from the 3rd to the 5th of October, so it is not available "
+        "for those exact dates."
+    )
+
+    down_frames, _ = await run_test(
+        guard,
+        frames_to_send=[_call_started("recommend_properties")] + _response(reply),
+    )
+
+    text = "".join(f.text for f in down_frames if isinstance(f, LLMTextFrame))
+    assert text == reply
+
+
+@pytest.mark.asyncio
+async def test_recommend_properties_reply_with_wrong_day_first_dates_still_gets_corrected():
+    """The day-first rephrasing acceptance above must not become a
+    loophole -- a WRONG day-first date must still be caught as case 2."""
+    guard = PropertyRecommendationGuardProcessor()
+    guard.record_tool_result(
+        "recommend_properties",
+        _partial_result("Riverbend Cottage", [(date(2026, 10, 3), date(2026, 10, 5))]),
+    )
+
+    down_frames, _ = await run_test(
+        guard,
+        frames_to_send=[_call_started("recommend_properties")]
+        + _response("Riverbend Cottage has a booking from the 10th to the 12th of October."),
+    )
+
+    text = "".join(f.text for f in down_frames if isinstance(f, LLMTextFrame))
+    assert "2026-10-03 to 2026-10-05" in text
+
+
+@pytest.mark.asyncio
+async def test_recommend_properties_reply_stating_unrelated_numbers_near_wrong_month_still_gets_corrected():
+    """Task 5.2's review found a real false-positive: an earlier version of
+    _real_dates_stated collected every bare number in the WHOLE sentence, so
+    a reply naming the wrong month ('May 3rd') alongside an unrelated number
+    for a different reason ('5 bedrooms') coincidentally matched the real
+    conflict's day numbers (3, 5) and was wrongly treated as already
+    correct -- passing through unmodified despite never stating the real
+    Oct 3-5 conflict at all. Must still be corrected."""
+    guard = PropertyRecommendationGuardProcessor()
+    guard.record_tool_result(
+        "recommend_properties",
+        _partial_result("Riverbend Cottage", [(date(2026, 10, 3), date(2026, 10, 5))]),
+    )
+
+    down_frames, _ = await run_test(
+        guard,
+        frames_to_send=[_call_started("recommend_properties")]
+        + _response(
+            "Riverbend Cottage was renovated on May 3rd and has 5 bedrooms, "
+            "so it is not available for your dates."
+        ),
+    )
+
+    text = "".join(f.text for f in down_frames if isinstance(f, LLMTextFrame))
+    assert "2026-10-03 to 2026-10-05" in text
+
+
+@pytest.mark.asyncio
+async def test_recommend_properties_reply_correctly_naming_partial_dates_with_abbreviated_month_is_not_flagged():
+    """Task 5.2's review found a real gap: an ordinary abbreviated-month
+    rephrasing ('Oct 3 through Oct 5') wasn't recognized as a date at all,
+    causing a redundant duplicate correction on an already-correct reply."""
+    guard = PropertyRecommendationGuardProcessor()
+    guard.record_tool_result(
+        "recommend_properties",
+        _partial_result("Riverbend Cottage", [(date(2026, 10, 3), date(2026, 10, 5))]),
+    )
+    reply = "Riverbend Cottage is booked Oct 3 through Oct 5, so it may not be free for your exact dates."
+
+    down_frames, _ = await run_test(
+        guard,
+        frames_to_send=[_call_started("recommend_properties")] + _response(reply),
+    )
+
+    text = "".join(f.text for f in down_frames if isinstance(f, LLMTextFrame))
+    assert text == reply
+
+
+@pytest.mark.asyncio
+async def test_recommend_properties_reply_with_wrong_dates_for_partial_property_gets_corrected():
+    """Self-review find: the model states a SPECIFIC date for the partial
+    property, but it's not the real conflicting range -- a fabrication, not
+    an omission. The real dates are appended (not a whole-reply override --
+    same fix as the false-claim case above, for the same reason: never
+    silently discard other correct content in the same reply); the guest
+    still ends up with the real dates immediately after the wrong ones."""
+    guard = PropertyRecommendationGuardProcessor()
+    guard.record_tool_result(
+        "recommend_properties",
+        _partial_result("Riverbend Cottage", [(date(2026, 10, 3), date(2026, 10, 5))]),
+    )
+
+    down_frames, _ = await run_test(
+        guard,
+        frames_to_send=[_call_started("recommend_properties")]
+        + _response("Riverbend Cottage is not available from October 10th to 12th."),
+    )
+
+    text = "".join(f.text for f in down_frames if isinstance(f, LLMTextFrame))
+    assert text.startswith("Riverbend Cottage is not available from October 10th to 12th.")
+    assert "2026-10-03 to 2026-10-05" in text
+
+
+@pytest.mark.asyncio
+async def test_recommend_properties_reply_omitting_partial_conflict_dates_gets_dates_appended():
+    """Task 4.3's reverify: a bare 'No.'/vague deflection with zero
+    conflicting dates named -- a real, reproducible failure shape on a small
+    model, distinct from falsely claiming availability. The property IS
+    named and the reply does NOT claim it's available, but never states why
+    -- the real dates are appended, not a full-reply replacement (unlike the
+    false-claim case above), since the surrounding reply is usually still a
+    reasonable thing to have said."""
+
+    guard = PropertyRecommendationGuardProcessor()
+    guard.record_tool_result(
+        "recommend_properties",
+        _partial_result("Riverbend Cottage", [(date(2026, 10, 3), date(2026, 10, 5))]),
+    )
+
+    down_frames, _ = await run_test(
+        guard,
+        frames_to_send=[_call_started("recommend_properties")]
+        + _response("Riverbend Cottage is not available for those dates."),
+    )
+
+    text = "".join(f.text for f in down_frames if isinstance(f, LLMTextFrame))
+    assert text.startswith("Riverbend Cottage is not available for those dates.")
+    assert "2026-10-03 to 2026-10-05" in text
+
+
+@pytest.mark.asyncio
+async def test_recommend_properties_reply_with_bare_no_gets_dates_appended():
+    """The exact reproduced failure shape from Task 4.3's reverify: a bare
+    'No.' naming the property but nothing else."""
+
+    guard = PropertyRecommendationGuardProcessor()
+    guard.record_tool_result(
+        "recommend_properties",
+        _partial_result("Riverbend Cottage", [(date(2026, 10, 3), date(2026, 10, 5))]),
+    )
+
+    down_frames, _ = await run_test(
+        guard,
+        frames_to_send=[_call_started("recommend_properties")]
+        + _response("No, Riverbend Cottage isn't available for those exact dates."),
+    )
+
+    text = "".join(f.text for f in down_frames if isinstance(f, LLMTextFrame))
+    assert "2026-10-03 to 2026-10-05" in text
+
+
+@pytest.mark.asyncio
+async def test_recommend_properties_reply_never_mentioning_partial_property_is_left_alone():
+    """A reply that doesn't name the partial property at all this turn (e.g.
+    still asking a different question first) is a legitimate turn, not a
+    violation -- only correct what's actually said, same discipline every
+    other check in this file already follows."""
+
+    guard = PropertyRecommendationGuardProcessor()
+    guard.record_tool_result(
+        "recommend_properties",
+        _partial_result("Riverbend Cottage", [(date(2026, 10, 3), date(2026, 10, 5))]),
+    )
+
+    down_frames, _ = await run_test(
+        guard,
+        frames_to_send=[_call_started("recommend_properties")]
+        + _response("What dates are you thinking of for your trip?"),
+    )
+
+    text = "".join(f.text for f in down_frames if isinstance(f, LLMTextFrame))
+    assert text == "What dates are you thinking of for your trip?"
+
+
+@pytest.mark.asyncio
+async def test_recommend_properties_capacity_fallback_supersedes_partial_check_in_same_turn():
+    """Self-review find while testing composition: the EXISTING capacity/
+    name-check fallback (_fallback_recommendation_text) replaces the whole
+    reply with a listing of only the full-match `options` -- it never
+    mentions a partial property at all. Once that fallback fires, the
+    partial-availability check correctly finds nothing to correct (the
+    property it cares about is no longer named in the text at all, so
+    nothing false or incomplete is being said about it either) -- this is
+    the existing, pre-Implementation-5 fallback's own scope, not a gap this
+    task introduces. Confirms this composes safely (no crash, no incorrect
+    re-injection of a property name the fallback deliberately dropped),
+    which is the actual thing worth pinning here."""
+    guard = PropertyRecommendationGuardProcessor()
+    result = RecommendationResult(
+        options=[_card("Azure 1BHK", guests=2)],
+        partially_available=[
+            PartiallyAvailableProperty("Riverbend Cottage", [(date(2026, 10, 3), date(2026, 10, 5))])
+        ],
+    )
+    guard.record_tool_result("recommend_properties", result)
+
+    down_frames, _ = await run_test(
+        guard,
+        frames_to_send=[_call_started("recommend_properties")]
+        + _response("Azure 1BHK sleeps 6. Riverbend Cottage isn't available."),
+    )
+
+    text = "".join(f.text for f in down_frames if isinstance(f, LLMTextFrame))
+    assert "sleeping 2" in text
+    assert "sleeps 6" not in text
+    assert "Riverbend Cottage" not in text
+    assert "2026-10-03 to 2026-10-05" not in text
+
+
+@pytest.mark.asyncio
+async def test_recommend_properties_partial_fidelity_composes_with_a_correctly_named_full_match_same_turn():
+    """Genuine composition case: a reply that correctly names a full-match
+    property (no capacity/name violation to trigger the wholesale fallback)
+    AND separately omits a partial property's conflicting dates -- both
+    facts must be checked and the reply must end up correct on the part
+    that was wrong, without disturbing the part that was already right."""
+    guard = PropertyRecommendationGuardProcessor()
+    result = RecommendationResult(
+        options=[_card("Azure 1BHK", guests=2)],
+        partially_available=[
+            PartiallyAvailableProperty("Riverbend Cottage", [(date(2026, 10, 3), date(2026, 10, 5))])
+        ],
+    )
+    guard.record_tool_result("recommend_properties", result)
+
+    down_frames, _ = await run_test(
+        guard,
+        frames_to_send=[_call_started("recommend_properties")]
+        + _response("Azure 1BHK sleeps 2, a great fit. Riverbend Cottage isn't available for those dates."),
+    )
+
+    text = "".join(f.text for f in down_frames if isinstance(f, LLMTextFrame))
+    assert "sleeps 2" in text
+    assert "2026-10-03 to 2026-10-05" in text
+
+
+@pytest.mark.asyncio
+async def test_recommend_properties_partial_fidelity_is_a_noop_without_any_partial_facts():
+    """No partial_facts were ever recorded (the common case -- most calls
+    have zero partial-availability properties) -- must never touch the
+    text."""
+    guard = PropertyRecommendationGuardProcessor()
+    guard.record_tool_result("recommend_properties", RecommendationResult(options=[_card("Azure 1BHK")]))
+
+    down_frames, _ = await run_test(
+        guard,
+        frames_to_send=[_call_started("recommend_properties")] + _response("Azure 1BHK sleeps 2. Interested?"),
+    )
+
+    text = "".join(f.text for f in down_frames if isinstance(f, LLMTextFrame))
+    assert text == "Azure 1BHK sleeps 2. Interested?"
+
+
+def test_record_tool_result_extracts_partial_facts_with_iso_dates():
+    guard = PropertyRecommendationGuardProcessor()
+    guard.record_tool_result(
+        "recommend_properties",
+        _partial_result("Riverbend Cottage", [(date(2026, 10, 3), date(2026, 10, 5))]),
+    )
+    assert guard._pending_partial_facts == [
+        {
+            "name": "Riverbend Cottage",
+            "conflicting_bookings": ["2026-10-03 to 2026-10-05"],
+            "conflicting_days": [3, 5],
+        }
+    ]
+
+
+def test_record_tool_result_extracts_conflicting_days_across_multiple_bookings():
+    """conflicting_days spans EVERY conflicting booking's day numbers, not
+    just the first -- used by _real_dates_stated's natural-language
+    rephrasing check."""
+    guard = PropertyRecommendationGuardProcessor()
+    guard.record_tool_result(
+        "recommend_properties",
+        _partial_result(
+            "Riverbend Cottage",
+            [(date(2026, 10, 3), date(2026, 10, 5)), (date(2026, 10, 20), date(2026, 10, 22))],
+        ),
+    )
+    assert guard._pending_partial_facts[0]["conflicting_days"] == [3, 5, 20, 22]
 
 
 @pytest.mark.asyncio
