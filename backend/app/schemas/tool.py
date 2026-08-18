@@ -144,6 +144,18 @@ class UpdateLeadArgs(BaseModel):
         return _normalize_phone(value) if value else value
     check_in: date | None = None
     check_out: date | None = None
+    # Call-local only, deliberately not a Lead column -- popped out of
+    # handle_update_lead's updates dict before upsert_lead(**updates), same
+    # "no matching DB column, don't let it silently setattr" reasoning as
+    # preferred_language's own exclusion in tools.py's wrapper.
+    nights: int | None = None
+    # Availability-first recommendations, Implementation 3: a LOOSE outer
+    # window distinct from nights itself -- e.g. "3 nights, sometime in the
+    # first week of October" needs both the window (window_start=Oct 1,
+    # window_end=Oct 7) AND the stay length (nights=3). Also call-local only,
+    # same non-persistence reasoning as nights above -- popped alongside it.
+    window_start: date | None = None
+    window_end: date | None = None
     num_guests: int | None = None
     purpose_of_stay: str | None = None
     budget: float | None = None

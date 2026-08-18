@@ -923,13 +923,101 @@ def test_guest_support_has_its_own_name_phone_timing_guidance():
 
 def test_lead_agent_recommends_before_asking_budget_when_other_criteria_known():
     """Phase 2.3 (documentation/agent-conversation-improvement.md,
-    requirement #3): the dates-finalized YES branch must not gate the first
-    recommendation on asking budget first when location/purpose is already
-    known -- confirmed the sharpened wording landed, not just the original
-    'ask their budget, then use recommend_properties' sequencing."""
+    requirement #3): the first recommendation must not be gated on asking
+    budget first when location/purpose is already known -- originally pinned
+    against a "dates-finalized YES branch" that Implementation 4
+    (availability-first recommendations) removed as part of its own
+    sequencing rewrite (recommend_properties is now availability-aware on
+    its own, so the old separate "have dates been finalized?" gate no longer
+    exists as its own step) -- updated to pin the same underlying behavior
+    (recommend without waiting on budget) against the new step 3 wording,
+    not the original step 3's exact phrasing, which no longer exists."""
     prompt = build_lead_system_prompt(_user(), [_property()])
-    assert "recommend now with what you already have" in prompt
-    assert "don't gate the first recommendation on" in prompt
+    assert "do NOT gate the first recommendation on" in prompt
+    assert "recommend now; ask budget afterward as a" in prompt
+
+
+def test_lead_agent_asks_nights_before_exact_dates_for_a_vague_window():
+    """Availability-first recommendations, Implementation 1: a guest who
+    gives a vague window ('first week of October') instead of exact dates
+    should be asked for a length of stay (nights) rather than immediately
+    pressed for an exact check-in date -- confirms the step-2 guidance
+    landed. Wording updated for Implementation 4's sequencing rewrite (the
+    surrounding step-2 paragraph was restructured to lead with "ask stay
+    length before exact dates" as the default, not just the vague-window
+    exception), but the same underlying behavior is still pinned."""
+    prompt = build_lead_system_prompt(_user(), [_property()])
+    assert "ask for their stay length (how many nights) BEFORE pressing for an exact" in prompt
+    assert "do NOT immediately press for an exact check-in date -- ask how" in prompt
+    assert "pass this as `nights` via update_lead" in prompt
+
+
+def test_golden_rules_nights_only_case_does_not_contradict_check_out_arithmetic_rule():
+    """The pre-existing GOLDEN_RULES nights-arithmetic clause (compute
+    check_out from check_in + nights) only applies once an exact check_in is
+    already known -- confirm the new nights-only disambiguation clause
+    landed alongside it so the two don't read as contradictory instructions."""
+    prompt = build_lead_system_prompt(_user(), [_property()])
+    assert "when the guest gives a number of nights instead of an explicit check-out date, AND you" in prompt
+
+
+def test_lead_agent_instructed_to_speak_partial_availability_with_real_conflicting_dates():
+    """Availability-first recommendations, Implementation 3: the LLM must
+    never present a 'partial' property as a clean match, and must be
+    instructed to name real conflicting dates -- matching the task's exact
+    example phrasing. Confirms this new guidance landed in
+    LEAD_AGENT_INSTRUCTIONS. Task 3.2's review found the model correctly
+    avoided the dangerous failure (claiming a partial match is clean) but
+    under-delivered on naming the specific conflicting dates under
+    adversarial pressure for a terse yes/no answer -- the strengthened
+    "bare no/not available is NOT acceptable" clause was added to close that
+    gap; this test pins that it landed."""
+    prompt = build_lead_system_prompt(_user(), [_property()])
+    assert "NEVER present that property as if it were a clean," in prompt
+    assert "ALWAYS naming the real conflicting dates" in prompt
+    assert "even if the guest presses for a quick yes/no answer" in prompt
+    assert "There is a booking on this property" in prompt
+    assert "from October 3rd to 5th." in prompt
+    assert 'A bare "no" or "not available" without' in prompt
+    assert "is NOT an acceptable answer here" in prompt
+
+
+def test_lead_agent_told_recommend_properties_is_already_availability_aware():
+    """Availability-first recommendations, Implementation 4 (sequencing
+    rewrite): the LLM must be told recommend_properties already excludes/
+    flags unavailable options on its own, and must NOT be told to separately
+    pre-screen candidates with check_calendar before recommending -- that
+    would defeat the whole point of Implementations 1-3 (an availability
+    pre-filter built INTO recommend_properties) by reintroducing exactly the
+    extra round-trip this task list exists to remove."""
+    prompt = build_lead_system_prompt(_user(), [_property()])
+    assert "recommend_properties itself is availability-aware once dates or a stay length are known" in prompt
+    assert "you do not need to, and should" in prompt
+    assert "not, call check_calendar separately just to pre-screen the options it returns" in prompt
+
+
+def test_lead_agent_instructed_to_re_check_exact_dates_before_finalizing():
+    """Availability-first recommendations, Implementation 4: per the task's
+    own desired workflow diagram, an earlier full/partial classification
+    (made against a looser window or a stay-length-only estimate) is never a
+    substitute for a real check_calendar call once the guest gives their
+    final, exact dates -- confirms this explicit re-check instruction landed
+    at step 5 (where check_calendar is actually called for the chosen
+    property)."""
+    prompt = build_lead_system_prompt(_user(), [_property()])
+    assert "ALWAYS call check_calendar with the guest's exact, finalized check-in/check-out dates" in prompt
+    assert "even if recommend_properties already classified this property as available" in prompt
+    assert 'This applies even if the earlier result said "full" for this property.' in prompt
+
+
+def test_lead_agent_workflow_recommends_before_asking_every_field():
+    """Availability-first recommendations, Implementation 4: confirms the
+    rewritten step 3 preserves Phase 2.3's original spirit (recommend once
+    enough is known, don't over-interrogate) -- the new precondition is
+    stay-length/dates + location/purpose, not every possible field filled."""
+    prompt = build_lead_system_prompt(_user(), [_property()])
+    assert "Recommend as soon as you have enough to search on" in prompt
+    assert "have at least a stay length (nights) or exact dates, recommend now" in prompt
 
 
 def test_golden_rules_explicit_language_request_recognized_immediately():

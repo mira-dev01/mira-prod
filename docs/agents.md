@@ -21,6 +21,47 @@ Both browser-test variants (`run_browser_voice_pipeline`, `run_browser_lead_pipe
 
 Guest Support calls never touch this — `property_id` is already fixed before the pipeline is built.
 
+### Availability-first recommendations (Lead Agent)
+
+`recommend_properties` used to match only budget/guests/location/purpose/amenities, with zero
+awareness of actual calendar availability — a guest could be recommended a property, react
+positively, then only discover it was booked once `check_calendar` ran on the specific property they
+chose. `recommend_properties` now checks availability as part of the same call, whenever dates or a
+stay length are already known (`ConversationState.slots`, populated by `update_lead`):
+
+- `app/services/property/retrieval/orchestrator.py`'s `recommend_properties` calls
+  `calendar_service.partial_availability_for_candidates` against the SQL-filtered candidate set (one
+  batched query, not N round trips) once `check_in`/`check_out` (exact dates) or `window_start`/
+  `window_end` + `nights` (a guest-stated stay length within a looser window) are known — see
+  `app/voice/tools.py`'s `recommend_properties` wrapper for the exact fallback logic between the two.
+- Each candidate classifies as `"full"` (zero conflicts anywhere in the window — recommended
+  normally), `"none"` (no `nights`-length free gap exists at all — excluded, same as before), or
+  `"partial"` (a real conflict exists but a sufficient free gap remains somewhere in the window — held
+  out of the main recommended list, but surfaced separately via `RecommendationResult.
+  partially_available` so the model can name the real conflicting dates instead of silently dropping
+  the property or presenting it as a clean match). See `calendar_service.AvailabilityWindowResult`'s
+  own docstring for the exact status semantics.
+- `LEAD_AGENT_INSTRUCTIONS` tells the model NOT to call `check_calendar` separately to pre-screen
+  options before recommending (that would reintroduce the extra round-trip this mechanism exists to
+  remove) — `check_calendar` is reserved for the one property the guest actually commits to, and is
+  always re-called there with the guest's final, exact dates even if an earlier recommend_properties
+  classification already looked clean, since that earlier signal was only ever scoped to whatever was
+  known at the time (a looser window or a stay-length estimate), never the guest's now-exact dates.
+- A `nights`-only guest with no explicit `window_start`/`window_end` is NOT availability-filtered by
+  this mechanism (an exact `check_in`/`check_out` pair always implies `nights == the full span`, so
+  any conflict inside it is always `"none"`, never `"partial"` — there's no such thing as "partially
+  available for your exact N nights"; a genuine "partial" result only exists when the guest's window
+  is wider than their actual stay length). `nights`/`window_start`/`window_end` are call-local
+  `ConversationState.slots` only, never persisted to the `Lead` row.
+- Known, deliberately-scoped limitation (recorded during implementation, not yet fixed): the prompt
+  instruction to always name a partial property's real conflicting dates is honest and additive, but
+  under real-LLM adversarial testing it was reliably followed only ~1 in 6 times under pressure for a
+  terse yes/no answer — the model correctly never claimed a partial property was fully available
+  (100% of samples), but often deflected to "let me know your dates" instead of stating the
+  already-known conflict. Prompt wording alone has not closed this; the planned fix is extending
+  `PropertyRecommendationGuardProcessor` (below) to deterministically verify/correct this the same way
+  it already does for every other structured tool fact, rather than relying on prompt compliance.
+
 ## Pipeline stages
 
 `_run_pipeline` (`app/voice/pipeline.py`) builds a pipecat `Pipeline`:
@@ -145,7 +186,7 @@ Each tool is a pipecat "direct function" — name/description/parameter schema a
 | `send_photos` | Send the guest a link to a property's photo gallery (one link, not individual images) over WhatsApp + a host-inbox email fallback. | `handle_send_photos` |
 | `escalate_to_host` | Escalate to the host (in-app notification + fire-and-forget email); also upserts whatever lead data it already has. | `handle_escalate_to_host` |
 | `negotiate_rate` | Compute a floor price and accept/counter a guest's offer. | `handle_negotiate_rate` (→ `pricing_engine.negotiate_rate`) |
-| `recommend_properties` | Recommend up to 3 properties from the host's portfolio matching budget/guests/location/purpose. Guarded against redundant re-calls once a property is locked (Lead Agent only). Location matching expands "North Goa"/"South Goa" into the actual named localities in that region (Siolim/Anjuna/Vagator/Calangute → North; Colva/Margao/Benaulim/Palolem → South, etc.) — most properties' `city`/`neighborhood_info` only ever say the locality name itself, never the literal region words, so a plain substring match on "south goa" was silently excluding real South Goa properties. As of 2026-07-27, a recognized region query matches **only** against that expanded locality list, never the literal region phrase against `neighborhood_info` free text — confirmed live that a North Goa (Siolim) property's `neighborhood_info` mentioning "Dabolim (South Goa airport)" as a travel-time reference was wrongly matching a "South Goa" query on the raw-phrase substring match this replaced. Result string is a numbered, newline-separated list (not `" | "`-joined) since real imported property names routinely contain a literal `\|` themselves — confirmed live that the old joined format tore names apart at every internal `\|`, reading a shared brand suffix ("Pause Project") back as if it were the property name. If no single property fits the requested guest count, falls back to returning smaller units (same location/budget filters, guest-count cutoff dropped) and tells the model to suggest booking two of them together, instead of a flat "nothing found" — hosts with several small units at one property routinely accommodate larger groups this way. | `handle_recommend_properties` |
+| `recommend_properties` | Recommend up to 3 properties from the host's portfolio matching budget/guests/location/purpose. Guarded against redundant re-calls once a property is locked (Lead Agent only). Location matching expands "North Goa"/"South Goa" into the actual named localities in that region (Siolim/Anjuna/Vagator/Calangute → North; Colva/Margao/Benaulim/Palolem → South, etc.) — most properties' `city`/`neighborhood_info` only ever say the locality name itself, never the literal region words, so a plain substring match on "south goa" was silently excluding real South Goa properties. As of 2026-07-27, a recognized region query matches **only** against that expanded locality list, never the literal region phrase against `neighborhood_info` free text — confirmed live that a North Goa (Siolim) property's `neighborhood_info` mentioning "Dabolim (South Goa airport)" as a travel-time reference was wrongly matching a "South Goa" query on the raw-phrase substring match this replaced. Result string is a numbered, newline-separated list (not `" | "`-joined) since real imported property names routinely contain a literal `\|` themselves — confirmed live that the old joined format tore names apart at every internal `\|`, reading a shared brand suffix ("Pause Project") back as if it were the property name. If no single property fits the requested guest count, falls back to returning smaller units (same location/budget filters, guest-count cutoff dropped) and tells the model to suggest booking two of them together, instead of a flat "nothing found" — hosts with several small units at one property routinely accommodate larger groups this way. **Availability-first recommendations** (see below): when a guest's dates (or a stay length) are known, this call excludes properties with no possible fit and separately flags any property with a genuine partial conflict — the prompt tells the model NOT to call `check_calendar` as a separate pre-screening step before recommending; `check_calendar` is reserved for confirming the one property the guest actually commits to. | `handle_recommend_properties` |
 | `update_lead` | Silently save/update the guest's CRM `Lead` record — called whenever any new field is learned. | `handle_update_lead` |
 | `search_faq` | Tiered fallback: verified `FaqEntry` rows → legacy `Property.faq` JSON → (if a property is known) `faq_service.full_property_context()`, every on-file fact for that property in one block (house rules, amenities, neighborhood info, check-in/out, seasonal notes) for the model to read the actual answer out of. Logs a gap (`UnansweredQuestion`) only if the property itself is unknown — see the "Known gap" note in [database.md](database.md#unanswered_questions-unansweredquestion-appmodelsunanswered_questionpy). | `handle_search_faq` |
 | `end_call` | Arms the silence watchdog to hang up right after the agent's closing line finishes playing, once the guest confirms the call has reached a natural close. Silent — saves nothing itself. | none (see Silence watchdog section below) |

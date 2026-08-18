@@ -3,7 +3,24 @@ from datetime import date, timedelta
 from app.models.technician import Technician
 from app.services.notification_service import list_notifications
 from app.voice.silence_watchdog import SilenceWatchdogProcessor
-from app.voice.tools import build_voice_tools
+from app.voice.tools import _parse_iso_date, build_voice_tools
+
+
+def test_parse_iso_date_accepts_both_iso_string_and_raw_date_object():
+    """Availability-first recommendations, Implementation 2 (self-review
+    find): state.slots["check_in"/"check_out"] holds an ISO string from
+    update_lead's wrapper, but a raw date object from check_calendar/
+    get_pricing/negotiate_rate's wrappers (all three write args.check_in
+    straight through, already typed `date` by their own Pydantic schemas).
+    date.fromisoformat() only accepts str and raises TypeError -- not
+    ValueError -- on a date object, so the pre-fix version of this function
+    crashed uncaught on that second, equally real, path."""
+    real_date = date(2026, 10, 5)
+    assert _parse_iso_date(real_date) == real_date
+    assert _parse_iso_date("2026-10-05") == real_date
+    assert _parse_iso_date(None) is None
+    assert _parse_iso_date("not-a-date") is None
+    assert _parse_iso_date("") is None
 
 
 class _FakeFunctionCallParams:

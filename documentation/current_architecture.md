@@ -172,6 +172,34 @@ near-empty/junk leads, but only ever delete a lead **this exact call originated*
 (`Lead.call_session_id == call_session_id`) — a *reused* lead from an earlier call is only ever
 detached, never deleted, even if the current call classifies poorly.
 
+## 5b. Availability-first recommendations
+
+`recommend_properties` used to filter only on budget/guests/location/purpose/amenities, with zero
+calendar awareness — a property could be recommended, the guest could react positively, and only
+then (via a separate `check_calendar` call once they picked one) would an actual availability
+conflict surface. `docs/tasks/availability-first-recommendations.md` closes this — see that file
+for full implementation/review/reverify detail; short summary:
+
+- Once dates or a stay length (`nights`, a `ConversationState` slot the LLM is instructed to ask
+  for *before* pressing for an exact check-in date on a vague window) are known,
+  `orchestrator.recommend_properties` classifies each SQL-filtered candidate via
+  `calendar_service.partial_availability_for_candidates` (one batched query, fail-open on error,
+  matching Phase 2.4's original fail-open discipline) as `"full"` (zero conflicts — recommended
+  normally), `"none"` (no viable gap — excluded), or `"partial"` (a real conflict exists but the
+  property might still work — held out of the main list, surfaced separately via
+  `RecommendationResult.partially_available` with the real conflicting dates).
+- `LEAD_AGENT_INSTRUCTIONS` tells the LLM `recommend_properties` is already availability-aware and
+  not to separately pre-screen candidates with `check_calendar` first; `check_calendar` is reserved
+  for re-confirming the one property the guest actually commits to, against their final exact
+  dates, even if an earlier classification (against a looser window) already looked clean.
+- `PropertyRecommendationGuardProcessor` (§7 below) deterministically verifies a spoken reply
+  against a `"partial"` property's real data — never a false "it's available" claim, never a wrong
+  conflicting date, and never an omission (the property named with the real dates left unstated,
+  the one failure shape real-LLM adversarial testing actually reproduced live, on a small fallback
+  model, never on production's `gpt-oss-120b`) — the same "verify against structured tool output,
+  correct deterministically, never a second LLM call" pattern this guard already used for every
+  other tool fact.
+
 ## 6. Conversation architecture
 
 Three deliberately separate types, not one state blob — see

@@ -5,6 +5,7 @@ Property becomes guest-facing content.
 """
 
 import dataclasses
+from datetime import date
 
 from app.models.property import Property
 from app.schemas.tool import RecommendPropertiesArgs
@@ -14,14 +15,45 @@ from app.services.property.card import (
     comparison_notes,
     match_reasons_for_card,
 )
-from app.services.property.pitch_formatter import RecommendationResult, confidence_for_result
+from app.services.property.pitch_formatter import (
+    PartiallyAvailableProperty,
+    RecommendationResult,
+    confidence_for_result,
+)
 
 
 def build_recommendation_result(
-    properties: list[Property], combo_note: str = "", args: RecommendPropertiesArgs | None = None
+    properties: list[Property],
+    combo_note: str = "",
+    args: RecommendPropertiesArgs | None = None,
+    partially_available: list[tuple[Property, list[tuple[date, date]]]] | None = None,
 ) -> RecommendationResult:
+    """partially_available (Availability-first recommendations,
+    Implementation 3): properties excluded from `properties` because
+    calendar_service classified them "partial" (a real conflict exists in
+    the requested window, but the property isn't a clean, no-caveat match --
+    see AvailabilityWindowResult's own docstring). Converted here into
+    lightweight PartiallyAvailableProperty entries -- never PropertyCards,
+    so it's structurally impossible for one to be rendered through
+    format_property_pitch_line's normal per-option path as if it were a
+    clean recommendation."""
+    partial_cards = [
+        PartiallyAvailableProperty(
+            spoken_name=p.spoken_name or p.display_name or p.raw_name or p.name,
+            conflicting_bookings=bookings,
+        )
+        for p, bookings in (partially_available or [])
+    ]
     if not properties:
-        return RecommendationResult(options=[], not_found=True)
+        # Availability-first recommendations, Implementation 3: a real
+        # partial-availability result is meaningfully different from a
+        # genuine "nothing matches your criteria at all" -- not_found's
+        # existing fixed text ("let me connect you with the host directly")
+        # would be actively misleading here, since a property DOES exist,
+        # it's just not a clean match for the guest's exact window. Only
+        # fall back to not_found when there's truly nothing to say, partial
+        # or otherwise.
+        return RecommendationResult(options=[], not_found=not partial_cards, partially_available=partial_cards)
     cards = [build_property_card(p) for p in properties]
     # Phase 2.1 (documentation/agent-conversation-improvement.md): args is
     # optional so any other/future caller of build_recommendation_result that
@@ -69,4 +101,5 @@ def build_recommendation_result(
         # count, whether the combo/fallback path fired) already computed
         # right here -- never a new judgment call handed to the model.
         recommendation_confidence=confidence_for_result(cards, combo_note),
+        partially_available=partial_cards,
     )
