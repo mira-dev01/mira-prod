@@ -85,16 +85,29 @@ _LANGUAGE_PREFERENCE_MAP: dict[str, Language] = {
 }
 
 
-def _parse_iso_date(value: str | None) -> date | None:
-    """state.slots stores dates as ISO strings (Phase 1, app/voice/tools.py's
-    update_lead/check_calendar/get_pricing wrappers). Malformed/missing
-    values fail open to None -- Phase 2.4's availability pre-filter is a UX
-    improvement, never a reason a recommendation should error out."""
-    if not value:
+def _parse_iso_date(value: "str | date | None") -> date | None:
+    """state.slots holds check_in/check_out as EITHER an ISO string
+    (update_lead's wrapper explicitly calls .isoformat()) OR a raw date
+    object (check_calendar/get_pricing/negotiate_rate's wrappers all write
+    args.check_in/check_out straight through, since CheckCalendarArgs/
+    GetPricingArgs/NegotiateRateArgs already type those fields as `date` via
+    Pydantic coercion) -- both are real, live paths, not a hypothetical.
+    Availability-first recommendations, Implementation 2 (self-review find):
+    date.fromisoformat() only accepts str and raises TypeError (not
+    ValueError) on a date object, so this previously crashed uncaught
+    (propagating out of the tool call, not failing open) the instant
+    recommend_properties ran after check_calendar/get_pricing/negotiate_rate
+    had already set the slot in the same conversation -- no existing test
+    exercised that call order. Malformed/missing values fail open to None --
+    the availability pre-filter is a UX improvement, never a reason a
+    recommendation should error out."""
+    if value is None:
         return None
+    if isinstance(value, date):
+        return value
     try:
         return date.fromisoformat(value)
-    except ValueError:
+    except (ValueError, TypeError):
         return None
 
 
@@ -687,6 +700,33 @@ def build_voice_tools(
         # behavior), never raise.
         recommend_check_in = _parse_iso_date(state.slots.get("check_in"))
         recommend_check_out = _parse_iso_date(state.slots.get("check_out"))
+        recommend_nights: int | None = None
+        # Availability-first recommendations, Implementation 3: when exact
+        # check_in/check_out are BOTH known, the correct stay length for
+        # partial-availability classification IS (check_out - check_in).days
+        # (orchestrator.recommend_properties's own fallback) -- never a
+        # possibly-stale state.slots["nights"] from an earlier turn.
+        # state.slots["nights"]/window_start/window_end are only reliably
+        # cleared when update_lead's wrapper sees a real check_in (see that
+        # wrapper's own state.slots.pop("nights", None) comment) --
+        # check_calendar/get_pricing/negotiate_rate can also set check_in/
+        # check_out without clearing a stale nights value, so reading it in
+        # that branch would risk using a night-count the guest may have
+        # already superseded with real dates via a different tool.
+        #
+        # When exact dates are NOT known but the guest gave a broader window
+        # (window_start/window_end) plus a stay length (nights), thread the
+        # window through as the scan range instead -- this is what actually
+        # makes a "partial" classification reachable at all (an exact
+        # check_in/check_out pair always implies nights == the full span, so
+        # any conflict inside it is structurally always "none", never
+        # "partial" -- a real conflict inside a wider window the guest hasn't
+        # fully committed to is the only case where "some dates in here would
+        # still work" is a meaningful, distinct answer from "none work").
+        if recommend_check_in is None and recommend_check_out is None:
+            recommend_check_in = _parse_iso_date(state.slots.get("window_start"))
+            recommend_check_out = _parse_iso_date(state.slots.get("window_end"))
+            recommend_nights = state.slots.get("nights")
         # Attention/salience -> ranking: an amenity the guest has emphasized
         # (mentioned repeatedly and/or recently) outweighs one only ever
         # said once, when apply_amenity_boost (filter_builder.py) ranks
@@ -718,6 +758,7 @@ def build_voice_tools(
                 host_user_id,
                 check_in=recommend_check_in,
                 check_out=recommend_check_out,
+                nights=recommend_nights,
                 call_session_id=call_session_id,
                 amenity_weights=amenity_weights,
             )
@@ -751,6 +792,9 @@ def build_voice_tools(
         email: str | None = None,
         check_in: str | None = None,
         check_out: str | None = None,
+        nights: int | None = None,
+        window_start: str | None = None,
+        window_end: str | None = None,
         num_guests: int | None = None,
         purpose_of_stay: str | None = None,
         budget: float | None = None,
@@ -785,6 +829,21 @@ def build_voice_tools(
             email: The guest's email, if known.
             check_in: Desired check-in date, ISO format (YYYY-MM-DD), if known.
             check_out: Desired check-out date, ISO format (YYYY-MM-DD), if known.
+            nights: Number of nights the guest wants to stay, if they've given a
+                length of stay but not yet exact/confirmed check-in and check-out
+                dates (e.g. they said "3 nights" or "a week" but are still vague
+                about which exact dates, such as "sometime the first week of
+                October"). Pass this INSTEAD of guessing an exact check_in/
+                check_out -- do not fabricate specific dates just to have
+                something to pass. Once the guest gives (or you resolve) an
+                exact check-in date, pass check_in/check_out as normal instead.
+            window_start: If the guest also gave a broader window their stay
+                should fall within (e.g. "sometime in the first week of
+                October" alongside "3 nights"), the start of that window,
+                ISO format. Only pass this together with nights -- never
+                invent a window the guest didn't actually describe.
+            window_end: The end of the window described above, ISO format,
+                if given.
             num_guests: Number of guests, if known.
             purpose_of_stay: e.g. family trip, couples getaway, workcation.
             budget: The guest's nightly budget in INR, if known.
@@ -831,6 +890,9 @@ def build_voice_tools(
                     email=email,
                     check_in=check_in,
                     check_out=check_out,
+                    nights=nights,
+                    window_start=window_start,
+                    window_end=window_end,
                     num_guests=num_guests,
                     purpose_of_stay=purpose_of_stay,
                     budget=budget,
@@ -856,6 +918,21 @@ def build_voice_tools(
                 # never clobbers a `num_guests` set by an earlier turn.
                 state.set_slot("check_in", args.check_in.isoformat() if args.check_in else None)
                 state.set_slot("check_out", args.check_out.isoformat() if args.check_out else None)
+                # An exact check_in supersedes an earlier vague nights-only
+                # answer -- clear it directly (set_slot itself never
+                # overwrites with None, by design, so this can't ride on
+                # set_slot's own backfill-only semantics) rather than let a
+                # stale nights count linger once real dates are known.
+                if args.check_in is not None:
+                    state.slots.pop("nights", None)
+                    state.slots.pop("window_start", None)
+                    state.slots.pop("window_end", None)
+                else:
+                    state.set_slot("nights", args.nights)
+                    state.set_slot(
+                        "window_start", args.window_start.isoformat() if args.window_start else None
+                    )
+                    state.set_slot("window_end", args.window_end.isoformat() if args.window_end else None)
                 state.set_slot("num_guests", args.num_guests)
                 state.set_slot("budget", args.budget)
                 state.set_slot("preferred_location", args.preferred_location)
