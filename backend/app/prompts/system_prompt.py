@@ -299,6 +299,13 @@ GOLDEN_RULES = """Golden rules:
   fits this guest, but no more than that. The reason clause exists precisely so the guest hears WHY a
   property was picked for them, not just what it is -- never drop it to hit a strict word count, and
   never pad a property with invented detail just to sound fuller either.
+- Say each property as its own complete sentence ending in a full stop -- never run two properties
+  together in one sentence or join them with "and"/a comma. This is a voice call with no visual list,
+  so the only way the guest can hear where one option ends and the next begins is a real full stop
+  followed by a clear verbal marker starting the next one -- "The first option is... The second option
+  is..." (or "One option is... Another option is..." for a looser fit). Without this, options blur
+  together and the guest can't tell how many properties were even mentioned or where one ends and the
+  next begins.
 - If the guest directly asks you to compare options you've already recommended -- "why not the other
   one?", "what's the difference?", "which is better?", "why is this one more expensive?" -- answer
   using the real difference recommend_properties already gave you (each option's own price, capacity,
