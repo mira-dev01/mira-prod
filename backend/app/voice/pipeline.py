@@ -973,7 +973,12 @@ async def _run_pipeline_inner(
     # independently of language_sync; writes only conversation_style, never
     # current_spoken_language/explicit_language_preference. See
     # app/voice/conversation_style.py.
-    conversation_style_engine = ConversationStyleProcessor(conversation_state)
+    # voice_gender ("female"/"male", from host.agent_voice_gender -- see
+    # VOICE_BY_GENDER above) already selects the TTS voice; also seeding it
+    # here lets ConversationStyle carry a speaker_gender so render_style_block
+    # can give the model correct Hindi verb-conjugation guidance (see that
+    # function's own docstring) matching the voice actually being spoken in.
+    conversation_style_engine = ConversationStyleProcessor(conversation_state, speaker_gender=voice_gender)
     # Auto-cuts a call where the guest has gone silent/unresponsive: nudges
     # ("Hello? Are you still there?") after each ~9s of silence, hangs up
     # after the second nudge goes unanswered. See app/voice/silence_watchdog.py
