@@ -1,5 +1,21 @@
 from app.models.notification import Notification
-from app.services import lead_service, notification_service, recovery_service, whatsapp_reply_service
+from app.services import lead_service, notification_service, recovery_service
+
+# Historical-only channel as of the WhatsApp production-messaging cutover --
+# the interactive guest-reply feature that used to produce this notification
+# has been removed (see app/api/v1/analytics.py's own comment). These tests
+# still exercise the analytics_recovery query logic itself by writing the
+# notification directly, the same shape the old reply handler used to write.
+_BUSY_RECOVERY_REPLY_CHANNEL = "busy_recovery_reply"
+
+
+async def _simulate_guest_reply(db_session, lead_id):
+    await notification_service.create_notification(
+        db_session,
+        channel=_BUSY_RECOVERY_REPLY_CHANNEL,
+        message="Guest replied on WhatsApp",
+        lead_id=lead_id,
+    )
 
 
 async def test_busy_calls_counts_one_per_rejection_not_per_lead(test_property, auth_headers, client, db_session):
@@ -34,12 +50,9 @@ async def test_recovered_counts_distinct_leads_not_reply_messages(test_property,
         dialed_number=test_property.exophone,
     )
     # Two separate replies from the same guest -- must count as one
-    # recovered guest, not two. "5"/"talk to host" and free-text replies are
-    # the choices that create a busy_recovery_reply notification (property/
-    # pricing/faq/brochure auto-reply instead, with no DB write of their
-    # own -- see whatsapp_reply_service.handle_inbound_reply).
-    await whatsapp_reply_service.handle_inbound_reply(db_session, "whatsapp:+919999911112", "5")
-    await whatsapp_reply_service.handle_inbound_reply(db_session, "whatsapp:+919999911112", "is the pool heated?")
+    # recovered guest, not two.
+    await _simulate_guest_reply(db_session, metadata.lead_id)
+    await _simulate_guest_reply(db_session, metadata.lead_id)
 
     resp = await client.get("/api/v1/analytics/recovery", headers=auth_headers)
     body = resp.json()
@@ -129,13 +142,13 @@ async def test_mark_read_twice_does_not_move_responded_at_forward(db_session, te
 async def test_avg_recovery_time_measures_first_reply_after_first_rejection(
     test_property, auth_headers, client, db_session
 ):
-    await recovery_service.handle_busy_recovery(
+    metadata = await recovery_service.handle_busy_recovery(
         host_user_id=test_property.user_id,
         property_id=test_property.id,
         caller_number="+919999911117",
         dialed_number=test_property.exophone,
     )
-    await whatsapp_reply_service.handle_inbound_reply(db_session, "whatsapp:+919999911117", "5")
+    await _simulate_guest_reply(db_session, metadata.lead_id)
 
     resp = await client.get("/api/v1/analytics/recovery", headers=auth_headers)
     value = resp.json()["avg_recovery_time_seconds"]

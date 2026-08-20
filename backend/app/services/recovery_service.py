@@ -36,8 +36,8 @@ definition the guest has already been hung up on by the time this runs; a
 slow/failed send here must never be capable of affecting a *different*,
 still-live call). No blocking operations: every external call (DB, Twilio)
 is already async, and the one genuinely slow/unreliable leg (the WhatsApp
-send) is itself fired via its own asyncio.create_task, so a Twilio sandbox
-hiccup can't even delay this function's own remaining DB writes.
+send) is itself fired via its own asyncio.create_task, so a slow Twilio API
+round trip can't even delay this function's own remaining DB writes.
 """
 
 import asyncio
@@ -58,7 +58,6 @@ from app.models.user import User
 from app.schemas.lead import RecoveryReason
 from app.services import call_service, guest_memory_service, lead_service, notification_service
 from app.services.lead_service import _REUSABLE_LEAD_STATUSES
-from app.services.whatsapp_reply_service import MENU_DISPLAY_TEXT
 
 logger = logging.getLogger(__name__)
 
@@ -76,23 +75,18 @@ NOTIFICATION_CHANNEL_BUSY_RECOVERY = "busy_recovery"
 NOTIFICATION_CHANNEL_AVAILABILITY = "availability_notification"
 
 # How long a busy-recovery lead stays eligible for the "Mira is available
-# now" follow-up after the busy call itself. Deliberately NOT
-# whatsapp_reply_service.RECOVERY_REPLY_WINDOW (72h) -- that window answers
-# a different question ("is a reply still about a real, ongoing
-# conversation," where a guest replying a day or two later is completely
-# normal). This window answers "is 'available now' still TRUE and useful,"
-# which decays much faster: the whole premise (see BUSY_MESSAGE_TEXT,
-# app/voice/ringing_audio.py -- "call back in 5 mins") is that Mira frees up
-# again within minutes, not hours. No existing precedent for this specific
-# question in the codebase (checked: the only other window is the 72h reply
-# one, which measures something else) -- 30 minutes is a conservative
-# choice: generous enough to cover Mira working through a short queue of
-# several busy calls in sequence, tight enough that a guest is never told
-# "available now" long after they've plausibly moved on or called someone
-# else. A guest whose busy call is older than this when Mira frees up
-# simply never gets the availability message -- their busy_recovery WhatsApp
-# (the numbered menu, sent immediately at rejection time) is still their one
-# channel, unchanged.
+# now" follow-up after the busy call itself. This window answers "is
+# 'available now' still TRUE and useful," which decays fast: the whole
+# premise (see BUSY_MESSAGE_TEXT, app/voice/ringing_audio.py -- "call back
+# in 5 mins", and _guest_recovery_whatsapp_text below, which says the same
+# thing over WhatsApp) is that Mira frees up again within minutes, not
+# hours. 30 minutes is a conservative choice: generous enough to cover Mira
+# working through a short queue of several busy calls in sequence, tight
+# enough that a guest is never told "available now" long after they've
+# plausibly moved on or called someone else. A guest whose busy call is
+# older than this when Mira frees up simply never gets the availability
+# message -- their busy_recovery WhatsApp (sent immediately at rejection
+# time) is still their one channel, unchanged.
 AVAILABILITY_WINDOW = timedelta(minutes=30)
 
 # How long a "processing" claim is allowed to sit unresolved before being
@@ -105,15 +99,20 @@ STALE_CLAIM_THRESHOLD = timedelta(minutes=2)
 
 # Plain-text fallback for when TWILIO_BUSY_RECOVERY_TEMPLATE_SID isn't
 # configured -- same "template preferred, plain text always works" contract
-# as tool_handlers._build_escalation_whatsapp_text. MENU_DISPLAY_TEXT
-# (imported from whatsapp_reply_service.py) is the single source of truth
-# for the numbered options -- see that module's own comment for why this
-# used to be three independent, driftable copies.
+# as tool_handlers._build_escalation_whatsapp_text. Deliberately a single
+# short line, not an interactive menu: an earlier version of this message
+# offered a numbered Property/Pricing/FAQs/Photos/Talk-to-host menu the
+# guest could reply to (with a whole inbound-reply-parsing subsystem behind
+# it) -- removed in favor of this simpler message, which matches what the
+# guest is already told out loud on the call itself (BUSY_MESSAGE_TEXT,
+# app/voice/ringing_audio.py): Mira frees up again within minutes, so just
+# ask them to call back rather than offering a text-based self-service
+# menu.
 def _guest_recovery_whatsapp_text(property_name: str | None) -> str:
     where = property_name or "us"
     return (
-        f"Hi! Sorry we missed your call to {where} just now -- our line was busy with another guest.\n\n"
-        f"Reply with a number and we'll help right away:\n{MENU_DISPLAY_TEXT}"
+        f"Hi! Sorry we missed your call to {where} just now -- Mira is helping another guest right now. "
+        "Please try calling back in about 5 minutes and we'll be right with you."
     )
 
 
@@ -200,13 +199,13 @@ async def _handle_busy_recovery(
     # on_pipeline_finished path) sets this normally -- a busy-rejected call
     # never reaches that code, so without this a guest whose FIRST-EVER
     # contact with this host was a busy rejection would have no
-    # last_property_id at all. whatsapp_reply_service.py's Property/Pricing/
-    # Photos menu options resolve the property via this field (reusing
-    # GuestProfile, not inventing a new property reference), so it must be
-    # set here too. Goes through guest_memory_service.set_last_property
-    # (that module owns this field's write rule), not a direct assignment --
-    # cleanup-pass fix for what used to reach into GuestProfile's internals
-    # from outside its owning service.
+    # last_property_id at all. Used by process_availability_recovery below
+    # to scope its follow-up to the right property (reusing GuestProfile,
+    # not inventing a new property reference), so it must be set here too.
+    # Goes through guest_memory_service.set_last_property (that module owns
+    # this field's write rule), not a direct assignment -- cleanup-pass fix
+    # for what used to reach into GuestProfile's internals from outside its
+    # owning service.
     if guest is not None:
         guest_memory_service.set_last_property(guest, property_.id if property_ is not None else None)
 
@@ -278,7 +277,10 @@ async def _handle_busy_recovery(
         asyncio.create_task(_send_guest_recovery_whatsapp(caller_number, property_name))
 
         if host_phone:
-            asyncio.create_task(_send_host_recovery_whatsapp(host_phone, property_name, dialed_number, caller_number))
+            guest_name = guest.name if guest is not None else None
+            asyncio.create_task(
+                _send_host_recovery_whatsapp(host_phone, property_name, dialed_number, caller_number, guest_name)
+            )
 
     return RecoveryMetadata(
         lead_id=lead.id,
@@ -303,7 +305,11 @@ async def _send_guest_recovery_whatsapp(to_phone: str, property_name: str | None
 
 
 async def _send_host_recovery_whatsapp(
-    to_phone: str, property_name: str | None, dialed_number: str | None, caller_number: str
+    to_phone: str,
+    property_name: str | None,
+    dialed_number: str | None,
+    caller_number: str,
+    guest_name: str | None,
 ) -> None:
     # Reuses the EXISTING mira_escalation template (same one
     # tool_handlers._send_escalation_whatsapp uses) rather than provisioning
@@ -315,9 +321,16 @@ async def _send_host_recovery_whatsapp(
     # (scripts/create_escalation_template.py's _BODY: {{3}}=Property,
     # {{4}}=Issue, {{5}}=Summary) -- {{2}} combines with the template's own
     # literal " ESCALATION" suffix, same as a real urgency value would.
-    # Falls back to the same plain-text shape as before when unconfigured.
+    # {{6}} (the template's "Guest" field) carries name + number together
+    # when a name is on file (GuestProfile.name, set on a returning guest
+    # or backfilled by guest_memory_service on a later answered call) rather
+    # than the number alone -- no separate template field exists for a
+    # guest name, and this is what a host actually wants to see: someone to
+    # call, not just a number. Falls back to the same plain-text shape as
+    # before when unconfigured.
     dashboard_url = f"{settings.frontend_base_url}/dashboard/leads"
     property_label = property_name or dialed_number or "a lead line"
+    guest_label = f"{guest_name} ({caller_number})" if guest_name else caller_number
     if settings.twilio_escalation_template_sid:
         await twilio_client.send_whatsapp_template_best_effort(
             to_phone,
@@ -328,25 +341,25 @@ async def _send_host_recovery_whatsapp(
                 "3": property_label,
                 "4": "Line was busy with another guest",
                 "5": "Not provided",
-                "6": caller_number,
+                "6": guest_label,
             },
         )
     else:
         host_text = (
             f"\U0001F7E0 *MISSED CALL (line busy)*\n*Property:* {property_label}\n"
-            f"*Guest:* {caller_number}\n\n{dashboard_url}"
+            f"*Guest:* {guest_label}\n\n{dashboard_url}"
         )
         await twilio_client.send_whatsapp_best_effort(to_phone, host_text)
 
 
 # Set as Lead.next_follow_up by handle_busy_recovery above -- reused here
-# (not a new field) as the "has the guest replied since we last messaged
-# them" signal: whatsapp_reply_service._notify_host_of_reply overwrites
-# next_follow_up the moment a real inbound reply comes in (see that
-# module's own comment). If it no longer matches this exact string, a
-# reply happened and the guest is being actively handled -- sending
-# "Mira is available now" on top of that would be a redundant, confusing
-# duplicate, not a new conversation opener.
+# (not a new field) as the "has this lead moved on since we last messaged
+# about it" signal: a later real call from the same guest reaching
+# update_lead/escalate_to_host (lead reuse, see lead_service.py), or a host
+# editing the lead from the dashboard, both overwrite next_follow_up. If it
+# no longer matches this exact string, something has already actively
+# touched this lead -- sending "Mira is available now" on top of that would
+# be a redundant, confusing duplicate, not a new conversation opener.
 _AWAITING_CALLBACK_FOLLOW_UP = "Call back guest -- previous call was missed due to a busy line"
 
 _AVAILABILITY_WHATSAPP_TEXT = "Hi! \U0001F44B Mira is available now.\n\nYou can call back whenever you're ready."
@@ -515,11 +528,11 @@ async def _notify_availability(db: AsyncSession, lead: Lead, property_id: uuid.U
     other worker is concurrently evaluating this same lead.
     """
     if lead.next_follow_up != _AWAITING_CALLBACK_FOLLOW_UP:
-        # The guest already replied on WhatsApp (whatsapp_reply_service.py
-        # overwrote next_follow_up) or a host/other flow touched it --
-        # either way, this is no longer "guest silently waiting," so
-        # sending an unprompted "available now" would be a confusing
-        # duplicate on top of a conversation already in progress. Release
+        # A later real call reusing this lead, or a host/other flow, has
+        # already touched next_follow_up -- either way, this is no longer
+        # "guest silently waiting," so sending an unprompted "available
+        # now" would be a confusing duplicate on top of a conversation
+        # already in progress. Release
         # the claim back to a terminal, non-retried state rather than
         # leaving it stuck "processing" -- reusing "notified" for this
         # (not a new status value) since the practical effect is identical:

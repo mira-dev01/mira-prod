@@ -1,5 +1,5 @@
 """Twilio Voice -- an entirely separate integration from twilio_client.py's
-WhatsApp Sandbox client and from Exotel telephony (exotel_client.py,
+WhatsApp client and from Exotel telephony (exotel_client.py,
 app/api/v1/voice.py's exotel_voice_ws, app/voice/pipeline.py's
 run_voice_pipeline). Added purely so real-call testing can continue on
 Twilio's free trial when Exotel credits run out, without touching any

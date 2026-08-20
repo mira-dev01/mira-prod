@@ -284,7 +284,7 @@ Backs the dashboard's Live Requests feed (polled/streamed via `GET /notification
 |---|---|---|
 | `property_id` | UUID FK → properties, cascade delete, nullable | `NULL` for Lead Agent-originated notifications |
 | `call_session_id` | UUID FK → call_sessions, cascade delete, nullable | |
-| `lead_id` | UUID FK → leads, set null on delete, nullable, **indexed** | Only set by `recovery_service.py`/`whatsapp_reply_service.py`'s `busy_recovery`/`busy_recovery_reply` notifications — Recovery Analytics' (`GET /analytics/recovery`) join key back to the recovery `Lead`. `NULL` for every other channel. |
+| `lead_id` | UUID FK → leads, set null on delete, nullable, **indexed** | Only set by `recovery_service.py`'s `busy_recovery` notifications (`busy_recovery_reply` is a historical-only channel — see `app/api/v1/analytics.py`'s own comment) — Recovery Analytics' (`GET /analytics/recovery`) join key back to the recovery `Lead`. `NULL` for every other channel. |
 | `channel` | String(32), not null, **indexed** | `whatsapp` \| `escalation` \| `system` \| `busy_recovery` \| `busy_recovery_reply` |
 | `urgency` | String(16), default `low` | |
 | `message` | Text, not null | |

@@ -26,6 +26,8 @@ All routes are mounted under `/api/v1` (`app/main.py`). Unless noted, **Auth** =
 | `POST /properties/import` | Bulk-create/update from uploaded scraped Airbnb JSON files (advanced/legacy path) | required |
 | `POST /properties/import-airbnb-urls` | Trigger a Bright Data async scrape for pasted Airbnb listing URLs → `snapshot_id` | required |
 | `GET /properties/import-airbnb-urls/{snapshot_id}` | Poll scrape status; on `"ready"`, upserts properties (safe to re-poll — updates, not duplicates) | required |
+| `GET /properties/{id}/gallery` | No-auth, minimal-fields (`PropertyGalleryOut`) view backing the guest-facing single-property photo page (`frontend /p/{id}/photos`) — the link `send_photos` hands a guest for one specific listing | none |
+| `GET /properties/portfolio/{host_id}/gallery` | No-auth, same minimal fields, one row per property under `host_id` — backs the guest-facing "photos of all our properties" page (`frontend /p/portfolio/{host_id}/photos`), the link `send_photos` hands a guest who asked for photos without naming one listing | none |
 
 See [research-flow.md](research-flow.md) for the two import paths' internals.
 
@@ -137,11 +139,12 @@ See [agents.md](agents.md) for what runs behind these endpoints.
 |---|---|---|
 | `POST /webhooks/exotel/call-status` | Exotel's call-status/passthru callback (call lifecycle: busy/no-answer/failed, recording URL). Independent of the live voice websocket — used for `call_sessions` logging via `call_service.attach_exotel_call` | `token` query param (`EXOTEL_WEBHOOK_TOKEN`), verified via `verify_webhook_token` |
 
-## `webhooks/whatsapp.py` — `/webhooks/whatsapp`
-
-| Method & path | Purpose | Auth |
-|---|---|---|
-| `POST /webhooks/whatsapp/inbound` | Twilio's inbound-message callback for a guest replying to the Busy Recovery menu (see `app/services/recovery_service.py`). Routes the reply via `app/services/whatsapp_reply_service.py` — resolves the guest's existing recovery `Lead` by phone (reuses `GuestProfile`/`Lead` identity, never creates a second Lead for the same guest) and answers Property/Pricing/FAQs/Photos directly, or notifies the host for "talk to host"/free-text replies | `token` query param (`TWILIO_WHATSAPP_WEBHOOK_TOKEN`), verified via `verify_whatsapp_webhook_token` |
+There is no inbound WhatsApp webhook — the interactive numbered-menu guest
+reply feature that used to receive one (Property/Pricing/FAQs/Photos/
+Talk-to-host, routed via `app/services/whatsapp_reply_service.py`) was
+removed in favor of a single "Mira is busy, call back in 5 minutes" message
+(see `app/services/recovery_service.py`'s `_guest_recovery_whatsapp_text`).
+Every WhatsApp send in this codebase is now outbound-only.
 
 ## `GET /health` and `GET /api/v1/health/llm`
 

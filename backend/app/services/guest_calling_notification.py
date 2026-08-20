@@ -153,7 +153,7 @@ async def _maybe_notify_guest_calling(
     # In-app notification above covers hosts watching the dashboard live
     # (existing SSE stream, unchanged -- see app/api/v1/notifications.py);
     # WhatsApp covers a host who isn't. Best-effort only, fired detached so
-    # a slow/misconfigured Twilio sandbox never adds latency to -- or is
+    # a slow/misconfigured Twilio call never adds latency to -- or is
     # even on the same call stack as -- the still-live guest call this
     # notification is about. host.phone is User.phone, the one canonical
     # host contact number this codebase already has (see Phase 5's own

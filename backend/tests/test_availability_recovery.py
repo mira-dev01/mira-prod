@@ -41,6 +41,7 @@ async def _busy_lead(db_session, test_property, phone="+919999900001"):
 def _mock_twilio(monkeypatch):
     monkeypatch.setattr(settings, "twilio_account_sid", "test-sid")
     monkeypatch.setattr(settings, "twilio_auth_token", "test-token")
+    monkeypatch.setattr(settings, "twilio_whatsapp_from", "whatsapp:+15550001111")
     monkeypatch.setattr(settings, "twilio_availability_template_sid", None)  # plain-text path by default
     return respx.post("https://api.twilio.com/2010-04-01/Accounts/test-sid/Messages.json").mock(
         return_value=Response(200, json={"sid": "SM123", "status": "queued"})
@@ -148,9 +149,10 @@ async def test_guest_already_engaged_on_whatsapp_does_not_receive_duplicate_mess
 ):
     route = _mock_twilio(monkeypatch)
     lead = await _busy_lead(db_session, test_property)
-    # Simulate whatsapp_reply_service._notify_host_of_reply having already
-    # run for this lead -- the real signal reused here (see
-    # recovery_service._AWAITING_CALLBACK_FOLLOW_UP's own comment).
+    # Simulate something else (a later real call reusing this lead, or a
+    # host edit) having already touched next_follow_up for this lead -- the
+    # real signal reused here (see recovery_service._AWAITING_CALLBACK_FOLLOW_UP's
+    # own comment).
     lead.next_follow_up = "Guest replied on WhatsApp -- call or message them back"
     await db_session.commit()
 
@@ -179,6 +181,7 @@ async def test_already_notified_recovery_does_not_receive_duplicate_message(test
 async def test_whatsapp_failure_preserves_pending_recovery(test_property, db_session, monkeypatch):
     monkeypatch.setattr(settings, "twilio_account_sid", "test-sid")
     monkeypatch.setattr(settings, "twilio_auth_token", "test-token")
+    monkeypatch.setattr(settings, "twilio_whatsapp_from", "whatsapp:+15550001111")
     monkeypatch.setattr(settings, "twilio_availability_template_sid", None)
     lead = await _busy_lead(db_session, test_property)
 
@@ -199,6 +202,7 @@ async def test_whatsapp_failure_preserves_pending_recovery(test_property, db_ses
 async def test_retry_can_eventually_send_after_a_prior_failure(test_property, db_session, monkeypatch):
     monkeypatch.setattr(settings, "twilio_account_sid", "test-sid")
     monkeypatch.setattr(settings, "twilio_auth_token", "test-token")
+    monkeypatch.setattr(settings, "twilio_whatsapp_from", "whatsapp:+15550001111")
     monkeypatch.setattr(settings, "twilio_availability_template_sid", None)
     lead = await _busy_lead(db_session, test_property)
 
@@ -244,6 +248,7 @@ async def test_call_teardown_is_unaffected_by_availability_whatsapp_failure(test
     # fails outright.
     monkeypatch.setattr(settings, "twilio_account_sid", "test-sid")
     monkeypatch.setattr(settings, "twilio_auth_token", "test-token")
+    monkeypatch.setattr(settings, "twilio_whatsapp_from", "whatsapp:+15550001111")
     monkeypatch.setattr(settings, "twilio_availability_template_sid", None)
     respx.post("https://api.twilio.com/2010-04-01/Accounts/test-sid/Messages.json").mock(
         side_effect=Exception("network exploded")
@@ -292,6 +297,7 @@ async def test_concurrent_availability_processing_does_not_double_send(test_prop
 async def test_expired_recovery_does_not_receive_stale_availability_message(test_property, db_session, monkeypatch):
     monkeypatch.setattr(settings, "twilio_account_sid", "test-sid")
     monkeypatch.setattr(settings, "twilio_auth_token", "test-token")
+    monkeypatch.setattr(settings, "twilio_whatsapp_from", "whatsapp:+15550001111")
     monkeypatch.setattr(settings, "twilio_availability_template_sid", None)
     lead = await _busy_lead(db_session, test_property)
     # Backdate past AVAILABILITY_WINDOW (30 minutes) -- simulates Mira
@@ -331,6 +337,7 @@ async def test_stale_processing_claim_is_reclaimable_after_worker_crash(test_pro
     with respx.mock:
         monkeypatch.setattr(settings, "twilio_account_sid", "test-sid")
         monkeypatch.setattr(settings, "twilio_auth_token", "test-token")
+        monkeypatch.setattr(settings, "twilio_whatsapp_from", "whatsapp:+15550001111")
         monkeypatch.setattr(settings, "twilio_availability_template_sid", None)
         route = respx.post("https://api.twilio.com/2010-04-01/Accounts/test-sid/Messages.json").mock(
             return_value=Response(200, json={"sid": "SM321", "status": "queued"})
@@ -354,6 +361,7 @@ async def test_fresh_processing_claim_is_not_reclaimed_while_still_in_flight(tes
     with respx.mock:
         monkeypatch.setattr(settings, "twilio_account_sid", "test-sid")
         monkeypatch.setattr(settings, "twilio_auth_token", "test-token")
+        monkeypatch.setattr(settings, "twilio_whatsapp_from", "whatsapp:+15550001111")
         monkeypatch.setattr(settings, "twilio_availability_template_sid", None)
         route = respx.post("https://api.twilio.com/2010-04-01/Accounts/test-sid/Messages.json").mock(
             return_value=Response(200, json={"sid": "SM654", "status": "queued"})

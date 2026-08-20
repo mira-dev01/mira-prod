@@ -19,13 +19,15 @@ class Notification(UUIDPkMixin, TimestampMixin, Base):
     call_session_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("call_sessions.id", ondelete="CASCADE")
     )
-    # Nullable, set only by recovery_service.py/whatsapp_reply_service.py's
-    # busy_recovery/busy_recovery_reply notifications (see app/models/lead.py's
-    # recovery_reason) -- gives Recovery Analytics (docs/analytics.md-equivalent:
-    # app/api/v1/analytics.py's recovery endpoint) a reliable join back to the
-    # specific recovery Lead a notification belongs to. Every other channel
-    # (whatsapp/escalation/system) leaves this NULL; nothing about the general
-    # Notification read/write path changes.
+    # Nullable, set only by recovery_service.py's busy_recovery notifications
+    # (see app/models/lead.py's recovery_reason; busy_recovery_reply is a
+    # historical channel from a since-removed guest reply feature -- see
+    # app/api/v1/analytics.py's own comment) -- gives Recovery Analytics
+    # (docs/analytics.md-equivalent: app/api/v1/analytics.py's recovery
+    # endpoint) a reliable join back to the specific recovery Lead a
+    # notification belongs to. Every other channel (whatsapp/escalation/
+    # system) leaves this NULL; nothing about the general Notification
+    # read/write path changes.
     # Indexed: the join key every GET /analytics/recovery query uses to
     # correlate a notification back to its recovery Lead (4 separate queries
     # per page load, see app/api/v1/analytics.py's analytics_recovery) --

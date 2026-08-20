@@ -1,17 +1,4 @@
-from app.config import settings
 from app.integrations import twilio_client
-
-
-def test_verify_whatsapp_webhook_token_accepts_matching_token(monkeypatch):
-    monkeypatch.setattr(settings, "twilio_whatsapp_webhook_token", "real-secret")
-    assert twilio_client.verify_whatsapp_webhook_token("real-secret") is True
-
-
-def test_verify_whatsapp_webhook_token_rejects_wrong_or_missing_token(monkeypatch):
-    monkeypatch.setattr(settings, "twilio_whatsapp_webhook_token", "real-secret")
-    assert twilio_client.verify_whatsapp_webhook_token("wrong") is False
-    assert twilio_client.verify_whatsapp_webhook_token(None) is False
-    assert twilio_client.verify_whatsapp_webhook_token("") is False
 
 
 async def test_send_whatsapp_template_best_effort_never_raises_when_skipped():
