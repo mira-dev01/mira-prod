@@ -290,6 +290,23 @@ async def get_property_gallery(property_id: uuid.UUID, db: AsyncSession = Depend
     return property_
 
 
+@router.get("/portfolio/{host_id}/gallery", response_model=list[PropertyGalleryOut])
+async def get_portfolio_gallery(host_id: uuid.UUID, db: AsyncSession = Depends(get_db)) -> list[Property]:
+    """No-auth public endpoint backing the guest-facing "photos of all our
+    properties" page (frontend /p/portfolio/{host_id}/photos) -- the link
+    send_photos hands a guest who asked for photos without naming one
+    specific property (property_id=None, see app/services/
+    tool_handlers.handle_send_photos). Same no-auth/minimal-fields
+    discipline as get_property_gallery above -- PropertyGalleryOut, never
+    PropertyOut. Does not 404 for an unknown/propertyless host: an empty
+    list is a valid, renderable state for the frontend page (same as zero
+    photos on a single property already is), and a host id is not secret
+    information worth distinguishing "no properties" from "no such host"
+    over."""
+    result = await db.execute(select(Property).where(Property.user_id == host_id).order_by(Property.name))
+    return list(result.scalars().all())
+
+
 @router.patch("/{property_id}", response_model=PropertyOut)
 async def update_property(
     property_id: uuid.UUID,

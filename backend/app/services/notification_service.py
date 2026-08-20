@@ -1,10 +1,9 @@
 """In-app notifications -- the dashboard's live Requests feed polls/streams
 from this table. send_whatsapp/send_photos/escalate_to_host all write here
 as a record of what was sent, alongside whatever real channel (Twilio
-WhatsApp sandbox, SMTP) actually attempted delivery -- see
-app/integrations/twilio_client.py and email_client.py. A real WhatsApp
-Business API (Meta-approved) number would replace the Twilio sandbox here
-once the host has one; nothing in this table changes either way.
+WhatsApp, SMTP) actually attempted delivery -- see
+app/integrations/twilio_client.py and email_client.py. Nothing in this
+table depends on which WhatsApp sender number is configured.
 """
 
 import uuid

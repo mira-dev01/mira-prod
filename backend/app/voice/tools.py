@@ -317,7 +317,7 @@ def build_voice_tools(
 
     async def send_photos(
         params: FunctionCallParams,
-        property_id: str,
+        property_id: str | None = None,
         guest_phone: str | None = None,
     ):
         """Send the guest a link to photos of the property, e.g. when they
@@ -326,6 +326,9 @@ def build_voice_tools(
 
         Args:
             property_id: The property's id, as given to you in your instructions.
+                Leave unset/null if the guest asked for photos of all of the
+                host's properties in general, rather than one specific listing --
+                you'll send a portfolio link covering every property instead.
             guest_phone: The guest's phone number to send the link to. Leave unset
                 if the guest wants it sent to the number they're calling from --
                 the system already knows that number and will use it automatically.

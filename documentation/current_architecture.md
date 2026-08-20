@@ -54,8 +54,9 @@ entry points (`run_browser_voice_pipeline`, `run_browser_lead_pipeline`) exercis
 "talk to Mira" test UI. All four call into the same `_run_pipeline`/`_run_pipeline_inner` — there
 is exactly one pipeline implementation, not one per vendor.
 
-Twilio is **also** used, separately, for real WhatsApp delivery (`app/integrations/twilio_client.py`,
-Sandbox) — this is unrelated to Twilio Voice and uses different credentials/endpoints. See §5.
+Twilio is **also** used, separately, for real WhatsApp Business API delivery
+(`app/integrations/twilio_client.py`) — this is unrelated to Twilio Voice and uses different
+credentials/endpoints. See §5.
 
 ## 2. Voice pipeline (live call)
 
@@ -136,20 +137,22 @@ all. The rejected call is handled entirely outside the live-call path:
    (`lead_service.upsert_lead`, `recovery_reason="BUSY_CALL"`, `status` stays the normal `"open"`
    default), `Notification` (`channel="busy_recovery"`), WhatsApp
    (`twilio_client.send_whatsapp_best_effort`/`send_whatsapp_template_best_effort`).
-4. The guest gets a numbered WhatsApp menu (Property/Pricing/FAQs/Photos/Talk-to-host/Something-else)
-   defined once in `app/services/whatsapp_reply_service.py`'s `_MENU_OPTIONS` — the single source of
-   truth both the outbound send and the inbound reply parser use, so the two can never drift out of
-   sync. The host gets a WhatsApp alert reusing the existing `mira_escalation` template.
+4. The guest gets a single short WhatsApp ("Mira is helping another guest, please call back in
+   about 5 minutes" — matching what they're already told out loud on the call itself,
+   `BUSY_MESSAGE_TEXT` in `app/voice/ringing_audio.py`). The host gets a WhatsApp alert reusing the
+   existing `mira_escalation` template, including the guest's name (`GuestProfile.name`, when on
+   file) alongside their number.
 5. A repeat busy-rejected caller reuses the same open `Lead`, not a new row per attempt (same
    `_get_or_create_lead_for_call` reuse logic every other lead-creation path already uses).
 
-**Inbound WhatsApp replies** land on `POST /webhooks/whatsapp/inbound`
-(`app/api/v1/webhooks/whatsapp.py`, shared-secret token auth), routed by
-`app/services/whatsapp_reply_service.py` to the guest's existing recovery `Lead` (resolved by
-phone number within a 72-hour window, only if the lead is still in a reusable status — a reply to
-an already-booked/closed lead never reopens it). Property/Pricing/FAQs/Photos reply automatically
-from the same data the voice tools use; "talk to host" and free-text replies just notify the host
-— **no LLM is involved anywhere in this reply path.**
+There is no inbound WhatsApp reply handling. An earlier version of the guest-facing message was an
+interactive numbered menu (Property/Pricing/FAQs/Photos/Talk-to-host/Something-else) with a whole
+reply-parsing subsystem behind it (`app/services/whatsapp_reply_service.py`,
+`POST /webhooks/whatsapp/inbound`) — removed as part of the production-WhatsApp-messaging cutover
+in favor of the single "call back in 5 minutes" message above, since the whole premise is that Mira
+frees up again within minutes rather than needing a text-based self-service channel. Recovery
+Analytics' `recovered`/`avg_recovery_time_seconds` fields are consequently historical-only now (see
+`app/api/v1/analytics.py`'s own comment).
 
 ## 5. Lead safety / lead preservation
 

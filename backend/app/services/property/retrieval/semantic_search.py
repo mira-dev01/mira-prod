@@ -18,7 +18,7 @@ result. This module is deliberately treated with extra caution:
   (settings.semantic_search_timeout_seconds). On ANY failure or timeout,
   returns [] and the caller proceeds with SQL-only results -- same
   fail-open discipline as every optional integration in this codebase
-  (Bright Data unset, SMTP down, Twilio sandbox window closed, etc.).
+  (Bright Data unset, SMTP down, Twilio WhatsApp session window closed, etc.).
 - Gated by settings.enable_semantic_property_search, a cheap kill-switch
   requiring no redeploy if real-call latency/cost proves worse than
   expected.

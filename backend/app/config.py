@@ -143,20 +143,20 @@ class Settings(BaseSettings):
     #      own module docstring for the full failure-policy reasoning.
     redis_url: str | None = None
 
-    # Twilio WhatsApp Sandbox (https://www.twilio.com/docs/whatsapp/sandbox)
-    # -- no Meta Business verification needed, unlike a real WhatsApp
-    # Business number. The tradeoff: it can only message numbers that have
-    # first opted in by texting "join <sandbox-code>" to
-    # twilio_whatsapp_from from WhatsApp (Twilio's console shows the code
-    # for this account's sandbox) -- fine for testing against your own
-    # phone, not usable for arbitrary real guests until upgraded to a real
-    # WhatsApp Business number. See app/integrations/twilio_client.py.
-    # Unset = send_whatsapp/send_photos fall back to the in-app notification
-    # stand-in only (same "don't crash, don't block" pattern as SMTP/Bright
-    # Data above).
+    # Twilio WhatsApp Business API -- a real, Meta-approved WhatsApp Business
+    # sender number (not the shared Twilio Sandbox number), reaching any
+    # real guest/host with no opt-in step required. twilio_whatsapp_from
+    # must be set to that number in "whatsapp:+<E.164>" form once it's
+    # provisioned; there is no usable default the way the sandbox number
+    # used to provide. See app/integrations/twilio_client.py for the
+    # resulting 24h-session/template-required constraint this imposes on
+    # every proactive send. Unset = send_whatsapp/send_photos/escalation/
+    # busy-recovery/call-summary WhatsApp sends all fall back to the in-app
+    # notification stand-in only (same "don't crash, don't block" pattern
+    # as SMTP/Bright Data above).
     twilio_account_sid: str | None = None
     twilio_auth_token: str | None = None
-    twilio_whatsapp_from: str = "whatsapp:+14155238886"  # Twilio's shared sandbox number
+    twilio_whatsapp_from: str | None = None
 
     # ContentSid of the "mira_escalation" twilio/call-to-action template
     # (see scripts/create_escalation_template.py) -- gives the escalation
@@ -167,9 +167,10 @@ class Settings(BaseSettings):
     twilio_escalation_template_sid: str | None = None
 
     # ContentSid of the "mira_busy_recovery" twilio/text template (see
-    # scripts/create_busy_recovery_template.py) -- the numbered-menu message
-    # RecoveryService sends a guest whose call was rejected as BUSY_RECOVERY
-    # (see app/services/recovery_service.py, app/services/call_coordinator.py).
+    # scripts/create_busy_recovery_template.py) -- the guest-facing "Mira is
+    # busy on another call, please call back in a few minutes" message
+    # RecoveryService sends when a call was rejected as BUSY_RECOVERY (see
+    # app/services/recovery_service.py, app/services/call_coordinator.py).
     # Unset = falls back to an equivalent plain-text message built inline,
     # same fallback discipline as twilio_escalation_template_sid above.
     twilio_busy_recovery_template_sid: str | None = None
@@ -191,6 +192,25 @@ class Settings(BaseSettings):
     # discipline as twilio_escalation_template_sid above.
     twilio_guest_calling_template_sid: str | None = None
 
+    # ContentSid of the `mira_call_summary` twilio/call-to-action template
+    # (see scripts/create_call_summary_template.py) -- the host-facing
+    # end-of-call summary (property inquired, guest name, guest count,
+    # check-in/out, whether escalation was raised, and a short recap) sent
+    # once a real call finishes (see app/services/call_summary_notification.py,
+    # called from app/voice/pipeline.py's on_pipeline_finished). Unset =
+    # falls back to an equivalent plain-text message, same fallback
+    # discipline as twilio_escalation_template_sid above.
+    twilio_call_summary_template_sid: str | None = None
+
+    # ContentSid of the `mira_photos` twilio/text template (see
+    # scripts/create_photos_template.py) -- the guest-facing photos-link
+    # message sent by the send_photos voice tool (app/services/
+    # tool_handlers.handle_send_photos), for both a single property and a
+    # "photos of all our properties" portfolio link. Unset = falls back to
+    # an equivalent plain-text message, same fallback discipline as
+    # twilio_escalation_template_sid above.
+    twilio_photos_template_sid: str | None = None
+
     # HS256 signing secret for the Take Call action token (Phase 6, see
     # app/services/take_call_token.py) -- a short-lived, single-use grant
     # embedded in the WhatsApp "Take Call" link, verified with no Clerk
@@ -209,16 +229,8 @@ class Settings(BaseSettings):
     # `openssl rand -hex 32`), not a short human-chosen phrase.
     take_call_token_secret: str = "change-me"
 
-    # Shared-secret path token for the inbound WhatsApp webhook (see
-    # app/api/v1/webhooks/whatsapp.py, app/services/whatsapp_reply_service.py)
-    # -- same "path segment, not Twilio's own HMAC scheme" convention as
-    # twilio_voice_webhook_token/exotel_webhook_token above. Configured as
-    # this account's WhatsApp sandbox "WHEN A MESSAGE COMES IN" webhook URL
-    # in the Twilio console.
-    twilio_whatsapp_webhook_token: str = "change-me"
-
-    # Twilio Voice -- an entirely separate integration from the WhatsApp
-    # sandbox above and from Exotel telephony (app/api/v1/voice.py's
+    # Twilio Voice -- an entirely separate integration from Twilio WhatsApp
+    # above and from Exotel telephony (app/api/v1/voice.py's
     # exotel_voice_ws / app/voice/pipeline.py's run_voice_pipeline), added
     # so real-call testing can continue on Twilio's free trial when Exotel
     # credits run out, without touching any Exotel code path. Reuses

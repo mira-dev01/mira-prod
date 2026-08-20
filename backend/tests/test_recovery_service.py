@@ -57,8 +57,8 @@ async def test_handle_busy_recovery_creates_guest_profile_scoped_by_phone_and_ho
 async def test_handle_busy_recovery_sets_last_property_id_on_guest_profile(test_property, db_session):
     # Phase 6: a busy-rejected call never reaches guest_memory_service.py
     # (the normal completed-call path that sets this), so RecoveryService
-    # must set it directly -- whatsapp_reply_service.py's Property/Pricing/
-    # FAQ/Photos menu replies resolve the property through this field.
+    # must set it directly -- process_availability_recovery scopes its
+    # follow-up to the right property through this field.
     metadata = await recovery_service.handle_busy_recovery(
         host_user_id=test_property.user_id,
         property_id=test_property.id,

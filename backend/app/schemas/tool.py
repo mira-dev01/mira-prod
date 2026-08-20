@@ -165,7 +165,10 @@ class SearchFaqArgs(BaseModel):
 
 
 class SendPhotosArgs(BaseModel):
-    property_id: str
+    # None = the guest asked for photos of the host's properties in general
+    # rather than one specific listing -- see handle_send_photos, which
+    # sends a portfolio gallery link instead of a single-property one.
+    property_id: str | None = None
     guest_phone: str
 
     @field_validator("guest_phone")

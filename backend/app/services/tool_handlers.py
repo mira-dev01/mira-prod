@@ -452,55 +452,75 @@ async def handle_send_whatsapp(
     return f"Got it, I've queued a WhatsApp message to {args.phone}." + _phone_confirmation_warning(args.phone)
 
 
+async def _send_photos_whatsapp(to_phone: str, property_label: str, gallery_url: str) -> None:
+    # Template preferred (production WhatsApp requires one for a
+    # business-initiated send outside an active 24h session -- see
+    # twilio_client.py's own module docstring), same fallback discipline as
+    # _send_escalation_whatsapp above.
+    if settings.twilio_photos_template_sid:
+        await twilio_client.send_whatsapp_template_best_effort(
+            to_phone, settings.twilio_photos_template_sid, {"1": property_label, "2": gallery_url}
+        )
+    else:
+        await twilio_client.send_whatsapp_best_effort(to_phone, f"Here are photos of {property_label} -- {gallery_url}")
+
+
 async def handle_send_photos(
     db: AsyncSession, args: SendPhotosArgs, call_session_id: uuid.UUID | None, host_user_id: uuid.UUID
 ) -> str:
-    property_ = await _get_property(db, args.property_id)
-    if property_ is None:
-        return "I couldn't find that property to send photos for."
-    if not property_.photos:
-        return f"I don't have photos on file for {property_.name} yet -- I'll flag that to the host."
+    if args.property_id is None:
+        # Guest asked for photos in general, not one specific listing --
+        # send the portfolio gallery link (every property this host has,
+        # see GET /properties/portfolio/{host_id}/gallery) instead of
+        # requiring the model to pick one.
+        property_id_for_notification = None
+        gallery_url = f"{settings.frontend_base_url}/p/portfolio/{host_user_id}/photos"
+        property_label = "all our properties"
+    else:
+        property_ = await _get_property(db, args.property_id)
+        if property_ is None:
+            return "I couldn't find that property to send photos for."
+        if not property_.photos:
+            return f"I don't have photos on file for {property_.name} yet -- I'll flag that to the host."
+        # Reuses the same Cloudinary URLs already on the property (populated
+        # by Airbnb/Bright Data import) rather than a host-maintained Drive
+        # folder, so this can never drift out of sync with what's actually
+        # on file.
+        property_id_for_notification = property_.id
+        gallery_url = f"{settings.frontend_base_url}/p/{property_.id}/photos"
+        property_label = property_.name
 
     # One link, not N image attachments -- WhatsApp Business API bills per
     # media message, so a gallery page beats sending each photo separately.
-    # Reuses the same Cloudinary URLs already on the property (populated by
-    # Airbnb/Bright Data import) rather than a host-maintained Drive folder,
-    # so this can never drift out of sync with what's actually on file.
-    gallery_url = f"{settings.frontend_base_url}/p/{property_.id}/photos"
     await notification_service.create_notification(
         db,
         channel="whatsapp",
-        property_id=property_.id,
+        property_id=property_id_for_notification,
         call_session_id=call_session_id,
         urgency="low",
-        message=f"To {args.guest_phone}: Here are photos of {property_.name} -- {gallery_url}",
+        message=f"To {args.guest_phone}: Here are photos of {property_label} -- {gallery_url}",
     )
 
-    # Real WhatsApp send via Twilio sandbox (only reaches numbers that have
-    # joined the sandbox -- see twilio_account_sid's docstring in config.py).
-    asyncio.create_task(
-        twilio_client.send_whatsapp_best_effort(args.guest_phone, f"Here are photos of {property_.name} -- {gallery_url}")
-    )
+    asyncio.create_task(_send_photos_whatsapp(args.guest_phone, property_label, gallery_url))
 
     # Email stays as a parallel channel (not a fallback) so this is testable
-    # against the host's own inbox even for guest numbers that were never
-    # added to the Twilio sandbox.
+    # against the host's own inbox even outside an active WhatsApp session.
     host_user = await db.get(User, host_user_id)
     if host_user is not None:
         asyncio.create_task(
             _send_escalation_email(
                 host_user.notification_email or host_user.email,
-                subject=f"Photos requested — {property_.name}",
-                body=f"A guest ({args.guest_phone}) asked to see photos of {property_.name}.\n\n"
+                subject=f"Photos requested — {property_label}",
+                body=f"A guest ({args.guest_phone}) asked to see photos of {property_label}.\n\n"
                 f"Gallery link: {gallery_url}",
                 html_body=build_photos_email_html(
-                    property_name=property_.name, guest_phone=args.guest_phone, gallery_url=gallery_url
+                    property_name=property_label, guest_phone=args.guest_phone, gallery_url=gallery_url
                 ),
             )
         )
 
     return (
-        f"Got it, I've sent a photo gallery link for {property_.name} to {args.guest_phone}."
+        f"Got it, I've sent a photo gallery link for {property_label} to {args.guest_phone}."
         + _phone_confirmation_warning(args.guest_phone)
     )
 
@@ -569,9 +589,8 @@ async def handle_escalate_to_host(
                 ),
             )
         )
-        # WhatsApp via Twilio Sandbox -- only reaches host_user.phone if
-        # that number has joined the sandbox (see twilio_client.py). Unset
-        # phone or unconfigured Twilio both no-op silently in
+        # WhatsApp via Twilio (see twilio_client.py). Unset phone or
+        # unconfigured Twilio both no-op silently in
         # _send_escalation_whatsapp, same as the email above.
         if host_user.phone:
             asyncio.create_task(

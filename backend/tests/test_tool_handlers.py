@@ -13,6 +13,7 @@ from app.schemas.tool import (
     NegotiateRateArgs,
     RecommendPropertiesArgs,
     SearchFaqArgs,
+    SendPhotosArgs,
     SendWhatsappArgs,
     UpdateLeadArgs,
 )
@@ -823,3 +824,37 @@ async def test_recommend_properties_near_landmark_never_drops_all_results(test_u
     result = await tool_handlers.handle_recommend_properties(db_session, args, test_user.id)
     result_text = render_recommendation_text(result)
     assert "Pine" in result_text
+
+
+async def test_send_photos_with_no_property_id_sends_portfolio_link(test_property, test_user, db_session):
+    # No property named -- guest asked for photos "in general". Must not
+    # 404/error the way a single unresolved property_id would; it sends the
+    # portfolio gallery link instead (GET /properties/portfolio/{host_id}/gallery).
+    args = SendPhotosArgs(property_id=None, guest_phone="9999999999")
+    result = await tool_handlers.handle_send_photos(
+        db_session, args, call_session_id=None, host_user_id=test_user.id
+    )
+
+    assert "all our properties" in result
+    notifications = await list_notifications(db_session)
+    matches = [n for n in notifications if n.channel == "whatsapp" and "all our properties" in n.message]
+    assert len(matches) == 1
+    # Portfolio-wide, not scoped to any one property.
+    assert matches[0].property_id is None
+    assert f"/p/portfolio/{test_user.id}/photos" in matches[0].message
+
+
+async def test_send_photos_with_property_id_still_scopes_to_that_property(test_property, test_user, db_session):
+    test_property.photos = ["https://example.com/photo1.jpg"]
+    await db_session.commit()
+
+    args = SendPhotosArgs(property_id=str(test_property.id), guest_phone="9999999999")
+    result = await tool_handlers.handle_send_photos(
+        db_session, args, call_session_id=None, host_user_id=test_user.id
+    )
+
+    assert test_property.name in result
+    notifications = await list_notifications(db_session)
+    matches = [n for n in notifications if n.channel == "whatsapp" and n.property_id == test_property.id]
+    assert len(matches) == 1
+    assert f"/p/{test_property.id}/photos" in matches[0].message

@@ -1,7 +1,18 @@
-"""Twilio WhatsApp Sandbox client -- real WhatsApp delivery to opted-in
-numbers only (see the sandbox caveat in app/config.py's twilio_account_sid
-comment). Plain REST + Basic Auth, no twilio SDK dependency, matching the
-httpx-direct style of bright_data_client.py/searchapi_client.py.
+"""Twilio WhatsApp client -- real WhatsApp Business API delivery via a
+production (Meta-approved) sender number (see app/config.py's
+twilio_account_sid comment). Plain REST + Basic Auth, no twilio SDK
+dependency, matching the httpx-direct style of bright_data_client.py/
+searchapi_client.py.
+
+Production note: outside an active 24h customer-service session (the
+recipient has messaged this WhatsApp number within the last 24h), WhatsApp
+only allows a pre-approved Content Template (send_whatsapp_template*), never
+a freeform Body (send_whatsapp_message/send_whatsapp_best_effort) -- Meta
+rejects it. Every proactive, business-initiated message this codebase sends
+(escalations, busy recovery, call summaries, photos) goes through the
+template functions first and only falls back to a plain-text body when no
+template is configured, which is a local/dev convenience, not something
+production traffic can rely on.
 """
 
 import logging
@@ -11,7 +22,6 @@ import re
 import httpx
 
 from app.config import settings
-from app.utils.webhook_auth import verify_shared_secret_token
 
 logger = logging.getLogger(__name__)
 
@@ -21,14 +31,6 @@ _CONTENT_BASE_URL = "https://content.twilio.com/v1"
 
 class TwilioError(Exception):
     """Raised for any non-2xx response or unexpected shape from Twilio."""
-
-
-def verify_whatsapp_webhook_token(token: str | None) -> bool:
-    """Same shared-secret-path-token pattern as twilio_voice.verify_voice_webhook_token
-    / exotel_client.verify_webhook_token -- simpler than implementing Twilio's
-    own X-Twilio-Signature HMAC scheme, consistent with how this codebase
-    already secures every other inbound Twilio/Exotel callback."""
-    return verify_shared_secret_token(token, settings.twilio_whatsapp_webhook_token)
 
 
 def _to_whatsapp_address(phone: str) -> str:
@@ -44,7 +46,7 @@ def _to_whatsapp_address(phone: str) -> str:
 
 
 async def send_whatsapp_message(to_phone: str, body: str, timeout: float = 15.0) -> dict:
-    if not (settings.twilio_account_sid and settings.twilio_auth_token):
+    if not (settings.twilio_account_sid and settings.twilio_auth_token and settings.twilio_whatsapp_from):
         return {"status": "skipped", "reason": "Twilio is not configured"}
 
     async with httpx.AsyncClient(timeout=timeout) as client:
@@ -60,7 +62,9 @@ async def send_whatsapp_message(to_phone: str, body: str, timeout: float = 15.0)
         if response.status_code >= 400:
             # Twilio's error body is JSON with `message`/`code` -- surface it
             # verbatim rather than just the status, since the most common
-            # failure (63015: recipient never joined the sandbox) is only
+            # production failure modes (63016: outside the 24h
+            # customer-service session -- see module docstring; 63024/63025:
+            # template content mismatch or not yet Meta-approved) are only
             # distinguishable that way.
             raise TwilioError(f"send failed ({response.status_code}): {response.text}")
         data = response.json()
@@ -93,7 +97,7 @@ async def send_whatsapp_template(
     button (custom label, no raw URL text, no link-preview card) rather than
     an auto-linkified URL. content_variables keys are the template's "{{N}}"
     placeholders as strings, e.g. {"1": "🔴", "2": "HIGH"}."""
-    if not (settings.twilio_account_sid and settings.twilio_auth_token):
+    if not (settings.twilio_account_sid and settings.twilio_auth_token and settings.twilio_whatsapp_from):
         return {"status": "skipped", "reason": "Twilio is not configured"}
 
     async with httpx.AsyncClient(timeout=timeout) as client:

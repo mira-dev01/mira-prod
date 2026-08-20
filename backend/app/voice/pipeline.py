@@ -60,6 +60,7 @@ from app.services import (
     call_classification_service,
     call_coordinator,
     call_service,
+    call_summary_notification,
     call_summary_service,
     faq_service,
     guest_calling_notification,
@@ -1318,7 +1319,8 @@ async def _run_pipeline_inner(
                 summary = await call_summary_service.summarize_call(transcript, duration_seconds)
                 await call_service.set_call_summary(finalize_db, call_session_id, summary)
 
-                if any(m.get("role") == "user" for m in context.messages):
+                had_conversation = any(m.get("role") == "user" for m in context.messages)
+                if had_conversation:
                     # Backfill the real caller's phone (from Exotel) and the
                     # property this call was about onto the lead the agent
                     # created during the call. backfill_lead only fills blank
@@ -1359,6 +1361,24 @@ async def _run_pipeline_inner(
                 # directly, independent of the backfill/delete_if_empty path.
                 if classification.call_type not in QUALIFIED_CALL_TYPES:
                     await lead_service.delete_for_unqualified_call(finalize_db, call_session_id)
+
+                # Host call-summary WhatsApp (property inquired, guest name,
+                # guest count, check-in/out, whether escalation was raised,
+                # a short recap, and a dashboard link) -- gated the same way
+                # a Lead is (real conversation + a qualified call type), so
+                # a connection blip or a JUNK/spam call never generates
+                # host-facing noise. host_user_id is always set for a real
+                # voice-pipeline call (see _run_pipeline_inner's own
+                # required parameter); fired detached, same reasoning as
+                # _update_guest_memory below -- the guest has already
+                # disconnected, and a slow/failed WhatsApp send must not
+                # delay call teardown.
+                if had_conversation and classification.call_type in QUALIFIED_CALL_TYPES:
+                    asyncio.create_task(
+                        call_summary_notification.notify_host_of_call_summary(
+                            call_session_id, host_user_id, property_name
+                        )
+                    )
 
             # Guest Memory (memory-architecture-plan.md section 1) -- fire
             # detached in its own session, after the lead backfill/cleanup

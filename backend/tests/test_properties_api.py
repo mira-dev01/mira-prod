@@ -528,3 +528,32 @@ async def test_update_property_switch_from_scheduled_back_to_mira_preserves_sche
     # comment) -- confirms that documented, intentional strictness still
     # holds, even though the values are still sitting on the row.
     assert back_to_scheduled.status_code == 422
+
+
+async def test_portfolio_gallery_returns_every_property_under_host(client, test_property, test_user, db_session):
+    from app.models.property import Property
+
+    test_property.photos = ["https://example.com/photo1.jpg"]
+    second = Property(
+        user_id=test_user.id, name="Second Villa", base_price=2000, max_guests=3, exophone="+918011117777"
+    )
+    db_session.add(second)
+    await db_session.commit()
+
+    # No-auth: the send_photos voice tool hands this URL to a guest over
+    # WhatsApp, so it must be reachable with no bearer token.
+    resp = await client.get(f"/api/v1/properties/portfolio/{test_user.id}/gallery")
+    assert resp.status_code == 200
+    body = resp.json()
+    names = {p["name"] for p in body}
+    assert names == {"Test Villa", "Second Villa"}
+    test_villa = next(p for p in body if p["name"] == "Test Villa")
+    assert test_villa["photos"] == ["https://example.com/photo1.jpg"]
+
+
+async def test_portfolio_gallery_empty_for_host_with_no_properties(client, test_user):
+    import uuid
+
+    resp = await client.get(f"/api/v1/properties/portfolio/{uuid.uuid4()}/gallery")
+    assert resp.status_code == 200
+    assert resp.json() == []

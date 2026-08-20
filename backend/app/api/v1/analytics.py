@@ -15,9 +15,20 @@ from app.models.user import User
 from app.schemas.call_classification import QUALIFIED_CALL_TYPES
 from app.services.call_service import BROWSER_TEST_CALLER_NUMBER
 from app.services.recovery_service import NOTIFICATION_CHANNEL_BUSY_RECOVERY
-from app.services.whatsapp_reply_service import NOTIFICATION_CHANNEL_BUSY_RECOVERY_REPLY
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
+
+# Historical-only as of the WhatsApp production-messaging cutover: the
+# interactive numbered-menu guest reply (Property/Pricing/FAQs/Photos/
+# Talk-to-host/Something else) that used to produce this channel has been
+# removed in favor of a single "Mira is busy, call back in 5 minutes"
+# message (see recovery_service._guest_recovery_whatsapp_text) -- nothing
+# creates a busy_recovery_reply Notification anymore. Kept as a plain
+# string (not re-imported from a service module) purely so `recovered`/
+# `avg_recovery_time_seconds` below still aggregate correctly over any
+# pre-cutover rows already in the database; both will read 0/null for any
+# lead created after the cutover, which is expected, not a bug.
+NOTIFICATION_CHANNEL_BUSY_RECOVERY_REPLY = "busy_recovery_reply"
 
 TimeseriesMetric = Literal["total_calls", "completed_calls", "escalated_calls", "pipeline_value", "open_leads"]
 
@@ -283,12 +294,12 @@ async def analytics_recovery(
 
     Every recovery row is scoped by Lead.user_id (a join through Lead), not
     property_id.in_(owned_property_ids) like escalated_calls/open_notifications
-    above -- a busy_recovery_reply notification can have property_id=NULL
-    when the guest's property couldn't be resolved (see
-    whatsapp_reply_service._resolve_property), which would silently
-    undercount under an IN-list filter the same way Notification.property_id
-    IS NULL already does for Lead Agent escalations (analytics_summary's own
-    comment flags this as a pre-existing gap). Lead.user_id has no such
+    above -- a busy_recovery notification can have property_id=NULL for a
+    Lead Agent/portfolio-wide line with no single property, which would
+    silently undercount under an IN-list filter the same way
+    Notification.property_id IS NULL already does for Lead Agent
+    escalations (analytics_summary's own comment flags this as a
+    pre-existing gap). Lead.user_id has no such
     nullability gap -- every recovery Lead always belongs to exactly the host
     whose line was busy.
     """
