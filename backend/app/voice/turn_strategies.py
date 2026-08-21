@@ -67,9 +67,18 @@ def _is_incomplete(text: str) -> bool:
     # Sarvam's default/ambiguous sentence-final punctuation and gets added
     # on almost any falling-pitch pause, including mid-thought (confirmed
     # live: "...my phone number is 9." read as complete on a single digit).
-    # It should not by itself rescue a short answer from the length check.
-    if len(words) < 3 and stripped[-1] not in "!?":
-        return True
+    # It should only be distrusted when the trailing word is a bare number --
+    # that's the genuinely ambiguous case (a phone-number fragment still
+    # being dictated). A short WORD-based answer ending in "." ("Yes.",
+    # "Sure.") is a real, complete answer and must still read as complete
+    # (test_turn_strategies.py::test_is_complete_short_but_punctuated).
+    if len(words) < 3:
+        last_char = stripped[-1]
+        if last_char in "!?":
+            return False
+        trailing_is_bare_number = words[-1].rstrip(".,!?").isdigit()
+        if last_char != "." or trailing_is_bare_number:
+            return True
     return False
 
 

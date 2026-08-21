@@ -124,7 +124,11 @@ async def test_call_includes_duration_and_lead_name_phone(test_user, client, aut
     session = CallSession(
         exotel_call_id="call-with-lead-1",
         user_id=test_user.id,
-        caller_number="browser-test",
+        # A real-looking caller number, not the browser-test placeholder --
+        # this test also checks the list endpoint below, which excludes
+        # browser-test calls by default (include_test_calls=False), and
+        # that filtering isn't what this test is about.
+        caller_number="+919876543210",
         status="completed",
         started_at=started,
         ended_at=started + timedelta(minutes=4, seconds=30),
@@ -135,6 +139,15 @@ async def test_call_includes_duration_and_lead_name_phone(test_user, client, aut
 
     lead = Lead(user_id=test_user.id, call_session_id=session.id, guest_name="Rohan", phone="9123456780")
     db_session.add(lead)
+    await db_session.commit()
+    await db_session.refresh(lead)
+    # CallSession.guest_name/.guest_phone read through CallSession.lead,
+    # which navigates via CallSession.lead_id -- not Lead.call_session_id
+    # (see call_session.py's own comment: this lets many call_sessions
+    # share one lead for a repeat caller). Setting Lead.call_session_id
+    # above links the lead back to this call for lookups the other
+    # direction, but doesn't by itself make this the call's *current* lead.
+    session.lead_id = lead.id
     await db_session.commit()
 
     resp = await client.get(f"/api/v1/calls/{session.id}", headers=auth_headers)
