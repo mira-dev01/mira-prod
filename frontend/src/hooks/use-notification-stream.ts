@@ -51,7 +51,7 @@ function parseSseEvent(eventText: string): NotificationOut | null {
 }
 
 async function connect() {
-  const token = getToken();
+  const token = await getToken();
   controller = new AbortController();
   const { signal } = controller;
   seenNotificationIds = new Set<string>();
