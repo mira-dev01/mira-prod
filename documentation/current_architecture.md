@@ -1,4 +1,4 @@
-# Current Architecture (as of 2026-08-09)
+# Current Architecture (as of 2026-09-02)
 
 The clearest, single technical description of how Mira works **today**. This file is the
 authoritative architecture overview; for full detail, follow the links into `docs/` rather than
@@ -7,11 +7,11 @@ implemented vs. in-progress vs. planned, and [../CLAUDE.md](../CLAUDE.md) for co
 a future coding session must respect.
 
 **Scope note on "current"**: everything described below is real, working code in this working
-tree. Most of it (voice pipeline, tools, prompts, dashboard) is committed on `main`. The
-Redis-backed `CallCoordinator`/Busy Call Recovery/WhatsApp-reply subsystem (§3–§5 below) is
-implemented, tested, and wired end-to-end, but as of this date is **uncommitted local work**, not
-yet merged — see [project_state.md](project_state.md)'s "Uncommitted work" section for exactly
-which files.
+tree, and is committed on `main` — including the Redis-backed `CallCoordinator`/Busy Call
+Recovery/WhatsApp subsystem (§3–§5 below), which was uncommitted local work as of an earlier
+revision of this file but has since landed (see `app/services/call_coordinator.py` and
+`app/services/recovery_service.py`'s own git history). Check [project_state.md](project_state.md)
+for anything genuinely still in progress.
 
 ---
 
@@ -41,7 +41,7 @@ CallCoordinator.acquire_or_reject  (Redis lease: is this host/property already o
             ↓
         GuestProfile + Lead (recovery_reason="BUSY_CALL") + Notification (channel="busy_recovery")
             ↓
-        Guest WhatsApp menu + Host WhatsApp alert
+        Guest WhatsApp ("call back in ~5 min", no reply handling) + Host WhatsApp alert
             ↓
         Dashboard (Opportunities page, Live Requests, Recovery Analytics)
 ```
@@ -185,8 +185,9 @@ for full implementation/review/reverify detail; short summary:
 
 - Once dates or a stay length (`nights`, a `ConversationState` slot the LLM is instructed to ask
   for *before* pressing for an exact check-in date on a vague window) are known,
-  `orchestrator.recommend_properties` classifies each SQL-filtered candidate via
-  `calendar_service.partial_availability_for_candidates` (one batched query, fail-open on error,
+  `recommend_properties` (`app/services/property/retrieval/orchestrator.py`) classifies each
+  SQL-filtered candidate via `calendar_service.partial_availability_for_candidates` (one batched
+  query, fail-open on error,
   matching Phase 2.4's original fail-open discipline) as `"full"` (zero conflicts — recommended
   normally), `"none"` (no viable gap — excluded), or `"partial"` (a real conflict exists but the
   property might still work — held out of the main list, surfaced separately via
@@ -195,7 +196,7 @@ for full implementation/review/reverify detail; short summary:
   not to separately pre-screen candidates with `check_calendar` first; `check_calendar` is reserved
   for re-confirming the one property the guest actually commits to, against their final exact
   dates, even if an earlier classification (against a looser window) already looked clean.
-- `PropertyRecommendationGuardProcessor` (§7 below) deterministically verifies a spoken reply
+- `PropertyRecommendationGuardProcessor` (one of the guards listed in §2 above) deterministically verifies a spoken reply
   against a `"partial"` property's real data — never a false "it's available" claim, never a wrong
   conflicting date, and never an omission (the property named with the real dates left unstated,
   the one failure shape real-LLM adversarial testing actually reproduced live, on a small fallback
@@ -250,7 +251,7 @@ prompt.
 Full schema: [docs/database.md](../docs/database.md). Summary of what lives where:
 
 - **PostgreSQL** — all durable business data: `User`, `Property`, `Lead`, `GuestProfile`,
-  `CallSession`, `Notification`, `FaqEntry`, `HostDiscountRule`, `PricingRule`, `Technician`,
+  `CallSession`, `Notification`, `FaqEntry`, `NegotiationRule`, `PricingRule`, `Technician`,
   `Booking`. This is the system of record for everything a host sees on the dashboard.
 - **Redis** — two independent, non-overlapping uses (`app/integrations/redis_client.py`'s own
   docstring is explicit that these must stay separate modules with different failure contracts):

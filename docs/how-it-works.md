@@ -12,42 +12,52 @@ Documentation-only snapshot of MIRA's voice conversation architecture as of 2026
 Exotel (raw WS audio)
   │  start event
   ▼
-run_voice_pipeline (pipeline.py:775)
+run_voice_pipeline (pipeline.py:1625)
   │  resolves Property/User/Guest, builds prompt
   │  starts looped ringback tone (ringing_audio.py) directly on the raw
   │  socket — no pipeline exists yet to push a frame into
+  │  CallCoordinator.acquire_or_reject (Redis lease) gates START_PIPELINE
+  │  vs. BUSY_RECOVERY before any of the below runs — see current_architecture.md
   ▼
-_run_pipeline (pipeline.py:385) builds the pipecat Pipeline, cancels+awaits
+_run_pipeline (pipeline.py:616) builds the pipecat Pipeline, cancels+awaits
   the ring-tone task right before runner.run()
   ▼
-┌────────────────────────────── per-turn pipeline ───────────────────────────────┐
-│ STT (Sarvam,     Silence      Language     user_        Redundant   State      │
-│ codemix)      →  Watchdog  →  Sync      →  aggregator →  Context  →  Prompt    │
-│                   (nudge/       (TTS voice    (0.9s        Guard      Sync     │
-│                   hangup)       switch)       timeout)   (drops       (injects │
-│                                                           spurious    goal/    │
-│                                                           re-fire)    slots)   │
-│                                                              │                 │
-│                                                              ▼                 │
-│                                          LLM (Groq gpt-oss-120b, 12 tools)     │
-│                                                │           │                  │
-│                                    (function call)   (reply text)             │
-│                                                ▼           ▼                  │
-│                            tools.py → tool_handlers.py   Repetition Guard     │
-│                            (DB writes: Lead,                  │               │
-│                             Notification, …)             Meta-Commentary     │
-│                                                Guard                          │
-│                                                     │                         │
-│                                          Property Recommendation Guard        │
-│                                                     │                         │
-│                                          Escalation Phrase Guard              │
-│                                                     │                         │
-│                                          Premature End-Call Guard             │
-│                                                     │                         │
-│                                          Response Shape Validator             │
-│                                                     ▼                         │
-│                                  TTS (Sarvam, pace 1.15, EN_IN/HI_IN)          │
-└──────────────────────────────────────┬─────────────────────────────────────┘
+┌──────────────────────────────────── per-turn pipeline ─────────────────────────────────────┐
+│ STT (Sarvam,   Silence     Language    Style      user_       Redundant   State             │
+│ codemix)    →  Watchdog →  Sync     →  Engine   → aggregator → Context  →  Prompt            │
+│                 (nudge/      (TTS voice  (rolling               Guard      Sync              │
+│                 hangup)      switch)     window,               (drops     (injects           │
+│                                           hysteresis)          spurious   goal/               │
+│                                                                 re-fire)   slots)              │
+│                                                                    │                          │
+│                                                                    ▼                          │
+│                                          LLM (Groq gpt-oss-120b, 12 tools)                    │
+│                                                │              │                               │
+│                                    (function call)      (reply text)                          │
+│                                                ▼              ▼                               │
+│                            tools.py → tool_handlers.py   Slow-Tool Filler (long recommend_/    │
+│                            (DB writes: Lead,              get_pricing/negotiate_rate calls)    │
+│                             Notification, …)                   │                              │
+│                                                            Repetition Guard                    │
+│                                                                  │                             │
+│                                                            Meta-Commentary Guard                │
+│                                                                  │                             │
+│                                                     Style Compliance Monitor (observer only —  │
+│                                                       flags pending_style_correction, never     │
+│                                                       rewrites)                                 │
+│                                                                  │                             │
+│                                                     Property Recommendation Guard                │
+│                                                                  │                             │
+│                                                     Escalation Phrase Guard                     │
+│                                                                  │                             │
+│                                                     Premature End-Call Guard                    │
+│                                                                  │                             │
+│                                                     Response Shape Validator                    │
+│                                                                  │                             │
+│                                                     End-Call Reliability Guard                  │
+│                                                                  ▼                             │
+│                                       TTS (Sarvam, pace 1.15, EN_IN/HI_IN)                     │
+└──────────────────────────────────────┬───────────────────────────────────────────────────────┘
                                         ▼
                           transport.output() → Exotel → guest's phone
                                         │
@@ -56,23 +66,24 @@ _run_pipeline (pipeline.py:385) builds the pipecat Pipeline, cancels+awaits
                       text back into context.messages → next guest turn
 ```
 
-Everything from Redundant Context Guard through Response Shape Validator is a deterministic, code-level backstop for a specific confirmed-live prompt-compliance failure — inert on the overwhelming majority of turns. The tool-call branch is the only path that touches Postgres mid-call.
+Everything from Redundant Context Guard through End-Call Reliability Guard is a deterministic, code-level backstop for a specific confirmed-live prompt-compliance failure (Style Compliance Monitor is the one exception — see step 7 below) — inert on the overwhelming majority of turns. The tool-call branch is the only path that touches Postgres mid-call.
 
 ### Step-by-step
 
-1. **Exotel opens a WebSocket** to `POST/WS /api/v1/voice/exotel/ws/{token}` (`app/api/v1/voice.py`). Pipecat's `parse_telephony_websocket` reads the initial "start" event into a `CallData`.
-2. **`run_voice_pipeline`** (`pipeline.py:775`) takes over, before any pipeline object exists:
+1. **Exotel opens a WebSocket** to `POST/WS /api/v1/voice/exotel/ws/{token}` (`app/api/v1/voice.py`). Pipecat's `parse_telephony_websocket` reads the initial "start" event into a `CallData`. (A parallel `run_voice_pipeline_twilio` entry point at `pipeline.py:1845` exists purely so real-call testing can continue on Twilio's free trial when Exotel credits run out — same downstream pipeline, separate telephony integration.)
+2. **`run_voice_pipeline`** (`pipeline.py:1625`) takes over, before any pipeline object exists:
    - Starts a looped ringback tone directly on the raw socket (`ringing_audio.py`) — there's no pipeline yet to push a frame into, so this bypasses pipecat entirely.
    - Routes the call: `call_service.get_property_by_number` (Guest Support, one fixed property) vs. `get_user_by_lead_number` (Lead Agent, portfolio-wide).
+   - `CallCoordinator.acquire_or_reject` (`app/services/call_coordinator.py`, Redis-backed lease) gates whether this call actually gets a pipeline (`START_PIPELINE`) or is handed to Busy Call Recovery (`BUSY_RECOVERY`) — see `documentation/current_architecture.md` for that mechanism; out of this document's scope beyond noting where it sits in the lifecycle.
    - Resolves/creates `GuestProfile`, checks for an active booking, creates the `CallSession` row.
    - Builds the system prompt once (`build_system_prompt` / `build_lead_system_prompt`) and the fixed greeting text.
-3. **`_run_pipeline`** (`pipeline.py:385`) constructs the actual pipecat `Pipeline`: STT, the guard chain, LLM, TTS, tools, turn-detection strategy. Right before `runner.run()`, the ring-tone task is cancelled and awaited — no window where two writers hit the same socket.
+3. **`_run_pipeline`** (`pipeline.py:616`) constructs the actual pipecat `Pipeline`: STT, the guard chain, LLM, TTS, tools, turn-detection strategy. Right before `runner.run()`, the ring-tone task is cancelled and awaited — no window where two writers hit the same socket.
 4. **Greeting**: pre-seeded into the LLM context as an assistant turn, then spoken via `worker.queue_frame(TTSSpeakFrame(first_message))` on `on_client_connected`, guarded by a one-shot flag.
-5. **Guest speaks** → STT → Silence Watchdog (resets its timer) → Language Sync (may push a live TTS voice switch) → `user_aggregator` decides turn-end (0.9s post-speech silence) → Redundant Context Guard (drops a spurious pipecat re-fire) → State Prompt Sync (injects the current slot/goal summary as one system message, mutated in place) → LLM.
-6. **LLM** either replies directly or calls one of 12 tools (`app/voice/tools.py` → `app/services/tool_handlers.py`, some of which delegate further into `app/services/property/retrieval/` or `pricing_engine.py`). The tool result is appended as a `tool`-role message and triggers the next completion.
-7. **Guard chain** (LLM → TTS): Repetition → Meta-Commentary → Property Recommendation → Escalation Phrase → Premature End-Call → Response Shape Validator. Each is pass-through by default; each activates only around the one narrow condition it exists for.
+5. **Guest speaks** → STT → Silence Watchdog (resets its timer) → Language Sync (may push a live TTS voice switch) → `ConversationStyleProcessor` (`app/voice/conversation_style.py`, updates the hysteresis-smoothed `ConversationStyle` off the guest's own turn) → `user_aggregator` decides turn-end (0.9s post-speech silence) → Redundant Context Guard (drops a spurious pipecat re-fire) → State Prompt Sync (injects the current slot/goal summary as one system message, mutated in place) → LLM.
+6. **LLM** either replies directly or calls one of 12 tools (`app/voice/tools.py` → `app/services/tool_handlers.py`, some of which delegate further into `app/services/property/retrieval/` or `pricing_engine.py`). The tool result is appended as a `tool`-role message and triggers the next completion. `SlowToolFillerProcessor` (`app/voice/slow_tool_filler.py`) speaks a short filler line if `recommend_properties`/`get_pricing`/`negotiate_rate` is still running past its threshold, so the guest isn't left in dead air.
+7. **Guard chain** (LLM → TTS): Repetition → Meta-Commentary → Style Compliance Monitor (observer — flags `ConversationQuality.pending_style_correction` for the next turn's prompt, never rewrites) → Property Recommendation → Escalation Phrase → Premature End-Call → Response Shape Validator → End-Call Reliability. Every guard is pass-through by default; each activates only around the one narrow condition it exists for.
 8. **TTS** (Sarvam) synthesizes the guarded text → `transport.output()` → Exotel → guest's phone. `assistant_aggregator` appends the *actually-spoken* (post-guard) text back into context, so the model's own memory matches reality.
-9. **Teardown** (`on_pipeline_finished`): assembles transcript, `call_service.finalize_call_session`, then two one-shot post-call LLM calls (`call_classification_service.classify_call`, `call_summary_service.summarize_call`) and lead backfill/cleanup.
+9. **Teardown** (`on_pipeline_finished`): assembles transcript, `call_service.finalize_call_session`, then two one-shot post-call LLM calls (`call_classification_service.classify_call`, `call_summary_service.summarize_call`) and lead backfill/cleanup. One exception: an intentional host handoff (Take Call) skips the Exotel hangup and finalizes the session as `"in_progress"` rather than `"completed"`, since the guest's call is still live and about to be connected to the host.
 
 Two agent modes (**Guest Support** — one fixed property, from that property's `exophone`; **Lead Agent** — portfolio-wide, from `User.lead_exophone`) share this identical pipeline builder and tool set; only the system prompt, first message, and whether `property_id` is pre-fixed differ. Browser-test variants exercise the same code path over WebRTC.
 
@@ -97,7 +108,7 @@ Two agent modes (**Guest Support** — one fixed property, from that property's 
 
 There is **no dedicated "booking" object or booking flow** — bookings are represented as a `Lead` row that a host manually promotes to `status="booked"` from the dashboard Kanban (`PATCH /leads/{id}`, the *only* place `Lead.status` is ever written — the voice agent never touches it). The separate `Booking` model (`app/models/booking.py`) is populated only by the read-only iCal sync (`calendar_service.sync_property_ical`) from each property's existing Airbnb calendar — it has no price/payment columns and nothing in the voice pipeline writes to it.
 
-Collection mechanics, per `LEAD_AGENT_INSTRUCTIONS` (`system_prompt.py:900-1014`):
+Collection mechanics, per `LEAD_AGENT_INSTRUCTIONS` (`system_prompt.py:908-1025`):
 
 1. Guests → location/purpose → stay length, with the OLD separate "have dates been finalized?"
    branch removed (availability-first recommendations, Implementation 4) — `recommend_properties`
@@ -134,7 +145,7 @@ What does **not** exist: vector/embedding-based long-term memory, semantic searc
 
 ## 5. How prompts are constructed
 
-`app/prompts/system_prompt.py` (885 lines) — string concatenation, not a template engine, not retrieval. Two entry points share one `GOLDEN_RULES` block (~250 lines, itself accreted from dated, cited real-call failures — nearly every clause has a "Confirmed live: …" justification inline) layered under mode-specific instructions and host customization:
+`app/prompts/system_prompt.py` (1090 lines) — string concatenation, not a template engine, not retrieval. Two entry points share one `GOLDEN_RULES` block (~250 lines, itself accreted from dated, cited real-call failures — nearly every clause has a "Confirmed live: …" justification inline) layered under mode-specific instructions and host customization:
 
 | Function | Mode | Assembles |
 |---|---|---|
@@ -148,13 +159,18 @@ Built **once**, before the pipeline exists, and never rebuilt mid-call — this 
 ## 6. Files controlling conversation flow
 
 - `app/voice/pipeline.py` — pipeline construction, entry points, LLM provider fallback chain
-- `app/voice/conversation_state.py` — the structured in-call memory object
+- `app/voice/conversation_state.py` — the structured in-call memory object (conversation FACTS)
+- `app/voice/conversation_style.py` — `StyleEngine`/`ConversationStyleProcessor`, the hysteresis-smoothed HOW-Mira-speaks object (language/script/tone), separate from `ConversationState`
+- `app/voice/conversation_quality.py` — `ConversationQuality`, observational validator/health metrics only; not read by prompt construction except the narrow `pending_style_correction` bridge
 - `app/voice/state_prompt_sync.py` — bridges state → LLM context
 - `app/prompts/system_prompt.py` — everything the model is instructed to do
 - `app/voice/silence_watchdog.py` — turn-taking timeout / hangup lifecycle
 - `app/voice/turn_strategies.py` — when a guest's turn is considered "done"
 - `app/voice/language_sync.py` — live language switching
-- The seven guard processors (`repetition_guard.py`, `meta_commentary_guard.py`, `property_recommendation_guard.py`, `escalation_phrase_guard.py`, `premature_end_call_guard.py`, `redundant_context_guard.py`, `response_shape_guard.py`) — each corrects one shape of the LLM not following the flow correctly
+- `app/voice/language_heuristics.py` — shared deterministic text-language heuristics used by both `conversation_style.py` and `style_compliance_monitor.py`
+- `app/voice/slow_tool_filler.py` — speaks a filler line while a slow tool call (`recommend_properties`/`get_pricing`/`negotiate_rate`) is still running
+- `app/voice/style_compliance_monitor.py` — `StyleComplianceMonitor`, a streaming observer (not a guard — never rewrites/cuts a frame, never calls an LLM) that flags a style mismatch for the next turn's prompt
+- The eight guard processors (`repetition_guard.py`, `meta_commentary_guard.py`, `property_recommendation_guard.py`, `escalation_phrase_guard.py`, `premature_end_call_guard.py`, `redundant_context_guard.py`, `response_shape_guard.py`, `end_call_reliability_guard.py`) — each corrects one shape of the LLM not following the flow correctly
 
 ---
 
@@ -162,7 +178,7 @@ Built **once**, before the pipeline exists, and never rebuilt mid-call — this 
 
 | Pure business logic (no LLM involved) | Pure prompt engineering (no code logic) | Hybrid (both, deliberately) |
 |---|---|---|
-| `pricing_engine.py` (price/negotiation math); `calendar_service.py` (availability, iCal sync); `lead_service.py` (upsert/backfill/dedup); `notification_service.py`; `property/retrieval/{filter_builder,sql_search,ranking}.py`; all pipeline guards (9 as of 2026-08-09, see `docs/agents.md`'s Pipeline stages); `ConversationState`'s own goal-derivation logic | `GOLDEN_RULES` tone/formatting/warmth clauses; lead-qualification workflow ordering (prompt prose, not enforced by code except the property-lock exception); scope/decline heuristics ("is this caller relevant") | `system_prompt.py`'s `_today_anchor()` (dates computed in code, spoken by the model); `property_recommendation_guard.py` (business logic verifies what the LLM says against real tool output); `call_classification_service.py` / `call_summary_service.py` (one-shot LLM calls, but their output structurally overrides live tool-call judgments) |
+| `pricing_engine.py` (price/negotiation math); `calendar_service.py` (availability, iCal sync); `lead_service.py` (upsert/backfill/dedup); `notification_service.py`; `property/retrieval/{filter_builder,sql_search,ranking}.py`; all 8 pipeline guards (see `docs/agents.md`'s Pipeline stages) plus `StyleComplianceMonitor` (deterministic scoring, no LLM call, though it's an observer rather than a guard — see §6); `ConversationState`'s own goal-derivation logic; `StyleEngine`'s hysteresis-smoothed style computation | `GOLDEN_RULES` tone/formatting/warmth clauses; lead-qualification workflow ordering (prompt prose, not enforced by code except the property-lock exception); scope/decline heuristics ("is this caller relevant") | `system_prompt.py`'s `_today_anchor()` (dates computed in code, spoken by the model); `property_recommendation_guard.py` (business logic verifies what the LLM says against real tool output); `call_classification_service.py` / `call_summary_service.py` (one-shot LLM calls, but their output structurally overrides live tool-call judgments) |
 
 ---
 
@@ -255,17 +271,23 @@ escalate_to_host
       → notification_service.create_notification(channel="escalation", …)
              ← dashboard's Live Requests feed reads THIS table
       → lead_service.upsert_lead(escalated=True, …)                (again — belt/suspenders)
-      → asyncio.create_task: _send_escalation_whatsapp  (Twilio sandbox, detached)
       → asyncio.create_task: _send_escalation_email     (SMTP, detached, currently
                                                            broken on Railway — port 587 blocked)
+      → asyncio.create_task: _send_escalation_whatsapp  (only if host_user.phone is set;
+                                                           real Twilio WhatsApp Business API,
+                                                           production sender — no sandbox anymore;
+                                                           uses TWILIO_ESCALATION_TEMPLATE_SID if
+                                                           configured, else a plain-text fallback;
+                                                           detached)
       → returns natural-language string to LLM
 
   escalation_phrase_guard armed by FunctionCallsStartedFrame(escalate_to_host)
   → unconditionally REPLACES the model's next reply with a fixed safe line,
     regardless of what the model actually generated
 
-Host sees: dashboard Live Requests (Notification rows) + WhatsApp (if opted into
-  sandbox) + email (if SMTP unblocked) + Leads Kanban card with escalated=True
+Host sees: dashboard Live Requests (Notification rows) + WhatsApp (if the host has
+  a phone on file and Twilio is configured) + email (if SMTP unblocked) + Leads
+  Kanban card with escalated=True
   → host manually sets Lead.status="booked" via PATCH /leads/{id}  ← the ONLY
     booking-confirmation write path in the entire system
 ```
@@ -293,17 +315,24 @@ backend/app/
 │   └── system_prompt.py     GOLDEN_RULES + both prompt builders            [flow: prompt]
 ├── voice/                   real-time pipecat pipeline
 │   ├── pipeline.py          pipeline assembly, entry points, LLM fallback  [flow: core]
-│   ├── conversation_state.py  in-call structured memory                   [flow: state]
+│   ├── conversation_state.py  in-call structured memory (FACTS)           [flow: state]
+│   ├── conversation_style.py  StyleEngine/ConversationStyleProcessor (HOW Mira speaks) [flow: state]
+│   ├── conversation_quality.py  ConversationQuality — observational metrics only [flow: state]
 │   ├── state_prompt_sync.py   state → LLM context bridge                  [flow: state]
 │   ├── tools.py              12 tool wrappers (closures)                  [flow: tools]
 │   ├── silence_watchdog.py    turn timing / hangup lifecycle              [flow: lifecycle]
 │   ├── turn_strategies.py     turn-end detection strategies               [flow: lifecycle]
 │   ├── language_sync.py       live TTS language switch                   [flow: i18n]
+│   ├── language_heuristics.py shared text-language heuristics (no LLM)   [flow: i18n]
+│   ├── slow_tool_filler.py    filler line during a slow tool call        [flow: lifecycle]
+│   ├── handoff_signal.py      in-process host-handoff (Take Call) signal [flow: lifecycle]
 │   ├── vad.py                 shared VAD analyzer                        [infra]
 │   ├── ringing_audio.py       pre-pipeline ringback tone                 [infra]
-│   ├── *_guard.py / response_shape_guard.py   7 deterministic backstops  [flow: guards]
+│   ├── style_compliance_monitor.py  streaming style observer, not a guard [flow: guards]
+│   ├── *_guard.py / response_shape_guard.py   8 deterministic backstops  [flow: guards]
 │   └── assets/
 ├── services/                 business logic (LLM-free unless noted)
+│   ├── call_service.py       call routing/CallSession/GuestProfile lookups, finalize [logic]
 │   ├── tool_handlers.py      the 10 handle_* functions behind the tools  [logic]
 │   ├── pricing_engine.py     price/negotiation math                     [logic]
 │   ├── calendar_service.py   availability / iCal sync (read-only)       [logic]
@@ -381,7 +410,7 @@ This is the *prompt-scripted* ordering and also, since Phase 1/1.5/1.6 of `agent
 | 2 | In-call LLM context has no truncation/summarization ceiling. | pipeline.py / LLMContext usage | **CLOSED (2026-08-05).** Confirmed via direct read of `agent-conversation-improvement.md` Phase 4a: measured against real transcripts (2026-08-01) — in-call history growth is ~9% of total per-call token cost even on the longest real call observed (~25% prompt-size growth at worst), not the runaway risk this item worried about. Phase 4a.2 (compaction) explicitly and correctly not built, per that measurement — this was a "measure first" gap, not a missing feature, and it's now measured. Superseded item #7 (below) as the actual real lever, which is now also closed. |
 | 3 | No unified booking-lifecycle vocabulary — `Lead.status` (host-set), `Lead.lead_temperature` (LLM-set, unvalidated), and `ConversationState.conversation_goal` (in-call only) each track a different partial view of "how far along is this booking," with nothing reconciling them and no shared enum. | models/lead.py, conversation_state.py | **PARTIALLY CLOSED (2026-08-05).** A documentation-only cross-reference mapping the three vocabularies to each other was added (`conversation_state.py`, near `ConversationGoal`; one-line pointer on `Lead.lead_temperature`) — no schema change, no migration. A genuine unified/enforced field (migration + backfill decision) remains open and out of scope for this pass; the cross-reference at least makes the relationship discoverable from any one of the three locations. |
 | 4 | Escalation email is silently broken in production (Railway Trial-tier blocks outbound SMTP:587) — the send is fire-and-forget so this fails with zero signal to anyone. | app/integrations/email_client.py | OPEN — out of scope for this pass. Known, documented (CLAUDE.md, project_state.md), not yet fixed — needs an HTTP email API (Resend/SendGrid/Postmark) instead of raw SMTP |
-| 5 | WhatsApp delivery is sandbox-only (24h session window, opt-in required) — no real WhatsApp Business number yet. | app/integrations/twilio_client.py | OPEN — out of scope for this pass. Known, documented, blocked on external KYC/approval, not a code issue |
+| 5 | ~~WhatsApp delivery is sandbox-only~~ — **RESOLVED**, stale as of this revision. `app/integrations/twilio_client.py`'s own module docstring now states production (Meta-approved) sender delivery, not a sandbox; per `CLAUDE.md`, `TWILIO_WHATSAPP_FROM` must be a real, Meta-approved WhatsApp Business number and every proactive send (escalation/busy-recovery/call-summary/photos) goes through a pre-approved Content Template first, falling back to plain text only when no template is configured. This cutover postdates this doc's last full pass over this item. | app/integrations/twilio_client.py | CLOSED (external cutover, not a code fix in this pass) |
 | 6 | Guardrail interventions (a repetition cut, a replaced escalation line, a stripped meta-comment) are not logged to any DB table — only visible in the Railway stdout stream for that call's timestamp window, and only in `CallSession.transcript` as post-guard text. No way to query "how often did guard X fire this week." | All 7 guard modules | **PARTIALLY CLOSED (2026-08-05).** All 6 previously-silent guards (`repetition_guard.py`, `meta_commentary_guard.py`, `property_recommendation_guard.py`, `escalation_phrase_guard.py`, `premature_end_call_guard.py`, `response_shape_guard.py`) now log a structured `logger.warning` at each intervention point, matching `redundant_context_guard.py`'s pre-existing convention — a guard firing is no longer silent, where previously 6 of 7 left zero trace anywhere. This resolves "did guard X fire at all" but not the item's own harder framing: none of these `logger.warning` calls carry `call_session_id` (the guard `FrameProcessor` classes aren't constructed with one today), so "how often did guard X fire this week" or "on call Y specifically" still requires manually correlating log timestamps to a call's known start/end time in the Railway stream — the original manual-spelunking problem, just with something to grep for now instead of nothing. A DB-backed table (or threading `call_session_id` into each guard) remains open for full closure. |
 | 7 | Groq prompt-cache-defeating section order in `system_prompt.py` (per-call-unique sections before the static, cacheable property block) — scoped fix identified, not implemented. | app/prompts/system_prompt.py | **CLOSED (2026-08-05).** Both `build_system_prompt` and `build_lead_system_prompt` reordered so per-call-unique sections (caller phone, guest memory, active booking) are appended after the static property/portfolio block, not before. Pure statement reordering, zero content change; `test_system_prompt.py` (74 tests) confirmed passing unmodified. |
 | 8 | Two prior planning documents (`agent-conversation-improvement.md`, `memory-architecture-plan.md`) exist in the repo but are not linked from `docs/` or `CLAUDE.md` — someone starting from the stable docs alone (rather than `documentation/`) would not discover that most of the obvious "improve conversation intelligence" backlog is already scoped or built. | documentation/ vs docs/ | CLOSED as of the prior revision of this document — this file's own intro links both. |

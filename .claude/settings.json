@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/shagunverma/graphifyy-env/bin/graphify hook-guard search"
+            "command": "/Users/shagunverma/.local/bin/graphify hook-guard search"
           }
         ]
       },
@@ -15,7 +15,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/shagunverma/graphifyy-env/bin/graphify hook-guard read"
+            "command": "/Users/shagunverma/.local/bin/graphify hook-guard read"
           }
         ]
       }

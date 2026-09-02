@@ -6,7 +6,7 @@ PostgreSQL via SQLAlchemy async (asyncpg driver). All models live in `backend/ap
 
 Migrations live in `backend/alembic/versions/`. Apply with `alembic upgrade head` (run from `backend/`, needs `DATABASE_URL` resolvable).
 
-Current head: **`7a236ad1ffd1` — index notification lead_id and channel**.
+Current head: **`f041738fce4c` — add call_quality_events**.
 
 Full history, oldest to newest:
 
@@ -58,7 +58,12 @@ c22483e0853a -> 054ea268d326   add index on notification property_id
 6384600c83f2 -> 356d5c923c77   add lead recovery metadata (entry_channel, recovery_reason)
 356d5c923c77 -> 3fae82f7b3d0   add notification lead_id and responded_at
 3fae82f7b3d0 -> 7a236ad1ffd1   index notification lead_id and channel
-7a236ad1ffd1 -> 8f1c4b9e2a67   add lead busy recovery availability tracking (HEAD)
+a1c9f4e2b6d3 -> b7e3a9c1f4d6   add saturday_minimum_stay_enabled to properties
+('b7e3a9c1f4d6', '7a236ad1ffd1') -> 44fd2130051e   merge saturday-minimum-stay and negotiation-engine branches
+44fd2130051e -> 8f1c4b9e2a67   add lead busy recovery availability tracking
+8f1c4b9e2a67 -> 9fd5d655d830   add call_handling_schedule to properties, handoff_status to call_sessions
+9fd5d655d830 -> c4153fd289d2   add stages to negotiation_rules
+c4153fd289d2 -> f041738fce4c   add call_quality_events (HEAD)
 ```
 
 If a session ever fails with demo-login 500s or a missing-column error, check `alembic heads` against the running DB first — a DB left behind on an old revision is a common cause (see `project_state.md` at the repo root for the 2026-07-15 incident).
@@ -71,23 +76,29 @@ If a session ever fails with demo-login 500s or a missing-column error, check `a
 |---|---|---|
 | `id` | UUID PK | |
 | `email` | String(255), unique, not null | |
-| `hashed_password` | String(255), not null | |
+| `hashed_password` | String(255), nullable | no longer written/read as of the Clerk cutover (`get_current_user` has no bcrypt path anymore); kept only so pre-Clerk rows' historical hashes aren't destroyed, safe to drop in a later cleanup once Clerk is confirmed stable |
+| `clerk_user_id` | String(255), unique, nullable, indexed | Clerk identity; new users are created directly against this, existing rows linked by matching `email` on first Clerk sign-in |
 | `name`, `phone` | String, nullable | |
 | `tier` | String(32), default `tier_1` | |
 | `status` | String(32), default `active` | non-`active` users are rejected by `get_current_user` |
 | `lead_exophone` | String(32), unique | dialed number that routes to the Lead Agent (portfolio-wide) |
+| `twilio_lead_number` | String(32), unique, nullable | Twilio equivalent of `lead_exophone`, for telephony testing on Twilio's free trial independent of Exotel |
 | `business_name`, `airbnb_host_status`, `property_count_estimate` | | self-reported host registration profile, no Airbnb verification |
 | `timezone` | String(64), default `Asia/Kolkata` | |
 | `terms_accepted_at` | DateTime, nullable | |
+| `photo_url`, `banner_url` | String(512), nullable | Host Profile page photo/hero banner; `None` = no image set, frontend falls back to a placeholder |
+| `whatsapp_assist_enabled` | Boolean, default `false` | simple on/off placeholder toggle; not yet a richer config shape |
 | `notification_email` | String(255), nullable | overrides `email` as the escalation-email recipient when set |
 | `agent_first_message`, `agent_persona`, `agent_escalation_phrase` | Text, nullable | per-host voice agent customization; `None` = Mira's default. `agent_first_message` supports `{host_name}`/`{property_name}`/`{city}`/`{guest_name}` placeholders |
-| `discount_policy_text` | Text, nullable | host's free-text discount policy paragraph, re-parsed via `POST /host-discount-rules/parse` into `HostDiscountRule` rows; not itself read by the pricing engine |
+| `agent_voice_gender` | String(16), default `female` | maps to a specific Sarvam `bulbul:v3` speaker name (`VOICE_BY_GENDER` in `app/voice/pipeline.py`) |
+| `agent_language_policy` | String(16), nullable | `None` (adaptive, default) / `hindi_first` / `english_first` — a baseline the per-call adaptive mirroring still layers on top of |
+| `discount_policy_text` | Text, nullable | host's free-text discount/negotiation policy paragraph, re-parsed via `POST /negotiation-rules/parse` into `NegotiationRule` rows; not itself read by the pricing engine |
 | `negotiation_allowed` | Boolean, default `true` | `False` disables all negotiation for this host |
 | `max_discount_percent_override` | Numeric(5,2), nullable | overrides `MAX_NEGOTIATION_DISCOUNT_PERCENT` |
 | `allow_pets`, `allow_early_checkin` | Boolean, nullable | |
 | `follow_up_channel_preference` | String(32), nullable | |
 
-Relationships: `properties`, `leads`, `faq_entries`, `discount_rules` (all cascade delete-orphan).
+Relationships: `properties`, `leads`, `faq_entries`, `negotiation_rules` (all cascade delete-orphan).
 
 ### `properties` (`Property`, `app/models/property.py`)
 
@@ -97,23 +108,39 @@ Unique on `(user_id, airbnb_listing_id)`.
 |---|---|---|
 | `user_id` | UUID FK → users, cascade delete | |
 | `name`, `city` | String | |
+| `raw_name` | String(255), nullable | verbatim copy of whatever the importer wrote into `name` (Airbnb's own SEO title, unedited); `name` itself is kept as-is for backward compat |
+| `display_name` | String(120), nullable | clean, human-presentable name for dashboards/lists, stripped of SEO keyword-stuffing/star ratings/pipe-delimited fragments — see `app/services/property_normalizer.py` |
+| `spoken_name` | String(60), nullable | shorter still, what Mira actually says out loud; falls back to `display_name` when nothing shorter is safely extractable. What `property_recommendation_guard` matches spoken text against |
+| `property_type` | String(60), nullable | coarse category normalized from the raw title (villa, cottage, apartment, cabin, glasshouse, …) — free text, not an enum |
+| `property_style` | String(80), nullable | descriptive style/vibe (e.g. "glass house", "beachfront") — display/context only, not a filterable facet |
+| `brand` | String(80), nullable | recurring multi-property brand/collection name, when confidently identified via cross-property co-occurrence for the same host |
+| `bedroom_count` | Integer, nullable | extracted from the raw title (bhk/"N bedroom"/"NBR" patterns) by `property_normalizer`, used by the spoken pitch formatter |
 | `exophone` | String(32), unique | dialed number that routes to Guest Support for this one property |
+| `twilio_number` | String(32), unique, nullable | Twilio equivalent of `exophone`, independent of and never read by any Exotel code path — see `app/voice/pipeline.py`'s `run_voice_pipeline_twilio` |
 | `base_price` | Numeric(10,2), default 0 | nightly rate before surge/discounts |
 | `ical_url` | String(1024), nullable | for calendar sync (`app/services/calendar_service.py`) |
 | `usp` | String(280), nullable | one-line distinguishing description, led with in the system prompt |
 | `house_rules`, `neighborhood_info` | Text, nullable | authoritative free text for the voice agent's local-area/policy answers |
+| `landmarks` | JSONB list, default `[]` | structured points of interest, e.g. `[{"name": "Thalassa", "distance_minutes": 12, "mode": "drive"}]` — host-dashboard-populated, used by `recommend_properties` as a soft rank signal for "near `<landmark>`" queries |
 | `faq` | JSONB list, default `[]` | legacy inline FAQ (see `faq_service.search_legacy_property_faq`) — separate from the `faq_entries` table |
 | `amenities` | JSONB list, default `[]` | |
+| `amenity_tags` | JSONB list, default `[]` | canonical, deduplicated amenity tags derived from `amenities` at import time (`app/services/amenity_taxonomy.py`), e.g. "Private pool"/"Swimming pool" both normalize to "pool" — not directly host-editable |
 | `photos` | JSONB list, default `[]` | Cloudinary-hosted URLs, re-hosted so they survive source-listing edits/removal |
 | `check_in_time`, `check_out_time` | String(8), defaults `14:00`/`11:00` | |
 | `max_guests` | Integer, default 4 | |
+| `minimum_nights` | Integer, default 1 | Airbnb's own minimum-stay setting for this listing; enforced in `handle_check_calendar` |
+| `saturday_minimum_stay_enabled` | Boolean, default `false` | independent of `minimum_nights` — when true, a stay covering a Saturday night must be at least 2 nights, matching many hosts' Airbnb "Require Saturday-Sunday" policy. Checked in `handle_check_calendar`, not duplicated into pricing/negotiation |
 | `seasonal_notes` | JSONB list, default `[]` | `{note, start_month, end_month}` entries; surfaced in the prompt only when the current month falls in range (wraparound ranges like Nov–Feb are valid — `start_month > end_month`) |
 | `airbnb_listing_id` | String(64), indexed | unique per-user, not globally; captured at Bright Data import time, also the key used to fetch this listing's live price (see below) |
 | `smart_price_estimate`, `smart_price_sample_size`, `smart_price_updated_at` | Numeric/Integer/DateTime, all nullable | daily comparable-listing median for this property's city, refreshed by `smart_pricing_service.py` — informational only, shown on the Pricing dashboard page, never fed into `calculate_price` |
 | `exact_airbnb_pricing` | Boolean, default `false` | when true, `pricing_engine.calculate_price` fetches this exact listing's live price for the exact requested dates (via `airbnb_listing_id` + SearchApi.io) instead of `base_price` math, and skips weekend-surge/cleaning-fee/tax markup entirely — for hosts on Airbnb Smart Pricing whose listed price is already final. See [research-flow.md](research-flow.md) |
+| `is_premium` | Boolean, default `false` | host-set (never LLM-inferred) flag `recommend_properties` can filter/prefer on for a guest's relative "something more premium" request |
 | `airbnb_latitude`, `airbnb_longitude` | Numeric(9,6), nullable | this listing's GPS coordinates, resolved once via SearchApi's `airbnb_property` engine and cached here permanently (a listing's location doesn't change) — used to build the tight `bounding_box` search that reliably finds this exact listing for a live price fetch. `NULL` until the first `exact_airbnb_pricing` live fetch for this property succeeds |
+| `call_handling_mode` | String(16), default `MIRA` | Call Ownership Schedule (storage only, no resolver/routing logic yet) — one of `MIRA` (Mira handles every call) / `HOST` (host receives every call, once routing is implemented) / `SCHEDULED` (alternates by time of day per the schedule fields below). Must never silently default to anything but `MIRA` |
+| `call_handling_schedule_start`, `call_handling_schedule_end` | String(8), nullable | "HH:MM" daily window during which the HOST owns the call when `call_handling_mode == "SCHEDULED"`; meaningless/ignored otherwise. Overnight windows (start > end) are valid |
+| `timezone` | String(64), default `Asia/Kolkata` | IANA timezone the schedule window above is evaluated in — property-level, deliberately not inherited from `User.timezone`, since one host's properties can span multiple regions |
 
-Relationships: `owner` (User), `bookings`, `call_sessions`, `technicians`, `pricing_rules`, `notifications` — all cascade delete-orphan on the property.
+Relationships: `owner` (User), `bookings`, `call_sessions`, `technicians`, `pricing_rules`, `notifications`, `chunks` — all cascade delete-orphan on the property.
 
 ### `bookings` (`Booking`, `app/models/booking.py`)
 
@@ -143,8 +170,13 @@ Unique on `(property_id, source_uid)`. iCal-synced calendar data — **no price 
 | `ai_summary` | JSONB, nullable | structured, host-facing summary (`schemas/call_summary.py`'s `CallSummary` shape: booking snapshot, conversation summary, outcome, host actions, key details, missing info) generated by `call_summary_service.summarize_call` via `on_pipeline_finished` once the call ends — `NULL` until then |
 | `status` | String(32), default `in_progress` | |
 | `urgency` | String(16), nullable | **never written anywhere in the app** — always reads as unset; escalation urgency lives on `Notification` instead |
+| `call_type` | String(32), default `UNKNOWN`, indexed | populated by `call_classification_service` via `on_pipeline_finished` once the call ends; `UNKNOWN` until classified (or if classification fails) — never null |
+| `classification_confidence` | Numeric(4,3), nullable | |
+| `classification_reason` | Text, nullable | |
 | `revenue_attributed` | Numeric(10,2), default 0 | **no writer anywhere in the app** — always 0; see `analytics.py`'s `pipeline_value` metric, which uses `Lead.budget` instead |
 | `started_at`, `ended_at` | DateTime, nullable | |
+| `dismissed_at` | DateTime(timezone=True), nullable | set when a host clears a Service Request row from the live Requests tab — a soft dismiss, not a delete. `NULL` = still live/outstanding |
+| `handoff_status` | String(16), nullable | Host Take Call / live handoff (storage only, no transition logic yet). `NULL` for every call that never has a takeover requested — the overwhelming majority, including every existing row. Future values: `requested`/`connecting`/`connected`/`failed`. Nothing writes a non-`NULL` value yet |
 
 Computed properties (not columns): `duration_minutes`, `guest_name` (prefers `Lead.guest_name`, falls back to `GuestProfile.name`), `guest_phone` (prefers `Lead.phone`, falls back to `caller_number`). Note the `property` relationship shadows Python's `@property` builtin within the class body — the module aliases `from builtins import property as python_property` to work around it.
 
@@ -160,6 +192,22 @@ Computed properties (not columns): `duration_minutes`, `guest_name` (prefers `Le
 | `holder_ref` | String | opaque identifier the holder threads back into `renew()`/`release()` — `exotel_call_id`/Twilio `call_sid`, not a new identifier invented for this |
 | `expires_at` | DateTime(timezone=True) | lazy expiry — a lease past this is simply treated as not-active the next time it's read; no sweep job |
 | `released_at` | DateTime(timezone=True), nullable | `NULL` while the lease is active; set once the call ends (or reclaimed lazily via `expires_at` if a holder crashed without releasing) |
+
+### `call_quality_events` (`CallQualityEvent`, `app/models/call_quality_event.py`)
+
+Persisted copy of one `ValidationResult` (`app/voice/conversation_quality.py`) recorded during a call. Written once, after the call ends, from `on_pipeline_finished` — never read back into a live call. Purely for cross-call aggregation/analytics (`call_service.record_quality_events`); does not change `ConversationQuality`'s own in-memory, per-call, non-persisted behavior.
+
+Indexes: `call_session_id`, and `(rule, severity)`.
+
+| Column | Type | Notes |
+|---|---|---|
+| `call_session_id` | UUID FK → call_sessions, cascade delete | |
+| `rule` | String(64), not null | |
+| `severity` | String(16), not null | |
+| `confidence` | Float, not null | |
+| `turn_index` | Integer, not null | |
+| `processing_time_ms` | Float, not null | |
+| `metadata_json` | JSONB dict, default `{}` | mirrors `ValidationResult.metadata` — not named `metadata`, which is a reserved attribute name on SQLAlchemy declarative models |
 
 ### `leads` (`Lead`, `app/models/lead.py`)
 
@@ -208,22 +256,26 @@ Unique on `(phone, host_id)` — the same phone number calling two different hos
 | `last_call_at` | DateTime, nullable | |
 | `conversation_summaries` | JSONB list, default `[]` | short summaries pulled directly from each call's `Lead.conversation_summary` — never raw transcripts, never a new LLM summarization call. Entry shape: `{call_session_id, property_id, property_name, date, summary, lead_temperature}`; capped in the write path |
 
-### `host_discount_rules` (`HostDiscountRule`, `app/models/host_discount_rule.py`)
+### `negotiation_rules` (`NegotiationRule`, `app/models/negotiation_rule.py`)
 
-Structured, host-approved discount rules derived from `User.discount_policy_text` via LLM extraction (`POST /host-discount-rules/parse`). Derive-on-read by `pricing_engine` (looked up by `host_id` directly, not materialized per property) — see [research-flow.md](research-flow.md).
+A host's single, unified negotiation/pricing training policy. **Replaces two former tables, `host_discount_rules` (trigger-based negotiation discounts) and `property_pricing_rules` (stay-pricing rules), merged in migration `9c3f2a7e5d41`** — hosts were describing both to Mira as one mental model ("how should the agent negotiate"), so `pricing_engine.py` now reads a single source instead of two. Derived from `User.discount_policy_text` via LLM extraction (`POST /negotiation-rules/parse`).
 
 | Column | Type | Notes |
 |---|---|---|
-| `host_id` | UUID FK → users, cascade delete | |
-| `trigger_type` | String(64), not null | `no_ask` / `guest_requests` / `repeat_guest_same_host` / a custom label |
-| `discount_percent` | Numeric(5,2), not null | |
+| `host_id` | UUID FK → users, cascade delete, indexed | |
+| `rule_type` | String(64), not null | one of six kinds either predecessor supported: `discount_no_ask` / `discount_guest_requests` / `discount_repeat_guest` (formerly `HostDiscountRule.trigger_type`), or `length_of_stay` / `minimum_stay_nights` / `early_checkin_fee` / `late_checkout_fee` / `custom` (formerly `PropertyPricingRule.rule_type`) |
+| `condition` | JSONB dict, default `{}` | type-specific structured data, e.g. `{"min_nights": N}`, `{"fee": N}` — discount triggers store their percent directly on `discount_percent` with an empty condition |
+| `discount_percent` | Numeric(5,2), nullable | |
+| `label` | String(255), nullable | |
+| `property_ids` | JSONB list of UUIDs, default `[]` | empty list = host-wide (every property) — how the three discount trigger types (host-wide by definition under the old model) round-trip losslessly. Stay-pricing rule types keep requiring an explicit, host-picked non-empty subset before they take effect |
 | `source` | String(16), default `ai_parsed` | |
 | `status` | String(32), default `pending_validation` | `pricing_engine.negotiate_rate` only ever reads `status="approved"` rows |
 | `raw_source_text` | Text, nullable | |
+| `stages` | JSONB list, nullable | optional, ordered negotiation ladder for this rule, e.g. `[{"order": 0, "value": 5}, {"order": 1, "value": 8}]` — arbitrary length/values, entirely host-configured. `NULL` (the default) means "no ladder, use `discount_percent` exactly as before." When both are set on approved rules of the same `rule_type`/scope, `stages` takes precedence (`app/services/negotiation_policy.py`'s `resolve_staged_or_flat`) |
 
 ### `pricing_rules` (`PricingRule`, `app/models/pricing_rule.py`)
 
-Per-property pricing rules (distinct from host-level `HostDiscountRule`).
+Per-property pricing rules — an older, still-live table, distinct from the host-level `negotiation_rules` above (not touched by the `9c3f2a7e5d41` merge).
 
 | Column | Type | Notes |
 |---|---|---|
@@ -246,6 +298,17 @@ Verified, host-authored FAQ knowledge base (distinct from `Property.faq`, the le
 | `status` | String(16), default `pending` | |
 | `verified_by` | String(255), nullable | |
 | `question_embedding` | JSONB list, nullable | computed once at verification time; plain float array, not pgvector (production DB extension availability unverified, and per-host comparison sets are small enough for in-Python cosine similarity). `NULL` = no semantic match possible for this entry, never an error |
+
+### `property_chunks` (`PropertyChunk`, `app/models/property_chunk.py`)
+
+One chunk of a property's text, embedded separately by `chunk_type` (overview/amenities/location/house_rules/reviews) rather than one embedding for the whole property — keeps semantic search scoped to e.g. "location" chunks more precise than matching against one giant blended vector. Generated at import time from fields the parsers/normalizer already extracted (`_upsert_property_from_parsed` in `app/api/v1/properties.py`), computed fire-and-forget after the import response returns (`embedding_service.backfill_property_chunk_embedding`) — never blocks an import.
+
+| Column | Type | Notes |
+|---|---|---|
+| `property_id` | UUID FK → properties, cascade delete, indexed | |
+| `chunk_type` | String(32), not null | plain string, not an enum; `reviews` is reserved but currently unpopulated — no review text exists in the scrape schema yet |
+| `text` | Text, not null | |
+| `embedding` | JSONB list, nullable | same plain-float-array pattern as `FaqEntry.question_embedding` (not pgvector); `NULL` = no semantic match possible yet for this chunk |
 
 ### `unanswered_questions` (`UnansweredQuestion`, `app/models/unanswered_question.py`)
 

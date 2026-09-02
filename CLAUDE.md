@@ -29,7 +29,7 @@ invariants a coding session must not violate.
 ### Critical invariants
 
 - **A genuine guest opportunity must not silently disappear.** Three independent mechanisms exist
-  for this reason — in-call `update_lead`/`escalate_to_host`, the `ensure_lead_for_engagement`
+  for this reason — in-call `update_lead`/`escalate_to_host`, the `backfill_lead_from_engagement`
   system-level safety net (fires on `get_pricing`/`negotiate_rate`/`check_calendar` regardless of
   whether the LLM ever calls `update_lead`), and Busy Call Recovery's own lead creation for calls
   that never even reach the LLM. Do not remove or bypass any of the three without replacing what it
@@ -77,10 +77,12 @@ mira-prod/
 ├── backend/          FastAPI + Python 3.12
 │   ├── app/
 │   │   ├── api/v1/   REST endpoints (one file per domain) + webhooks/exotel
-│   │   ├── auth/     JWT auth (dependencies, security/utils)
+│   │   ├── auth/     Clerk-based auth (dependencies.py verifies Clerk JWTs,
+│   │   │             auto-provisions users)
 │   │   ├── config.py pydantic-settings; all env vars documented here
 │   │   ├── database.py  SQLAlchemy async engine + session factory
-│   │   ├── integrations/ Exotel client, iCal fetcher
+│   │   ├── integrations/ Exotel, Clerk, Twilio (WhatsApp + Voice), iCal,
+│   │   │             Bright Data, SearchApi, Cloudinary, Redis, email
 │   │   ├── models/   SQLAlchemy ORM models
 │   │   ├── prompts/  LLM system-prompt builders (guest-support + lead-agent)
 │   │   ├── schemas/  Pydantic request/response + tool-arg schemas
@@ -93,12 +95,13 @@ mira-prod/
 │   └── requirements.txt
 └── frontend/         Next.js (TypeScript, Tailwind, shadcn/ui)
     └── src/
-        ├── app/dashboard/  per-domain pages (properties, bookings, calls,
-        │                   leads, pricing, calendar, faq, guests,
-        │                   technicians, settings)
+        ├── app/dashboard/  per-domain pages (properties, calls, leads,
+        │                   opportunities, pricing, calendar, faq, guests,
+        │                   onboarding, profile, settings)
         ├── components/     shared UI (stat-card, sparkline, date-range-picker,
-        │                   talk-to-mira-dialog, notifications-feed, …) + ui/
-        ├── hooks/          custom React hooks (use-async, use-date-range)
+        │                   talk-to-mira-dialog, opportunities-card, …) + ui/
+        ├── hooks/          custom React hooks (use-async, use-date-range,
+        │                   use-notification-stream)
         └── lib/            API client, auth context, types
 ```
 
@@ -109,7 +112,7 @@ mira-prod/
 ```bash
 # Backend
 cd backend
-cp .env.example .env   # fill in secrets
+touch .env   # no .env.example checked in — fill in secrets per the env var table below
 python -m uvicorn app.main:app --reload
 
 # Frontend
@@ -122,7 +125,7 @@ cd backend
 pytest
 ```
 
-See [docs/architecture.md](docs/architecture.md) for deployment (Render) details.
+See [docs/architecture.md](docs/architecture.md) for deployment (Railway backend, Vercel frontend) details.
 
 ## Key env vars (`backend/app/config.py`)
 
@@ -139,16 +142,21 @@ See [docs/architecture.md](docs/architecture.md) for deployment (Render) details
 | `SARVAM_API_KEY` | STT + TTS for voice pipeline |
 | `SARVAM_TTS_MODEL` / `SARVAM_TTS_SPEAKER` | `bulbul:v3` / `roopa` |
 | `EXOTEL_*` | Telephony integration |
+| `FIXED_HOST_HOURS_START` / `FIXED_HOST_HOURS_END` | **TEMPORARY** override (`HH:MM`, `Asia/Kolkata`) — when both are set, forces every property onto one hardcoded HOST window regardless of its own `call_handling_mode`/schedule/timezone (`app/services/call_ownership.py`). Exists only because per-property scheduled call handling isn't fully wired end-to-end yet; unset (the default) = zero behavior change. Delete this override once that's done — do not build further on top of it. |
+| `ENABLE_SEMANTIC_PROPERTY_SEARCH` | Kill-switch (default `true`) for semantic property search (`app/services/property/retrieval/semantic_search.py`). Set `false` to fall back to non-semantic matching if it misbehaves. |
 | `CORS_EXTRA_ORIGINS` | Comma-separated extra CORS origins. `FRONTEND_BASE_URL` is always allowed. |
 | `BRIGHT_DATA_API_KEY` | Airbnb listing import — see [docs/research-flow.md](docs/research-flow.md). Not set = "Import from Airbnb" fails with a clear error, doesn't crash. |
+| `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | Re-hosts property photos scraped via Bright Data onto Cloudinary (`app/integrations/cloudinary_client.py`) instead of hotlinking Airbnb's own `a0.muscache.com` URLs — survives the source listing being edited/removed. Unset (any of the three) = `_ensure_configured()` no-ops, import keeps Airbnb's original photo URLs. |
 | `SEARCHAPI_API_KEY` | [SearchApi.io](https://www.searchapi.io/airbnb-api) — two uses, both scoped to `exact_airbnb_pricing` properties only (see [docs/research-flow.md](docs/research-flow.md)): (1) daily comparable-pricing refresh (`smart_pricing_service.py`), one call per city; (2) live per-listing price fetch during `get_pricing`/`negotiate_rate`/`check_calendar`, one call per pricing question. Free tier's request allowance is small and shared across both; unset = both no-op/fall back cleanly. |
-| `TURN_DETECTION_STRATEGY` | `vad_fixed` (default) / `hybrid_experimental`. Local-only experiment — see [docs/agents.md](docs/agents.md). Not in `render.yaml`. |
+| `TURN_DETECTION_STRATEGY` | `vad_fixed` (default) / `hybrid_experimental`. Local-only experiment — see [docs/agents.md](docs/agents.md). Not in `render.yaml`/`backend/railway.json` — set directly in the hosting platform's dashboard if needed. |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USERNAME` / `SMTP_PASSWORD` / `SMTP_FROM_EMAIL` | Escalation email summaries. Any SMTP provider works. Unset = escalations still create the in-app notification, just skip the email. |
 | `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_WHATSAPP_FROM` | Real WhatsApp Business API send for `send_whatsapp`/`send_photos`/escalations/busy-recovery/call-summary — see [docs/agents.md](docs/agents.md). `TWILIO_WHATSAPP_FROM` must be a real, Meta-approved WhatsApp Business sender number (`whatsapp:+<E.164>`); there is no usable sandbox default anymore. Outside an active 24h customer-service session, WhatsApp requires a pre-approved Content Template for every send (see `app/integrations/twilio_client.py`'s module docstring) — unset (any of the three) = every WhatsApp send falls back to the in-app notification only. |
 | `TWILIO_ESCALATION_TEMPLATE_SID` | ContentSid of the `mira_escalation` WhatsApp template (`scripts/create_escalation_template.py`) — gives escalations a real "Go to Dashboard" button. Unset = falls back to a plain-text message with a bare URL. Also reused for RecoveryService's host-facing "missed call" WhatsApp (`app/services/recovery_service.py`, now including the guest's name when on file) — same shape, not a separate template. |
 | `TWILIO_BUSY_RECOVERY_TEMPLATE_SID` | ContentSid of the `mira_busy_recovery` WhatsApp template (`scripts/create_busy_recovery_template.py`) — the short "Mira is helping another guest, call back in 5 minutes" message RecoveryService sends a guest whose call was rejected as busy (no interactive menu/reply-handling anymore — see docs/agents.md). Unset = falls back to an equivalent plain-text message. |
 | `TWILIO_CALL_SUMMARY_TEMPLATE_SID` | ContentSid of the `mira_call_summary` WhatsApp template (`scripts/create_call_summary_template.py`) — the host-facing end-of-call summary (property inquired, guest name, guest count, check-in/out, whether escalation was raised, a short recap, and a link to the call on the dashboard) sent once a real call ends (`app/services/call_summary_notification.py`, called from `on_pipeline_finished`). Unset = falls back to an equivalent plain-text message. |
 | `TWILIO_PHOTOS_TEMPLATE_SID` | ContentSid of the `mira_photos` WhatsApp template (`scripts/create_photos_template.py`) — the guest-facing photos-link message `send_photos` sends, for both a single property and a "photos of all our properties" portfolio link (`GET /properties/portfolio/{host_id}/gallery`). Unset = falls back to an equivalent plain-text message. |
+| `TWILIO_AVAILABILITY_TEMPLATE_SID` | ContentSid of the guest-facing "let us know when you're free" WhatsApp template sent by `app/services/recovery_service.py` as part of busy-call recovery. Unlike most other WhatsApp sends in this codebase, this one is *not* fire-and-forget — a Twilio failure here is observed and re-raised so the caller can leave `lead.busy_recovery_availability_status` as `"pending"` rather than wrongly marking the guest notified. Unset = falls back to a plain-text message. |
+| `TWILIO_GUEST_CALLING_TEMPLATE_SID` | ContentSid of the host-facing WhatsApp template used when a guest is calling in and the host is notified with a signed, single-use "Take Call" link (`app/services/guest_calling_notification.py`, `app/services/take_call_token.py`, `app/api/v1/take_call.py`). Unset = falls back to a plain-text message with the same link. |
 | `TWILIO_VOICE_WEBHOOK_TOKEN` | Shared-secret path token for Twilio Voice (`app/integrations/twilio_voice.py`, `run_voice_pipeline_twilio` in `app/voice/pipeline.py`) — an entirely separate integration from Exotel telephony and from Twilio WhatsApp above, added purely so real-call testing can continue on Twilio's free trial when Exotel credits run out. Reuses `TWILIO_ACCOUNT_SID`/`TWILIO_AUTH_TOKEN`. |
 | `REDIS_URL` | Two independent uses (see `app/integrations/redis_client.py`'s own docstring — deliberately not merged into one module): (1) optional TTL cache for SearchApi.io pricing responses, fails open/no-ops if unset or unreachable; (2) **CallCoordinator's active-call ownership/lease mechanism** (`app/services/call_coordinator.py`, `app/integrations/redis_lease_client.py`) — Redis is the sole source of truth for "is this host/property already on a live call," Postgres no longer participates. Unlike use (1), a Redis outage here is not a silent no-op: `acquire_or_reject` fails open (the call still proceeds) but logs loudly (`lease_redis_unavailable`) as a degraded-protection signal; `renew`/`release` always fail open silently. `CallLease`/`call_leases` (the pre-migration Postgres table) still exists but is staged for removal — nothing writes to it anymore. |
 
@@ -168,7 +176,7 @@ DATABASE_URL="postgresql://…" python3 seed_demo.py   # additive; doesn't touch
 ## Common pitfalls
 
 - **`ValueError: malformed uri: invalid scheme`** in voice endpoint — a `TURN_URL*` is set to an `https://` or bare hostname. Fix: use `turn:host:port` / `turns:host:443?transport=tcp`, or delete the env var.
-- **ICE timeout on Render** — STUN-only works on localhost but not on cloud hosts where UDP is blocked. A TURN server is required for browser voice tests in production.
+- **ICE timeout on cloud hosts (Render, Railway)** — STUN-only works on localhost but not on cloud hosts where UDP is blocked. A TURN server is required for browser voice tests in production.
 - **Browser test works on WiFi but fails on mobile data** — mobile carriers block/throttle UDP TURN. Set `TURN_URL_TLS` to a TURNS-over-TCP:443 relay (looks like HTTPS, gets through).
 - **Voice call gets slow/again after idle, or 429 errors** — a per-model Groq rate limit on `gpt-oss-120b` (account has been on a paid Groq plan since 2026-07-07, not free tier — limits are much higher but not unlimited, especially under call bursts). The 60s health check + `_FallbackGroqLLMService` route around it automatically; check `GET /api/v1/health/llm` to see which models are marked down.
 - **`postgres://` vs `postgresql+asyncpg://`** — handled automatically by the `_use_asyncpg_driver` validator in `config.py`.
