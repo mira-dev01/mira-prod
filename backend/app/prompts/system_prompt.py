@@ -48,6 +48,33 @@ DEFAULT_ESCALATION_PHRASE = (
 # asked for yet.
 DEFAULT_CLOSING_PHRASE = "Thanks so much for calling -- have a wonderful day!"
 
+# Spoken deterministically (TTSSpeakFrame in app/voice/pipeline.py's
+# _wait_and_trigger_handoff, never LLM-generated) right before a live call
+# is transferred to the host after they tap "Take Call". Host-overridable
+# via User.agent_handoff_phrase -- resolve_host_handoff_phrase() below
+# applies the same "reject a banned 'loop in the host' variant, fall back
+# to this default" treatment the escalation phrase already gets. Distinct
+# from DEFAULT_ESCALATION_PHRASE: escalation = the host follows up later;
+# this = the host joins the live call now. Lives here, next to the other
+# spoken-line defaults, rather than in pipeline.py.
+DEFAULT_HOST_HANDOFF_PHRASE = "Hold on -- the host is available now. I'm passing the call to them."
+
+
+def resolve_host_handoff_phrase(host: User | None) -> str:
+    """The line to speak at a live host handoff for `host`. Mirrors
+    _persona_and_escalation_sections' handling of agent_escalation_phrase:
+    UserUpdate rejects a "loop in the host" variant at write time, but a
+    row saved before that validator existed can still carry one, and this
+    is a path that hands the value straight to TTS -- so fall back to the
+    safe default rather than trusting a stored value that fails the
+    read-side check. `host` is None only for call modes that never reach a
+    handoff (Lead Agent / browser test), where the default is returned and
+    never actually spoken."""
+    phrase = (host.agent_handoff_phrase if host is not None else None) or DEFAULT_HOST_HANDOFF_PHRASE
+    if _LOOP_IN_HOST_RE.search(phrase):
+        return DEFAULT_HOST_HANDOFF_PHRASE
+    return phrase
+
 
 def _today_anchor() -> str:
     # Weekday/date arithmetic ("what date is next Friday?") is something

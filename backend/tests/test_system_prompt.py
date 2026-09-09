@@ -9,12 +9,14 @@ from app.models.user import User
 from app.prompts import system_prompt
 from app.prompts.system_prompt import (
     DEFAULT_ESCALATION_PHRASE,
+    DEFAULT_HOST_HANDOFF_PHRASE,
     _active_booking_section,
     _active_seasonal_notes,
     build_lead_system_prompt,
     build_system_prompt,
     first_message_for,
     lead_first_message_for,
+    resolve_host_handoff_phrase,
 )
 
 
@@ -185,6 +187,26 @@ def test_host_escalation_phrase_overrides_default():
     prompt = build_system_prompt(_property(), None, host)
     assert "One moment, let me get my colleague Raj." in prompt
     assert DEFAULT_ESCALATION_PHRASE not in prompt
+
+
+def test_resolve_host_handoff_phrase_default_when_unset():
+    assert resolve_host_handoff_phrase(_user(agent_handoff_phrase=None)) == DEFAULT_HOST_HANDOFF_PHRASE
+
+
+def test_resolve_host_handoff_phrase_default_when_host_is_none():
+    assert resolve_host_handoff_phrase(None) == DEFAULT_HOST_HANDOFF_PHRASE
+
+
+def test_resolve_host_handoff_phrase_honors_a_custom_line():
+    host = _user(agent_handoff_phrase="One sec -- connecting you to the owner.")
+    assert resolve_host_handoff_phrase(host) == "One sec -- connecting you to the owner."
+
+
+def test_resolve_host_handoff_phrase_falls_back_on_a_stored_loop_in_host_variant():
+    """A row written before UserUpdate's validator existed could still
+    carry a banned phrasing -- the read side must not hand it to TTS."""
+    host = _user(agent_handoff_phrase="Let me loop in the host real quick.")
+    assert resolve_host_handoff_phrase(host) == DEFAULT_HOST_HANDOFF_PHRASE
 
 
 def test_persona_note_included_when_set():

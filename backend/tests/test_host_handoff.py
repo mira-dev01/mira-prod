@@ -179,6 +179,43 @@ async def test_wait_and_trigger_handoff_queues_phrase_then_end_frame_in_order():
     assert end_frame.reason == pipeline._HOST_HANDOFF_END_REASON
 
 
+async def test_wait_and_trigger_handoff_uses_a_supplied_custom_phrase():
+    """The handoff line is host-configurable (User.agent_handoff_phrase,
+    resolved to a plain string at pipeline start and passed through). When
+    a custom phrase is supplied, that exact text is spoken -- not the
+    default."""
+    call_session_id = uuid.uuid4()
+    handoff_signal.register_call(call_session_id)
+    worker = _FakeWorker()
+    custom = "Hang on -- putting you through to the owner now."
+
+    task = asyncio.create_task(
+        pipeline._wait_and_trigger_handoff(worker, call_session_id, custom)
+    )
+    await asyncio.sleep(0)
+    handoff_signal.request_handoff(call_session_id)
+    await asyncio.wait_for(task, timeout=1.0)
+
+    speak_frame, _ = worker.queued
+    assert isinstance(speak_frame, TTSSpeakFrame)
+    assert speak_frame.text == custom
+    assert speak_frame.append_to_context is False
+
+
+async def test_wait_and_trigger_handoff_defaults_to_the_standard_phrase_when_omitted():
+    call_session_id = uuid.uuid4()
+    handoff_signal.register_call(call_session_id)
+    worker = _FakeWorker()
+
+    task = asyncio.create_task(pipeline._wait_and_trigger_handoff(worker, call_session_id))
+    await asyncio.sleep(0)
+    handoff_signal.request_handoff(call_session_id)
+    await asyncio.wait_for(task, timeout=1.0)
+
+    speak_frame, _ = worker.queued
+    assert speak_frame.text == pipeline._HOST_HANDOFF_PHRASE
+
+
 async def test_wait_and_trigger_handoff_never_fires_without_a_request():
     """The overwhelming-majority case: nothing ever claims this call. The
     listener task must sit blocked, never queue anything, and be cleanly

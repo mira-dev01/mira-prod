@@ -13,6 +13,12 @@ implemented, tested, and wired end-to-end, but as of this date is **uncommitted 
 yet merged — see [project_state.md](project_state.md)'s "Uncommitted work" section for exactly
 which files.
 
+**Since 2026-08-09**: §4b (call-ownership routing + live *Take Call* handoff) was added to reflect
+the Phases 1–8 call-ownership/handoff code plus the account-global host-call-hours rework
+([host-call-hours-and-handoff.md](host-call-hours-and-handoff.md) — implemented, uncommitted, not
+yet run through `pytest`). The rest of this file has not been re-verified against source since
+2026-08-09.
+
 ---
 
 ## 1. High-level call flow
@@ -151,6 +157,47 @@ an already-booked/closed lead never reopens it). Property/Pricing/FAQs/Photos re
 from the same data the voice tools use; "talk to host" and free-text replies just notify the host
 — **no LLM is involved anywhere in this reply path.**
 
+## 4b. Call ownership routing + live Take Call handoff
+
+Built (Phases 1–8, plus the account-global host-call-hours rework —
+`documentation/host-call-hours-and-handoff.md` is the full writeup; this section is a pointer). Two
+distinct mechanisms, both about routing an inbound guest call to the host's own phone instead of
+Mira:
+
+1. **Time-of-day call ownership.** `app/services/call_ownership.py`'s pure
+   `resolve_effective_call_owner(property_, host, current_time_utc) -> CallOwner` (`HOST` | `MIRA`)
+   — evaluates the host's account-global call-hours window (overnight-wrap aware) and answers who
+   owns the call *right now*. Consumed by `GET /webhooks/exotel/call-routing` (a synchronous
+   Passthru applet before the Voicebot applet — `200` continues to Mira, `302` routes to the Exotel
+   Connect applet) and `GET /webhooks/exotel/connect-routing` (returns `User.phone` for Connect to
+   dial). Both fail closed toward MIRA.
+   - Routing input: `User.host_call_hours_enabled/_start/_end/_timezone` (editable on the Settings
+     page). Disabled = Mira answers 24/7. The per-property `Property.call_handling_*` columns are
+     **no longer read** — kept in schema, staged for removal (`CallLease` precedent).
+   - **Temporary rollout override**: `settings.fixed_host_hours_start`/`_end` (set in `render.yaml`
+     to 11:00–17:00 IST) still wins as precedence step 1 — it forces one hardcoded IST window for
+     every host until the account-global path is verified in production, then it (and the
+     `render.yaml` keys) get removed. See `documentation/host-call-hours-and-handoff.md`.
+
+2. **Live Mira→host handoff ("Take Call").** For a call already in progress with Mira:
+   `app/services/guest_calling_notification.py` sends the host a WhatsApp with a signed, single-use
+   *Take Call* link the moment a MIRA-owned `CallSession` exists. `app/api/v1/take_call.py`'s
+   `POST` handler does an atomic claim (`CallSession.handoff_status` `NULL -> "requested"`) and
+   fires `app/voice/handoff_signal.py`'s in-process `asyncio.Event`. The live pipeline's
+   `_wait_and_trigger_handoff` task then speaks a fixed handoff phrase
+   (`pipeline._HOST_HANDOFF_PHRASE`) and ends the Voicebot leg with
+   `EndFrame(reason="host_handoff")` — `on_pipeline_finished` special-cases this to **not** hang up
+   the Exotel call, so Exotel's flow continues to the Connect applet, which dials the host.
+   - `handoff_signal.py` is **single-process only** (documented) — works because the backend runs
+     one uvicorn worker; multi-worker would need Redis pub/sub.
+   - `_HOST_HANDOFF_PHRASE` is host-configurable via `User.agent_handoff_phrase` + a "Live call
+     handoff phrase" field on the AI Training tab (`system_prompt.resolve_host_handoff_phrase`
+     resolves it once at pipeline start, with the same loop-in-host guard the escalation phrase
+     has). Default: "Hold on — the host is available now. I'm passing the call to them."
+
+Both mechanisms deliberately keep the pipeline out of the routing decision: it only ever learns of
+a handoff via the `handoff_signal` Event, never re-derives ownership.
+
 ## 5. Lead safety / lead preservation
 
 The invariant this section exists to satisfy: **a genuine guest opportunity must not silently
@@ -266,6 +313,9 @@ Full schema: [docs/database.md](../docs/database.md). Summary of what lives wher
   check-then-act race window (§3).
 - The pipeline must not contain business logic for concurrency coordination — it only ever sees
   `CallCoordinator`'s two-value `Decision`.
+- Time-of-day call-ownership routing is decided *only* by `call_ownership.resolve_effective_call_owner`
+  (pure, one function) and the live handoff is signalled *only* via `handoff_signal`'s in-process
+  Event — the pipeline never re-derives ownership for itself (§4b).
 - Redis cache semantics (fail-open, optional) and Redis lease semantics (correctness-bearing,
   explicit fail-open policy owned by `call_coordinator.py`) are separate and must not be merged
   into one client module.

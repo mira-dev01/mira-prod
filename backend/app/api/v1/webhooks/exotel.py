@@ -28,7 +28,7 @@ second CallSession write path here was deliberately avoided.
 exotel_connect_routing (Phase 8) is the Connect applet's own dynamic
 Primary URL target -- a THIRD, separate Exotel contract from the two
 above: not a binary status-code branch, a JSON body naming the actual PSTN
-number to dial. Reached two ways: (1) call_handling_mode=HOST/SCHEDULED
+number to dial. Reached two ways: (1) an inside-host-call-hours resolution
 routed a call here directly off exotel_call_routing's 302, before Mira
 was ever involved -- no CallSession may exist yet, so this path re-resolves
 ownership the same way exotel_call_routing itself did; (2) Phase 7's live
@@ -160,13 +160,12 @@ async def exotel_call_routing(
         if property_ is None:
             # Unknown/unconfigured DID, or a Lead Agent line (host_user_id-
             # only, no single property) -- resolve_effective_call_owner
-            # needs a Property row (call_handling_mode lives there, not on
-            # User), so a Lead Agent call has no ownership schedule to
-            # evaluate at all and falls back to MIRA exactly like every
-            # other "can't resolve" branch here. Same DID resolution
-            # get_property_by_number already performs for the real
-            # Voicebot path (app/voice/pipeline.py) -- not duplicated,
-            # reused directly.
+            # needs a Property row to identify the owning host, so a Lead
+            # Agent call has no ownership window to evaluate at all and
+            # falls back to MIRA exactly like every other "can't resolve"
+            # branch here. Same DID resolution get_property_by_number
+            # already performs for the real Voicebot path
+            # (app/voice/pipeline.py) -- not duplicated, reused directly.
             logger.info(
                 "Call-routing: no property for dialed_number=%s call_sid=%s -- defaulting to MIRA",
                 dialed_number,
@@ -174,7 +173,14 @@ async def exotel_call_routing(
             )
             return Response(status_code=status.HTTP_200_OK)
 
-        owner = call_ownership.resolve_effective_call_owner(property_, datetime.now(timezone.utc))
+        host = await db.get(User, property_.user_id)
+        if host is None:
+            logger.warning(
+                "Call-routing: property_id=%s has no resolvable host -- defaulting to MIRA", property_.id
+            )
+            return Response(status_code=status.HTTP_200_OK)
+
+        owner = call_ownership.resolve_effective_call_owner(property_, host, datetime.now(timezone.utc))
     except call_ownership.InvalidCallOwnershipConfigError:
         logger.exception(
             "Call-routing: invalid call-ownership configuration for dialed_number=%s call_sid=%s -- "
@@ -293,14 +299,14 @@ async def exotel_connect_routing(
     told apart by CallSession lookup, not by any request parameter (a
     request has no way to claim "I am a live handoff" itself):
 
-    1. INITIAL HOST-owned call: call_handling_mode=HOST/SCHEDULED already
-       sent this call to Connect via exotel_call_routing's own 302, before
-       Mira/Pipecat were ever involved -- get_or_create_call_session has
-       not necessarily run yet (that only happens inside the Voicebot
+    1. INITIAL HOST-owned call: the host's call-hours window resolved to
+       HOST and exotel_call_routing's own 302 sent this call to Connect
+       before Mira/Pipecat were ever involved -- get_or_create_call_session
+       has not necessarily run yet (that only happens inside the Voicebot
        websocket path, which this call never reaches), so a CallSession
        for this CallSid may not exist. Re-resolves ownership the exact
        same way exotel_call_routing itself just did (dialed number ->
-       Property -> resolve_effective_call_owner) and only proceeds on an
+       Property -> host -> resolve_effective_call_owner) and only proceeds on an
        explicit CallOwner.HOST answer -- this is what stops an arbitrary/
        unauthorized call from ever reaching Connect's number lookup: the
        same authorization gate exotel_call_routing already enforced to
@@ -371,7 +377,16 @@ async def exotel_connect_routing(
             )
             return _empty_destination_response()
 
-        owner = call_ownership.resolve_effective_call_owner(property_, datetime.now(timezone.utc))
+        host = await db.get(User, property_.user_id)
+        if host is None:
+            logger.warning(
+                "Connect-routing: property_id=%s call_sid=%s has no resolvable host -- refusing to route",
+                property_.id,
+                call_sid,
+            )
+            return _empty_destination_response()
+
+        owner = call_ownership.resolve_effective_call_owner(property_, host, datetime.now(timezone.utc))
         if owner is not call_ownership.CallOwner.HOST:
             logger.warning(
                 "Connect-routing: property_id=%s call_sid=%s resolved to MIRA, not HOST -- refusing to "

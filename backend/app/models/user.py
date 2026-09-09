@@ -73,6 +73,17 @@ class User(UUIDPkMixin, TimestampMixin, Base):
     agent_first_message: Mapped[str | None] = mapped_column(Text)
     agent_persona: Mapped[str | None] = mapped_column(Text)
     agent_escalation_phrase: Mapped[str | None] = mapped_column(Text)
+    # Spoken once, deterministically (TTSSpeakFrame, never LLM-generated),
+    # right before a live call is transferred to the host after they tap
+    # "Take Call" on the guest_calling WhatsApp -- see
+    # app/voice/pipeline.py's _wait_and_trigger_handoff and
+    # documentation/host-call-hours-and-handoff.md. None means "use
+    # DEFAULT_HOST_HANDOFF_PHRASE" (app/prompts/system_prompt.py). Distinct
+    # from agent_escalation_phrase: escalation = the host follows up later;
+    # this = the host is joining the live call now. A "loop in the host"
+    # variant is rejected at write time (app/schemas/user.py) and falls
+    # back to the default at read time regardless.
+    agent_handoff_phrase: Mapped[str | None] = mapped_column(Text)
     # "female" | "male" -- maps to a specific Sarvam bulbul:v3 speaker name in
     # app/voice/pipeline.py (VOICE_BY_GENDER). Default "female" matches the
     # pre-existing global SARVAM_TTS_SPEAKER default ("roopa").
@@ -107,6 +118,34 @@ class User(UUIDPkMixin, TimestampMixin, Base):
     allow_pets: Mapped[bool | None] = mapped_column(Boolean)
     allow_early_checkin: Mapped[bool | None] = mapped_column(Boolean)
     follow_up_channel_preference: Mapped[str | None] = mapped_column(String(32))
+
+    # Account-global host call hours (see
+    # documentation/host-call-hours-and-handoff.md and
+    # app/services/call_ownership.py). One time-of-day window, common to
+    # every property on the account, during which inbound guest calls are
+    # routed to the host's phone (User.phone) instead of Mira. Deliberately
+    # account-level, not per-property: replaces the per-property
+    # Property.call_handling_mode/schedule columns as the live routing
+    # input.
+    #   host_call_hours_enabled: master switch. False (the default for
+    #     every existing row) == Mira answers 24/7, exactly today's
+    #     behavior when the FIXED_HOST_HOURS_* env override is unset.
+    #   host_call_hours_start/_end: "HH:MM" 24-hour strings. An overnight
+    #     window (start > end, e.g. "22:00"->"06:00") is valid and wraps
+    #     past midnight -- resolve_effective_call_owner handles it.
+    #   host_call_hours_timezone: IANA identifier the window is evaluated
+    #     in. Its own column rather than reusing User.timezone (which has
+    #     no IANA validator and is a display/date anchor) -- same reasoning
+    #     Property.timezone's own comment gives.
+    # start/end are only read when host_call_hours_enabled is True;
+    # app/schemas/user.py's UserUpdate requires both to be set in the same
+    # request that flips the switch on.
+    host_call_hours_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    host_call_hours_start: Mapped[str | None] = mapped_column(String(8))
+    host_call_hours_end: Mapped[str | None] = mapped_column(String(8))
+    host_call_hours_timezone: Mapped[str] = mapped_column(
+        String(64), default="Asia/Kolkata", server_default="Asia/Kolkata"
+    )
 
     properties: Mapped[list["Property"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
     leads: Mapped[list["Lead"]] = relationship(back_populates="owner", cascade="all, delete-orphan")

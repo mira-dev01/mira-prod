@@ -49,16 +49,23 @@ async def test_mira_call_creates_guest_calling_notification(test_property, db_se
     assert matches[0].property_id == test_property.id
 
 
-# 2. HOST call -> no notification -------------------------------------------------------
+# 2. HOST-owned call (inside the account-global host call hours) -> no notification -----
 
 
-async def test_host_call_creates_no_guest_calling_notification(db_session, test_user):
+async def test_host_owned_call_creates_no_guest_calling_notification(db_session, test_user):
+    # An always-on host call hours window: resolve_effective_call_owner
+    # returns HOST at any time, so this call is HOST-owned and must not
+    # produce a guest_calling notification.
+    test_user.host_call_hours_enabled = True
+    test_user.host_call_hours_start = "00:00"
+    test_user.host_call_hours_end = "23:59"
+    test_user.host_call_hours_timezone = "Asia/Kolkata"
+    await db_session.commit()
     test_property = Property(
         user_id=test_user.id,
-        name="Host Mode Villa",
+        name="Host Hours Villa",
         base_price=1000,
         exophone=f"+9180{uuid.uuid4().int % 10**8:08d}",
-        call_handling_mode="HOST",
     )
     db_session.add(test_property)
     await db_session.commit()
@@ -286,13 +293,19 @@ async def test_unknown_property_does_not_raise(db_session):
     assert matches == []
 
 
-async def test_invalid_call_handling_config_does_not_raise_and_skips(db_session, test_user):
+async def test_invalid_call_hours_config_does_not_raise_and_skips(db_session, test_user):
+    # host_call_hours_enabled with no start/end -- the resolver raises
+    # InvalidCallOwnershipConfigError, which this notification path catches
+    # and treats as "skip" (never re-raises into the caller).
+    test_user.host_call_hours_enabled = True
+    test_user.host_call_hours_start = None
+    test_user.host_call_hours_end = None
+    await db_session.commit()
     test_property = Property(
         user_id=test_user.id,
         name="Broken Config Villa",
         base_price=1000,
         exophone=f"+9180{uuid.uuid4().int % 10**8:08d}",
-        call_handling_mode="SCHEDULED",  # missing schedule_start/end
     )
     db_session.add(test_property)
     await db_session.commit()

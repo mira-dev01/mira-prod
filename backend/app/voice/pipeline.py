@@ -50,10 +50,12 @@ from app.integrations import exotel_client
 from app.models.property import Property
 from app.models.user import User
 from app.prompts.system_prompt import (
+    DEFAULT_HOST_HANDOFF_PHRASE,
     build_lead_system_prompt,
     build_system_prompt,
     first_message_for,
     lead_first_message_for,
+    resolve_host_handoff_phrase,
 )
 from app.schemas.call_classification import QUALIFIED_CALL_TYPES
 from app.services import (
@@ -501,18 +503,23 @@ def _build_openrouter_llm():
 # wide safety margin against a single missed tick.
 _LEASE_RENEWAL_INTERVAL_SECONDS = 20
 
-# Phase 7: spoken exactly once, deterministically (queued directly as a
+# Spoken exactly once, deterministically (queued directly as a
 # TTSSpeakFrame, same "bot speaks first" mechanism the initial greeting
 # already uses -- see _on_connected_greeting below -- never an LLM request),
-# when a live call's host has successfully claimed Take Call (Phase 6).
-# Fixed text, not configurable per host/property -- CLAUDE.md's own
-# documented anti-pattern is regex-patching individual bad LLM phrasings
-# after the fact; the durable fix used here is the same one already applied
-# to escalation acknowledgements (app/voice/escalation_phrase_guard.py):
-# when the correct text is fixed and known regardless of context, speak
-# exactly that text deterministically rather than asking the LLM to
-# generate/paraphrase anything.
-_HOST_HANDOFF_PHRASE = "Excuse me for a moment while the host takes up your query."
+# when a live call's host has successfully claimed Take Call.
+#
+# The DEFAULT is fixed text -- CLAUDE.md's own documented anti-pattern is
+# regex-patching individual bad LLM phrasings after the fact; the durable
+# fix used here is the same one applied to escalation acknowledgements
+# (app/voice/escalation_phrase_guard.py): a known, deterministic line
+# rather than asking the LLM to generate/paraphrase anything. A host MAY
+# override the exact wording via User.agent_handoff_phrase (a "loop in the
+# host" variant is rejected at write time and falls back to the default at
+# read time -- see system_prompt.resolve_host_handoff_phrase); the value is
+# resolved once at pipeline start in _run_pipeline and threaded through as
+# host_handoff_phrase, never re-fetched mid-call. It is still a fixed
+# string for the duration of any one call, still never LLM-generated.
+_HOST_HANDOFF_PHRASE = DEFAULT_HOST_HANDOFF_PHRASE
 
 # EndFrame.reason sentinel (see pipecat's own EndFrame/CancelFrame -- both
 # carry an optional `reason`) -- read back inside on_pipeline_finished to
@@ -627,6 +634,7 @@ async def _run_pipeline(
     ringing_audio_task: asyncio.Task | None = None,
     voice_gender: str = "female",
     call_lease_token: str | None = None,
+    host_handoff_phrase: str = _HOST_HANDOFF_PHRASE,
 ) -> None:
     # NOTE: we deliberately do NOT create a Lead row up front. Doing so gave
     # every connection attempt its own empty lead, and a browser/ICE
@@ -670,6 +678,7 @@ async def _run_pipeline(
             ringing_audio_task=ringing_audio_task,
             voice_gender=voice_gender,
             handoff_outcome=handoff_outcome,
+            host_handoff_phrase=host_handoff_phrase,
         )
     finally:
         if renewal_task is not None and not renewal_task.done():
@@ -793,7 +802,9 @@ async def _run_pipeline(
                 _spawn_background_task(recovery_service.process_availability_recovery(host_user_id, property_id))
 
 
-async def _wait_and_trigger_handoff(worker: PipelineWorker, call_session_id: uuid.UUID) -> None:
+async def _wait_and_trigger_handoff(
+    worker: PipelineWorker, call_session_id: uuid.UUID, handoff_phrase: str = _HOST_HANDOFF_PHRASE
+) -> None:
     """Runs as a background task alongside a live call's pipeline (started
     in _run_pipeline_inner, cancelled in that same function's finally
     block -- identical lifecycle shape to _renew_call_lease_periodically).
@@ -823,13 +834,19 @@ async def _wait_and_trigger_handoff(worker: PipelineWorker, call_session_id: uui
     must never be replayed/paraphrased by the LLM on a hypothetical future
     turn (there is no future turn -- the EndFrame right behind it ends the
     pipeline), so it has no reason to enter context.messages at all.
+
+    `handoff_phrase` is resolved once at pipeline start (from
+    User.agent_handoff_phrase, else the default) and passed straight
+    through -- this task never touches the DB. It defaults to
+    _HOST_HANDOFF_PHRASE so a direct caller / test that omits it still gets
+    the standard line.
     """
     try:
         await wait_for_handoff_request(call_session_id)
     except asyncio.CancelledError:
         raise
     logger.info("host_handoff_triggered call_session_id=%s", call_session_id)
-    await worker.queue_frame(TTSSpeakFrame(_HOST_HANDOFF_PHRASE, append_to_context=False))
+    await worker.queue_frame(TTSSpeakFrame(handoff_phrase, append_to_context=False))
     await worker.queue_frame(EndFrame(reason=_HOST_HANDOFF_END_REASON))
 
 
@@ -917,6 +934,7 @@ async def _run_pipeline_inner(
     ringing_audio_task: asyncio.Task | None = None,
     voice_gender: str = "female",
     handoff_outcome: _HandoffOutcome | None = None,
+    host_handoff_phrase: str = _HOST_HANDOFF_PHRASE,
 ) -> None:
     stt = _ReconnectingSarvamSTTService(
         api_key=settings.sarvam_api_key,
@@ -1509,7 +1527,7 @@ async def _run_pipeline_inner(
         if handoff_registered:
             register_call(call_session_id)
             handoff_listener_task = asyncio.create_task(
-                _wait_and_trigger_handoff(worker, call_session_id)
+                _wait_and_trigger_handoff(worker, call_session_id, host_handoff_phrase)
             )
 
         # Phase 2: independent hard ceiling on live-call lifetime -- see
@@ -1663,6 +1681,12 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
         # no longer applies now that acquire_or_reject touches Redis, not
         # this `db` session, at all.
         busy_recovery_property_id = property_.id if property_ is not None else None
+        # Resolved once here from the host row loaded below, threaded into
+        # _run_pipeline, never re-fetched mid-call. Stays at the default
+        # until the property branch sets it; a Lead Agent call never
+        # reaches a handoff (handoff_registered is False when property_id is
+        # None) so the default is harmless there.
+        host_handoff_phrase = _HOST_HANDOFF_PHRASE
 
         # CallCoordinator is the single authority on "is this host/property
         # already on a live call" -- see app/services/call_coordinator.py.
@@ -1760,6 +1784,7 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
                 property_id = property_.id
                 property_name = property_.spoken_name or property_.display_name or property_.name
                 voice_gender = host.agent_voice_gender
+                host_handoff_phrase = resolve_host_handoff_phrase(host)
             else:
                 properties = list(
                     (await db.scalars(select(Property).where(Property.user_id == lead_user.id))).all()
@@ -1819,6 +1844,7 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
         ringing_audio_task=ringing_audio_task,
         voice_gender=voice_gender,
         call_lease_token=lease.token if lease is not None else None,
+        host_handoff_phrase=host_handoff_phrase,
     )
 
 
@@ -1919,6 +1945,7 @@ async def run_voice_pipeline_twilio(websocket: WebSocket, call_data: CallData) -
         else:
             host_user_id = lead_user.id
         busy_recovery_property_id = property_.id if property_ is not None else None
+        host_handoff_phrase = _HOST_HANDOFF_PHRASE  # set in the property branch below
 
         try:
             decision, lease = await call_coordinator.acquire_or_reject(
@@ -1980,6 +2007,7 @@ async def run_voice_pipeline_twilio(websocket: WebSocket, call_data: CallData) -
                 property_id = property_.id
                 property_name = property_.name
                 voice_gender = host.agent_voice_gender
+                host_handoff_phrase = resolve_host_handoff_phrase(host)
             else:
                 properties = list(
                     (await db.scalars(select(Property).where(Property.user_id == lead_user.id))).all()
@@ -2036,6 +2064,7 @@ async def run_voice_pipeline_twilio(websocket: WebSocket, call_data: CallData) -
         ringing_audio_task=ringing_audio_task,
         voice_gender=voice_gender,
         call_lease_token=lease.token if lease is not None else None,
+        host_handoff_phrase=host_handoff_phrase,
     )
 
 
@@ -2085,6 +2114,7 @@ async def run_browser_voice_pipeline(connection: SmallWebRTCConnection, property
         property_name=property_.spoken_name or property_.display_name or property_.name,
         guest_profile_id=guest_profile_id,
         voice_gender=host.agent_voice_gender,
+        host_handoff_phrase=resolve_host_handoff_phrase(host),
     )
 
 
