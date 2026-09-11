@@ -1,7 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -53,7 +53,20 @@ async def list_calls(
         if types:
             stmt = stmt.where(CallSession.call_type.in_(types))
     if not include_test_calls:
-        stmt = stmt.where(CallSession.caller_number != BROWSER_TEST_CALLER_NUMBER)
+        # `!= BROWSER_TEST_CALLER_NUMBER` alone would ALSO drop every row
+        # with caller_number IS NULL -- SQL three-valued logic: NULL != 'x'
+        # is NULL, not true. A real inbound PSTN call CAN have a null
+        # caller_number (withheld/absent CLI, or an Exotel status callback
+        # that arrived without a From) -- e.g. the MISSED_AGENT_BUSY rows
+        # record_busy_rejected_call now writes for a busy rejection. Those
+        # are real calls the host must see, so only the exact browser-test
+        # sentinel is excluded here; NULL is kept.
+        stmt = stmt.where(
+            or_(
+                CallSession.caller_number.is_(None),
+                CallSession.caller_number != BROWSER_TEST_CALLER_NUMBER,
+            )
+        )
     if date_range.since is not None:
         stmt = stmt.where(CallSession.created_at >= date_range.since)
     if date_range.until is not None:

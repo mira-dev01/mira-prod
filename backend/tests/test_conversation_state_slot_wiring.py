@@ -75,6 +75,133 @@ async def test_update_lead_writes_dates_as_iso_strings(test_property, db_session
     assert state.slots["check_out"] == check_out
 
 
+async def test_update_lead_writes_nights_slot_without_exact_dates(test_property, db_session, test_user):
+    """A guest who's only given a length of stay (no exact check-in yet)
+    should have `nights` land in state.slots so a later recommend_properties
+    call can use it, without any date being fabricated."""
+    state = ConversationState()
+    tools = build_voice_tools(call_session_id=None, property_id=test_property.id, host_user_id=test_user.id, conversation_state=state)
+    update_lead = next(t for t in tools if t.__name__ == "update_lead")
+
+    params = _FakeFunctionCallParams()
+    await update_lead(params, nights=3)
+    assert state.slots["nights"] == 3
+    assert "check_in" not in state.slots
+    assert "check_out" not in state.slots
+
+
+async def test_update_lead_exact_check_in_clears_stale_nights_slot(test_property, db_session, test_user):
+    """Once the guest gives (or the model resolves) an exact check-in date,
+    an earlier nights-only answer must not linger and contradict it."""
+    state = ConversationState()
+    tools = build_voice_tools(call_session_id=None, property_id=test_property.id, host_user_id=test_user.id, conversation_state=state)
+    update_lead = next(t for t in tools if t.__name__ == "update_lead")
+
+    params1 = _FakeFunctionCallParams()
+    await update_lead(params1, nights=3)
+    assert state.slots["nights"] == 3
+
+    today = date.today()
+    check_in = (today + timedelta(days=10)).isoformat()
+    params2 = _FakeFunctionCallParams()
+    await update_lead(params2, check_in=check_in)
+    assert "nights" not in state.slots
+    assert state.slots["check_in"] == check_in
+
+
+async def test_update_lead_writes_window_start_end_alongside_nights(test_property, db_session, test_user):
+    """Availability-first recommendations, Implementation 3: a guest who
+    gives both a stay length AND a broader window ('3 nights, sometime in
+    the first week of October') should have window_start/window_end land in
+    state.slots alongside nights."""
+    state = ConversationState()
+    tools = build_voice_tools(call_session_id=None, property_id=test_property.id, host_user_id=test_user.id, conversation_state=state)
+    update_lead = next(t for t in tools if t.__name__ == "update_lead")
+
+    today = date.today()
+    window_start = (today + timedelta(days=30)).isoformat()
+    window_end = (today + timedelta(days=37)).isoformat()
+    params = _FakeFunctionCallParams()
+    await update_lead(params, nights=3, window_start=window_start, window_end=window_end)
+    assert state.slots["nights"] == 3
+    assert state.slots["window_start"] == window_start
+    assert state.slots["window_end"] == window_end
+
+
+async def test_update_lead_exact_check_in_clears_stale_window_slots_too(test_property, db_session, test_user):
+    """Same supersession discipline as nights -- an exact check_in must also
+    clear a stale window_start/window_end from an earlier, now-superseded
+    vague-window turn."""
+    state = ConversationState()
+    tools = build_voice_tools(call_session_id=None, property_id=test_property.id, host_user_id=test_user.id, conversation_state=state)
+    update_lead = next(t for t in tools if t.__name__ == "update_lead")
+
+    today = date.today()
+    params1 = _FakeFunctionCallParams()
+    await update_lead(
+        params1,
+        nights=3,
+        window_start=(today + timedelta(days=30)).isoformat(),
+        window_end=(today + timedelta(days=37)).isoformat(),
+    )
+    assert "window_start" in state.slots
+
+    check_in = (today + timedelta(days=32)).isoformat()
+    params2 = _FakeFunctionCallParams()
+    await update_lead(params2, check_in=check_in)
+    assert "nights" not in state.slots
+    assert "window_start" not in state.slots
+    assert "window_end" not in state.slots
+
+
+async def test_update_lead_window_start_end_not_persisted_to_lead_row(test_property, db_session, test_user):
+    """window_start/window_end have no matching Lead column, same reasoning
+    as nights -- confirm they're popped before reaching upsert_lead."""
+    from sqlalchemy import select
+
+    from app.models.lead import Lead
+
+    state = ConversationState()
+    tools = build_voice_tools(call_session_id=None, property_id=test_property.id, host_user_id=test_user.id, conversation_state=state)
+    update_lead = next(t for t in tools if t.__name__ == "update_lead")
+
+    today = date.today()
+    params = _FakeFunctionCallParams()
+    await update_lead(
+        params,
+        nights=3,
+        window_start=(today + timedelta(days=30)).isoformat(),
+        window_end=(today + timedelta(days=37)).isoformat(),
+        guest_name="Test Guest",
+    )
+
+    lead = (await db_session.scalars(select(Lead).where(Lead.user_id == test_user.id))).first()
+    assert lead is not None
+    assert not hasattr(lead, "window_start") or "window_start" not in lead.__dict__
+    assert not hasattr(lead, "window_end") or "window_end" not in lead.__dict__
+
+
+async def test_update_lead_nights_is_not_persisted_to_lead_row(test_property, db_session, test_user):
+    """nights has no matching Lead column (see UpdateLeadArgs.nights' own
+    comment) -- confirm it's popped before reaching upsert_lead rather than
+    silently setattr()'d onto the ORM object with no DB column backing it."""
+    from sqlalchemy import select
+
+    from app.models.lead import Lead
+
+    state = ConversationState()
+    tools = build_voice_tools(call_session_id=None, property_id=test_property.id, host_user_id=test_user.id, conversation_state=state)
+    update_lead = next(t for t in tools if t.__name__ == "update_lead")
+
+    params = _FakeFunctionCallParams()
+    await update_lead(params, nights=3, guest_name="Test Guest")
+    assert state.slots["nights"] == 3
+
+    lead = (await db_session.scalars(select(Lead).where(Lead.user_id == test_user.id))).first()
+    assert lead is not None
+    assert not hasattr(lead, "nights") or "nights" not in lead.__dict__
+
+
 async def test_check_calendar_sets_slots_and_checking_availability_goal(test_property, db_session, test_user):
     state = ConversationState()
     tools = build_voice_tools(call_session_id=None, property_id=None, host_user_id=test_user.id, conversation_state=state)
@@ -287,4 +414,173 @@ async def test_recommend_properties_wrapper_excludes_booked_property_using_state
     await recommend_properties(params, preferred_location="Goa")
 
     assert "Open Villa" in params.result
+    assert "Booked Villa" not in params.result
+
+
+async def test_recommend_properties_after_check_calendar_does_not_crash_on_raw_date_slots(
+    db_session, test_user
+):
+    """Availability-first recommendations, Implementation 2 (self-review
+    find): check_calendar's wrapper writes state.slots["check_in"/"check_out"]
+    as raw date objects (args.check_in/check_out, typed `date` by
+    CheckCalendarArgs), NOT an ISO string like update_lead's wrapper does.
+    _parse_iso_date used to assume every slot value was a str and called
+    date.fromisoformat() unconditionally -- that raises TypeError (not
+    ValueError) on a real date object, which propagated straight out of a
+    later recommend_properties call instead of failing open. This exact
+    call order (check_calendar, then recommend_properties again in the same
+    conversation -- e.g. the guest checks one property, then asks "anything
+    else in that price range?") had no prior test coverage. Confirms the
+    fix: the later recommend_properties call must complete normally and
+    still apply the availability filter, not crash."""
+    from app.models.booking import Booking
+
+    checked = await _small_property(db_session, test_user, "Checked Villa", max_guests=4)
+    booked = await _small_property(db_session, test_user, "Booked Villa", max_guests=4)
+    open_villa = await _small_property(db_session, test_user, "Open Villa", max_guests=4)
+
+    check_in = date.today() + timedelta(days=10)
+    check_out = check_in + timedelta(days=2)
+    db_session.add(Booking(property_id=booked.id, check_in=check_in, check_out=check_out, status="confirmed"))
+    await db_session.commit()
+
+    state = ConversationState()
+    tools = build_voice_tools(call_session_id=None, property_id=None, host_user_id=test_user.id, conversation_state=state)
+    check_calendar = next(t for t in tools if t.__name__ == "check_calendar")
+    recommend_properties = next(t for t in tools if t.__name__ == "recommend_properties")
+
+    await check_calendar(
+        _FakeFunctionCallParams(),
+        property_id=str(checked.id),
+        check_in=check_in.isoformat(),
+        check_out=check_out.isoformat(),
+    )
+    # Confirms the premise: check_calendar's wrapper really does store a raw
+    # date object here, not a string -- if this assertion ever starts
+    # failing (e.g. a future edit adds .isoformat()), the crash this test
+    # guards against can no longer happen via this path and the test's own
+    # premise should be revisited.
+    assert isinstance(state.slots["check_in"], date)
+
+    params = _FakeFunctionCallParams()
+    await recommend_properties(params, preferred_location="Goa")  # must not raise
+
+    assert "Open Villa" in params.result
+    assert "Booked Villa" not in params.result
+
+
+async def test_recommend_properties_nights_only_still_skips_availability_filter(db_session, test_user):
+    """Availability-first recommendations, Implementation 2's resolved design
+    decision: a nights-only guest (no exact check_in/check_out) is
+    deliberately NOT availability-filtered by this implementation -- pins
+    that behavior explicitly rather than leaving it implicit. Synthesizing a
+    guessed check_in from nights alone would invent a value the guest never
+    stated (CLAUDE.md's explicit invariant); the real fix for this case is
+    Implementation 3's bounded-window partial-availability scan."""
+    from app.models.booking import Booking
+
+    booked = await _small_property(db_session, test_user, "Booked Villa", max_guests=4)
+
+    check_in = date.today() + timedelta(days=10)
+    check_out = check_in + timedelta(days=2)
+    db_session.add(Booking(property_id=booked.id, check_in=check_in, check_out=check_out, status="confirmed"))
+    await db_session.commit()
+
+    state = ConversationState()
+    tools = build_voice_tools(call_session_id=None, property_id=None, host_user_id=test_user.id, conversation_state=state)
+    update_lead = next(t for t in tools if t.__name__ == "update_lead")
+    recommend_properties = next(t for t in tools if t.__name__ == "recommend_properties")
+
+    await update_lead(_FakeFunctionCallParams(), nights=2)
+    assert state.slots["nights"] == 2
+    assert "check_in" not in state.slots
+
+    params = _FakeFunctionCallParams()
+    await recommend_properties(params, preferred_location="Goa")
+
+    # Today's unfiltered behavior -- the booked property still shows up,
+    # exactly as it does when no date/duration signal is known at all.
+    assert "Booked Villa" in params.result
+
+
+async def test_recommend_properties_wrapper_speaks_partial_availability_conflicting_dates(db_session, test_user):
+    """Availability-first recommendations, Implementation 3, wired end-to-end
+    through the real tool wrapper chain (update_lead -> recommend_properties).
+
+    Self-review find during test-writing: an EXACT check_in/check_out pair
+    always implies nights == the full window span, so any conflict inside it
+    is structurally always classified "none", never "partial" -- there is no
+    such thing as "partially available for your exact N nights." A real
+    "partial" result is only reachable when the guest has given a window
+    WIDER than their actual stay length (window_start/window_end + nights,
+    Implementation 3's own addition to close this exact gap) -- e.g. "3
+    nights, sometime in the first week of October." This test exercises that
+    real scenario, not an exact-dates one, since that's the only live path
+    that can produce "partial" at all."""
+    from app.models.booking import Booking
+
+    partial = await _small_property(db_session, test_user, "Partial Villa", max_guests=4)
+    full = await _small_property(db_session, test_user, "Full Villa", max_guests=4)
+
+    window_start = date.today() + timedelta(days=30)
+    window_end = window_start + timedelta(days=10)
+    conflict_start = window_start + timedelta(days=3)
+    conflict_end = window_start + timedelta(days=5)
+    db_session.add(
+        Booking(property_id=partial.id, check_in=conflict_start, check_out=conflict_end, status="confirmed")
+    )
+    await db_session.commit()
+
+    state = ConversationState()
+    tools = build_voice_tools(call_session_id=None, property_id=None, host_user_id=test_user.id, conversation_state=state)
+    update_lead = next(t for t in tools if t.__name__ == "update_lead")
+    recommend_properties = next(t for t in tools if t.__name__ == "recommend_properties")
+
+    await update_lead(
+        _FakeFunctionCallParams(),
+        nights=3,
+        window_start=window_start.isoformat(),
+        window_end=window_end.isoformat(),
+    )
+    assert state.slots["nights"] == 3
+    assert state.slots["window_start"] == window_start.isoformat()
+
+    params = _FakeFunctionCallParams()
+    await recommend_properties(params, preferred_location="Goa")
+
+    assert "Full Villa" in params.result
+    assert "Partial Villa" in params.result
+    assert conflict_start.isoformat() in params.result
+    assert conflict_end.isoformat() in params.result
+
+
+async def test_recommend_properties_wrapper_exact_dates_conflict_is_none_not_partial(db_session, test_user):
+    """Companion/contrast test to the one above: confirms the structural
+    finding directly -- an exact check_in/check_out pair with a conflict
+    inside it is "none" (excluded entirely, not surfaced as partial), since
+    the implied nights (the full span) can never fit around any conflict
+    inside that same exact span."""
+    from app.models.booking import Booking
+
+    booked = await _small_property(db_session, test_user, "Booked Villa", max_guests=4)
+
+    check_in = date.today() + timedelta(days=30)
+    check_out = check_in + timedelta(days=10)
+    conflict_start = check_in + timedelta(days=3)
+    conflict_end = check_in + timedelta(days=5)
+    db_session.add(
+        Booking(property_id=booked.id, check_in=conflict_start, check_out=conflict_end, status="confirmed")
+    )
+    await db_session.commit()
+
+    state = ConversationState()
+    tools = build_voice_tools(call_session_id=None, property_id=None, host_user_id=test_user.id, conversation_state=state)
+    update_lead = next(t for t in tools if t.__name__ == "update_lead")
+    recommend_properties = next(t for t in tools if t.__name__ == "recommend_properties")
+
+    await update_lead(_FakeFunctionCallParams(), check_in=check_in.isoformat(), check_out=check_out.isoformat())
+
+    params = _FakeFunctionCallParams()
+    await recommend_properties(params, preferred_location="Goa")
+
     assert "Booked Villa" not in params.result

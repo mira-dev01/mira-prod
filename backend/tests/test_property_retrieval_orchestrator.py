@@ -246,7 +246,13 @@ async def test_more_premium_than_shown_boost_survives_diversify_rotation(test_us
 
 async def test_recommend_properties_availability_check_fails_open_on_error(test_user, db_session, monkeypatch):
     """Must fail open -- an availability pre-check erroring/timing out is
-    never a reason a recommendation should be blocked entirely."""
+    never a reason a recommendation should be blocked entirely.
+    Availability-first recommendations, Implementation 3: orchestrator.py
+    now calls partial_availability_for_candidates, not
+    unavailable_property_ids directly -- monkeypatching the old function
+    would silently stop exercising this failure path at all (confirmed: it
+    still passed, vacuously, before this fix, since the mock was simply
+    never invoked)."""
     property_ = Property(
         user_id=test_user.id, name="Pine", base_price=3000, max_guests=2, exophone="+918011129008"
     )
@@ -255,10 +261,10 @@ async def test_recommend_properties_availability_check_fails_open_on_error(test_
 
     from app.services import calendar_service
 
-    async def _boom(db, property_ids, check_in, check_out):
+    async def _boom(db, property_ids, window_start, window_end, nights):
         raise RuntimeError("simulated DB error")
 
-    monkeypatch.setattr(calendar_service, "unavailable_property_ids", _boom)
+    monkeypatch.setattr(calendar_service, "partial_availability_for_candidates", _boom)
 
     args = RecommendPropertiesArgs()
     check_in = date.today() + timedelta(days=5)
@@ -268,3 +274,109 @@ async def test_recommend_properties_availability_check_fails_open_on_error(test_
     )
 
     assert result.options[0].spoken_name == "Pine"
+    assert result.partially_available == []
+
+
+async def test_recommend_properties_classifies_full_partial_none_candidates(test_user, db_session):
+    """Availability-first recommendations, Implementation 3: a candidate set
+    with a mix of full/partial/none properties -- only 'full' properties
+    land in options, 'partial' properties are surfaced separately (never
+    silently dropped, never presented as a clean match), 'none' is excluded
+    exactly as the old hard exclusion already did."""
+    full = Property(user_id=test_user.id, name="Full Villa", base_price=3000, max_guests=4, exophone="+918011129301")
+    partial = Property(
+        user_id=test_user.id, name="Partial Villa", base_price=3200, max_guests=4, exophone="+918011129302"
+    )
+    none_ = Property(user_id=test_user.id, name="None Villa", base_price=3400, max_guests=4, exophone="+918011129303")
+    db_session.add_all([full, partial, none_])
+    await db_session.commit()
+    for p in (full, partial, none_):
+        await db_session.refresh(p)
+
+    # A wide 10-day window, but the guest only wants a 3-night stay within
+    # it -- nights is passed explicitly (distinct from the window span) so
+    # "Partial Villa"'s conflict (days 3-5) still leaves sufficient gaps
+    # (days 0-3 and 5-10) for a 3-night stay, genuinely testing the
+    # partial-vs-none distinction rather than accidentally landing on "none"
+    # via an unrelated nights value.
+    check_in = date.today() + timedelta(days=30)
+    check_out = check_in + timedelta(days=10)
+    conflict_start = check_in + timedelta(days=3)
+    conflict_end = check_in + timedelta(days=5)
+    db_session.add_all(
+        [
+            Booking(property_id=partial.id, check_in=conflict_start, check_out=conflict_end, status="confirmed"),
+            Booking(property_id=none_.id, check_in=check_in, check_out=check_out, status="confirmed"),
+        ]
+    )
+    await db_session.commit()
+
+    args = RecommendPropertiesArgs()
+    result = await orchestrator.recommend_properties(
+        db_session, args, test_user.id, check_in=check_in, check_out=check_out, nights=3
+    )
+
+    option_names = [c.spoken_name for c in result.options]
+    assert "Full Villa" in option_names
+    assert "Partial Villa" not in option_names
+    assert "None Villa" not in option_names
+
+    assert len(result.partially_available) == 1
+    assert result.partially_available[0].spoken_name == "Partial Villa"
+    assert result.partially_available[0].conflicting_bookings == [(conflict_start, conflict_end)]
+
+
+async def test_recommend_properties_nights_defaults_from_check_in_check_out_span(test_user, db_session):
+    """When nights isn't explicitly passed, orchestrator.recommend_properties
+    must fall back to (check_out - check_in).days as the required stay
+    length for partial-availability classification -- the common case (a
+    guest gave exact dates directly, no separate night count)."""
+    property_ = Property(
+        user_id=test_user.id, name="Short Stay Villa", base_price=3000, max_guests=4, exophone="+918011129304"
+    )
+    db_session.add(property_)
+    await db_session.commit()
+    await db_session.refresh(property_)
+
+    check_in = date.today() + timedelta(days=30)
+    check_out = check_in + timedelta(days=10)
+    # A booking that leaves only a 4-day gap before it and a 3-day gap after
+    # -- long enough for a 4-night stay derived from a wider window, but the
+    # ACTUAL requested stay here is exactly (check_out - check_in) = 10
+    # nights, which no gap can satisfy -- must classify as "none", not
+    # "partial", confirming nights truly defaults to the full span and isn't
+    # silently left as some other value.
+    db_session.add(
+        Booking(
+            property_id=property_.id,
+            check_in=check_in + timedelta(days=4),
+            check_out=check_in + timedelta(days=7),
+            status="confirmed",
+        )
+    )
+    await db_session.commit()
+
+    args = RecommendPropertiesArgs()
+    result = await orchestrator.recommend_properties(
+        db_session, args, test_user.id, check_in=check_in, check_out=check_out
+    )
+
+    # "none" (no sufficient gap for the full 10-night stay) -- correctly
+    # excluded from options, and NOT added to partially_available either
+    # (that's reserved for "partial" status only, per this task's own status
+    # design decision -- "none" and "partial" are deliberately different
+    # outcomes, not both funneled into the same "flag it" bucket).
+    assert result.options == []
+    assert result.partially_available == []
+
+    # Same booking data, but nights passed explicitly as a SHORTER stay than
+    # the window span -- now the 4-day/3-day gaps DO satisfy a 3-night stay,
+    # proving the prior assertion's "none" outcome came from the (check_out
+    # - check_in) DEFAULT actually being applied, not from these bookings
+    # being unconditionally "none" regardless of nights.
+    result_shorter_stay = await orchestrator.recommend_properties(
+        db_session, args, test_user.id, check_in=check_in, check_out=check_out, nights=3
+    )
+    assert result_shorter_stay.options == []
+    assert len(result_shorter_stay.partially_available) == 1
+    assert result_shorter_stay.partially_available[0].spoken_name == "Short Stay Villa"

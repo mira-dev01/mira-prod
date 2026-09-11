@@ -104,20 +104,25 @@ async def _maybe_notify_guest_calling(
         logger.warning("guest_calling: property %s not found -- skipping", property_id)
         return
 
-    # Single source of truth for the MIRA/HOST decision (Phase 2) -- not
+    host = await db.get(User, property_.user_id)
+    if host is None:
+        logger.warning("guest_calling: host for property_id=%s not found -- skipping", property_id)
+        return
+
+    # Single source of truth for the MIRA/HOST decision -- not
     # reimplemented here. Re-checked at this point (not assumed from "the
-    # pipeline is running, therefore MIRA") because Phase 4's Exotel
-    # Passthru routing is not yet live in the account (pending manual
-    # console configuration, see Phase 4's own report) -- until that's
-    # wired, every call still reaches this code path regardless of
-    # call_handling_mode, so skipping this check would send guest_calling
-    # notifications for HOST-owned properties too. Once Passthru IS live,
-    # this becomes a fast, always-MIRA no-op belt-and-suspenders check --
-    # never removed, since a defensive re-check costs one function call and
-    # protects against exactly the kind of silent architecture-assumption
-    # drift this whole feature is built to avoid.
+    # pipeline is running, therefore MIRA") because the Exotel Passthru
+    # routing may not yet be live in the account (pending manual console
+    # configuration) -- until that's wired, every call still reaches this
+    # code path regardless of the host's call-hours window, so skipping
+    # this check would send guest_calling notifications during the host's
+    # own call hours too. Once Passthru IS live, this becomes a fast,
+    # always-MIRA no-op belt-and-suspenders check -- never removed, since a
+    # defensive re-check costs one function call and protects against
+    # exactly the kind of silent architecture-assumption drift this whole
+    # feature is built to avoid.
     try:
-        owner = call_ownership.resolve_effective_call_owner(property_, datetime.now(timezone.utc))
+        owner = call_ownership.resolve_effective_call_owner(property_, host, datetime.now(timezone.utc))
     except call_ownership.InvalidCallOwnershipConfigError:
         logger.exception(
             "guest_calling: invalid call-ownership configuration for property_id=%s -- skipping", property_id
@@ -131,11 +136,6 @@ async def _maybe_notify_guest_calling(
             call_session_id,
             owner,
         )
-        return
-
-    host = await db.get(User, property_.user_id)
-    if host is None:
-        logger.warning("guest_calling: host for property_id=%s not found -- skipping", property_id)
         return
 
     property_name = property_.spoken_name or property_.display_name or property_.name

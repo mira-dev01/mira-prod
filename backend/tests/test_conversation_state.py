@@ -95,6 +95,25 @@ def test_conversation_goal_derives_from_missing_slots_in_priority_order():
     assert state.conversation_goal == "recommending"
 
 
+def test_conversation_goal_nights_alone_satisfies_the_dates_gate():
+    """A guest who's given a length of stay but no exact check-in/check-out
+    yet (e.g. "3 nights sometime in October") has still answered the
+    substance of the dates question -- the goal should move on to guests,
+    not keep re-deriving collecting_dates every turn."""
+    state = ConversationState()
+    state.set_slot("purpose_of_stay", "family trip")
+    assert state.conversation_goal == "collecting_dates"
+
+    state.set_slot("nights", 3)
+    assert state.conversation_goal == "collecting_guests"
+
+    state.set_slot("num_guests", 4)
+    assert state.conversation_goal == "collecting_location_or_purpose"
+
+    state.set_slot("preferred_location", "Goa")
+    assert state.conversation_goal == "recommending"
+
+
 def test_conversation_goal_different_real_paths_land_on_different_goals():
     """Two genuinely different conversations (guest gives everything upfront
     vs. one field at a time) must reflect their own real state, not a single

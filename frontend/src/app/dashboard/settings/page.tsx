@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TechniciansSection } from "@/components/settings/technicians-section";
-import { CallOwnershipCard } from "@/components/settings/call-ownership-card";
+import { HostCallHoursCard } from "@/components/settings/host-call-hours-card";
 import { API_BASE_URL, ApiError, api, getToken } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 
@@ -202,7 +202,7 @@ function SettingsPageContent() {
               </CardContent>
             </Card>
 
-            <CallOwnershipCard />
+            <HostCallHoursCard />
 
             <Card>
               <CardHeader>

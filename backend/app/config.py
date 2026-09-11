@@ -369,6 +369,19 @@ class Settings(BaseSettings):
             )
         return value
 
+    # TEMPORARY global override for call_ownership.resolve_effective_call_owner,
+    # bypassing each host's own account-global call-hours window
+    # (User.host_call_hours_*) entirely: until that editable path has been
+    # verified in production, every host uses this single fixed Asia/Kolkata
+    # HOST window instead (Mira active 17:00-11:00, host active 11:00-17:00).
+    # Both unset (the default) = zero behavior change, resolver reads each
+    # host's own window exactly as configured. Set both to enable; remove/
+    # unset both (and the render.yaml keys, and the override block in
+    # call_ownership.py that reads these) once the account-global path is
+    # trusted -- see documentation/host-call-hours-and-handoff.md.
+    fixed_host_hours_start: str | None = None
+    fixed_host_hours_end: str | None = None
+
     exotel_sid: str | None = None
     exotel_api_key: str | None = None
     exotel_api_token: str | None = None

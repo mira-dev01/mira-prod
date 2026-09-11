@@ -27,8 +27,19 @@ export type UserOut = {
   agent_first_message: string | null;
   agent_persona: string | null;
   agent_escalation_phrase: string | null;
+  // Spoken when a live call is transferred to the host after they tap
+  // "Take Call" -- distinct from agent_escalation_phrase (host follows up
+  // later). null = server default.
+  agent_handoff_phrase: string | null;
   agent_voice_gender: AgentVoiceGender;
   notification_email: string | null;
+  // Account-global host call hours -- one window, common to every property,
+  // during which inbound guest calls route to the host's phone instead of
+  // Mira. See documentation/host-call-hours-and-handoff.md.
+  host_call_hours_enabled: boolean;
+  host_call_hours_start: string | null; // "HH:MM"
+  host_call_hours_end: string | null; // "HH:MM"
+  host_call_hours_timezone: string; // IANA identifier
   discount_policy_text: string | null;
   negotiation_allowed: boolean;
   max_discount_percent_override: number | null;
@@ -54,8 +65,13 @@ export type UserUpdate = {
   agent_first_message?: string | null;
   agent_persona?: string | null;
   agent_escalation_phrase?: string | null;
+  agent_handoff_phrase?: string | null;
   agent_voice_gender?: AgentVoiceGender;
   notification_email?: string | null;
+  host_call_hours_enabled?: boolean | null;
+  host_call_hours_start?: string | null;
+  host_call_hours_end?: string | null;
+  host_call_hours_timezone?: string | null;
   discount_policy_text?: string | null;
   negotiation_allowed?: boolean | null;
   max_discount_percent_override?: number | null;
@@ -152,11 +168,11 @@ export type FAQItem = { question: string; answer: string };
 
 export type SeasonalNote = { note: string; start_month: number; end_month: number };
 
-// Call Ownership Schedule (Phase 1-3) -- who owns an inbound guest call for
-// this property. "MIRA"/"HOST" apply unconditionally; "SCHEDULED"
-// alternates by time of day per call_handling_schedule_start/_end
-// (property-local wall-clock, evaluated in `timezone`). Actual call
-// routing is not implemented yet (Phase 4+) -- this is configuration only.
+// DEPRECATED -- superseded by the account-global host call hours window on
+// the user (host_call_hours_*, edited on the Settings page). These
+// per-property columns still exist in the DB and are still returned by
+// PropertyOut, but the resolver no longer reads them and no UI writes them.
+// See documentation/host-call-hours-and-handoff.md.
 export type CallHandlingMode = "MIRA" | "HOST" | "SCHEDULED";
 
 export type PropertyOut = {
@@ -226,13 +242,11 @@ export type PropertyCreate = {
   saturday_minimum_stay_enabled?: boolean;
   exact_airbnb_pricing?: boolean;
   is_premium?: boolean;
-  // Same as exact_airbnb_pricing/is_premium above -- not on the backend's
-  // PropertyCreate schema (Phase 1 decision: a schedule shouldn't be
-  // required at property-creation time), only on PropertyUpdate. Included
-  // here anyway since this type doubles as both panels' shared form shape;
-  // extra keys sent on create are silently ignored by Pydantic (no
-  // extra="forbid" on PropertyCreate), same as those two fields already
-  // rely on.
+  // DEPRECATED -- superseded by the account-global Host call hours window
+  // on the user. Still on the backend's PropertyUpdate schema and returned
+  // by PropertyOut (the columns exist), but no UI writes them and the
+  // resolver ignores them. Kept optional here only so PropertyOut ->
+  // PropertyCreate round-trips still typecheck.
   call_handling_mode?: CallHandlingMode;
   call_handling_schedule_start?: string | null;
   call_handling_schedule_end?: string | null;
@@ -245,6 +259,13 @@ export type PropertyUpdate = Partial<PropertyCreate>;
 // the call ends. "Qualified" is never itself a value here -- it's the
 // grouping of BOOKING_LEAD/GUEST_SUPPORT/EXISTING_BOOKING/GENERAL_QUERY,
 // computed wherever needed (see QUALIFIED_CALL_TYPES usage in calls page).
+//
+// The six values below UNKNOWN are outcome labels, not content categories --
+// they describe HOW/WHY a call ended (silence timeout, rejected busy, a
+// crash, a live host transfer, an escalation with no transfer) rather than
+// what it was about, and are never produced by the LLM transcript classifier
+// -- see backend/app/schemas/call_classification.py's OUTCOME_CALL_TYPES
+// comment for the full reasoning. Mirrors that Literal exactly.
 export type CallType =
   | "BOOKING_LEAD"
   | "GUEST_SUPPORT"
@@ -252,7 +273,13 @@ export type CallType =
   | "GENERAL_QUERY"
   | "JUNK"
   | "INCOMPLETE"
-  | "UNKNOWN";
+  | "UNKNOWN"
+  | "UNRESPONSIVE"
+  | "MISSED_AGENT_BUSY"
+  | "MISSED_SYSTEM_FAILURE"
+  | "TRANSFERRED_TO_HOST"
+  | "TRANSFERRED_TO_HOST_MISSED"
+  | "ESCALATED_NO_TRANSFER";
 
 export type CallSummary = {
   booking_snapshot: {
@@ -276,6 +303,7 @@ export type CallSummary = {
   host_action: string[];
   key_details: string[];
   missing_information: string[];
+  objection_tags: string[];
 };
 
 export type CallSessionOut = {
@@ -596,4 +624,24 @@ export type FaqGapAnalytics = {
   most_frequent: { question: string; count: number }[];
   by_property: { property_id: string | null; count: number }[];
   over_time: { bucket: string; count: number }[];
+};
+
+export type ObjectionTagStats = {
+  tag: string;
+  total_calls: number;
+  resolved_count: number;
+  unresolved_count: number;
+  conversion_rate: number | null;
+};
+
+export type BaselineStats = {
+  total_calls: number;
+  resolved_count: number;
+  unresolved_count: number;
+  conversion_rate: number | null;
+};
+
+export type ObjectionInsights = {
+  by_tag: ObjectionTagStats[];
+  baseline: BaselineStats;
 };

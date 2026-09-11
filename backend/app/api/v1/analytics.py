@@ -13,6 +13,9 @@ from app.models.lead import Lead
 from app.models.notification import Notification
 from app.models.user import User
 from app.schemas.call_classification import QUALIFIED_CALL_TYPES
+from app.schemas.call_quality_event import QualityEventAnalyticsOut
+from app.schemas.objection_analytics import ObjectionConversionAnalyticsOut
+from app.services import call_service, lead_service
 from app.services.call_service import BROWSER_TEST_CALLER_NUMBER
 from app.services.recovery_service import NOTIFICATION_CHANNEL_BUSY_RECOVERY
 from app.services.whatsapp_reply_service import NOTIFICATION_CHANNEL_BUSY_RECOVERY_REPLY
@@ -430,3 +433,40 @@ async def analytics_recovery(
             {"stage": "converted", "label": "Converted", "value": converted},
         ],
     }
+
+
+@router.get("/quality-events", response_model=QualityEventAnalyticsOut)
+async def analytics_quality_events(
+    bucket: str = Query(default="week", pattern="^(week|month)$"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Cross-call guard/validator-firing analytics (docs/tasks/
+    building-intelligence.md, Implementation 3) -- read-only, same shape as
+    faq_gaps_analytics (app/api/v1/faq.py), which is this endpoint's direct
+    model. Delegates to call_service.quality_event_analytics rather than
+    inlining the queries here (unlike analytics_summary/timeseries/recovery
+    above) -- this mirrors faq_gaps_analytics's own delegation to
+    faq_service.faq_gap_analytics, which is the pattern this task was asked
+    to follow, and keeps the aggregation independently unit-testable the
+    same way that function is.
+    """
+    return await call_service.quality_event_analytics(db, current_user.id, bucket)
+
+
+@router.get("/objection-insights", response_model=ObjectionConversionAnalyticsOut)
+async def analytics_objection_insights(
+    date_range: DateRange = Depends(date_range_query),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Conversion rate by CallSummary.objection_tags (docs/tasks/
+    building-intelligence.md, Implementation 4) -- read-only, informational
+    only. Deliberately has NO write path back into NegotiationRule/
+    PricingRule/pricing_engine.py -- see lead_service.objection_conversion_
+    analytics's own docstring for why. A host reads this and decides
+    whether/how to act (e.g. editing their own NegotiationRule policy text),
+    same as every other host-authored pricing/negotiation input in this
+    codebase; nothing here applies a pricing change automatically.
+    """
+    return await lead_service.objection_conversion_analytics(db, current_user.id, date_range)

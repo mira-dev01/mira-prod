@@ -49,6 +49,7 @@ Script = Literal["DEVANAGARI", "ROMAN"]
 Politeness = Literal["LOW", "MEDIUM", "HIGH"]
 Tone = Literal["CASUAL", "PREMIUM", "LUXURY"]
 HospitalityStyle = Literal["AIRBNB_HOST"]
+SpeakerGender = Literal["female", "male"]
 
 # How many recent turns the weighted score considers. Deliberately small --
 # this is meant to track "how is the guest talking RIGHT NOW", not the
@@ -103,17 +104,28 @@ class ConversationStyle:
     politeness: Politeness
     tone: Tone
     hospitality_style: HospitalityStyle
+    # Host's calibrated agent voice (User.agent_voice_gender, "female" | "male"
+    # -- see app/models/user.py). Fixed for the life of a call (a host-level
+    # setting, not something inferred turn-by-turn the way language/tone are),
+    # so it carries straight through StyleEngine.update() unchanged rather
+    # than being computed from any TurnSignal. Exists on ConversationStyle
+    # (not just used directly off the User row) so render_style_block -- the
+    # ONE place style becomes prompt text -- can put Hindi grammatical-gender
+    # guidance right next to the Language/Script rules it's actually paired
+    # with in real speech, every turn, rather than as a one-time static note
+    # in the persona section that would get diluted deeper into a call.
+    speaker_gender: SpeakerGender = "female"
 
     # Hysteresis bookkeeping -- exposed on the object itself (not hidden
     # inside the engine) so both the prompt builder and tests can inspect
     # *why* the current style is what it is, not just what it is.
-    confidence: float
-    previous_style: "ConversationStyle | None"
-    last_language_switch_turn: int | None
-    turn_index: int
+    confidence: float = 0.0
+    previous_style: "ConversationStyle | None" = None
+    last_language_switch_turn: int | None = None
+    turn_index: int = 0
 
 
-def _default_style() -> ConversationStyle:
+def _default_style(speaker_gender: SpeakerGender = "female") -> ConversationStyle:
     return ConversationStyle(
         language="ENGLISH",
         script="ROMAN",
@@ -121,6 +133,7 @@ def _default_style() -> ConversationStyle:
         politeness=_DEFAULT_POLITENESS,
         tone=_DEFAULT_TONE,
         hospitality_style=_DEFAULT_HOSPITALITY_STYLE,
+        speaker_gender=speaker_gender,
         confidence=0.0,
         previous_style=None,
         last_language_switch_turn=None,
@@ -241,9 +254,13 @@ class StyleEngine:
     state, no cross-call leakage (a fresh StyleEngine is constructed per call,
     same as ConversationState itself)."""
 
-    def __init__(self, rolling_window: int = DEFAULT_ROLLING_WINDOW):
+    def __init__(self, rolling_window: int = DEFAULT_ROLLING_WINDOW, speaker_gender: SpeakerGender = "female"):
         self._rolling_window = rolling_window
         self._history: list[TurnSignal] = []
+        # Only consulted on the very first update() of a call (previous_style
+        # is None then) -- see update()'s own comment. Matches
+        # User.agent_voice_gender's DB default ("female").
+        self._speaker_gender = speaker_gender
 
     def update(
         self,
@@ -300,6 +317,13 @@ class StyleEngine:
 
         script: Script = "DEVANAGARI" if weighted_devanagari > 0.3 else "ROMAN"
 
+        # speaker_gender is a fixed host-level setting (User.agent_voice_gender),
+        # never inferred from guest turns -- carry it forward from the previous
+        # snapshot unchanged. Only the very first style of a call (previous_style
+        # is None) has no snapshot to carry it from; ConversationStyleProcessor
+        # passes the real value as self._speaker_gender for exactly that case.
+        speaker_gender = previous_style.speaker_gender if previous_style is not None else self._speaker_gender
+
         new_style = ConversationStyle(
             language=committed_language,
             script=script,
@@ -307,6 +331,7 @@ class StyleEngine:
             politeness=_DEFAULT_POLITENESS,
             tone=_DEFAULT_TONE,
             hospitality_style=_DEFAULT_HOSPITALITY_STYLE,
+            speaker_gender=speaker_gender,
             confidence=round(confidence, 3),
             previous_style=previous_style,
             last_language_switch_turn=last_switch_turn,
@@ -347,7 +372,28 @@ def render_style_block(style: ConversationStyle, emphasized: bool = False) -> st
     confirmed language mismatch) can influence the prompt: it asks THIS
     function for a stronger rendering of the exact same style, never a
     different or validator-authored instruction. state_prompt_sync.py is
-    the only caller that ever passes emphasized=True."""
+    the only caller that ever passes emphasized=True.
+
+    Gender agreement (speaker_gender): Hindi verbs conjugate for the
+    grammatical gender of the SPEAKER for a large class of everyday forms --
+    first-person present/future/habitual ("karti hoon" vs "karta hoon",
+    "karungi" vs "karunga") and past-tense agreement ("bata rahi thi" vs
+    "bata raha tha"). Nothing else in this codebase supplies this signal to
+    the model (host.agent_voice_gender only ever drove TTS voice selection,
+    app/voice/pipeline.py's VOICE_BY_GENDER -- see its own docstring); an
+    LLM given no gender cue defaults inconsistently, usually toward
+    masculine forms, which reads as a jarring mismatch against a
+    female-calibrated voice. A single abstract rule ("use feminine verb
+    forms") is exactly the kind of instruction that erodes over a long
+    call -- concrete before/after example pairs hold up far better than
+    prose grammar rules for controlling surface form, so this gives a few
+    real ones rather than just stating the rule. Only rendered when the
+    committed language is HINDI/HINGLISH -- meaningless, and just prompt
+    noise, on an English-only call. Recurs every turn (this function is
+    called fresh each turn by state_prompt_sync.py's _language_hint, never
+    cached) rather than living as a one-time static note in the persona
+    section, so the cue can't get diluted deep into a long call the way a
+    single system-prompt-time paragraph would."""
     language_label = {"ENGLISH": "English", "HINDI": "Hindi", "HINGLISH": "Urban Hinglish"}[style.language]
     script_label = "Devanagari" if style.script == "DEVANAGARI" else "Roman"
     tone_label = {"CASUAL": "Casual", "PREMIUM": "Premium Airbnb Host", "LUXURY": "Luxury Concierge"}[style.tone]
@@ -367,6 +413,21 @@ def render_style_block(style: ConversationStyle, emphasized: bool = False) -> st
             f"\nYour last reply did not match this -- make sure this one is clearly in {language_label}, "
             "not just close to it."
         )
+    if style.language in ("HINDI", "HINGLISH"):
+        if style.speaker_gender == "female":
+            block += (
+                "\nYou are speaking as a woman. In Hindi, always use feminine verb forms and "
+                'self-references -- for example say "main check karti hoon" not "karta hoon", '
+                '"main bata doongi" not "doonga", "main dekh rahi hoon" not "raha hoon". Apply this '
+                "to every verb that refers to yourself, not just these examples."
+            )
+        else:
+            block += (
+                "\nYou are speaking as a man. In Hindi, always use masculine verb forms and "
+                'self-references -- for example say "main check karta hoon" not "karti hoon", '
+                '"main bata doonga" not "doongi", "main dekh raha hoon" not "rahi hoon". Apply this '
+                "to every verb that refers to yourself, not just these examples."
+            )
     return block
 
 
@@ -384,10 +445,15 @@ class ConversationStyleProcessor(FrameProcessor):
     per-turn latency to a pipeline stage that already does a comparable
     amount of work for the exact same frame."""
 
-    def __init__(self, conversation_state: ConversationState | None = None, rolling_window: int = DEFAULT_ROLLING_WINDOW):
+    def __init__(
+        self,
+        conversation_state: ConversationState | None = None,
+        rolling_window: int = DEFAULT_ROLLING_WINDOW,
+        speaker_gender: SpeakerGender = "female",
+    ):
         super().__init__()
         self._conversation_state = conversation_state
-        self._engine = StyleEngine(rolling_window=rolling_window)
+        self._engine = StyleEngine(rolling_window=rolling_window, speaker_gender=speaker_gender)
         self._turn_index = 0
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):

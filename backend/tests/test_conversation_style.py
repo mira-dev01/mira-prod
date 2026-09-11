@@ -25,8 +25,8 @@ def _transcription(text: str) -> TranscriptionFrame:
     return TranscriptionFrame(text=text, user_id="guest", timestamp="", language=Language.HI_IN)
 
 
-def _run(turns: list[str], rolling_window: int = 6) -> list[ConversationStyle]:
-    engine = StyleEngine(rolling_window=rolling_window)
+def _run(turns: list[str], rolling_window: int = 6, speaker_gender: str = "female") -> list[ConversationStyle]:
+    engine = StyleEngine(rolling_window=rolling_window, speaker_gender=speaker_gender)
     style = None
     results = []
     for i, text in enumerate(turns, start=1):
@@ -209,6 +209,50 @@ def test_render_style_block_language_label_hinglish_not_hindi():
     assert "Urban Hinglish" in block or "Hindi" in block
 
 
+# --- render_style_block: Hindi speaker-gender agreement ---
+
+
+def test_render_style_block_female_gender_uses_feminine_forms():
+    (style,) = _run(["हाँ मुझे बुकिंग करनी है"], speaker_gender="female")
+    assert style.speaker_gender == "female"
+    block = render_style_block(style)
+    assert "feminine verb forms" in block
+    assert "karti hoon" in block
+    assert "speaking as a woman" in block
+
+
+def test_render_style_block_male_gender_uses_masculine_forms():
+    (style,) = _run(["हाँ मुझे बुकिंग करनी है"], speaker_gender="male")
+    assert style.speaker_gender == "male"
+    block = render_style_block(style)
+    assert "masculine verb forms" in block
+    assert "karta hoon" in block
+    assert "speaking as a man" in block
+
+
+def test_render_style_block_omits_gender_guidance_for_english():
+    (style,) = _run(["Hello, how are you today?"], speaker_gender="female")
+    assert style.language == "ENGLISH"
+    block = render_style_block(style)
+    assert "feminine verb forms" not in block
+    assert "masculine verb forms" not in block
+
+
+def test_speaker_gender_carries_forward_across_turns_unchanged():
+    """speaker_gender is a fixed host-level setting (User.agent_voice_gender),
+    never re-derived per turn the way language/tone are -- must survive the
+    full hysteresis history unchanged, English turns included."""
+    turns = ["Hello", "हाँ मुझे बुकिंग करनी है", "September में chahiye", "thank you"]
+    styles = _run(turns, speaker_gender="male")
+    assert all(s.speaker_gender == "male" for s in styles)
+
+
+def test_default_speaker_gender_is_female():
+    """Matches User.agent_voice_gender's DB default (app/models/user.py)."""
+    (style,) = _run(["Hello"])
+    assert style.speaker_gender == "female"
+
+
 # --- ConversationStyleProcessor: pipeline wiring ---
 
 
@@ -247,6 +291,21 @@ async def test_processor_forwards_frames_unchanged():
     down_frames, _ = await run_test(processor, frames_to_send=[frame])
 
     assert any(isinstance(f, TranscriptionFrame) and f.text == "Hello" for f in down_frames)
+
+
+@pytest.mark.asyncio
+async def test_processor_forwards_speaker_gender_from_construction():
+    """app/voice/pipeline.py constructs this processor with
+    speaker_gender=voice_gender (host.agent_voice_gender) -- confirms that
+    value actually reaches the ConversationStyle written to state, not just
+    the engine's own internal default."""
+    state = ConversationState()
+    processor = ConversationStyleProcessor(state, speaker_gender="male")
+
+    await run_test(processor, frames_to_send=[_transcription("हाँ मुझे बुकिंग करनी है")])
+
+    assert state.conversation_style is not None
+    assert state.conversation_style.speaker_gender == "male"
 
 
 @pytest.mark.asyncio

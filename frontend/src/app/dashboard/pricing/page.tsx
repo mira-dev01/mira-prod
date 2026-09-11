@@ -17,7 +17,17 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { AiTrainingSection } from "@/components/settings/ai-training-section";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError } from "@/lib/api";
-import type { PriceBreakdown } from "@/lib/types";
+import type { BaselineStats, ObjectionTagStats, PriceBreakdown } from "@/lib/types";
+
+const OBJECTION_TAG_LABELS: Record<string, string> = {
+  PRICE_TOO_HIGH: "Price too high",
+  DATES_UNAVAILABLE: "Dates unavailable",
+  LOCATION_MISMATCH: "Location mismatch",
+  AMENITY_MISSING: "Amenity missing",
+  POLICY_MISMATCH: "Policy mismatch",
+  HOST_UNRESPONSIVE: "Host unresponsive",
+  GUEST_STOPPED_RESPONDING: "Guest stopped responding",
+};
 
 export default function PricingPage() {
   return (
@@ -27,12 +37,57 @@ export default function PricingPage() {
   );
 }
 
+// A rate computed off very few calls (e.g. 1/1 = 100%) looks like a strong
+// signal but isn't one -- shown with an explicit sample-size caveat instead
+// of a bare percentage, so a host doesn't read n=1 with the same confidence
+// as n=50. No fixed "statistically significant" threshold is claimed; this
+// is a plain low-confidence flag, not a p-value.
+const LOW_SAMPLE_THRESHOLD = 5;
+
+function ObjectionInsightRow({
+  row,
+  baseline,
+}: {
+  row: ObjectionTagStats;
+  baseline: BaselineStats;
+}) {
+  const label = OBJECTION_TAG_LABELS[row.tag] ?? row.tag;
+  const lowSample = row.total_calls < LOW_SAMPLE_THRESHOLD;
+  const delta =
+    row.conversion_rate != null && baseline.conversion_rate != null
+      ? row.conversion_rate - baseline.conversion_rate
+      : null;
+
+  return (
+    <TableRow>
+      <TableCell>{label}</TableCell>
+      <TableCell className="text-muted-foreground">{row.total_calls}</TableCell>
+      <TableCell>
+        {row.conversion_rate != null ? `${Math.round(row.conversion_rate * 100)}%` : "—"}
+        {lowSample && (
+          <span className="ml-1.5 text-xs text-muted-foreground">(low sample)</span>
+        )}
+      </TableCell>
+      <TableCell className={delta != null && delta < 0 ? "text-destructive" : "text-muted-foreground"}>
+        {baseline.conversion_rate != null ? `${Math.round(baseline.conversion_rate * 100)}% baseline` : "—"}
+        {delta != null && (
+          <span className="ml-1.5">
+            ({delta >= 0 ? "+" : ""}
+            {Math.round(delta * 100)}pp)
+          </span>
+        )}
+      </TableCell>
+    </TableRow>
+  );
+}
+
 function PricingPageContent() {
   const searchParams = useSearchParams();
   const scopedPropertyId = searchParams.get("property_id");
 
   const { data: properties, loading: propertiesLoading } = useAsync(() => api.properties.list(), []);
   const { data: negotiationRules } = useAsync(() => api.negotiationRules.list(), []);
+  const { data: objectionInsights } = useAsync(() => api.analytics.objectionInsights(), []);
   const approvedDiscountRulesCount =
     negotiationRules?.filter(
       (r) =>
@@ -127,6 +182,39 @@ function PricingPageContent() {
           </Card>
         );
       })()}
+
+      {objectionInsights && objectionInsights.by_tag.length > 0 && (
+        <Card className="max-w-3xl">
+          <CardHeader>
+            <CardTitle>Objection insights</CardTitle>
+            <CardDescription>
+              Conversion rate for calls where Mira identified this friction point, compared against your overall
+              conversion rate. A correlation from past calls, not a recommendation — informational only, never
+              applied automatically to pricing or negotiation.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Objection</TableHead>
+                  <TableHead>Calls</TableHead>
+                  <TableHead>Conversion rate</TableHead>
+                  <TableHead>vs. baseline</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {[...objectionInsights.by_tag]
+                  .sort((a, b) => b.total_calls - a.total_calls)
+                  .slice(0, 3)
+                  .map((row) => (
+                    <ObjectionInsightRow key={row.tag} row={row} baseline={objectionInsights.baseline} />
+                  ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       {approvedDiscountRulesCount > 0 && (
         <Card className="max-w-2xl border-primary/30">

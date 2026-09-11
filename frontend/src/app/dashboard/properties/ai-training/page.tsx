@@ -22,6 +22,7 @@ export default function AiTrainingPage() {
   const [firstMessage, setFirstMessage] = useState(user?.agent_first_message ?? "");
   const [persona, setPersona] = useState(user?.agent_persona ?? "");
   const [escalationPhrase, setEscalationPhrase] = useState(user?.agent_escalation_phrase ?? "");
+  const [handoffPhrase, setHandoffPhrase] = useState(user?.agent_handoff_phrase ?? "");
   const [voiceGender, setVoiceGender] = useState<AgentVoiceGender>(user?.agent_voice_gender ?? "female");
   const [savingPersonalization, setSavingPersonalization] = useState(false);
 
@@ -33,6 +34,7 @@ export default function AiTrainingPage() {
         agent_first_message: firstMessage || null,
         agent_persona: persona || null,
         agent_escalation_phrase: escalationPhrase || null,
+        agent_handoff_phrase: handoffPhrase || null,
         agent_voice_gender: voiceGender,
       });
       await refreshUser();
@@ -135,7 +137,22 @@ export default function AiTrainingPage() {
                 value={escalationPhrase}
                 onValueChange={setEscalationPhrase}
               />
-              <p className="text-xs text-muted-foreground">Said right before MIRA hands off to you.</p>
+              <p className="text-xs text-muted-foreground">
+                Said when MIRA takes down your details to have you follow up with the guest later.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="agent_handoff_phrase">Live call handoff phrase</Label>
+              <DictationTextarea
+                id="agent_handoff_phrase"
+                placeholder="e.g. Hold on — the host is available now. I'm passing the call to them."
+                value={handoffPhrase}
+                onValueChange={setHandoffPhrase}
+              />
+              <p className="text-xs text-muted-foreground">
+                Said when you tap &quot;Take Call&quot; on a live call and MIRA transfers it to your phone —
+                different from the escalation phrase above, which is for when you follow up later.
+              </p>
             </div>
             <Button type="submit" disabled={savingPersonalization}>
               Save personalization

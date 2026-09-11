@@ -155,6 +155,24 @@ _SLOT_GOAL_PRIORITY: list[tuple[str, ConversationGoal]] = [
     ("purpose_of_stay", "collecting_location_or_purpose"),
 ]
 
+# A guest who has given a length of stay (nights), but not yet exact/
+# confirmed check-in and check-out dates, has still answered the substance
+# of "collecting_dates" -- they just haven't pinned an exact calendar date
+# yet. Without this, _recompute_goal would keep deriving "collecting_dates"
+# every turn even after the guest has already answered "how many nights,"
+# looping the goal back to asking for dates instead of moving on to
+# guests/location/purpose and eventually recommending off the coarser
+# nights-only signal.
+#
+# Deliberately NOT "any of check_in/check_out/nights present" -- a guest who
+# has given check_in alone (check_out still genuinely missing) must still
+# hit the priority loop's check_out check below and land on
+# "collecting_dates", not be waved through just because check_in happens to
+# be one of the three keys. Only "nights known" or "both exact dates known"
+# actually closes the gate.
+def _dates_known(slots: dict[str, Any]) -> bool:
+    return "nights" in slots or ("check_in" in slots and "check_out" in slots)
+
 
 @dataclass
 class ConversationState:
@@ -577,7 +595,10 @@ class ConversationState:
         if after_tool == "recommend_properties":
             self.conversation_goal = "awaiting_selection"
             return
+        dates_known = _dates_known(self.slots)
         for key, goal in _SLOT_GOAL_PRIORITY:
+            if key in ("check_in", "check_out") and dates_known:
+                continue
             if key not in self.slots:
                 self.conversation_goal = goal
                 return

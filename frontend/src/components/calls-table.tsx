@@ -8,13 +8,16 @@ import { StatusChip, type StatusTone } from "@/components/status-chip";
 import { cn, isBrowserTestIdentity } from "@/lib/utils";
 import type { CallSessionOut, CallType } from "@/lib/types";
 
+// CallSession.status only ever holds "in_progress" / "completed" / "failed"
+// (backend/app/models/call_session.py) -- "active"/"escalated"/"missed"
+// were removed here since no backend code has ever written them (confirmed
+// via a repo-wide `session.status =` audit); the outcome distinctions those
+// names gestured at now live on call_type instead (see callTypeTone below),
+// which the Calls tab actually badges/filters by.
 export const callStatusTone: Record<string, StatusTone> = {
   completed: "live",
-  active: "progress",
   in_progress: "progress",
-  escalated: "destructive",
   failed: "destructive",
-  missed: "destructive",
 };
 
 // Same vocabulary/meaning as lead-detail-panel.tsx's leadUrgencyTone (both
@@ -31,6 +34,17 @@ export const callUrgencyTone: Record<string, StatusTone> = {
 // call_type badge colors -- BOOKING_LEAD and GENERAL_QUERY share the same
 // green "qualified" look (distinguished only by label text), matching the
 // 6-color legend the host-facing spec gives for a 7-value taxonomy.
+//
+// The six outcome labels below JUNK describe how/why a call ended rather
+// than what it was about (see CallType's own comment in lib/types.ts) --
+// toned as a family: TRANSFERRED_TO_HOST (a good outcome, host live on the
+// call) gets the same "progress" tone as GUEST_SUPPORT; ESCALATED_NO_TRANSFER
+// (needs host follow-up, same idea as a pending escalation elsewhere in the
+// dashboard) gets "pending"; the four "the guest didn't get through" outcomes
+// -- UNRESPONSIVE, MISSED_AGENT_BUSY, MISSED_SYSTEM_FAILURE,
+// TRANSFERRED_TO_HOST_MISSED -- share "destructive", same as JUNK/failed,
+// since all four mean the same thing to a host scanning the Calls tab: this
+// one needs attention.
 export const callTypeTone: Record<CallType, StatusTone> = {
   BOOKING_LEAD: "live",
   GENERAL_QUERY: "live",
@@ -39,6 +53,12 @@ export const callTypeTone: Record<CallType, StatusTone> = {
   INCOMPLETE: "orange",
   UNKNOWN: "neutral",
   JUNK: "destructive",
+  UNRESPONSIVE: "destructive",
+  MISSED_AGENT_BUSY: "destructive",
+  MISSED_SYSTEM_FAILURE: "destructive",
+  TRANSFERRED_TO_HOST: "progress",
+  TRANSFERRED_TO_HOST_MISSED: "destructive",
+  ESCALATED_NO_TRANSFER: "pending",
 };
 
 export const callTypeLabel: Record<CallType, string> = {
@@ -49,6 +69,12 @@ export const callTypeLabel: Record<CallType, string> = {
   INCOMPLETE: "Incomplete",
   UNKNOWN: "Unknown",
   JUNK: "Junk",
+  UNRESPONSIVE: "Unresponsive",
+  MISSED_AGENT_BUSY: "Missed – Agent Busy",
+  MISSED_SYSTEM_FAILURE: "Missed – System Error",
+  TRANSFERRED_TO_HOST: "Transferred to Host",
+  TRANSFERRED_TO_HOST_MISSED: "Transferred to Host – Missed",
+  ESCALATED_NO_TRANSFER: "Escalated to Host",
 };
 
 // Left-border color per row, reusing the exact same StatusTone CSS vars as

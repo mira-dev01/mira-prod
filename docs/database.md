@@ -58,7 +58,11 @@ c22483e0853a -> 054ea268d326   add index on notification property_id
 6384600c83f2 -> 356d5c923c77   add lead recovery metadata (entry_channel, recovery_reason)
 356d5c923c77 -> 3fae82f7b3d0   add notification lead_id and responded_at
 3fae82f7b3d0 -> 7a236ad1ffd1   index notification lead_id and channel
-7a236ad1ffd1 -> 8f1c4b9e2a67   add lead busy recovery availability tracking (HEAD)
+7a236ad1ffd1 -> 8f1c4b9e2a67   add lead busy recovery availability tracking
+8f1c4b9e2a67 -> 9fd5d655d830   add call handling schedule to properties + handoff_status to call_sessions
+9fd5d655d830 -> c4153fd289d2   add stages to negotiation_rules
+c4153fd289d2 -> f041738fce4c   add call_quality_events
+f041738fce4c -> a3f1c9d24e08   add host call hours (host_call_hours_*) + agent_handoff_phrase to users (HEAD)
 ```
 
 If a session ever fails with demo-login 500s or a missing-column error, check `alembic heads` against the running DB first — a DB left behind on an old revision is a common cause (see `project_state.md` at the repo root for the 2026-07-15 incident).
@@ -81,6 +85,10 @@ If a session ever fails with demo-login 500s or a missing-column error, check `a
 | `terms_accepted_at` | DateTime, nullable | |
 | `notification_email` | String(255), nullable | overrides `email` as the escalation-email recipient when set |
 | `agent_first_message`, `agent_persona`, `agent_escalation_phrase` | Text, nullable | per-host voice agent customization; `None` = Mira's default. `agent_first_message` supports `{host_name}`/`{property_name}`/`{city}`/`{guest_name}` placeholders |
+| `agent_handoff_phrase` | Text, nullable | line Mira speaks when transferring a live call to the host after they tap *Take Call*; `None` = `DEFAULT_HOST_HANDOFF_PHRASE`. A "loop in the host" variant is rejected at write time and falls back to the default at read time. See `documentation/host-call-hours-and-handoff.md` |
+| `host_call_hours_enabled` | Boolean, default `false` | account-global host call hours master switch. `false` = Mira answers 24/7 |
+| `host_call_hours_start`, `host_call_hours_end` | String(8), nullable | `"HH:MM"` 24h window bounds; overnight (start > end) valid. Only read when `host_call_hours_enabled` |
+| `host_call_hours_timezone` | String(64), default `Asia/Kolkata` | IANA identifier the window is evaluated in (validated at the schema layer). Read by `call_ownership.resolve_effective_call_owner` |
 | `discount_policy_text` | Text, nullable | host's free-text discount policy paragraph, re-parsed via `POST /host-discount-rules/parse` into `HostDiscountRule` rows; not itself read by the pricing engine |
 | `negotiation_allowed` | Boolean, default `true` | `False` disables all negotiation for this host |
 | `max_discount_percent_override` | Numeric(5,2), nullable | overrides `MAX_NEGOTIATION_DISCOUNT_PERCENT` |

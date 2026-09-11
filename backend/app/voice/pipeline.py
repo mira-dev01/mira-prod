@@ -47,15 +47,18 @@ from sqlalchemy import select
 from app.config import settings
 from app.database import AsyncSessionLocal
 from app.integrations import exotel_client
+from app.models.call_session import CallSession
 from app.models.property import Property
 from app.models.user import User
 from app.prompts.system_prompt import (
+    DEFAULT_HOST_HANDOFF_PHRASE,
     build_lead_system_prompt,
     build_system_prompt,
     first_message_for,
     lead_first_message_for,
+    resolve_host_handoff_phrase,
 )
-from app.schemas.call_classification import QUALIFIED_CALL_TYPES
+from app.schemas.call_classification import QUALIFIED_CALL_TYPES, ClassificationResult
 from app.services import (
     call_classification_service,
     call_coordinator,
@@ -149,36 +152,67 @@ async def _hangup_exotel_call(exotel_call_id: str) -> None:
 # confirming an interruption, without being so long it makes the bot feel
 # unresponsive to a genuine interruption -- needs a real call to confirm
 # this is the right number, not just a plausible one.
+#
+# Phase 5D correction: the analyzer built from these params was, until this
+# phase, constructed and then handed to TransportParams/FastAPIWebsocketParams
+# as vad_analyzer=... -- a field that does NOT exist on TransportParams in
+# installed pipecat-ai==1.6.0 (confirmed directly: Pydantic's default
+# extra="ignore" silently drops it, no error, no warning, even under
+# `python -W error`; `hasattr(constructed_params, "vad_analyzer")` is False).
+# vad_analyzer only exists on LLMUserAggregatorParams in this pipecat
+# version -- it must have moved there in a pipecat release after this
+# constant/comment block was originally written (requirements.txt pins
+# pipecat-ai to an unpinned >=1.5.0,<2.0 range). The practical effect: local
+# VAD-driven interruption (and any VADUserStartedSpeakingFrame/
+# VADUserStoppedSpeakingFrame signal at all) was silently NOT WIRED into the
+# live pipeline for an unknown period before this phase -- the guest-facing
+# "cuts the guest off too readily" behavior above must have been produced by
+# a different mechanism (most likely Sarvam's own STT-side interruption path,
+# see _ReconnectingSarvamSTTService) rather than this analyzer, since this
+# analyzer was never actually receiving audio. Fixed in this phase by
+# constructing the analyzer where it's actually consumed -- see
+# _run_pipeline_inner's own vad_analyzer=create_vad_analyzer(_VAD_PARAMS)
+# passed into LLMUserAggregatorParams, not the transport. These threshold
+# values themselves are UNCHANGED and UNVALIDATED against this newly-real
+# code path -- the guest-feedback-driven tuning history above describes
+# calls made under the old (also-broken) local-VAD-analyzer-on-transport
+# config, not this fixed wiring. Needs real-call validation.
 _VAD_PARAMS = VADParams(confidence=0.85, min_volume=0.7, start_secs=0.35)
 
-# Phase 5A (documentation/agent-conversation-improvement.md): explicit
-# product decision to tighten SilenceWatchdogProcessor's normal idle-nudge
-# timeout from 9.0s to 4.0s. Pulled out as a named module constant -- not
-# because SilenceWatchdogProcessor's own DEFAULT_SILENCE_TIMEOUT_SECONDS
-# (5.0) should change (that default exists for callers that don't care what
-# the production value is, e.g. most of this file's own tests), but so this
+# Pulled out as a named module constant -- not because
+# SilenceWatchdogProcessor's own DEFAULT_SILENCE_TIMEOUT_SECONDS (5.0)
+# should change (that default exists for callers that don't care what the
+# production value is, e.g. most of this file's own tests), but so this
 # specific wired-in production value is directly importable/assertable from
 # tests instead of only verifiable by reading _run_pipeline_inner's source.
 #
-# 9.0s's own history, preserved here since this was the only place it was
-# documented before this edit: confirmed live on 2026-07-23, a guest
-# recalling specific dates and phrasing an availability question in Hindi
-# hadn't finished formulating their reply by the then-current 5s (their real
-# answer landed 4s after the nudge already fired, mid-thought) -- 9.0s was
-# the fix at the time. Phase 5A's own investigation (background audio
-# indefinitely deferring this timer via ordinary non-blank transcripts, see
-# silence_watchdog.py's process_frame) found that same generosity was
-# letting unresponsive-with-background-noise calls sit open far longer than
-# intended, and reduced it back down -- accepting a small risk of
-# re-introducing the 2026-07-23 failure mode as the explicit tradeoff. Any
-# future report of the bot nudging/hanging up on a guest who was still
-# genuinely mid-thought should be checked against this history first.
+# Full history: confirmed live on 2026-07-23, a guest recalling specific
+# dates and phrasing an availability question in Hindi hadn't finished
+# formulating their reply by the then-current 5s (their real answer landed
+# 4s after the nudge already fired, mid-thought) -- 9.0s was the fix at the
+# time. Phase 5A's own investigation found that same generosity was letting
+# unresponsive-with-background-noise calls sit open far longer than
+# intended, and reduced it to 4.0s as a stopgap, accepting a known risk of
+# re-introducing the 2026-07-23 failure mode -- Phase 5A's report was
+# explicit that this did NOT fix the underlying problem (any non-blank
+# TranscriptionFrame, including a background/non-guest one, still reset the
+# timer), only shortened how long the symptom could persist per cycle.
 #
-# This alone does not fully solve the background-audio problem this phase
-# investigates -- any non-blank TranscriptionFrame, including one produced
-# by background/non-guest speech, still resets this timer (see
-# silence_watchdog.py's own process_frame and this phase's final report).
-_SILENCE_WATCHDOG_TIMEOUT_SECONDS = 4.0
+# Phase 5D restored this to 9.0s. Root-caused and fixed the ACTUAL problem
+# instead: a real, previously-silent bug where local VAD was never wired
+# into the live pipeline at all (see _VAD_PARAMS's own comment for the full
+# story). With VAD genuinely live, SilenceWatchdogProcessor no longer resets
+# its strike counter on raw TranscriptionFrame -- it resets only on
+# UserStoppedSpeakingFrame (a pipecat-confirmed COMPLETED guest turn, not
+# mere audio activity), and even then not for a turn the repetition-shadow
+# signal flags as a repeated/background pattern (see silence_watchdog.py's
+# own module docstring for the full mechanism). This closes the actual gap
+# Phase 5A's 4.0s stopgap could only ever shorten, so the 2026-07-23
+# mid-thought-cutoff risk that motivated 9.0s in the first place no longer
+# needs to be traded against it -- restoring the more generous value is safe
+# again. See silence_watchdog.py's own docstring for the complete mechanism
+# and this phase's final report for the full investigation.
+_SILENCE_WATCHDOG_TIMEOUT_SECONDS = 9.0
 
 # Per-host voice gender (User.agent_voice_gender, "female" | "male") maps to
 # one representative Sarvam bulbul:v3 speaker name each -- the v3 speaker
@@ -470,18 +504,23 @@ def _build_openrouter_llm():
 # wide safety margin against a single missed tick.
 _LEASE_RENEWAL_INTERVAL_SECONDS = 20
 
-# Phase 7: spoken exactly once, deterministically (queued directly as a
+# Spoken exactly once, deterministically (queued directly as a
 # TTSSpeakFrame, same "bot speaks first" mechanism the initial greeting
 # already uses -- see _on_connected_greeting below -- never an LLM request),
-# when a live call's host has successfully claimed Take Call (Phase 6).
-# Fixed text, not configurable per host/property -- CLAUDE.md's own
-# documented anti-pattern is regex-patching individual bad LLM phrasings
-# after the fact; the durable fix used here is the same one already applied
-# to escalation acknowledgements (app/voice/escalation_phrase_guard.py):
-# when the correct text is fixed and known regardless of context, speak
-# exactly that text deterministically rather than asking the LLM to
-# generate/paraphrase anything.
-_HOST_HANDOFF_PHRASE = "Excuse me for a moment while the host takes up your query."
+# when a live call's host has successfully claimed Take Call.
+#
+# The DEFAULT is fixed text -- CLAUDE.md's own documented anti-pattern is
+# regex-patching individual bad LLM phrasings after the fact; the durable
+# fix used here is the same one applied to escalation acknowledgements
+# (app/voice/escalation_phrase_guard.py): a known, deterministic line
+# rather than asking the LLM to generate/paraphrase anything. A host MAY
+# override the exact wording via User.agent_handoff_phrase (a "loop in the
+# host" variant is rejected at write time and falls back to the default at
+# read time -- see system_prompt.resolve_host_handoff_phrase); the value is
+# resolved once at pipeline start in _run_pipeline and threaded through as
+# host_handoff_phrase, never re-fetched mid-call. It is still a fixed
+# string for the duration of any one call, still never LLM-generated.
+_HOST_HANDOFF_PHRASE = DEFAULT_HOST_HANDOFF_PHRASE
 
 # EndFrame.reason sentinel (see pipecat's own EndFrame/CancelFrame -- both
 # carry an optional `reason`) -- read back inside on_pipeline_finished to
@@ -596,6 +635,7 @@ async def _run_pipeline(
     ringing_audio_task: asyncio.Task | None = None,
     voice_gender: str = "female",
     call_lease_token: str | None = None,
+    host_handoff_phrase: str = _HOST_HANDOFF_PHRASE,
 ) -> None:
     # NOTE: we deliberately do NOT create a Lead row up front. Doing so gave
     # every connection attempt its own empty lead, and a browser/ICE
@@ -639,7 +679,69 @@ async def _run_pipeline(
             ringing_audio_task=ringing_audio_task,
             voice_gender=voice_gender,
             handoff_outcome=handoff_outcome,
+            host_handoff_phrase=host_handoff_phrase,
         )
+    except asyncio.CancelledError:
+        # Not a system failure -- normal shutdown path (e.g. worker restart,
+        # a client-disconnect-triggered cancel racing this same call stack).
+        # Re-raised untouched, same as every other CancelledError handler in
+        # this module; the CallSession is left exactly as on_pipeline_
+        # finished (if it ran) or CancelFrame handling already left it.
+        raise
+    except Exception:
+        # A genuine mid-call crash (STT/LLM/TTS/Pipeline construction
+        # failure, an unhandled exception inside a frame processor) never
+        # reaches on_pipeline_finished at all -- see that handler's own
+        # registration inside _run_pipeline_inner, which this exception
+        # means was either never reached or didn't run to completion. Before
+        # this, such a call left its CallSession stuck at status="in_progress"
+        # / call_type="UNKNOWN" (the model defaults) forever -- indistin-
+        # guishable from a call that's still genuinely live.
+        #
+        # Two guards decide whether to mark this row a system failure:
+        #  - status == "in_progress": so this never clobbers a classification
+        #    on_pipeline_finished already wrote successfully ("completed")
+        #    before some LATER, unrelated failure in this try-block's
+        #    teardown -- MISSED_SYSTEM_FAILURE must only ever mean "the call
+        #    itself never properly finished."
+        #  - handoff_status is None: a live Mira->host handoff DELIBERATELY
+        #    leaves the row at status="in_progress" with handoff_status=
+        #    "requested" (on_pipeline_finished did run, set TRANSFERRED_TO_
+        #    HOST, and left status alone so exotel_connect_routing can still
+        #    route the Connect leg). An exception during that handoff's
+        #    normal-return teardown must NOT overwrite it -- that would both
+        #    lose the TRANSFERRED_TO_HOST label and break Connect routing.
+        #
+        # Deliberately best-effort (its own try/except): must never mask the
+        # real exception, which is always re-raised regardless of whether
+        # this bookkeeping succeeds -- the finally block below still runs its
+        # own hangup/lease-release safety net either way.
+        if call_session_id is not None:
+            try:
+                async with AsyncSessionLocal() as crash_db:
+                    session = await crash_db.get(CallSession, call_session_id)
+                    if (
+                        session is not None
+                        and session.status == "in_progress"
+                        and session.handoff_status is None
+                    ):
+                        session.status = "failed"
+                        session.ended_at = datetime.now(timezone.utc)
+                        await crash_db.commit()
+                        await call_service.set_call_classification(
+                            crash_db,
+                            call_session_id,
+                            ClassificationResult(
+                                call_type="MISSED_SYSTEM_FAILURE",
+                                confidence=1.0,
+                                reason="Call ended due to an unhandled error in the voice pipeline.",
+                            ),
+                        )
+            except Exception:
+                logger.exception(
+                    "Failed to record MISSED_SYSTEM_FAILURE for call_session_id=%s", call_session_id
+                )
+        raise
     finally:
         if renewal_task is not None and not renewal_task.done():
             renewal_task.cancel()
@@ -762,7 +864,9 @@ async def _run_pipeline(
                 _spawn_background_task(recovery_service.process_availability_recovery(host_user_id, property_id))
 
 
-async def _wait_and_trigger_handoff(worker: PipelineWorker, call_session_id: uuid.UUID) -> None:
+async def _wait_and_trigger_handoff(
+    worker: PipelineWorker, call_session_id: uuid.UUID, handoff_phrase: str = _HOST_HANDOFF_PHRASE
+) -> None:
     """Runs as a background task alongside a live call's pipeline (started
     in _run_pipeline_inner, cancelled in that same function's finally
     block -- identical lifecycle shape to _renew_call_lease_periodically).
@@ -792,13 +896,19 @@ async def _wait_and_trigger_handoff(worker: PipelineWorker, call_session_id: uui
     must never be replayed/paraphrased by the LLM on a hypothetical future
     turn (there is no future turn -- the EndFrame right behind it ends the
     pipeline), so it has no reason to enter context.messages at all.
+
+    `handoff_phrase` is resolved once at pipeline start (from
+    User.agent_handoff_phrase, else the default) and passed straight
+    through -- this task never touches the DB. It defaults to
+    _HOST_HANDOFF_PHRASE so a direct caller / test that omits it still gets
+    the standard line.
     """
     try:
         await wait_for_handoff_request(call_session_id)
     except asyncio.CancelledError:
         raise
     logger.info("host_handoff_triggered call_session_id=%s", call_session_id)
-    await worker.queue_frame(TTSSpeakFrame(_HOST_HANDOFF_PHRASE, append_to_context=False))
+    await worker.queue_frame(TTSSpeakFrame(handoff_phrase, append_to_context=False))
     await worker.queue_frame(EndFrame(reason=_HOST_HANDOFF_END_REASON))
 
 
@@ -886,6 +996,7 @@ async def _run_pipeline_inner(
     ringing_audio_task: asyncio.Task | None = None,
     voice_gender: str = "female",
     handoff_outcome: _HandoffOutcome | None = None,
+    host_handoff_phrase: str = _HOST_HANDOFF_PHRASE,
 ) -> None:
     stt = _ReconnectingSarvamSTTService(
         api_key=settings.sarvam_api_key,
@@ -942,13 +1053,18 @@ async def _run_pipeline_inner(
     # independently of language_sync; writes only conversation_style, never
     # current_spoken_language/explicit_language_preference. See
     # app/voice/conversation_style.py.
-    conversation_style_engine = ConversationStyleProcessor(conversation_state)
+    # voice_gender ("female"/"male", from host.agent_voice_gender -- see
+    # VOICE_BY_GENDER above) already selects the TTS voice; also seeding it
+    # here lets ConversationStyle carry a speaker_gender so render_style_block
+    # can give the model correct Hindi verb-conjugation guidance (see that
+    # function's own docstring) matching the voice actually being spoken in.
+    conversation_style_engine = ConversationStyleProcessor(conversation_state, speaker_gender=voice_gender)
     # Auto-cuts a call where the guest has gone silent/unresponsive: nudges
-    # ("Hello? Are you still there?") after each ~4s of silence, hangs up
+    # ("Hello? Are you still there?") after each ~9s of silence, hangs up
     # after the second nudge goes unanswered. See app/voice/silence_watchdog.py
     # for why this has to live as its own processor rather than piggybacking
     # on the turn-stop strategy, and this file's own _SILENCE_WATCHDOG_
-    # TIMEOUT_SECONDS for why the value is 4.0s, not the module default.
+    # TIMEOUT_SECONDS for the full 4s<->9s history and why 9.0s is safe again.
     # Phase 5 (documentation/agent-conversation-improvement.md): passes
     # conversation_state so the closing lifecycle (armed/reopened/closed) is
     # tracked as real state the prompt layer can read, not just this
@@ -1128,10 +1244,19 @@ async def _run_pipeline_inner(
             stop_strategy = HybridCompletenessUserTurnStopStrategy(base_timeout=0.9)
         else:
             stop_strategy = SpeechTimeoutUserTurnStopStrategy(user_speech_timeout=0.9)
+        # Phase 5D fix: vad_analyzer belongs on LLMUserAggregatorParams in
+        # installed pipecat-ai==1.6.0, not on TransportParams -- see
+        # _VAD_PARAMS's own comment for the full story of how this was
+        # silently dead before this phase. One fresh SileroVADAnalyzer
+        # instance per call (VAD state is per-stream, never shared across
+        # concurrent calls -- see app/voice/vad.py's own docstring), owned
+        # exclusively by this aggregator's VADController now that nothing
+        # else references it.
         user_aggregator, assistant_aggregator = LLMContextAggregatorPair(
             context,
             user_params=LLMUserAggregatorParams(
-                user_turn_strategies=UserTurnStrategies(stop=[stop_strategy])
+                user_turn_strategies=UserTurnStrategies(stop=[stop_strategy]),
+                vad_analyzer=create_vad_analyzer(_VAD_PARAMS),
             ),
         )
 
@@ -1303,12 +1428,54 @@ async def _run_pipeline_inner(
                     settings.max_call_duration_seconds,
                 )
 
-                # Awaited inline (not fire-and-forget like guest memory below)
-                # because lead suppression a few lines down is gated on this
-                # result -- the guest has already disconnected by the time
-                # on_pipeline_finished fires, so this latency is invisible to
-                # them, it only delays how quickly the row settles.
-                classification = await call_classification_service.classify_call(transcript, duration_seconds)
+                # Outcome short-circuits: some ways a call ends are
+                # deterministic facts the pipeline already knows, NOT
+                # something classify_call's transcript-reading LLM should be
+                # asked to infer. Each is checked here, before classify_call,
+                # mirroring is_host_handoff's own frame.reason check above --
+                # same mechanism, same place in the handler. See schemas/
+                # call_classification.py's OUTCOME_CALL_TYPES comment for why
+                # these bypass the LLM classifier entirely.
+                if is_host_handoff:
+                    # Mira spoke the handoff phrase and ended its leg so
+                    # Exotel's Connect applet can dial the host (see
+                    # _wait_and_trigger_handoff / _HOST_HANDOFF_END_REASON).
+                    # That the call WAS transferred is certain here. Whether
+                    # the host then actually picked up (TRANSFERRED_TO_HOST)
+                    # vs. missed it (TRANSFERRED_TO_HOST_MISSED) needs the
+                    # Connect-leg's own outcome, which nothing reports back
+                    # yet (Phase 2 -- an Exotel Connect StatusCallback would
+                    # split these two). Until then every handoff is recorded
+                    # as TRANSFERRED_TO_HOST: the host needs it on the Calls
+                    # tab as a transfer regardless, and this is the more
+                    # common case. NOTE the row also stays status=
+                    # "in_progress" (set by finalize_status above) because
+                    # exotel_connect_routing requires that to route the
+                    # handoff -- only the Phase 2 callback can move it to a
+                    # terminal status.
+                    classification = ClassificationResult(
+                        call_type="TRANSFERRED_TO_HOST",
+                        confidence=1.0,
+                        reason="Host took over the call; Mira handed off the live call to the host's phone.",
+                    )
+                elif getattr(frame, "reason", None) == "silent caller":
+                    # silence_watchdog.py's _on_timeout, EndWorkerFrame(
+                    # reason="silent caller") -- the guest never responded.
+                    # (A call that timed out on silence usually has an
+                    # emptyish transcript anyway, which classify_call's own
+                    # _pre_check would otherwise just degrade to the
+                    # unrelated-sounding "INCOMPLETE".)
+                    classification = ClassificationResult(
+                        call_type="UNRESPONSIVE", confidence=1.0, reason="Guest did not respond to Mira's prompts."
+                    )
+                else:
+                    # Awaited inline (not fire-and-forget like guest memory
+                    # below) because lead suppression a few lines down is
+                    # gated on this result -- the guest has already
+                    # disconnected by the time on_pipeline_finished fires,
+                    # so this latency is invisible to them, it only delays
+                    # how quickly the row settles.
+                    classification = await call_classification_service.classify_call(transcript, duration_seconds)
                 await call_service.set_call_classification(finalize_db, call_session_id, classification)
 
                 # Same one-shot-LLM-after-call-ends shape as classification
@@ -1317,6 +1484,14 @@ async def _run_pipeline_inner(
                 # itself crash on_pipeline_finished.
                 summary = await call_summary_service.summarize_call(transcript, duration_seconds)
                 await call_service.set_call_summary(finalize_db, call_session_id, summary)
+
+                # Persists this call's guard/validator firings (see
+                # app/voice/conversation_quality.py's own docstring) purely
+                # for cross-call analytics -- record_quality_events never
+                # raises, so this can't crash on_pipeline_finished, and
+                # conversation_quality itself is read here only, never
+                # written to from this handler.
+                await call_service.record_quality_events(finalize_db, call_session_id, conversation_quality)
 
                 if any(m.get("role") == "user" for m in context.messages):
                     # Backfill the real caller's phone (from Exotel) and the
@@ -1350,6 +1525,32 @@ async def _run_pipeline_inner(
                     # drop any near-empty lead a stray tool call may have made.
                     await lead_service.delete_if_empty(finalize_db, call_session_id)
 
+                # ESCALATED_NO_TRANSFER outcome label: escalate_to_host
+                # (tool_handlers.py) fires mid-call, well before this handler
+                # runs, and does NOT set call_type itself -- writing it there
+                # would just get overwritten by classify_call's result a few
+                # lines above once the call actually ends. Detected here
+                # instead by was_escalated_during_call, which checks for THIS
+                # call's own escalation Notification row (see that function's
+                # docstring for why the call-scoped Notification, not the
+                # sticky Lead.escalated boolean, is the right signal), so
+                # this relies on no new mid-call flag. Only overrides a NON-
+                # qualified classification (JUNK/INCOMPLETE/UNKNOWN) -- an
+                # escalation on a call that ALSO turned into a genuine
+                # BOOKING_LEAD/GUEST_SUPPORT/etc conversation should keep
+                # showing as that qualified content type, not be downgraded
+                # to a bare "escalated" label. Skipped for a host handoff,
+                # which already carries its own TRANSFERRED_TO_HOST label
+                # from the branch above and takes precedence.
+                if classification.call_type not in QUALIFIED_CALL_TYPES and not is_host_handoff:
+                    if await lead_service.was_escalated_during_call(finalize_db, call_session_id):
+                        classification = ClassificationResult(
+                            call_type="ESCALATED_NO_TRANSFER",
+                            confidence=1.0,
+                            reason="escalate_to_host was called during this call; no live transfer followed.",
+                        )
+                        await call_service.set_call_classification(finalize_db, call_session_id, classification)
+
                 # Classification overrides whatever the live tool calls did --
                 # a JUNK/INCOMPLETE/UNKNOWN call must never surface as a Lead,
                 # even if update_lead/escalate_to_host captured real-looking
@@ -1357,7 +1558,21 @@ async def _run_pipeline_inner(
                 # than in-call judgment). Runs regardless of which branch
                 # above fired, since escalate_to_host can create a Lead
                 # directly, independent of the backfill/delete_if_empty path.
-                if classification.call_type not in QUALIFIED_CALL_TYPES:
+                #
+                # The two outcome labels that reach this point are handled
+                # deliberately: UNRESPONSIVE (guest never spoke) SHOULD drop
+                # any stray lead a tool call made -- there was no real
+                # opportunity. TRANSFERRED_TO_HOST and ESCALATED_NO_TRANSFER
+                # must KEEP their lead -- both are calls the host still needs
+                # to act on, so deleting the CRM row would lose exactly the
+                # follow-up the label exists to flag. (MISSED_AGENT_BUSY /
+                # MISSED_SYSTEM_FAILURE never reach here -- their branches
+                # return / raise before on_pipeline_finished.)
+                _keep_lead_outcomes = {"TRANSFERRED_TO_HOST", "ESCALATED_NO_TRANSFER"}
+                if (
+                    classification.call_type not in QUALIFIED_CALL_TYPES
+                    and classification.call_type not in _keep_lead_outcomes
+                ):
                     await lead_service.delete_for_unqualified_call(finalize_db, call_session_id)
 
             # Guest Memory (memory-architecture-plan.md section 1) -- fire
@@ -1456,7 +1671,7 @@ async def _run_pipeline_inner(
         if handoff_registered:
             register_call(call_session_id)
             handoff_listener_task = asyncio.create_task(
-                _wait_and_trigger_handoff(worker, call_session_id)
+                _wait_and_trigger_handoff(worker, call_session_id, host_handoff_phrase)
             )
 
         # Phase 2: independent hard ceiling on live-call lifetime -- see
@@ -1610,6 +1825,12 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
         # no longer applies now that acquire_or_reject touches Redis, not
         # this `db` session, at all.
         busy_recovery_property_id = property_.id if property_ is not None else None
+        # Resolved once here from the host row loaded below, threaded into
+        # _run_pipeline, never re-fetched mid-call. Stays at the default
+        # until the property branch sets it; a Lead Agent call never
+        # reaches a handoff (handoff_registered is False when property_id is
+        # None) so the default is harmless there.
+        host_handoff_phrase = _HOST_HANDOFF_PHRASE
 
         # CallCoordinator is the single authority on "is this host/property
         # already on a live call" -- see app/services/call_coordinator.py.
@@ -1672,6 +1893,23 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
                 "caller_number": caller_number,
                 "dialed_number": dialed_number,
             }
+
+            # Calls-tab visibility for a busy-rejected call: this guest never
+            # reaches the pipeline, so without this nothing would record the
+            # call (the only other writer, Exotel's own status-callback
+            # attach_exotel_call, only fires if Exotel is configured to POST
+            # one for this CallSid, and even then never sets call_type).
+            # Reuses this same still-open `db` session/block, consistent with
+            # how the else-branch below does its own get_or_create_call_session
+            # before this block closes. Best-effort inside the helper -- never
+            # raises, so RecoveryService (fired below) is unaffected.
+            await call_service.record_busy_rejected_call(
+                db,
+                exotel_call_id=exotel_call_id,
+                property_id=busy_recovery_property_id,
+                caller_number=caller_number,
+                host_user_id=host_user_id,
+            )
         else:
             guest = await call_service.get_or_create_guest_profile(db, caller_number, host_user_id)
             active_booking = await lead_service.get_active_booking(db, guest.id if guest else None, host_user_id)
@@ -1707,6 +1945,7 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
                 property_id = property_.id
                 property_name = property_.spoken_name or property_.display_name or property_.name
                 voice_gender = host.agent_voice_gender
+                host_handoff_phrase = resolve_host_handoff_phrase(host)
             else:
                 properties = list(
                     (await db.scalars(select(Property).where(Property.user_id == lead_user.id))).all()
@@ -1748,7 +1987,6 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
             audio_out_enabled=True,
             add_wav_header=False,
             serializer=serializer,
-            vad_analyzer=create_vad_analyzer(_VAD_PARAMS),
         ),
     )
 
@@ -1767,6 +2005,7 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
         ringing_audio_task=ringing_audio_task,
         voice_gender=voice_gender,
         call_lease_token=lease.token if lease is not None else None,
+        host_handoff_phrase=host_handoff_phrase,
     )
 
 
@@ -1867,6 +2106,7 @@ async def run_voice_pipeline_twilio(websocket: WebSocket, call_data: CallData) -
         else:
             host_user_id = lead_user.id
         busy_recovery_property_id = property_.id if property_ is not None else None
+        host_handoff_phrase = _HOST_HANDOFF_PHRASE  # set in the property branch below
 
         try:
             decision, lease = await call_coordinator.acquire_or_reject(
@@ -1898,6 +2138,20 @@ async def run_voice_pipeline_twilio(websocket: WebSocket, call_data: CallData) -
                 "caller_number": caller_number,
                 "dialed_number": dialed_number,
             }
+
+            # Same Calls-tab visibility guarantee as the Exotel path -- a
+            # busy-rejected Twilio call is still a real call the host must
+            # see. exotel_call_id=None here (Twilio calls never carry one),
+            # which record_busy_rejected_call / get_or_create_call_session
+            # tolerate -- the row just has a null exotel_call_id, same as
+            # every normal Twilio CallSession.
+            await call_service.record_busy_rejected_call(
+                db,
+                exotel_call_id=None,
+                property_id=busy_recovery_property_id,
+                caller_number=caller_number,
+                host_user_id=host_user_id,
+            )
         else:
             guest = await call_service.get_or_create_guest_profile(db, caller_number, host_user_id)
             active_booking = await lead_service.get_active_booking(db, guest.id if guest else None, host_user_id)
@@ -1928,6 +2182,7 @@ async def run_voice_pipeline_twilio(websocket: WebSocket, call_data: CallData) -
                 property_id = property_.id
                 property_name = property_.name
                 voice_gender = host.agent_voice_gender
+                host_handoff_phrase = resolve_host_handoff_phrase(host)
             else:
                 properties = list(
                     (await db.scalars(select(Property).where(Property.user_id == lead_user.id))).all()
@@ -1967,7 +2222,6 @@ async def run_voice_pipeline_twilio(websocket: WebSocket, call_data: CallData) -
             audio_out_enabled=True,
             add_wav_header=False,
             serializer=serializer,
-            vad_analyzer=create_vad_analyzer(_VAD_PARAMS),
         ),
     )
 
@@ -1985,6 +2239,7 @@ async def run_voice_pipeline_twilio(websocket: WebSocket, call_data: CallData) -
         ringing_audio_task=ringing_audio_task,
         voice_gender=voice_gender,
         call_lease_token=lease.token if lease is not None else None,
+        host_handoff_phrase=host_handoff_phrase,
     )
 
 
@@ -2021,7 +2276,6 @@ async def run_browser_voice_pipeline(connection: SmallWebRTCConnection, property
         params=TransportParams(
             audio_in_enabled=True,
             audio_out_enabled=True,
-            vad_analyzer=create_vad_analyzer(_VAD_PARAMS),
         ),
     )
 
@@ -2035,6 +2289,7 @@ async def run_browser_voice_pipeline(connection: SmallWebRTCConnection, property
         property_name=property_.spoken_name or property_.display_name or property_.name,
         guest_profile_id=guest_profile_id,
         voice_gender=host.agent_voice_gender,
+        host_handoff_phrase=resolve_host_handoff_phrase(host),
     )
 
 
@@ -2065,7 +2320,6 @@ async def run_browser_lead_pipeline(connection: SmallWebRTCConnection, user: Use
         params=TransportParams(
             audio_in_enabled=True,
             audio_out_enabled=True,
-            vad_analyzer=create_vad_analyzer(_VAD_PARAMS),
         ),
     )
 

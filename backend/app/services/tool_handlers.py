@@ -666,6 +666,7 @@ async def handle_recommend_properties(
     host_user_id: uuid.UUID,
     check_in: date | None = None,
     check_out: date | None = None,
+    nights: int | None = None,
     call_session_id: uuid.UUID | None = None,
     amenity_weights: dict[str, float] | None = None,
 ) -> RecommendationResult:
@@ -677,17 +678,22 @@ async def handle_recommend_properties(
     documentation/agent-conversation-improvement.md) are optional,
     caller-supplied from ConversationState.slots, not part of
     RecommendPropertiesArgs itself -- see orchestrator.recommend_properties's
-    own docstring. call_session_id (Phase 2.5) seeds the leading-candidate
-    diversity rotation so the SAME call stays internally consistent while
-    DIFFERENT calls see genuine variety. amenity_weights (attention/salience
-    tracking, ConversationState.attention) is optional, same pass-through
-    shape as check_in/check_out -- see orchestrator.recommend_properties."""
+    own docstring. nights (Availability-first recommendations, Implementation
+    3) is the same pass-through shape, used as the required stay length for
+    partial-availability classification when check_in/check_out are known;
+    orchestrator.recommend_properties falls back to (check_out - check_in).days
+    when this is omitted. call_session_id (Phase 2.5) seeds the leading-
+    candidate diversity rotation so the SAME call stays internally consistent
+    while DIFFERENT calls see genuine variety. amenity_weights (attention/
+    salience tracking, ConversationState.attention) is optional, same
+    pass-through shape as check_in/check_out -- see orchestrator.recommend_properties."""
     return await property_retrieval_orchestrator.recommend_properties(
         db,
         args,
         host_user_id,
         check_in=check_in,
         check_out=check_out,
+        nights=nights,
         call_session_id=call_session_id,
         amenity_weights=amenity_weights,
     )
@@ -726,6 +732,14 @@ async def handle_update_lead(
     updates = args.model_dump(exclude_unset=True)
     if updates.get("properties_discussed"):
         updates["properties_discussed"] = await _resolve_property_names(db, updates["properties_discussed"])
+    # nights/window_start/window_end have no matching Lead column -- popped
+    # before **updates reaches upsert_lead, which blindly setattr()s every
+    # key it's given (see UpdateLeadArgs.nights' own comment). Handled
+    # separately by the caller (app/voice/tools.py's update_lead wrapper),
+    # written only to ConversationState.slots, never to the DB.
+    updates.pop("nights", None)
+    updates.pop("window_start", None)
+    updates.pop("window_end", None)
     await lead_service.upsert_lead(db, host_user_id, call_session_id, guest_profile_id=guest_profile_id, **updates)
     return "Saved." + _phone_confirmation_warning(updates.get("phone"))
 

@@ -24,6 +24,7 @@ import type {
   NegotiationRuleOut,
   NegotiationRuleUpdate,
   NotificationOut,
+  ObjectionInsights,
   ServiceRequestOut,
   PriceBreakdown,
   PricingRuleCreate,
@@ -287,6 +288,13 @@ export const api = {
       request<RecoveryAnalytics>(
         `/analytics/recovery${buildQuery({
           days: params?.startDate || params?.endDate ? undefined : (params?.days ?? 30),
+          start_date: params?.startDate,
+          end_date: params?.endDate,
+        })}`
+      ),
+    objectionInsights: (params?: { startDate?: string; endDate?: string }) =>
+      request<ObjectionInsights>(
+        `/analytics/objection-insights${buildQuery({
           start_date: params?.startDate,
           end_date: params?.endDate,
         })}`

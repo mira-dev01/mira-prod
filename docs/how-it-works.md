@@ -97,11 +97,22 @@ Two agent modes (**Guest Support** — one fixed property, from that property's 
 
 There is **no dedicated "booking" object or booking flow** — bookings are represented as a `Lead` row that a host manually promotes to `status="booked"` from the dashboard Kanban (`PATCH /leads/{id}`, the *only* place `Lead.status` is ever written — the voice agent never touches it). The separate `Booking` model (`app/models/booking.py`) is populated only by the read-only iCal sync (`calendar_service.sync_property_ical`) from each property's existing Airbnb calendar — it has no price/payment columns and nothing in the voice pipeline writes to it.
 
-Collection mechanics, per `LEAD_AGENT_INSTRUCTIONS` (`system_prompt.py:740-822`):
+Collection mechanics, per `LEAD_AGENT_INSTRUCTIONS` (`system_prompt.py:900-1014`):
 
-1. Dates → guests → location/purpose, gated behind a "have dates been finalized?" branch that sets `lead_temperature` (hot/warm/cold).
-2. `recommend_properties` called once enough is known; a property becomes "active"/"locked" the moment the guest shows interest (mechanically enforced by `ConversationState.lock_property`, not just prompt instruction).
-3. Name + phone collected *only after* interest in a specific property is shown (prompt-level policy — not code-enforced timing).
+1. Guests → location/purpose → stay length, with the OLD separate "have dates been finalized?"
+   branch removed (availability-first recommendations, Implementation 4) — `recommend_properties`
+   itself is now availability-aware once dates or a stay length are known, so a separate finalized/
+   not-finalized gate before recommending is no longer needed. `lead_temperature` (hot/warm/cold) is
+   set from what's actually known (exact dates vs. stay-length-only/vague vs. nothing) instead of
+   from that removed branch. Nights is asked for BEFORE an exact check-in date when the guest gives a
+   vague window, rather than pressing for an exact date immediately (see `docs/agents.md`'s
+   "Availability-first recommendations" section).
+2. `recommend_properties` called once location/purpose + a stay length or exact dates are known — not
+   gated on every field; a property becomes "active"/"locked" the moment the guest shows interest
+   (mechanically enforced by `ConversationState.lock_property`, not just prompt instruction).
+3. Name + phone collected *only after* interest in a specific property is shown (prompt-level policy — not code-enforced timing). `check_calendar` is always re-called at this point with the guest's
+   exact, finalized dates, even if an earlier `recommend_properties` classification already looked
+   clean — that earlier signal was only ever scoped to a looser window or a stay-length estimate.
 4. `update_lead` called incrementally, every time any field becomes known — **this is the actual persistence step**; it upserts into `Lead` via `lead_service.upsert_lead`, additive-only (never blanks a field already set).
 5. The moment a guest verbally accepts a price: `update_lead(lead_temperature="hot", …)` then `escalate_to_host` in the same turn. **There is no tool that finalizes a booking** — this is a hard architectural line: MIRA can qualify and escalate, never confirm. A host closes the loop manually (WhatsApp/dashboard) outside the pipeline entirely.
 
@@ -172,7 +183,7 @@ Built **once**, before the pipeline exists, and never rebuilt mid-call — this 
 
 | File | Role |
 |---|---|
-| `orchestrator.py` | Pipeline: filter → SQL search → (conditional) semantic enrichment → merge/rank → format. Threads `check_in`/`check_out` through from `ConversationState.slots` (not part of the LLM-facing tool schema) to pre-exclude unavailable properties via `calendar_service.unavailable_property_ids`, fail-open on error. |
+| `orchestrator.py` | Pipeline: filter → SQL search → (conditional) semantic enrichment → merge/rank → format. Threads `check_in`/`check_out`/`nights` through from `ConversationState.slots` (not part of the LLM-facing tool schema) to classify each candidate's availability via `calendar_service.partial_availability_for_candidates`, fail-open on error — `"full"` recommended normally, `"none"` excluded, `"partial"` (a real conflict but a sufficient free gap remains) surfaced separately via `RecommendationResult.partially_available` instead of being silently dropped or presented as a clean match. See `docs/agents.md`'s "Availability-first recommendations" section for the full mechanism. |
 | `filter_builder.py` | Builds the base SQLAlchemy filter (host scope, budget, guest count, location — including the Goa-region-locality expansion fix documented in `CLAUDE.md`). |
 | `sql_search.py` | Runs the structured query, price-ascending, with the guest-count-fallback/combo-note logic for oversized groups. |
 | `semantic_search.py` | Only fires when `purpose_of_stay` is set *and* SQL under-returned (<3 results) — embedding-based, never a replacement for structured filtering, never for a purely structured query. |
@@ -204,7 +215,9 @@ voice.py:ws_endpoint
           → property/retrieval/orchestrator.py:recommend_properties
               → filter_builder.build_base_filters
               → sql_search.run_sql_search        (Goa-locality-expanded WHERE)
-              → calendar_service.unavailable_property_ids   (fail-open)
+              → calendar_service.partial_availability_for_candidates   (fail-open;
+                                    only runs if check_in/check_out or window_start/
+                                    window_end+nights are already known)
               → [semantic_search.run_semantic_search]        (only if <3 results + purpose_of_stay)
               → ranking.merge_and_rank → diversify_leading_candidates
               → context_builder.build_recommendation_result
