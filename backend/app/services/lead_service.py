@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.common import DateRange
 from app.models.call_session import CallSession
 from app.models.lead import Lead
+from app.models.notification import Notification
 
 # A returning guest's follow-up call reuses their existing Lead only while
 # it's still an unresolved, in-progress inquiry. Once the host marks it
@@ -297,6 +298,34 @@ async def delete_for_unqualified_call(db: AsyncSession, call_session_id: uuid.UU
         return
     await db.delete(lead)
     await db.commit()
+
+
+async def was_escalated_during_call(db: AsyncSession, call_session_id: uuid.UUID | None) -> bool:
+    """Used by on_pipeline_finished (app/voice/pipeline.py) to decide whether
+    a non-qualified classification should be overridden to the
+    ESCALATED_NO_TRANSFER outcome label instead -- escalate_to_host
+    (tool_handlers.py) fires mid-call but never touches CallSession.call_type
+    itself (see pipeline.py's own comment at that call site for why).
+
+    Deliberately checks for a Notification(channel="escalation",
+    call_session_id=call_session_id) -- created by handle_escalate_to_host
+    every time it fires, scoped to exactly this call -- rather than
+    Lead.escalated. Lead.escalated is a plain boolean on the (possibly
+    reused, see _REUSABLE_LEAD_STATUSES above) lead row: once set True by
+    ANY call that ever escalated it, it stays True forever, so trusting it
+    directly would wrongly label a returning guest's later, non-escalated
+    call as ESCALATED_NO_TRANSFER just because an earlier call on the same
+    lead once escalated. The Notification row is the only call-scoped record
+    of "did escalate_to_host actually fire on THIS call."
+    """
+    if call_session_id is None:
+        return False
+    escalation_notification_id = await db.scalar(
+        select(Notification.id).where(
+            Notification.call_session_id == call_session_id, Notification.channel == "escalation"
+        )
+    )
+    return escalation_notification_id is not None
 
 
 async def list_leads(db: AsyncSession, user_id: uuid.UUID, date_range: DateRange | None = None) -> list[Lead]:

@@ -259,6 +259,13 @@ export type PropertyUpdate = Partial<PropertyCreate>;
 // the call ends. "Qualified" is never itself a value here -- it's the
 // grouping of BOOKING_LEAD/GUEST_SUPPORT/EXISTING_BOOKING/GENERAL_QUERY,
 // computed wherever needed (see QUALIFIED_CALL_TYPES usage in calls page).
+//
+// The six values below UNKNOWN are outcome labels, not content categories --
+// they describe HOW/WHY a call ended (silence timeout, rejected busy, a
+// crash, a live host transfer, an escalation with no transfer) rather than
+// what it was about, and are never produced by the LLM transcript classifier
+// -- see backend/app/schemas/call_classification.py's OUTCOME_CALL_TYPES
+// comment for the full reasoning. Mirrors that Literal exactly.
 export type CallType =
   | "BOOKING_LEAD"
   | "GUEST_SUPPORT"
@@ -266,7 +273,13 @@ export type CallType =
   | "GENERAL_QUERY"
   | "JUNK"
   | "INCOMPLETE"
-  | "UNKNOWN";
+  | "UNKNOWN"
+  | "UNRESPONSIVE"
+  | "MISSED_AGENT_BUSY"
+  | "MISSED_SYSTEM_FAILURE"
+  | "TRANSFERRED_TO_HOST"
+  | "TRANSFERRED_TO_HOST_MISSED"
+  | "ESCALATED_NO_TRANSFER";
 
 export type CallSummary = {
   booking_snapshot: {

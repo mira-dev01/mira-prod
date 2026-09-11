@@ -426,3 +426,26 @@ save), not a visual stub.
    behaviour, not introduced here, but worth confirming product is OK that a host-hours call the
    host misses does not create a recovery Lead (Busy Call Recovery only covers the *busy* rejection
    path, not the *routed-to-host* path).
+
+6. **Calls-tab visibility for host-hours-routed calls** — still open, and the same blocker as #4/#7
+   below. The call-outcome labelling work (`CallType` outcome labels, Sep 2026) made every call
+   that reaches Mira visible on the Calls tab with a correct outcome label — including busy
+   rejections (`MISSED_AGENT_BUSY`, via `call_service.record_busy_rejected_call` from both the
+   Exotel and Twilio `BUSY_RECOVERY` branches), silence timeouts (`UNRESPONSIVE`), pipeline
+   crashes (`MISSED_SYSTEM_FAILURE`, via `_run_pipeline`'s except-block plus the periodic
+   `reconcile_stuck_call_sessions` sweep in `main.py`), escalations (`ESCALATED_NO_TRANSFER`), and
+   live handoffs (`TRANSFERRED_TO_HOST`). But a Phase-4-`302` call **still never creates a
+   `CallSession` at all** — `exotel_call_routing` returns `302` and the Voicebot websocket is
+   never opened. Recording it would mean writing a row from `exotel_call_routing` /
+   `exotel_connect_routing` themselves, which fire *before* the host's leg connects, so the row
+   could only say "routed to host" with no answered/missed outcome. Deferred until the Phase 2
+   Exotel Connect-leg `StatusCallback` exists — the same signal `TRANSFERRED_TO_HOST_MISSED` needs
+   to split a handoff into took-it vs missed-it. Until then, host-hours-routed calls are the one
+   category of inbound call not on the Calls tab.
+
+7. **`TRANSFERRED_TO_HOST_MISSED` is defined but never written** — a live handoff is recorded as
+   `TRANSFERRED_TO_HOST` regardless of whether the host actually answered the Connect leg. Needs
+   the Phase 2 Exotel Connect-leg `StatusCallback` (item #4's console config plus a new webhook
+   endpoint that writes `handoff_status` `connected`/`failed` and the matching `call_type`). The
+   frontend filter and badge for `TRANSFERRED_TO_HOST_MISSED` already exist; they just match zero
+   rows today.

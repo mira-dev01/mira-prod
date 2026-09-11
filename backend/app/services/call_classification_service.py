@@ -1,11 +1,25 @@
-"""Classifies a finished call's transcript into the CallType taxonomy
-(schemas/call_classification.py). The single centralized place this decision
-is made -- app/voice/pipeline.py's on_pipeline_finished calls this, persists
-the result via call_service.set_call_classification, and gates Lead
-visibility on it via lead_service.delete_for_unqualified_call. To add a new
-category later: add the literal to CallType, decide qualified/not, and add
-its definition to _CLASSIFICATION_PROMPT below -- nothing else in the
-codebase needs to change.
+"""Classifies a finished call's transcript into the content half of the
+CallType taxonomy (schemas/call_classification.py) -- the seven values below
+in _VALID_CALL_TYPES/_CLASSIFICATION_PROMPT. app/voice/pipeline.py's
+on_pipeline_finished calls this, persists the result via
+call_service.set_call_classification, and gates Lead visibility on it via
+lead_service.delete_for_unqualified_call. To add a new CONTENT category:
+add the literal to CallType, decide qualified/not, and add its definition to
+_CLASSIFICATION_PROMPT below -- nothing else in the codebase needs to change.
+
+The taxonomy's other half -- OUTCOME_CALL_TYPES (UNRESPONSIVE,
+MISSED_AGENT_BUSY, MISSED_SYSTEM_FAILURE, TRANSFERRED_TO_HOST,
+TRANSFERRED_TO_HOST_MISSED, ESCALATED_NO_TRANSFER) -- is deliberately NOT
+listed in _VALID_CALL_TYPES or the prompt below, and this module never
+produces one. Each of those is a deterministic fact about how/why the call
+ended (which EndFrame.reason fired, which CallCoordinator decision was made,
+an unhandled exception, a Connect-leg callback outcome) that the relevant
+pipeline/webhook call site already knows without reading the transcript --
+those call sites set CallSession.call_type directly (via
+call_service.set_call_classification with a manually-built
+ClassificationResult, or a direct assignment) and skip calling classify_call
+entirely for that call. See schemas/call_classification.py's own comment on
+OUTCOME_CALL_TYPES for the full reasoning.
 
 Deliberately NOT built on app/voice/pipeline.py's _build_llm()/pipecat
 services, for the same reason app/services/negotiation_policy_service.py

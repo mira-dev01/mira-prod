@@ -1,9 +1,9 @@
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.call_quality_event import CallQualityEvent
@@ -114,6 +114,66 @@ async def get_or_create_call_session(
     await db.commit()
     await db.refresh(session)
     return session
+
+
+async def record_busy_rejected_call(
+    db: AsyncSession,
+    *,
+    exotel_call_id: str | None,
+    property_id: uuid.UUID | None,
+    caller_number: str | None,
+    host_user_id: uuid.UUID,
+) -> CallSession | None:
+    """Persist a Calls-tab row for a call that CallCoordinator rejected as
+    BUSY_RECOVERY -- the host/property was already on a live call, so this
+    guest never reached Mira/the LLM and no pipeline CallSession would
+    otherwise exist for them. Called from BOTH the Exotel and Twilio
+    BUSY_RECOVERY branches in app/voice/pipeline.py (shared here rather than
+    duplicated -- same instinct as Busy Call Recovery reusing
+    get_or_create_guest_profile / upsert_lead, per CLAUDE.md).
+
+    status="failed": the same bucket _map_exotel_status puts a real
+    busy/no-answer Exotel call in, and it keeps this rejection out of
+    analytics' completed_calls count -- a busy-rejected call is a missed
+    call, not a completed one. call_type="MISSED_AGENT_BUSY" is set directly
+    (no classify_call -- there is no transcript to read). started_at and
+    ended_at are both "now": the rejection already happened by the time this
+    is called, and a call that never connected has no meaningful duration.
+
+    Best-effort by contract: returns None (and logs) on any failure rather
+    than raising, since the caller's Busy Call Recovery WhatsApp flow must
+    fire regardless of whether this bookkeeping row got written.
+    """
+    try:
+        guest = await get_or_create_guest_profile(db, caller_number, host_user_id)
+        session = await get_or_create_call_session(
+            db,
+            exotel_call_id=exotel_call_id,
+            property_id=property_id,
+            guest_profile_id=guest.id if guest else None,
+            caller_number=caller_number,
+            user_id=host_user_id,
+        )
+        now = datetime.now(timezone.utc)
+        session.started_at = session.started_at or now
+        session.ended_at = now
+        session.status = "failed"
+        await db.commit()
+        await set_call_classification(
+            db,
+            session.id,
+            ClassificationResult(
+                call_type="MISSED_AGENT_BUSY",
+                confidence=1.0,
+                reason="Host/property already on a live call; rejected and routed to Busy Call Recovery.",
+            ),
+        )
+        return session
+    except Exception:
+        logger.exception(
+            "Failed to record MISSED_AGENT_BUSY CallSession for host %s, call %s", host_user_id, exotel_call_id
+        )
+        return None
 
 
 async def attach_exotel_call(
@@ -262,6 +322,65 @@ async def finalize_call_session(
     await db.commit()
     await db.refresh(session)
     return session
+
+
+# Well beyond max_call_duration_seconds (600s) plus any plausible teardown /
+# Connect-leg lifetime -- a row still "in_progress" this long after it started
+# is not a live call, it is a row whose finalize path never completed.
+_STUCK_CALL_SESSION_THRESHOLD_SECONDS = 30 * 60
+
+
+async def reconcile_stuck_call_sessions(db: AsyncSession) -> int:
+    """Safety net for the Calls tab's "every call is logged" guarantee.
+    Several failure modes can leave a CallSession stranded at
+    status="in_progress" with nothing ever finalizing it -- an exception
+    thrown inside on_pipeline_finished itself (pipecat swallows event-handler
+    exceptions), a crash in run_voice_pipeline's setup block after
+    get_or_create_call_session committed but before _run_pipeline is called
+    (its crash handler never runs), a cancellation where the finished handler
+    doesn't complete. Each leaves a phantom "live" call on the host's Calls
+    tab forever.
+
+    This sweeps any such row older than _STUCK_CALL_SESSION_THRESHOLD_SECONDS
+    and marks it status="failed" / call_type="MISSED_SYSTEM_FAILURE" so it
+    reads correctly as a missed call. Returns the number of rows fixed.
+
+    Deliberately skips rows with handoff_status="requested": a live
+    Mira->host handoff intentionally stays "in_progress" so
+    exotel_connect_routing can route the Connect leg (see on_pipeline_
+    finished / webhooks/exotel.py). A handoff that genuinely never resolves
+    is a real gap, but it needs the Phase 2 Connect-leg StatusCallback to
+    close properly -- not a blunt timeout sweep that would race a
+    legitimately long host conversation.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=_STUCK_CALL_SESSION_THRESHOLD_SECONDS)
+    stmt = select(CallSession).where(
+        CallSession.status == "in_progress",
+        CallSession.handoff_status.is_(None),
+        # started_at is normally set, but fall back to created_at (a non-null
+        # TimestampMixin column) so a row that somehow has a null started_at
+        # is still swept rather than slipping through -- SQL `NULL < cutoff`
+        # is NULL, which would silently exclude it.
+        or_(
+            CallSession.started_at < cutoff,
+            and_(CallSession.started_at.is_(None), CallSession.created_at < cutoff),
+        ),
+    )
+    stuck = list((await db.scalars(stmt)).all())
+    if not stuck:
+        return 0
+    now = datetime.now(timezone.utc)
+    for session in stuck:
+        session.status = "failed"
+        session.ended_at = session.ended_at or now
+        session.call_type = "MISSED_SYSTEM_FAILURE"
+        session.classification_confidence = 1.0
+        session.classification_reason = (
+            "Call never finalized (pipeline setup/teardown failure); reconciled by the stuck-session sweep."
+        )
+    await db.commit()
+    logger.warning("reconcile_stuck_call_sessions fixed %d stranded in_progress row(s)", len(stuck))
+    return len(stuck)
 
 
 async def quality_event_analytics(db: AsyncSession, user_id: uuid.UUID, bucket: str = "week") -> dict:

@@ -47,6 +47,7 @@ from sqlalchemy import select
 from app.config import settings
 from app.database import AsyncSessionLocal
 from app.integrations import exotel_client
+from app.models.call_session import CallSession
 from app.models.property import Property
 from app.models.user import User
 from app.prompts.system_prompt import (
@@ -57,7 +58,7 @@ from app.prompts.system_prompt import (
     lead_first_message_for,
     resolve_host_handoff_phrase,
 )
-from app.schemas.call_classification import QUALIFIED_CALL_TYPES
+from app.schemas.call_classification import QUALIFIED_CALL_TYPES, ClassificationResult
 from app.services import (
     call_classification_service,
     call_coordinator,
@@ -680,6 +681,67 @@ async def _run_pipeline(
             handoff_outcome=handoff_outcome,
             host_handoff_phrase=host_handoff_phrase,
         )
+    except asyncio.CancelledError:
+        # Not a system failure -- normal shutdown path (e.g. worker restart,
+        # a client-disconnect-triggered cancel racing this same call stack).
+        # Re-raised untouched, same as every other CancelledError handler in
+        # this module; the CallSession is left exactly as on_pipeline_
+        # finished (if it ran) or CancelFrame handling already left it.
+        raise
+    except Exception:
+        # A genuine mid-call crash (STT/LLM/TTS/Pipeline construction
+        # failure, an unhandled exception inside a frame processor) never
+        # reaches on_pipeline_finished at all -- see that handler's own
+        # registration inside _run_pipeline_inner, which this exception
+        # means was either never reached or didn't run to completion. Before
+        # this, such a call left its CallSession stuck at status="in_progress"
+        # / call_type="UNKNOWN" (the model defaults) forever -- indistin-
+        # guishable from a call that's still genuinely live.
+        #
+        # Two guards decide whether to mark this row a system failure:
+        #  - status == "in_progress": so this never clobbers a classification
+        #    on_pipeline_finished already wrote successfully ("completed")
+        #    before some LATER, unrelated failure in this try-block's
+        #    teardown -- MISSED_SYSTEM_FAILURE must only ever mean "the call
+        #    itself never properly finished."
+        #  - handoff_status is None: a live Mira->host handoff DELIBERATELY
+        #    leaves the row at status="in_progress" with handoff_status=
+        #    "requested" (on_pipeline_finished did run, set TRANSFERRED_TO_
+        #    HOST, and left status alone so exotel_connect_routing can still
+        #    route the Connect leg). An exception during that handoff's
+        #    normal-return teardown must NOT overwrite it -- that would both
+        #    lose the TRANSFERRED_TO_HOST label and break Connect routing.
+        #
+        # Deliberately best-effort (its own try/except): must never mask the
+        # real exception, which is always re-raised regardless of whether
+        # this bookkeeping succeeds -- the finally block below still runs its
+        # own hangup/lease-release safety net either way.
+        if call_session_id is not None:
+            try:
+                async with AsyncSessionLocal() as crash_db:
+                    session = await crash_db.get(CallSession, call_session_id)
+                    if (
+                        session is not None
+                        and session.status == "in_progress"
+                        and session.handoff_status is None
+                    ):
+                        session.status = "failed"
+                        session.ended_at = datetime.now(timezone.utc)
+                        await crash_db.commit()
+                        await call_service.set_call_classification(
+                            crash_db,
+                            call_session_id,
+                            ClassificationResult(
+                                call_type="MISSED_SYSTEM_FAILURE",
+                                confidence=1.0,
+                                reason="Call ended due to an unhandled error in the voice pipeline.",
+                            ),
+                        )
+            except Exception:
+                logger.exception(
+                    "Failed to record MISSED_SYSTEM_FAILURE for call_session_id=%s", call_session_id
+                )
+        raise
     finally:
         if renewal_task is not None and not renewal_task.done():
             renewal_task.cancel()
@@ -1366,12 +1428,54 @@ async def _run_pipeline_inner(
                     settings.max_call_duration_seconds,
                 )
 
-                # Awaited inline (not fire-and-forget like guest memory below)
-                # because lead suppression a few lines down is gated on this
-                # result -- the guest has already disconnected by the time
-                # on_pipeline_finished fires, so this latency is invisible to
-                # them, it only delays how quickly the row settles.
-                classification = await call_classification_service.classify_call(transcript, duration_seconds)
+                # Outcome short-circuits: some ways a call ends are
+                # deterministic facts the pipeline already knows, NOT
+                # something classify_call's transcript-reading LLM should be
+                # asked to infer. Each is checked here, before classify_call,
+                # mirroring is_host_handoff's own frame.reason check above --
+                # same mechanism, same place in the handler. See schemas/
+                # call_classification.py's OUTCOME_CALL_TYPES comment for why
+                # these bypass the LLM classifier entirely.
+                if is_host_handoff:
+                    # Mira spoke the handoff phrase and ended its leg so
+                    # Exotel's Connect applet can dial the host (see
+                    # _wait_and_trigger_handoff / _HOST_HANDOFF_END_REASON).
+                    # That the call WAS transferred is certain here. Whether
+                    # the host then actually picked up (TRANSFERRED_TO_HOST)
+                    # vs. missed it (TRANSFERRED_TO_HOST_MISSED) needs the
+                    # Connect-leg's own outcome, which nothing reports back
+                    # yet (Phase 2 -- an Exotel Connect StatusCallback would
+                    # split these two). Until then every handoff is recorded
+                    # as TRANSFERRED_TO_HOST: the host needs it on the Calls
+                    # tab as a transfer regardless, and this is the more
+                    # common case. NOTE the row also stays status=
+                    # "in_progress" (set by finalize_status above) because
+                    # exotel_connect_routing requires that to route the
+                    # handoff -- only the Phase 2 callback can move it to a
+                    # terminal status.
+                    classification = ClassificationResult(
+                        call_type="TRANSFERRED_TO_HOST",
+                        confidence=1.0,
+                        reason="Host took over the call; Mira handed off the live call to the host's phone.",
+                    )
+                elif getattr(frame, "reason", None) == "silent caller":
+                    # silence_watchdog.py's _on_timeout, EndWorkerFrame(
+                    # reason="silent caller") -- the guest never responded.
+                    # (A call that timed out on silence usually has an
+                    # emptyish transcript anyway, which classify_call's own
+                    # _pre_check would otherwise just degrade to the
+                    # unrelated-sounding "INCOMPLETE".)
+                    classification = ClassificationResult(
+                        call_type="UNRESPONSIVE", confidence=1.0, reason="Guest did not respond to Mira's prompts."
+                    )
+                else:
+                    # Awaited inline (not fire-and-forget like guest memory
+                    # below) because lead suppression a few lines down is
+                    # gated on this result -- the guest has already
+                    # disconnected by the time on_pipeline_finished fires,
+                    # so this latency is invisible to them, it only delays
+                    # how quickly the row settles.
+                    classification = await call_classification_service.classify_call(transcript, duration_seconds)
                 await call_service.set_call_classification(finalize_db, call_session_id, classification)
 
                 # Same one-shot-LLM-after-call-ends shape as classification
@@ -1421,6 +1525,32 @@ async def _run_pipeline_inner(
                     # drop any near-empty lead a stray tool call may have made.
                     await lead_service.delete_if_empty(finalize_db, call_session_id)
 
+                # ESCALATED_NO_TRANSFER outcome label: escalate_to_host
+                # (tool_handlers.py) fires mid-call, well before this handler
+                # runs, and does NOT set call_type itself -- writing it there
+                # would just get overwritten by classify_call's result a few
+                # lines above once the call actually ends. Detected here
+                # instead by was_escalated_during_call, which checks for THIS
+                # call's own escalation Notification row (see that function's
+                # docstring for why the call-scoped Notification, not the
+                # sticky Lead.escalated boolean, is the right signal), so
+                # this relies on no new mid-call flag. Only overrides a NON-
+                # qualified classification (JUNK/INCOMPLETE/UNKNOWN) -- an
+                # escalation on a call that ALSO turned into a genuine
+                # BOOKING_LEAD/GUEST_SUPPORT/etc conversation should keep
+                # showing as that qualified content type, not be downgraded
+                # to a bare "escalated" label. Skipped for a host handoff,
+                # which already carries its own TRANSFERRED_TO_HOST label
+                # from the branch above and takes precedence.
+                if classification.call_type not in QUALIFIED_CALL_TYPES and not is_host_handoff:
+                    if await lead_service.was_escalated_during_call(finalize_db, call_session_id):
+                        classification = ClassificationResult(
+                            call_type="ESCALATED_NO_TRANSFER",
+                            confidence=1.0,
+                            reason="escalate_to_host was called during this call; no live transfer followed.",
+                        )
+                        await call_service.set_call_classification(finalize_db, call_session_id, classification)
+
                 # Classification overrides whatever the live tool calls did --
                 # a JUNK/INCOMPLETE/UNKNOWN call must never surface as a Lead,
                 # even if update_lead/escalate_to_host captured real-looking
@@ -1428,7 +1558,21 @@ async def _run_pipeline_inner(
                 # than in-call judgment). Runs regardless of which branch
                 # above fired, since escalate_to_host can create a Lead
                 # directly, independent of the backfill/delete_if_empty path.
-                if classification.call_type not in QUALIFIED_CALL_TYPES:
+                #
+                # The two outcome labels that reach this point are handled
+                # deliberately: UNRESPONSIVE (guest never spoke) SHOULD drop
+                # any stray lead a tool call made -- there was no real
+                # opportunity. TRANSFERRED_TO_HOST and ESCALATED_NO_TRANSFER
+                # must KEEP their lead -- both are calls the host still needs
+                # to act on, so deleting the CRM row would lose exactly the
+                # follow-up the label exists to flag. (MISSED_AGENT_BUSY /
+                # MISSED_SYSTEM_FAILURE never reach here -- their branches
+                # return / raise before on_pipeline_finished.)
+                _keep_lead_outcomes = {"TRANSFERRED_TO_HOST", "ESCALATED_NO_TRANSFER"}
+                if (
+                    classification.call_type not in QUALIFIED_CALL_TYPES
+                    and classification.call_type not in _keep_lead_outcomes
+                ):
                     await lead_service.delete_for_unqualified_call(finalize_db, call_session_id)
 
             # Guest Memory (memory-architecture-plan.md section 1) -- fire
@@ -1749,6 +1893,23 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
                 "caller_number": caller_number,
                 "dialed_number": dialed_number,
             }
+
+            # Calls-tab visibility for a busy-rejected call: this guest never
+            # reaches the pipeline, so without this nothing would record the
+            # call (the only other writer, Exotel's own status-callback
+            # attach_exotel_call, only fires if Exotel is configured to POST
+            # one for this CallSid, and even then never sets call_type).
+            # Reuses this same still-open `db` session/block, consistent with
+            # how the else-branch below does its own get_or_create_call_session
+            # before this block closes. Best-effort inside the helper -- never
+            # raises, so RecoveryService (fired below) is unaffected.
+            await call_service.record_busy_rejected_call(
+                db,
+                exotel_call_id=exotel_call_id,
+                property_id=busy_recovery_property_id,
+                caller_number=caller_number,
+                host_user_id=host_user_id,
+            )
         else:
             guest = await call_service.get_or_create_guest_profile(db, caller_number, host_user_id)
             active_booking = await lead_service.get_active_booking(db, guest.id if guest else None, host_user_id)
@@ -1977,6 +2138,20 @@ async def run_voice_pipeline_twilio(websocket: WebSocket, call_data: CallData) -
                 "caller_number": caller_number,
                 "dialed_number": dialed_number,
             }
+
+            # Same Calls-tab visibility guarantee as the Exotel path -- a
+            # busy-rejected Twilio call is still a real call the host must
+            # see. exotel_call_id=None here (Twilio calls never carry one),
+            # which record_busy_rejected_call / get_or_create_call_session
+            # tolerate -- the row just has a null exotel_call_id, same as
+            # every normal Twilio CallSession.
+            await call_service.record_busy_rejected_call(
+                db,
+                exotel_call_id=None,
+                property_id=busy_recovery_property_id,
+                caller_number=caller_number,
+                host_user_id=host_user_id,
+            )
         else:
             guest = await call_service.get_or_create_guest_profile(db, caller_number, host_user_id)
             active_booking = await lead_service.get_active_booking(db, guest.id if guest else None, host_user_id)
