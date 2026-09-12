@@ -61,7 +61,8 @@ entry points (`run_browser_voice_pipeline`, `run_browser_lead_pipeline`) exercis
 is exactly one pipeline implementation, not one per vendor.
 
 Twilio is **also** used, separately, for real WhatsApp delivery (`app/integrations/twilio_client.py`,
-Sandbox) — this is unrelated to Twilio Voice and uses different credentials/endpoints. See §5.
+a real WhatsApp Business number) — this is unrelated to Twilio Voice and uses different
+credentials/endpoints. See §5.
 
 ## 2. Voice pipeline (live call)
 

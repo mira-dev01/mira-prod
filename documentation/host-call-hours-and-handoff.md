@@ -277,8 +277,8 @@ following must be true — call these out as a deploy checklist in the PR:
 - Exotel Passthru parameter names — `exotel.py` accepts `From`/`To` and `CallFrom`/`CallTo`
   aliases defensively because they're unverified against a live account. Confirm which the account
   sends.
-- `TWILIO_GUEST_CALLING_TEMPLATE_SID` is set (else the plain-text fallback is used, which only
-  reaches numbers that have joined the Twilio WhatsApp sandbox).
+- `TWILIO_GUEST_CALLING_TEMPLATE_SID` is set (else the plain-text fallback is used, which is
+  subject to WhatsApp's 24h customer-service-window rule for freeform messages).
 - Backend runs a **single** web worker (`handoff_signal` is in-process). If Render scales to >1,
   the signal needs Redis pub/sub — separate work, out of scope, but note it.
 - `TAKE_CALL_TOKEN_SECRET` is set to a real value (defaults to `"change-me"`).

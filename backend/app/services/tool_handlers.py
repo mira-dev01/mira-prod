@@ -476,15 +476,16 @@ async def handle_send_photos(
         message=f"To {args.guest_phone}: Here are photos of {property_.name} -- {gallery_url}",
     )
 
-    # Real WhatsApp send via Twilio sandbox (only reaches numbers that have
-    # joined the sandbox -- see twilio_account_sid's docstring in config.py).
+    # Real WhatsApp send via Twilio. Freeform (no Content Template), so this
+    # only succeeds inside Meta's 24h customer-service session window -- see
+    # twilio_account_sid's docstring in config.py.
     asyncio.create_task(
         twilio_client.send_whatsapp_best_effort(args.guest_phone, f"Here are photos of {property_.name} -- {gallery_url}")
     )
 
     # Email stays as a parallel channel (not a fallback) so this is testable
-    # against the host's own inbox even for guest numbers that were never
-    # added to the Twilio sandbox.
+    # against the host's own inbox even when the WhatsApp send above fails
+    # (e.g. outside the 24h session window).
     host_user = await db.get(User, host_user_id)
     if host_user is not None:
         asyncio.create_task(
@@ -569,9 +570,8 @@ async def handle_escalate_to_host(
                 ),
             )
         )
-        # WhatsApp via Twilio Sandbox -- only reaches host_user.phone if
-        # that number has joined the sandbox (see twilio_client.py). Unset
-        # phone or unconfigured Twilio both no-op silently in
+        # WhatsApp via Twilio (see twilio_client.py). Unset phone or
+        # unconfigured Twilio both no-op silently in
         # _send_escalation_whatsapp, same as the email above.
         if host_user.phone:
             asyncio.create_task(
