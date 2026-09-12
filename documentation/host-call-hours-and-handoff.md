@@ -1,9 +1,8 @@
 # Host call hours (account-global) + configurable live-ownership handoff
 
-Status: **implemented, uncommitted, not yet run through `pytest`** (as of 2026-09-08). Branch:
-`abhaya`. Schema/resolver/prompt logic verified via standalone runs; frontend `tsc --noEmit` passes.
-The local environment cannot collect the pytest suite (`import app.main` exceeds the runner
-timeout) — run `pytest` on a working machine before merging.
+Status: **implemented and merged** (`ef133a6`, `d331be9`, PR #52). Part A6's cleanup — removing the
+temporary `FIXED_HOST_HOURS_*` env-var override now that the account-global Settings path is the
+only routing input — has also landed; see §0.2 below, now historical.
 
 This doc is the design/implementation plan for two related changes:
 
@@ -41,18 +40,21 @@ design-level writeup. Summary of the moving parts:
   In practice unreachable because `app/schemas/property.py`'s `PropertyUpdate` validators reject bad
   values at write time.
 
-### 0.2 The TEMPORARY global override (the thing this plan replaces)
+### 0.2 The TEMPORARY global override (REMOVED — historical)
 
 `call_ownership.py` lines ~31–40 and ~135–143, `app/config.py` (`fixed_host_hours_start` /
-`fixed_host_hours_end`), `render.yaml` (`FIXED_HOST_HOURS_START` / `FIXED_HOST_HOURS_END`).
+`fixed_host_hours_end`), `render.yaml` (`FIXED_HOST_HOURS_START` / `FIXED_HOST_HOURS_END`) —
+**all removed**. This section is kept for history; nothing below still applies to the current code.
 
-- If both env vars are set, `resolve_effective_call_owner` **bypasses every `Property` column** and
-  forces one hardcoded `Asia/Kolkata` HOST window for every property.
-- **Currently active in production**: `render.yaml` sets `11:00` / `17:00` — so today every host is
-  on an 11 AM–5 PM IST host window, IST-only, not editable from the dashboard.
-- The per-property Call Ownership editor in the UI is `disabled` while this override is live (see
-  `frontend/src/components/settings/call-ownership-card.tsx`'s `FixedHoursBanner`).
-- Designed to be deleted once per-account dynamic config exists — which is exactly Part A of this
+- While it existed: if both env vars were set, `resolve_effective_call_owner` bypassed every
+  `Property` column and forced one hardcoded `Asia/Kolkata` HOST window for every property.
+- It had been active in production (`render.yaml` set `11:00` / `17:00`) — every host was on an
+  11 AM–5 PM IST host window, IST-only, not editable from the dashboard, **regardless of what that
+  host's own `host_call_hours_*` Settings said**.
+- The per-property Call Ownership editor in the UI was `disabled` while this override was live (see
+  `frontend/src/components/settings/call-ownership-card.tsx`'s `FixedHoursBanner` — that card has
+  since been replaced entirely by `HostCallHoursCard`, see Part A5).
+- Deleted once per-account dynamic config existed — which was exactly Part A of this
   plan.
 
 ### 0.3 Exotel call routing
@@ -164,15 +166,14 @@ Change the signature to take the host:
 resolve_effective_call_owner(property_: Property, host: User, current_time_utc: datetime) -> CallOwner
 ```
 
-Precedence inside the function:
+Precedence inside the function (current, post-A6 cleanup — the env override described in earlier
+drafts of this doc no longer exists):
 
-1. **`settings.fixed_host_hours_start` / `_end` env override** — keep as-is for now (belt-and
-   -suspenders during rollout; removed in the follow-up, see A6). Still wins over everything.
-2. **NEW: `host.host_call_hours_enabled`** — if `True`, evaluate `host_call_hours_start` /
+1. **`host.host_call_hours_enabled`** — if `True`, evaluate `host_call_hours_start` /
    `_end` in `host_call_hours_timezone` using the existing `_parse_hh_mm` +
    `_time_in_half_open_interval`. Inside the window → `HOST`, outside → `MIRA`. This **replaces**
    reading `property_.call_handling_mode` entirely.
-3. If `host_call_hours_enabled` is `False` → return `MIRA` unconditionally (24/7).
+2. If `host_call_hours_enabled` is `False` → return `MIRA` unconditionally (24/7).
    **Do not fall through** to the per-property `call_handling_mode` columns — "retire per-property"
    means the resolver stops reading them.
 
@@ -230,14 +231,15 @@ All three already have fail-closed-to-MIRA `except` blocks — unchanged.
 **API client** — `frontend/src/lib/api.ts`: confirm `updateMe`'s body type allows the new fields.
 `properties.update` no longer needs the `call_handling_*` keys but leaving them is harmless.
 
-### A6. Rollout / cleanup (follow-up, not this PR)
+### A6. Rollout / cleanup — DONE
 
-- Remove `settings.fixed_host_hours_start` / `_end`, the override branch in `call_ownership.py`,
-  and the `FIXED_HOST_HOURS_START` / `_END` keys in `render.yaml` **after** the account-global path
-  is verified in production. Until then it stays as precedence step 1. Flag this in the PR
-  description and update `config.py`'s comment to point at this doc.
+- ~~Remove `settings.fixed_host_hours_start` / `_end`, the override branch in `call_ownership.py`,
+  and the `FIXED_HOST_HOURS_START` / `_END` keys in `render.yaml`~~ — done. The account-global
+  Settings path (`User.host_call_hours_*`) is now the only routing input; no env var can override or
+  shadow what a host has saved. `config.py`'s comment on the (now-removed) setting points here.
 - The per-property `call_handling_mode` / `call_handling_schedule_start` / `_end` columns:
-  kept in schema, no writer, dropped in a later dedicated migration (`CallLease` precedent).
+  kept in schema, no writer, dropped in a later dedicated migration (`CallLease` precedent) — still
+  outstanding, unrelated to the env-override removal above.
 
 ### A7. Tests
 
@@ -399,8 +401,9 @@ save), not a visual stub.
 
 ### Config / docs
 
-- `render.yaml` — (follow-up) remove `FIXED_HOST_HOURS_*`
-- `app/config.py` — update the `fixed_host_hours_*` comment to reference this doc + staged removal
+- `render.yaml` — `FIXED_HOST_HOURS_*` keys **removed**.
+- `app/config.py` — the `fixed_host_hours_*` settings fields are **removed**; comment now explains
+  the retirement and points here.
 - `documentation/current_architecture.md`, `documentation/project_state.md` — reflect the new model
 - `docs/database.md` / `docs/agents.md` / `docs/api.md` — new `User` columns, resolver change,
   `PATCH /auth/me` fields (do this when the change lands, not before)
@@ -409,10 +412,12 @@ save), not a visual stub.
 
 ## Open decisions / risks
 
-1. **`FIXED_HOST_HOURS_*` env override is active in production** (`render.yaml`, 11:00–17:00 IST).
-   Until it's removed it overrides the new per-account setting for every host. Ship the
-   account-global feature, verify, then remove the override + `render.yaml` keys in a fast
-   follow-up. The plan keeps the override as precedence step 1 so nothing breaks mid-rollout.
+1. ~~**`FIXED_HOST_HOURS_*` env override is active in production**~~ — **resolved**: the override has
+   been removed entirely (`render.yaml` keys, `config.py` fields, and the override branch in
+   `call_ownership.py` are all gone). Routing now depends solely on each host's own
+   `host_call_hours_enabled/_start/_end/_timezone`, saved from the Settings page — **off by default**
+   for every account (the migration's `server_default='false'`), so a host must explicitly enable it
+   or Mira answers 24/7.
 2. **Retiring per-property call hours is a behaviour change** for any host who set a per-property
    `SCHEDULED` mode. Given the override forces everyone to one window today, in practice no host has
    a live per-property schedule — but run `SELECT count(*) FROM properties WHERE call_handling_mode

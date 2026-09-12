@@ -18,10 +18,9 @@ import { TIMEZONES, formatHourMinute, timezoneLabel } from "@/lib/timezones";
 // card (components/settings/call-ownership-card.tsx). See
 // documentation/host-call-hours-and-handoff.md.
 //
-// NOTE: while backend/render.yaml's FIXED_HOST_HOURS_* env override is
-// active, every host is forced onto one global 11:00-17:00 IST window and
-// what's saved here has no effect until that override is removed. This
-// card's Save still works; the override is a temporary rollout measure.
+// This is the sole routing input as of the FIXED_HOST_HOURS_* env-var
+// override's removal -- what's saved here takes effect immediately, with
+// no other setting able to override or shadow it.
 
 export function HostCallHoursCard() {
   const { user, refreshUser } = useAuth();

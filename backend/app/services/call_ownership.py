@@ -18,34 +18,22 @@ I/O cost.
 
 Routing input as of documentation/host-call-hours-and-handoff.md: the
 account-global window on User (host_call_hours_enabled/_start/_end/
-_timezone). The per-property Property.call_handling_mode/schedule/timezone
-columns are NO LONGER read here -- they remain in the schema, staged for
-removal (same as the CallLease Postgres table). Precedence:
-  1. settings.fixed_host_hours_* env override (TEMPORARY, see below) --
-     forces one hardcoded IST window for every property/host.
-  2. host.host_call_hours_enabled -- the real, editable path.
-  3. neither -> MIRA (Mira answers 24/7), today's default behavior.
+_timezone) -- the ONLY input. The per-property Property.call_handling_mode/
+schedule/timezone columns are NOT read here -- they remain in the schema,
+staged for removal (same as the CallLease Postgres table). The former
+settings.fixed_host_hours_* env-var override (a global, non-editable
+Asia/Kolkata window forced onto every host regardless of what they'd
+configured) has been retired -- see config.py's own comment. Precedence:
+  1. host.host_call_hours_enabled -- the real, editable path.
+  2. disabled -> MIRA (Mira answers 24/7), today's default behavior.
 """
 
 import enum
 from datetime import datetime, time
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from app.config import settings
 from app.models.property import Property
 from app.models.user import User
-
-# TEMPORARY fixed-hours override, see Settings.fixed_host_hours_start/_end's
-# own comment in config.py: until the account-global host-call-hours path
-# (host.host_call_hours_*) has been verified in production, every property
-# is forced onto one hardcoded Asia/Kolkata HOST window instead of the
-# host's own configured window. Both settings unset (the default) = this
-# block never applies, zero behavior change from before this override
-# existed. Delete this constant and the override branch in
-# resolve_effective_call_owner below (and the render.yaml keys) once the
-# account-global path is trusted -- do not build anything further on top of
-# it, it exists to be removed.
-_FIXED_HOST_HOURS_TIMEZONE = "Asia/Kolkata"
 
 
 class CallOwner(enum.Enum):
@@ -130,28 +118,15 @@ def resolve_effective_call_owner(
     silent assumption this function's whole design refuses to make.
 
     Precedence (see the module docstring):
-      1. settings.fixed_host_hours_* env override (TEMPORARY) -- one
-         hardcoded IST window for everyone.
-      2. host.host_call_hours_enabled -- evaluate the host's own window.
-      3. neither -> MIRA (24/7).
-    A window (either source) needs both bounds and a valid timezone; see
+      1. host.host_call_hours_enabled -- evaluate the host's own window.
+      2. disabled -> MIRA (24/7).
+    A window needs both bounds and a valid timezone; see
     InvalidCallOwnershipConfigError's docstring for why a missing/invalid
     one raises instead of guessing.
     """
     if current_time_utc.tzinfo is None:
         raise InvalidCallOwnershipConfigError(
             "current_time_utc must be timezone-aware; a naive datetime cannot be safely assumed to be UTC"
-        )
-
-    if settings.fixed_host_hours_start and settings.fixed_host_hours_end:
-        # TEMPORARY: bypasses the host's own window entirely -- see
-        # _FIXED_HOST_HOURS_TIMEZONE's comment above.
-        return _owner_for_window(
-            current_time_utc,
-            start_raw=settings.fixed_host_hours_start,
-            end_raw=settings.fixed_host_hours_end,
-            tz_name=_FIXED_HOST_HOURS_TIMEZONE,
-            field_prefix="fixed_host_hours",
         )
 
     if not host.host_call_hours_enabled:
@@ -177,10 +152,10 @@ def _owner_for_window(
     tz_name: str | None,
     field_prefix: str,
 ) -> CallOwner:
-    """Shared tail for both the env-override and the per-host window: given
-    a start/end/timezone, is `current_time_utc` inside the HOST window?
-    Kept as one function so both entry points apply identical parsing and
-    identical failure semantics rather than two near-copies drifting."""
+    """Given a start/end/timezone, is `current_time_utc` inside the HOST
+    window? Kept as its own function (rather than inlined into
+    resolve_effective_call_owner) so the parsing/failure semantics are
+    unit-testable independently of the enabled/disabled branch above."""
     if start_raw is None or end_raw is None:
         raise InvalidCallOwnershipConfigError(
             f"{field_prefix}: both start and end are required when a call-hours window is active"

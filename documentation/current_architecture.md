@@ -172,12 +172,13 @@ Mira:
    Connect applet) and `GET /webhooks/exotel/connect-routing` (returns `User.phone` for Connect to
    dial). Both fail closed toward MIRA.
    - Routing input: `User.host_call_hours_enabled/_start/_end/_timezone` (editable on the Settings
-     page). Disabled = Mira answers 24/7. The per-property `Property.call_handling_*` columns are
-     **no longer read** — kept in schema, staged for removal (`CallLease` precedent).
-   - **Temporary rollout override**: `settings.fixed_host_hours_start`/`_end` (set in `render.yaml`
-     to 11:00–17:00 IST) still wins as precedence step 1 — it forces one hardcoded IST window for
-     every host until the account-global path is verified in production, then it (and the
-     `render.yaml` keys) get removed. See `documentation/host-call-hours-and-handoff.md`.
+     page) — the **sole** input. Disabled = Mira answers 24/7. The per-property
+     `Property.call_handling_*` columns are **no longer read** — kept in schema, staged for removal
+     (`CallLease` precedent).
+   - The former `settings.fixed_host_hours_start`/`_end` rollout override (`render.yaml`,
+     11:00–17:00 IST, forced onto every host regardless of their own setting) has been **removed**.
+     Routing now always reflects exactly what a host has saved on the Settings page. See
+     `documentation/host-call-hours-and-handoff.md`.
 
 2. **Live Mira→host handoff ("Take Call").** For a call already in progress with Mira:
    `app/services/guest_calling_notification.py` sends the host a WhatsApp with a signed, single-use
