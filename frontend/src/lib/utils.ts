@@ -37,15 +37,24 @@ export function isBrowserTestIdentity(value: string | null | undefined): boolean
   return value === BROWSER_TEST_CALLER_NUMBER
 }
 
-// wa.me wants digits only (country code included, no leading "+", no
-// spaces/dashes/parens) -- phone numbers from Exotel/Twilio/guest input
-// aren't guaranteed to already be in that shape. Returns null for anything
-// that isn't a real phone number (browser-test identity, empty, or a string
-// with no digits at all) so callers can just conditionally render on the
-// result instead of re-checking isBrowserTestIdentity themselves.
+// wa.me wants digits only, country-code-prefixed (no leading "+", no
+// spaces/dashes/parens) -- but phone numbers throughout this app (Exotel
+// caller numbers, guest-dictated numbers via update_lead) are stored as
+// bare 10-digit Indian local numbers with no country code (see backend's
+// app/utils/phone.py::to_india_whatsapp_digits and app/schemas/tool.py's
+// _normalize_phone, which explicitly strips any 91/+91 back off on the way
+// in). Mirrors to_india_whatsapp_digits' own logic exactly -- MIRA is
+// India-only today, so a bare 10-digit number defaults to +91 rather than
+// being rejected. Returns null for anything that isn't a real phone number
+// (browser-test identity, empty, or no digits at all) so callers can just
+// conditionally render on the result instead of re-checking
+// isBrowserTestIdentity themselves.
 export function whatsappLink(phone: string | null | undefined): string | null {
   if (!phone || isBrowserTestIdentity(phone)) return null
-  const digits = phone.replace(/\D/g, "")
+  let digits = phone.replace(/\D/g, "")
+  if (digits && !digits.startsWith("91") && digits.length === 10) {
+    digits = "91" + digits
+  }
   return digits ? `https://wa.me/${digits}` : null
 }
 
