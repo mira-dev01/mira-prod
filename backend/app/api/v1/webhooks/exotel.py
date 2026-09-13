@@ -72,6 +72,30 @@ _ACTIVE_CALL_STATUSES = {"in_progress"}
 _ROUTABLE_HANDOFF_STATUS = "requested"
 
 
+async def _resolve_property_and_host(db: AsyncSession, dialed_number: str | None) -> tuple[Property | None, User | None]:
+    """Dialed number -> (Property, host User) or (None, host User) for a
+    Lead Agent (portfolio-wide) line, or (None, None) if unresolvable.
+
+    Host call hours are account-global (User.host_call_hours_*), not
+    per-property, so a host is reachable here two ways: a property's own
+    exophone, or the account's Lead Agent number (User.lead_exophone) --
+    the latter has no single property to report but the account-global
+    window still applies to it. Mirrors app/voice/pipeline.py's own
+    property-then-lead-number fallback (_run_pipeline) exactly, so the
+    real Voicebot path and this routing path can never resolve a dialed
+    number differently. Before this helper existed, exotel_call_routing/
+    exotel_connect_routing only ever tried get_property_by_number and
+    fell back straight to MIRA the instant it returned None -- meaning a
+    Lead Agent number's host call hours were silently never evaluated at
+    all, regardless of what the host had configured."""
+    property_ = await call_service.get_property_by_number(db, dialed_number)
+    if property_ is not None:
+        host = await db.get(User, property_.user_id)
+        return property_, host
+    lead_user = await call_service.get_user_by_lead_number(db, dialed_number)
+    return None, lead_user
+
+
 @router.post("/call-status")
 async def exotel_call_status(
     request: Request,
@@ -148,35 +172,24 @@ async def exotel_call_routing(
         logger.warning("Exotel call-routing request missing CallSid: %s", dict(params))
         return Response(status_code=status.HTTP_200_OK)
 
-    # Property lookup AND ownership resolution share one fail-closed
-    # boundary -- a DB error surfacing from get_property_by_number itself
-    # (connection drop, timeout) must default to MIRA exactly like a
+    # Property/host lookup AND ownership resolution share one fail-closed
+    # boundary -- a DB error surfacing from _resolve_property_and_host
+    # itself (connection drop, timeout) must default to MIRA exactly like a
     # resolver-internal error does; there is no meaningful difference
     # between the two failure sources from a "should this call go to a
     # host who never opted in" standpoint, so they share one except block
     # rather than needing two near-identical ones.
     try:
-        property_ = await call_service.get_property_by_number(db, dialed_number)
-        if property_ is None:
-            # Unknown/unconfigured DID, or a Lead Agent line (host_user_id-
-            # only, no single property) -- resolve_effective_call_owner
-            # needs a Property row to identify the owning host, so a Lead
-            # Agent call has no ownership window to evaluate at all and
-            # falls back to MIRA exactly like every other "can't resolve"
-            # branch here. Same DID resolution get_property_by_number
-            # already performs for the real Voicebot path
-            # (app/voice/pipeline.py) -- not duplicated, reused directly.
+        property_, host = await _resolve_property_and_host(db, dialed_number)
+        if host is None:
+            # Unknown/unconfigured DID -- neither a property's exophone nor
+            # any host's Lead Agent number matched. Same DID resolution
+            # app/voice/pipeline.py's real Voicebot path already performs --
+            # not duplicated, reused directly via _resolve_property_and_host.
             logger.info(
-                "Call-routing: no property for dialed_number=%s call_sid=%s -- defaulting to MIRA",
+                "Call-routing: no property or host for dialed_number=%s call_sid=%s -- defaulting to MIRA",
                 dialed_number,
                 call_sid,
-            )
-            return Response(status_code=status.HTTP_200_OK)
-
-        host = await db.get(User, property_.user_id)
-        if host is None:
-            logger.warning(
-                "Call-routing: property_id=%s has no resolvable host -- defaulting to MIRA", property_.id
             )
             return Response(status_code=status.HTTP_200_OK)
 
@@ -190,9 +203,9 @@ async def exotel_call_routing(
         )
         return Response(status_code=status.HTTP_200_OK)
     except Exception:
-        # Anything else (a DB error from get_property_by_number itself, an
-        # unexpected exception inside the resolver) -- same fail-closed-to-
-        # MIRA policy, logged loudly rather than silently swallowed,
+        # Anything else (a DB error from _resolve_property_and_host itself,
+        # an unexpected exception inside the resolver) -- same fail-closed-
+        # to-MIRA policy, logged loudly rather than silently swallowed,
         # matching acquire_or_reject's own "call protection DEGRADED"
         # logging discipline (app/services/call_coordinator.py) for the
         # equivalent decision-under-failure case in the existing Mira-side
@@ -206,7 +219,12 @@ async def exotel_call_routing(
         return Response(status_code=status.HTTP_200_OK)
 
     if owner is call_ownership.CallOwner.HOST:
-        logger.info("Call-routing: property_id=%s call_sid=%s -> HOST (302)", property_.id, call_sid)
+        logger.info(
+            "Call-routing: host_id=%s property_id=%s call_sid=%s -> HOST (302)",
+            host.id,
+            property_.id if property_ is not None else None,
+            call_sid,
+        )
         # Location header content is UNVERIFIED against the live account --
         # per the confirmed account fact this phase was built against,
         # Exotel's synchronous-Passthru branches on the HTTP status code
@@ -224,7 +242,12 @@ async def exotel_call_routing(
         # real value before relying on it in production.
         return Response(status_code=status.HTTP_302_FOUND)
 
-    logger.info("Call-routing: property_id=%s call_sid=%s -> MIRA (200)", property_.id, call_sid)
+    logger.info(
+        "Call-routing: host_id=%s property_id=%s call_sid=%s -> MIRA (200)",
+        host.id,
+        property_.id if property_ is not None else None,
+        call_sid,
+    )
     return Response(status_code=status.HTTP_200_OK)
 
 
@@ -281,8 +304,10 @@ async def exotel_connect_routing(
     CallCoordinator/Redis/WhatsApp/the LLM, and never accepts a
     caller-supplied destination -- see the CORRELATION section of this
     phase's own spec: CallSid is the only identifier trusted, and the
-    returned number is always read from User.phone via a DB-verified
-    property/host chain, never from a query parameter.
+    returned number is always read from User.phone via a DB-verified host
+    chain (a property's own exophone, or a Lead Agent number resolving
+    straight to the host with no single property in scope -- see
+    _resolve_property_and_host), never from a query parameter.
 
     Fail-closed on every error path: any unresolvable/unauthorized/invalid
     state returns HTTP 200 with an EMPTY numbers list (see _empty_
@@ -306,7 +331,8 @@ async def exotel_connect_routing(
        websocket path, which this call never reaches), so a CallSession
        for this CallSid may not exist. Re-resolves ownership the exact
        same way exotel_call_routing itself just did (dialed number ->
-       Property -> host -> resolve_effective_call_owner) and only proceeds on an
+       property-or-Lead-Agent-number -> host -> resolve_effective_call_owner,
+       see _resolve_property_and_host) and only proceeds on an
        explicit CallOwner.HOST answer -- this is what stops an arbitrary/
        unauthorized call from ever reaching Connect's number lookup: the
        same authorization gate exotel_call_routing already enforced to
@@ -356,32 +382,32 @@ async def exotel_connect_routing(
                     session.status,
                 )
                 return _empty_destination_response()
-            if session.property_id is None:
+            # user_id, not property_id -- CallSession.property_id is
+            # legitimately NULL for a Lead Agent (portfolio-wide) call (see
+            # that column's own model comment), but user_id is always set
+            # whenever a host is known, independent of property. Requiring
+            # property_id here used to refuse every Lead Agent handoff
+            # outright, even though the host was known the whole time.
+            if session.user_id is None:
                 logger.warning(
-                    "Connect-routing: call_sid=%s handoff has no property_id -- refusing to route", call_sid
+                    "Connect-routing: call_sid=%s handoff has no resolvable host -- refusing to route", call_sid
                 )
                 return _empty_destination_response()
-            property_ = await db.get(Property, session.property_id)
-            return await _resolve_and_respond(db, property_, call_sid, source="handoff")
+            host = await db.get(User, session.user_id)
+            return await _resolve_and_respond(db, host, call_sid, source="handoff")
 
         # No CallSession, or one exists but isn't in the one routable
         # handoff state -- resolve as an initial HOST-owned call, the exact
         # same authorization exotel_call_routing itself already requires
-        # to have reached this applet in the first place.
-        property_ = await call_service.get_property_by_number(db, dialed_number)
-        if property_ is None:
-            logger.info(
-                "Connect-routing: no property for dialed_number=%s call_sid=%s -- refusing to route",
-                dialed_number,
-                call_sid,
-            )
-            return _empty_destination_response()
-
-        host = await db.get(User, property_.user_id)
+        # to have reached this applet in the first place. Same property-or-
+        # Lead-Agent-number fallback as exotel_call_routing -- see
+        # _resolve_property_and_host's own docstring for why this can't
+        # just be get_property_by_number alone.
+        property_, host = await _resolve_property_and_host(db, dialed_number)
         if host is None:
-            logger.warning(
-                "Connect-routing: property_id=%s call_sid=%s has no resolvable host -- refusing to route",
-                property_.id,
+            logger.info(
+                "Connect-routing: no property or host for dialed_number=%s call_sid=%s -- refusing to route",
+                dialed_number,
                 call_sid,
             )
             return _empty_destination_response()
@@ -389,14 +415,14 @@ async def exotel_connect_routing(
         owner = call_ownership.resolve_effective_call_owner(property_, host, datetime.now(timezone.utc))
         if owner is not call_ownership.CallOwner.HOST:
             logger.warning(
-                "Connect-routing: property_id=%s call_sid=%s resolved to MIRA, not HOST -- refusing to "
+                "Connect-routing: host_id=%s call_sid=%s resolved to MIRA, not HOST -- refusing to "
                 "route (unauthorized Connect reach or a schedule boundary race)",
-                property_.id,
+                host.id,
                 call_sid,
             )
             return _empty_destination_response()
 
-        return await _resolve_and_respond(db, property_, call_sid, source="initial-host")
+        return await _resolve_and_respond(db, host, call_sid, source="initial-host")
     except call_ownership.InvalidCallOwnershipConfigError:
         logger.exception(
             "Connect-routing: invalid call-ownership configuration for call_sid=%s -- refusing to route",
@@ -408,25 +434,17 @@ async def exotel_connect_routing(
         return _empty_destination_response()
 
 
-async def _resolve_and_respond(
-    db: AsyncSession, property_: Property | None, call_sid: str, *, source: str
-) -> Response:
-    """Shared tail for both connect-routing paths above once a Property has
-    been authorized: Property -> host User -> User.phone, or refuse. Kept
-    as one function so both callers apply the exact same host/phone
-    validation rather than two near-identical inline copies drifting
-    apart."""
-    if property_ is None:
-        logger.warning("Connect-routing: call_sid=%s property lookup failed -- refusing to route", call_sid)
-        return _empty_destination_response()
-
-    host = await db.get(User, property_.user_id)
+async def _resolve_and_respond(db: AsyncSession, host: User | None, call_sid: str, *, source: str) -> Response:
+    """Shared tail for both connect-routing paths above once a host has
+    been authorized: host User -> User.phone, or refuse. Takes the host
+    directly (not a Property to derive it from) -- host call hours and the
+    live handoff phone number are account-global, so both callers already
+    resolve the host on their own, whether via a property's exophone or a
+    Lead Agent number (no single property in scope). Kept as one function
+    so both callers apply the exact same phone validation rather than two
+    near-identical inline copies drifting apart."""
     if host is None:
-        logger.warning(
-            "Connect-routing: call_sid=%s property_id=%s has no resolvable host -- refusing to route",
-            call_sid,
-            property_.id,
-        )
+        logger.warning("Connect-routing: call_sid=%s host lookup failed -- refusing to route", call_sid)
         return _empty_destination_response()
 
     destination_number = _normalize_destination_phone(host.phone)
@@ -439,9 +457,8 @@ async def _resolve_and_respond(
         return _empty_destination_response()
 
     logger.info(
-        "Connect-routing: call_sid=%s property_id=%s host_id=%s -> routing (%s)",
+        "Connect-routing: call_sid=%s host_id=%s -> routing (%s)",
         call_sid,
-        property_.id,
         host.id,
         source,
     )

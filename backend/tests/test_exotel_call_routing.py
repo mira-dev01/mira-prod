@@ -388,3 +388,53 @@ async def test_wrong_token_returns_200(client):
         params={"token": "wrong", "CallSid": "call_18", "To": "+919999999999"},
     )
     assert resp.status_code == 200
+
+
+# 12. Lead Agent (portfolio-wide) line -- no single property ------------------
+#
+# Host call hours are account-global, not per-property, so a host must be
+# reachable here via their Lead Agent number too, not only a property's own
+# exophone. Regression coverage for the bug where a Lead Agent call's host
+# call hours were never evaluated at all -- the routing webhook only ever
+# tried get_property_by_number and fell straight back to MIRA the instant
+# that returned None, silently ignoring host_call_hours_* for that number.
+
+
+async def test_lead_agent_number_during_host_hours_returns_302(client, db_session, test_user, monkeypatch):
+    """Fixed clock: 2026-08-11 06:30 UTC = 12:00 IST -- inside an
+    11:00-17:00 host-hours window. Dialed number is the account's Lead
+    Agent line (User.lead_exophone), not any property's exophone."""
+    monkeypatch.setattr(exotel, "datetime", _FixedDatetime)
+    test_user.lead_exophone = "+911141185313"
+    await _set_host_window(
+        db_session,
+        test_user,
+        host_call_hours_enabled=True,
+        host_call_hours_start="11:00",
+        host_call_hours_end="17:00",
+        host_call_hours_timezone="Asia/Kolkata",
+    )
+    resp = await client.get(
+        "/api/v1/webhooks/exotel/call-routing",
+        params={"token": "test-token", "CallSid": "call_19", "To": test_user.lead_exophone},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+
+
+async def test_lead_agent_number_outside_host_hours_returns_200(client, db_session, test_user, monkeypatch):
+    monkeypatch.setattr(exotel, "datetime", _FixedDatetime)
+    test_user.lead_exophone = "+911141185313"
+    await _set_host_window(
+        db_session,
+        test_user,
+        host_call_hours_enabled=True,
+        host_call_hours_start="18:00",
+        host_call_hours_end="22:00",
+        host_call_hours_timezone="Asia/Kolkata",
+    )
+    resp = await client.get(
+        "/api/v1/webhooks/exotel/call-routing",
+        params={"token": "test-token", "CallSid": "call_20", "To": test_user.lead_exophone},
+    )
+    assert resp.status_code == 200
