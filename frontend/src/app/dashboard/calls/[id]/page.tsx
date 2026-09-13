@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CallSummaryCard } from "@/components/call-summary-card";
 import { StatusChip, type StatusTone } from "@/components/status-chip";
+import { WhatsAppButton } from "@/components/whatsapp-button";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError } from "@/lib/api";
 import { parseTranscript } from "@/lib/transcript";
@@ -74,9 +75,12 @@ export default function CallDetailPage() {
             {!isTest && call.guest_phone ? ` · ${call.guest_phone}` : ""}
           </p>
         </div>
-        <Button variant="outline" render={<Link href="/dashboard/calls" />}>
-          Back to calls
-        </Button>
+        <div className="flex items-center gap-2">
+          <WhatsAppButton phone={call.guest_phone} size="sm" />
+          <Button variant="outline" render={<Link href="/dashboard/calls" />}>
+            Back to calls
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">

@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { RightPanel, RightPanelFooterButton } from "@/components/ui/right-panel";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusChip, type StatusTone } from "@/components/status-chip";
+import { WhatsAppButton } from "@/components/whatsapp-button";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError } from "@/lib/api";
 import { cn, isBrowserTestIdentity } from "@/lib/utils";
@@ -155,14 +156,17 @@ export function LeadDetailPanel({
       }
     >
       {lead && (
-        <p className="text-xs text-muted-foreground">
-          Received {new Date(lead.created_at).toLocaleString([], {
-            month: "short",
-            day: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-          })}
-        </p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs text-muted-foreground">
+            Received {new Date(lead.created_at).toLocaleString([], {
+              month: "short",
+              day: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
+          </p>
+          <WhatsAppButton phone={lead.phone} size="sm" />
+        </div>
       )}
 
       {lead?.urgency && (
