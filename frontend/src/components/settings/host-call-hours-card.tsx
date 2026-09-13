@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { Loader2, Phone, PhoneOff } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -10,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { ApiError, api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import type { CallHoursStatus } from "@/lib/types";
 import { TIMEZONES, formatHourMinute, timezoneLabel } from "@/lib/timezones";
 
 // Account-global host call hours -- one window, common to every property on
@@ -23,13 +26,39 @@ import { TIMEZONES, formatHourMinute, timezoneLabel } from "@/lib/timezones";
 // no other setting able to override or shadow it.
 
 export function HostCallHoursCard() {
-  const { user, refreshUser } = useAuth();
+  const { user, setUserData } = useAuth();
 
   const [enabled, setEnabled] = useState(user?.host_call_hours_enabled ?? false);
   const [start, setStart] = useState(user?.host_call_hours_start ?? "");
   const [end, setEnd] = useState(user?.host_call_hours_end ?? "");
   const [timezone, setTimezone] = useState(user?.host_call_hours_timezone ?? "Asia/Kolkata");
   const [saving, setSaving] = useState(false);
+
+  // Live confirmation of what's actually in effect right now, computed
+  // server-side by the exact same resolver the Exotel webhook calls on a
+  // real inbound call (see GET /auth/me/call-hours-status) -- this can
+  // never drift from what the next real call will do, unlike a purely
+  // client-side "is now between start and end" calculation, which would
+  // silently go stale the moment the resolver's own logic changes.
+  const [liveStatus, setLiveStatus] = useState<CallHoursStatus | null>(null);
+  const [statusLoading, setStatusLoading] = useState(true);
+
+  const fetchStatus = useCallback(async () => {
+    setStatusLoading(true);
+    try {
+      setLiveStatus(await api.auth.callHoursStatus());
+    } catch {
+      // Silent -- this indicator is a confirmation nicety, not load-bearing;
+      // the form above still reflects the saved config either way.
+      setLiveStatus(null);
+    } finally {
+      setStatusLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchStatus();
+  }, [fetchStatus]);
 
   // Resync local state whenever the underlying user data changes (e.g.
   // after a save/refetch elsewhere). Same pattern as the other Settings
@@ -50,7 +79,7 @@ export function HostCallHoursCard() {
     }
     setSaving(true);
     try {
-      await api.auth.updateMe(
+      const updated = await api.auth.updateMe(
         enabled
           ? {
               host_call_hours_enabled: true,
@@ -60,8 +89,19 @@ export function HostCallHoursCard() {
             }
           : { host_call_hours_enabled: false }
       );
-      await refreshUser();
+      // Apply the PATCH's own response directly rather than issuing a
+      // separate refreshUser() GET -- avoids a second round-trip racing
+      // against any other in-flight /auth/me fetch (setUserData still goes
+      // through auth-context's sequence guard, so this can't itself be
+      // clobbered by an older one either).
+      setUserData(updated);
       toast.success("Host call hours saved");
+      // The save above is what the next real call will see immediately
+      // (no deploy/propagation delay -- it's a DB write, read fresh on
+      // every inbound call), but re-check the live resolver anyway so the
+      // status line reflects the just-saved window/timezone instead of
+      // whatever it showed before this save.
+      await fetchStatus();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Failed to save host call hours");
     } finally {
@@ -71,8 +111,9 @@ export function HostCallHoursCard() {
 
   return (
     <Card className="lg:col-span-2">
-      <CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between gap-3">
         <CardTitle>Host call hours</CardTitle>
+        <StatusBadge loading={statusLoading} status={liveStatus} />
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
@@ -152,5 +193,43 @@ export function HostCallHoursCard() {
         </form>
       </CardContent>
     </Card>
+  );
+}
+
+function StatusBadge({ loading, status }: { loading: boolean; status: CallHoursStatus | null }) {
+  if (loading) {
+    return (
+      <Badge variant="outline" className="gap-1.5 text-muted-foreground">
+        <Loader2 className="size-3 animate-spin" />
+        Checking…
+      </Badge>
+    );
+  }
+
+  if (status === null) {
+    // The save itself still succeeded (or failed with its own toast) --
+    // this only means the confirmation check couldn't be reached, so it
+    // says that plainly rather than guessing at HOST/MIRA.
+    return (
+      <Badge variant="outline" className="text-muted-foreground">
+        Status unavailable
+      </Badge>
+    );
+  }
+
+  if (status.current_owner === "HOST") {
+    return (
+      <Badge className="gap-1.5 bg-emerald-600 text-white hover:bg-emerald-600">
+        <Phone className="size-3" />
+        Live: calls ring your phone
+      </Badge>
+    );
+  }
+
+  return (
+    <Badge variant="secondary" className="gap-1.5">
+      <PhoneOff className="size-3" />
+      Live: Mira is answering
+    </Badge>
   );
 }

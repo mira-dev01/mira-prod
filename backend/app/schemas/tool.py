@@ -84,7 +84,14 @@ class SendWhatsappArgs(BaseModel):
 
 
 class EscalateToHostArgs(BaseModel):
-    property_id: str
+    # Optional: escalation only needs to reach the right host, not a specific
+    # property -- a guest can ask to be transferred/escalated before ever
+    # locking onto one property (e.g. a portfolio-wide Lead Agent call where
+    # the guest just says "let me talk to the host"). host_user_id (passed
+    # separately to handle_escalate_to_host, not part of this schema) is
+    # what actually routes the notification/email/WhatsApp; property_id here
+    # is only used to name which property the escalation is about, when known.
+    property_id: str | None = None
     reason: str
     urgency: Urgency
     guest_phone: str | None = None

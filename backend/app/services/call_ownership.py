@@ -99,14 +99,17 @@ def _parse_hh_mm(value: str, *, field_name: str) -> time:
 
 
 def resolve_effective_call_owner(
-    property_: Property, host: User, current_time_utc: datetime
+    property_: Property | None, host: User, current_time_utc: datetime
 ) -> CallOwner:
     """Who owns an inbound call for `property_` (owned by `host`) at
     `current_time_utc`.
 
     `property_` is still accepted (callers already have it, and a future
     per-property override could reintroduce it) but is not currently read
-    -- the routing input is the account-global window on `host`.
+    -- the routing input is the account-global window on `host`. `None` is
+    valid too (e.g. GET /auth/me/call-hours-status, which reports the
+    account's current live routing decision with no specific property in
+    scope) -- it's the same "not read" argument either way.
 
     `current_time_utc` must be a timezone-aware datetime (any aware
     timezone is accepted and converted internally -- it does not need to

@@ -5,6 +5,7 @@ import type {
   AnalyticsTimeseriesMetric,
   BookingCreate,
   BookingOut,
+  CallHoursStatus,
   CallSessionDetailOut,
   CallSessionOut,
   FaqEntryCreate,
@@ -164,6 +165,10 @@ export const api = {
     updateMe: (data: UserUpdate) => request<UserOut>("/auth/me", { method: "PATCH", body: JSON.stringify(data) }),
     uploadPhoto: (file: File) => uploadFiles<UserOut>("/auth/me/photo", [file], "file"),
     uploadBanner: (file: File) => uploadFiles<UserOut>("/auth/me/banner", [file], "file"),
+    // The account's live call-routing decision right now, computed by the
+    // same resolver the Exotel webhook uses on a real call -- see
+    // CallHoursStatus in backend/app/schemas/user.py.
+    callHoursStatus: () => request<CallHoursStatus>("/auth/me/call-hours-status"),
   },
   properties: {
     list: () => request<PropertyOut[]>("/properties"),

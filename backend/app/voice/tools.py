@@ -357,18 +357,20 @@ def build_voice_tools(
 
     async def escalate_to_host(
         params: FunctionCallParams,
-        property_id: str,
         reason: str,
         urgency: Urgency,
+        property_id: str | None = None,
         guest_phone: str | None = None,
         call_summary: str | None = None,
     ):
         """Escalate urgent issue to property host.
 
         Args:
-            property_id: The property's id, as given to you in your instructions.
             reason: Why this needs the host's attention.
             urgency: One of low, medium, high, emergency.
+            property_id: The property's id, if one is already active for this call
+                (see your instructions). Leave unset if the guest hasn't chosen a
+                property yet -- escalation still reaches the host without one.
             guest_phone: The guest's phone number, if known. Leave unset to use the
                 caller's own number automatically (see your instructions).
             call_summary: A short summary of the call so far.
