@@ -38,20 +38,26 @@ export function isBrowserTestIdentity(value: string | null | undefined): boolean
 }
 
 // wa.me wants digits only, country-code-prefixed (no leading "+", no
-// spaces/dashes/parens) -- but phone numbers throughout this app (Exotel
-// caller numbers, guest-dictated numbers via update_lead) are stored as
-// bare 10-digit Indian local numbers with no country code (see backend's
-// app/utils/phone.py::to_india_whatsapp_digits and app/schemas/tool.py's
-// _normalize_phone, which explicitly strips any 91/+91 back off on the way
-// in). Mirrors to_india_whatsapp_digits' own logic exactly -- MIRA is
-// India-only today, so a bare 10-digit number defaults to +91 rather than
-// being rejected. Returns null for anything that isn't a real phone number
-// (browser-test identity, empty, or no digits at all) so callers can just
-// conditionally render on the result instead of re-checking
-// isBrowserTestIdentity themselves.
+// spaces/dashes/parens). Phone numbers guest-dictated via update_lead are
+// stored as bare 10-digit Indian local numbers (backend's app/schemas/
+// tool.py::_normalize_phone explicitly strips any 91/+91/leading-0 back
+// off on the way in) -- but call-sourced numbers (Exotel/Twilio's raw
+// caller_number/guest_phone) never go through that normalization, so they
+// can still carry India's domestic trunk prefix: an 11-digit "0XXXXXXXXXX"
+// shape (confirmed live: 08130026321 produced an invalid wa.me link before
+// this handled it). Strip that leading 0 down to 10 digits first, then
+// apply the same +91-default logic backend's app/utils/phone.py::
+// to_india_whatsapp_digits uses -- MIRA is India-only today, so a bare
+// 10-digit number defaults to +91 rather than being rejected. Returns null
+// for anything that isn't a real phone number (browser-test identity,
+// empty, or no digits at all) so callers can just conditionally render on
+// the result instead of re-checking isBrowserTestIdentity themselves.
 export function whatsappLink(phone: string | null | undefined): string | null {
   if (!phone || isBrowserTestIdentity(phone)) return null
   let digits = phone.replace(/\D/g, "")
+  if (digits.length === 11 && digits.startsWith("0")) {
+    digits = digits.slice(1)
+  }
   if (digits && !digits.startsWith("91") && digits.length === 10) {
     digits = "91" + digits
   }
