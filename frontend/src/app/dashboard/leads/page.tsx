@@ -18,6 +18,7 @@ import { CloseLeadDialog } from "@/components/close-lead-dialog";
 import { DateRangePicker } from "@/components/date-range-picker";
 import { LeadDetailPanel, LEAD_STATUSES, leadUrgencyTone } from "@/components/lead-detail-panel";
 import { ServiceRequestsTable } from "@/components/service-requests-table";
+import { WhatsAppButton } from "@/components/whatsapp-button";
 import { useAsync } from "@/hooks/use-async";
 import { useDateRange } from "@/hooks/use-date-range";
 import { api, ApiError } from "@/lib/api";
@@ -102,6 +103,7 @@ function LeadsTable({
             <TableHead>Status</TableHead>
             <TableHead>Phone</TableHead>
             <TableHead>Received</TableHead>
+            <TableHead className="w-8" />
             <TableHead />
           </TableRow>
         </TableHeader>
@@ -133,6 +135,9 @@ function LeadsTable({
               </TableCell>
               <TableCell>{leadPhoneLabel(lead)}</TableCell>
               <TableCell className="whitespace-nowrap text-muted-foreground">{leadReceivedLabel(lead)}</TableCell>
+              <TableCell>
+                <WhatsAppButton phone={lead.phone} stopPropagation />
+              </TableCell>
               <TableCell>
                 <ChevronRight className="size-4 text-muted-foreground" />
               </TableCell>
@@ -187,9 +192,12 @@ function LeadCard({
       <CardContent className={cn("space-y-2 text-sm", closed && "line-through decoration-muted-foreground")}>
         <div className="flex items-center justify-between gap-2">
           <span className="min-w-0 truncate font-medium">{leadGuestLabel(lead)}</span>
-          {lead.lead_temperature && (
-            <StatusChip status={lead.lead_temperature} tone={temperatureTone[lead.lead_temperature]} />
-          )}
+          <div className="flex shrink-0 items-center gap-1.5">
+            <WhatsAppButton phone={lead.phone} size="icon-sm" stopPropagation />
+            {lead.lead_temperature && (
+              <StatusChip status={lead.lead_temperature} tone={temperatureTone[lead.lead_temperature]} />
+            )}
+          </div>
         </div>
         <p className="text-xs text-muted-foreground">
           {lead.properties_discussed.length > 0 ? lead.properties_discussed.join(", ") : "No property discussed"}

@@ -37,6 +37,18 @@ export function isBrowserTestIdentity(value: string | null | undefined): boolean
   return value === BROWSER_TEST_CALLER_NUMBER
 }
 
+// wa.me wants digits only (country code included, no leading "+", no
+// spaces/dashes/parens) -- phone numbers from Exotel/Twilio/guest input
+// aren't guaranteed to already be in that shape. Returns null for anything
+// that isn't a real phone number (browser-test identity, empty, or a string
+// with no digits at all) so callers can just conditionally render on the
+// result instead of re-checking isBrowserTestIdentity themselves.
+export function whatsappLink(phone: string | null | undefined): string | null {
+  if (!phone || isBrowserTestIdentity(phone)) return null
+  const digits = phone.replace(/\D/g, "")
+  return digits ? `https://wa.me/${digits}` : null
+}
+
 // Shared client-side "search across every column" filter -- used by the
 // Calls/Properties/FAQ/Live Requests pages' search boxes. `fields` is
 // whatever values that row's search box should match against (nullish

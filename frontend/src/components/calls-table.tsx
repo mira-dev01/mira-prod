@@ -5,6 +5,7 @@ import { ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatusChip, type StatusTone } from "@/components/status-chip";
+import { WhatsAppButton } from "@/components/whatsapp-button";
 import { cn, isBrowserTestIdentity } from "@/lib/utils";
 import type { CallSessionOut, CallType } from "@/lib/types";
 
@@ -135,6 +136,7 @@ export function CallsTable({ calls, compact = false }: { calls: CallSessionOut[]
               </>
             )}
             <TableHead>Started</TableHead>
+            {!compact && <TableHead className="w-8" />}
             <TableHead className="w-8" />
           </TableRow>
         </TableHeader>
@@ -182,6 +184,11 @@ export function CallsTable({ calls, compact = false }: { calls: CallSessionOut[]
               <TableCell>
                 {compact ? formatStartedCompact(call.started_at) : call.started_at ? new Date(call.started_at).toLocaleString() : "—"}
               </TableCell>
+              {!compact && (
+                <TableCell>
+                  <WhatsAppButton phone={call.guest_phone} stopPropagation />
+                </TableCell>
+              )}
               <TableCell>
                 <ChevronRight className="size-4 text-muted-foreground" />
               </TableCell>
