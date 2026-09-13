@@ -143,20 +143,19 @@ class Settings(BaseSettings):
     #      own module docstring for the full failure-policy reasoning.
     redis_url: str | None = None
 
-    # Twilio WhatsApp Sandbox (https://www.twilio.com/docs/whatsapp/sandbox)
-    # -- no Meta Business verification needed, unlike a real WhatsApp
-    # Business number. The tradeoff: it can only message numbers that have
-    # first opted in by texting "join <sandbox-code>" to
-    # twilio_whatsapp_from from WhatsApp (Twilio's console shows the code
-    # for this account's sandbox) -- fine for testing against your own
-    # phone, not usable for arbitrary real guests until upgraded to a real
-    # WhatsApp Business number. See app/integrations/twilio_client.py.
-    # Unset = send_whatsapp/send_photos fall back to the in-app notification
-    # stand-in only (same "don't crash, don't block" pattern as SMTP/Bright
-    # Data above).
+    # Twilio WhatsApp -- a real WhatsApp Business number (Meta-approved),
+    # not the Twilio Sandbox. Sender identity is either a raw `From` number
+    # (twilio_whatsapp_from) or a Messaging Service (twilio_messaging_service_sid,
+    # Twilio's recommended production pattern -- handles sender failover and
+    # is required if you ever add more than one WhatsApp sender). If both are
+    # set, twilio_client.py prefers the Messaging Service. See
+    # app/integrations/twilio_client.py. Unset (both) = send_whatsapp/
+    # send_photos fall back to the in-app notification stand-in only (same
+    # "don't crash, don't block" pattern as SMTP/Bright Data above).
     twilio_account_sid: str | None = None
     twilio_auth_token: str | None = None
-    twilio_whatsapp_from: str = "whatsapp:+14155238886"  # Twilio's shared sandbox number
+    twilio_whatsapp_from: str | None = None
+    twilio_messaging_service_sid: str | None = None
 
     # ContentSid of the "mira_escalation" twilio/call-to-action template
     # (see scripts/create_escalation_template.py) -- gives the escalation
@@ -213,12 +212,12 @@ class Settings(BaseSettings):
     # app/api/v1/webhooks/whatsapp.py, app/services/whatsapp_reply_service.py)
     # -- same "path segment, not Twilio's own HMAC scheme" convention as
     # twilio_voice_webhook_token/exotel_webhook_token above. Configured as
-    # this account's WhatsApp sandbox "WHEN A MESSAGE COMES IN" webhook URL
+    # this WhatsApp Business number's "WHEN A MESSAGE COMES IN" webhook URL
     # in the Twilio console.
     twilio_whatsapp_webhook_token: str = "change-me"
 
     # Twilio Voice -- an entirely separate integration from the WhatsApp
-    # sandbox above and from Exotel telephony (app/api/v1/voice.py's
+    # Business number above and from Exotel telephony (app/api/v1/voice.py's
     # exotel_voice_ws / app/voice/pipeline.py's run_voice_pipeline), added
     # so real-call testing can continue on Twilio's free trial when Exotel
     # credits run out, without touching any Exotel code path. Reuses
@@ -369,18 +368,17 @@ class Settings(BaseSettings):
             )
         return value
 
-    # TEMPORARY global override for call_ownership.resolve_effective_call_owner,
-    # bypassing each host's own account-global call-hours window
-    # (User.host_call_hours_*) entirely: until that editable path has been
-    # verified in production, every host uses this single fixed Asia/Kolkata
-    # HOST window instead (Mira active 17:00-11:00, host active 11:00-17:00).
-    # Both unset (the default) = zero behavior change, resolver reads each
-    # host's own window exactly as configured. Set both to enable; remove/
-    # unset both (and the render.yaml keys, and the override block in
-    # call_ownership.py that reads these) once the account-global path is
-    # trusted -- see documentation/host-call-hours-and-handoff.md.
-    fixed_host_hours_start: str | None = None
-    fixed_host_hours_end: str | None = None
+    # The account-global host-call-hours window now lives entirely on
+    # User.host_call_hours_enabled/_start/_end/_timezone, editable per host
+    # from Settings -- see documentation/host-call-hours-and-handoff.md.
+    # The former FIXED_HOST_HOURS_START/_END env-var override (a global,
+    # non-editable Asia/Kolkata window forced onto every host) has been
+    # retired: it was a temporary rollout measure that bypassed this exact
+    # per-host setting, so keeping both around risked routing calls off a
+    # value the Settings page couldn't see or change. If a global emergency
+    # override is ever needed again, it should be reintroduced deliberately
+    # (with its own precedence documented in call_ownership.py), not restored
+    # from history.
 
     exotel_sid: str | None = None
     exotel_api_key: str | None = None

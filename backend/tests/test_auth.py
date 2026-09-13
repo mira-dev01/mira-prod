@@ -9,6 +9,36 @@ async def test_me_returns_current_user(client, auth_headers, test_user):
     assert resp.json()["email"] == test_user.email
 
 
+async def test_call_hours_status_reports_mira_when_disabled(client, auth_headers):
+    resp = await client.get("/api/v1/auth/me/call-hours-status", headers=auth_headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["enabled"] is False
+    assert body["current_owner"] == "MIRA"
+
+
+async def test_call_hours_status_reflects_saved_window(client, auth_headers):
+    # A 00:00-23:59 window is always "now", regardless of when the test
+    # runs, so this doesn't need to fake the clock to assert HOST.
+    patch_resp = await client.patch(
+        "/api/v1/auth/me",
+        json={
+            "host_call_hours_enabled": True,
+            "host_call_hours_start": "00:00",
+            "host_call_hours_end": "23:59",
+            "host_call_hours_timezone": "Asia/Kolkata",
+        },
+        headers=auth_headers,
+    )
+    assert patch_resp.status_code == 200
+
+    resp = await client.get("/api/v1/auth/me/call-hours-status", headers=auth_headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["enabled"] is True
+    assert body["current_owner"] == "HOST"
+
+
 async def test_update_me_sets_lead_exophone(client, auth_headers):
     resp = await client.patch("/api/v1/auth/me", json={"lead_exophone": "+9180012340099"}, headers=auth_headers)
     assert resp.status_code == 200

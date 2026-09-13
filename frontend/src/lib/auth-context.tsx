@@ -18,6 +18,12 @@ type AuthContextValue = {
   isInternalOrg: boolean;
   logout: () => void;
   refreshUser: () => Promise<void>;
+  // Applies a UserOut a caller already has in hand (e.g. a PATCH /auth/me
+  // response) directly, without a second round-trip. Still routed through
+  // the same sequence guard as refreshUser/the mount-effect fetch below, so
+  // it can't be clobbered by an older in-flight /auth/me response landing
+  // right after it.
+  setUserData: (user: UserOut) => void;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -33,6 +39,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profileLoading, setProfileLoading] = useState(true);
   const router = useRouter();
   const autoActivatedRef = useRef(false);
+  // Guards against out-of-order /auth/me responses: the mount/org-change
+  // effect below and refreshUser() can both be in flight at once (e.g. a
+  // Settings save's refreshUser() racing the effect's own re-fetch from an
+  // org-context change). Without this, an older request's response can
+  // resolve AFTER a newer one and silently overwrite fresher data with
+  // stale data -- every write to `user` bumps and stamps this ref first, and
+  // a response only applies if it's still carrying the latest stamp.
+  const latestRequestRef = useRef(0);
+
+  function applyLatestUser(requestId: number, next: UserOut | null) {
+    if (requestId === latestRequestRef.current) setUser(next);
+  }
 
   useEffect(() => {
     setTokenGetter(isSignedIn ? getToken : null);
@@ -59,15 +77,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!isLoaded) return;
     if (!isSignedIn) {
+      latestRequestRef.current += 1;
       setUser(null);
       setProfileLoading(false);
       return;
     }
+    const requestId = ++latestRequestRef.current;
     setProfileLoading(true);
     api.auth
       .me()
-      .then(setUser)
-      .catch(() => setUser(null))
+      .then((fetched) => applyLatestUser(requestId, fetched))
+      .catch(() => applyLatestUser(requestId, null))
       .finally(() => setProfileLoading(false));
     // organization?.id is a dependency, not just isLoaded/isSignedIn --
     // setActive() above swaps the session token (it now carries an org_id
@@ -80,7 +100,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [signOut, router]);
 
   const refreshUser = useCallback(async () => {
-    setUser(await api.auth.me());
+    const requestId = ++latestRequestRef.current;
+    const fetched = await api.auth.me();
+    applyLatestUser(requestId, fetched);
+  }, []);
+
+  const setUserData = useCallback((next: UserOut) => {
+    // A caller already has a fresh UserOut in hand (e.g. a PATCH response)
+    // -- still bump the sequence so it wins over any older fetch still in
+    // flight, without making a redundant GET /auth/me round-trip.
+    latestRequestRef.current += 1;
+    setUser(next);
   }, []);
 
   return (
@@ -91,6 +121,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isInternalOrg: user?.is_internal_org ?? false,
         logout,
         refreshUser,
+        setUserData,
       }}
     >
       {children}

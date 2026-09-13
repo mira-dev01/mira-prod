@@ -36,7 +36,7 @@ definition the guest has already been hung up on by the time this runs; a
 slow/failed send here must never be capable of affecting a *different*,
 still-live call). No blocking operations: every external call (DB, Twilio)
 is already async, and the one genuinely slow/unreliable leg (the WhatsApp
-send) is itself fired via its own asyncio.create_task, so a Twilio sandbox
+send) is itself fired via its own asyncio.create_task, so a Twilio API
 hiccup can't even delay this function's own remaining DB writes.
 """
 

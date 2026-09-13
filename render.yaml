@@ -73,17 +73,6 @@ services:
         generateValue: true
       - key: EXOTEL_VIRTUAL_NUMBER
         sync: false
-      # TEMPORARY global override (see Settings.fixed_host_hours_start/_end
-      # in app/config.py and documentation/host-call-hours-and-handoff.md)
-      # -- forces every host onto one fixed Asia/Kolkata HOST window
-      # (11:00-17:00) instead of their own account-global
-      # host_call_hours_* window, until that editable path is verified in
-      # production. Remove both keys to fall back to each host's own
-      # configured window once that's done.
-      - key: FIXED_HOST_HOURS_START
-        value: "11:00"
-      - key: FIXED_HOST_HOURS_END
-        value: "17:00"
 
   - type: web
     name: mira-frontend

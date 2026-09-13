@@ -128,8 +128,8 @@ class User(UUIDPkMixin, TimestampMixin, Base):
     # Property.call_handling_mode/schedule columns as the live routing
     # input.
     #   host_call_hours_enabled: master switch. False (the default for
-    #     every existing row) == Mira answers 24/7, exactly today's
-    #     behavior when the FIXED_HOST_HOURS_* env override is unset.
+    #     every existing row) == Mira answers 24/7. This is the sole
+    #     routing input -- there is no env-var override anymore.
     #   host_call_hours_start/_end: "HH:MM" 24-hour strings. An overnight
     #     window (start > end, e.g. "22:00"->"06:00") is valid and wraps
     #     past midnight -- resolve_effective_call_owner handles it.
