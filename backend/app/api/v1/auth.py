@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,8 +9,8 @@ from app.database import get_db
 from app.integrations import bright_data_client, cloudinary_client
 from app.integrations.bright_data_client import BrightDataError
 from app.models.user import User
-from app.schemas.user import HostOnboarding, HostOnboardingResponse, UserOut, UserUpdate
-from app.services import faq_service
+from app.schemas.user import CallHoursStatus, HostOnboarding, HostOnboardingResponse, UserOut, UserUpdate
+from app.services import call_ownership, faq_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -146,3 +148,31 @@ async def update_me(
     await db.commit()
     await db.refresh(current_user)
     return current_user
+
+
+@router.get("/me/call-hours-status", response_model=CallHoursStatus)
+async def get_my_call_hours_status(current_user: User = Depends(get_current_user)) -> CallHoursStatus:
+    """The account's live routing decision right now -- same resolver call
+    (resolve_effective_call_owner) the Exotel call-routing webhook makes on
+    a real inbound call, so this can never drift from what actually happens
+    on the next call. Lets the Settings page show real-time confirmation
+    ("calls are going to your phone right now" / "Mira is answering right
+    now") instead of just echoing the saved config, which alone can't tell
+    a host whether they're inside or outside their own window at this
+    moment, or whether a save has actually taken effect.
+
+    No property in scope (this is account-global) -- resolve_effective_call_
+    owner's property_ argument is accepted but never read either way, see
+    its own docstring.
+    """
+    now = datetime.now(timezone.utc)
+    try:
+        owner = call_ownership.resolve_effective_call_owner(None, current_user, now)
+    except call_ownership.InvalidCallOwnershipConfigError:
+        # Malformed stored config (shouldn't happen -- UserUpdate's own
+        # validators reject this at write time) -- report MIRA/disabled
+        # rather than raising, matching the webhook's own fail-closed-to-
+        # MIRA policy for this exact error (app/api/v1/webhooks/exotel.py).
+        return CallHoursStatus(enabled=False, current_owner="MIRA", checked_at=now)
+
+    return CallHoursStatus(enabled=current_user.host_call_hours_enabled, current_owner=owner.value, checked_at=now)

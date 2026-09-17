@@ -493,6 +493,28 @@ async def test_escalate_to_host_also_saves_lead_so_it_isnt_left_empty(test_prope
     assert leads[0].escalated is True
 
 
+async def test_escalate_to_host_without_property_id_still_notifies_host(test_property, db_session):
+    # Regression: a guest can ask to be escalated/transferred before ever
+    # choosing a property (e.g. a Lead Agent call, "let me talk to the
+    # host" as the first thing said). property_id must be optional --
+    # host_user_id alone is enough to route the escalation.
+    args = EscalateToHostArgs(
+        reason="Wants to speak to the host directly",
+        urgency="medium",
+        guest_phone="+919999999999",
+    )
+    result = await tool_handlers.handle_escalate_to_host(
+        db_session, args, call_session_id=None, host_user_id=test_property.user_id
+    )
+    assert "medium" in result.lower()
+
+    notifications = await list_notifications(db_session, user_id=test_property.user_id)
+    assert any(n.property_id is None and n.urgency == "medium" for n in notifications)
+
+    leads = await lead_service.list_leads(db_session, test_property.user_id)
+    assert any(lead.escalated is True for lead in leads)
+
+
 async def test_negotiate_rate_returns_message(test_property, db_session):
     today = date.today()
     args = NegotiateRateArgs(

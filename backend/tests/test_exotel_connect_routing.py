@@ -116,6 +116,31 @@ async def test_valid_initial_host_call_during_configured_host_hours(client, db_s
     assert _numbers(resp) == ["+919812345678"]
 
 
+async def test_lead_agent_number_initial_host_call_during_host_hours(client, db_session, test_user, monkeypatch):
+    """Same as test_valid_initial_host_call_during_configured_host_hours,
+    but the dialed number is the account's Lead Agent line (no property in
+    scope at all) rather than a property's own exophone -- regression
+    coverage for the bug where this path only ever tried
+    get_property_by_number and refused to route the instant that returned
+    None."""
+    monkeypatch.setattr(exotel, "datetime", _FixedDatetime)
+    await _set_phone(db_session, test_user, "+919812345678")
+    test_user.lead_exophone = "+911141185313"
+    test_user.host_call_hours_enabled = True
+    test_user.host_call_hours_start = "11:00"
+    test_user.host_call_hours_end = "17:00"
+    test_user.host_call_hours_timezone = "Asia/Kolkata"
+    db_session.add(test_user)
+    await db_session.commit()
+
+    resp = await client.get(
+        "/api/v1/webhooks/exotel/connect-routing",
+        params={"token": "test-token", "CallSid": "connect_lead_1", "To": test_user.lead_exophone},
+    )
+    assert resp.status_code == 200
+    assert _numbers(resp) == ["+919812345678"]
+
+
 # 2. Valid live handoff ----------------------------------------------------
 
 
@@ -340,10 +365,41 @@ async def test_call_session_with_connecting_handoff_status_is_not_routable(clien
     assert _numbers(resp) == []
 
 
-async def test_handoff_with_no_property_id_returns_empty(client, db_session, test_user):
+async def test_handoff_with_no_property_id_still_routes_via_user_id(client, db_session, test_user):
+    """Regression: a Lead Agent (portfolio-wide) call's live handoff has
+    property_id=NULL by design (see CallSession.property_id's own model
+    comment) but user_id is always set whenever a host is known. This must
+    still route to the host's phone -- requiring property_id here used to
+    refuse every Lead Agent handoff outright, even though the host was
+    known the whole time."""
+    await _set_phone(db_session, test_user, "+919812345678")
     session = CallSession(
         exotel_call_id=f"call-{uuid.uuid4().hex[:8]}",
         user_id=test_user.id,
+        property_id=None,
+        caller_number="+919999999999",
+        status="in_progress",
+        handoff_status="requested",
+    )
+    db_session.add(session)
+    await db_session.commit()
+    await db_session.refresh(session)
+
+    resp = await client.get(
+        "/api/v1/webhooks/exotel/connect-routing",
+        params={"token": "test-token", "CallSid": session.exotel_call_id},
+    )
+    assert resp.status_code == 200
+    assert _numbers(resp) == ["+919812345678"]
+
+
+async def test_handoff_with_no_property_id_and_no_resolvable_host_returns_empty(client, db_session):
+    """A CallSession with property_id AND user_id both NULL (shouldn't
+    happen in practice, but the endpoint must still fail closed) -- no host
+    to route to at all."""
+    session = CallSession(
+        exotel_call_id=f"call-{uuid.uuid4().hex[:8]}",
+        user_id=None,
         property_id=None,
         caller_number="+919999999999",
         status="in_progress",

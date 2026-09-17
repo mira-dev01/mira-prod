@@ -476,15 +476,16 @@ async def handle_send_photos(
         message=f"To {args.guest_phone}: Here are photos of {property_.name} -- {gallery_url}",
     )
 
-    # Real WhatsApp send via Twilio sandbox (only reaches numbers that have
-    # joined the sandbox -- see twilio_account_sid's docstring in config.py).
+    # Real WhatsApp send via Twilio. Freeform (no Content Template), so this
+    # only succeeds inside Meta's 24h customer-service session window -- see
+    # twilio_account_sid's docstring in config.py.
     asyncio.create_task(
         twilio_client.send_whatsapp_best_effort(args.guest_phone, f"Here are photos of {property_.name} -- {gallery_url}")
     )
 
     # Email stays as a parallel channel (not a fallback) so this is testable
-    # against the host's own inbox even for guest numbers that were never
-    # added to the Twilio sandbox.
+    # against the host's own inbox even when the WhatsApp send above fails
+    # (e.g. outside the 24h session window).
     host_user = await db.get(User, host_user_id)
     if host_user is not None:
         asyncio.create_task(
@@ -512,38 +513,59 @@ async def handle_escalate_to_host(
     host_user_id: uuid.UUID,
     guest_profile_id: uuid.UUID | None = None,
 ) -> str:
-    property_ = await _get_property(db, args.property_id)
-    if property_ is None:
-        return "I couldn't find that property to escalate to the host."
+    """property_id is optional -- a guest can ask to be escalated/transferred
+    to the host before ever choosing a specific property (e.g. right at the
+    top of a portfolio-wide Lead Agent call). host_user_id is what actually
+    routes this escalation to the right host; property_ is only used to name
+    which property it's about, when one is known. A property_id that doesn't
+    resolve to a real row degrades the same way -- named property unknown,
+    escalation still goes through -- rather than failing the whole call, so
+    a stale/bad id from the model never blocks a guest from reaching the
+    host."""
+    property_ = await _get_property(db, args.property_id) if args.property_id else None
+    property_name = property_.name if property_ is not None else None
+    subject_line = property_name or "your account"
 
-    message = f"Escalation for {property_.name}: {args.reason}"
+    message = f"Escalation for {subject_line}: {args.reason}"
     if args.call_summary:
         message += f" | Summary: {args.call_summary}"
     if args.guest_phone:
         message += f" | Guest: {args.guest_phone}"
 
-    await notification_service.create_notification(
-        db,
-        channel="escalation",
-        property_id=property_.id,
-        call_session_id=call_session_id,
-        urgency=args.urgency,
-        message=message,
-    )
-
     # Don't rely on the LLM separately remembering to call update_lead too --
     # capture whatever this escalation already has (phone, summary) on the
     # lead record directly, so an escalated call is never left with an empty
-    # CRM lead just because the model only made the one tool call.
-    await lead_service.upsert_lead(
+    # CRM lead just because the model only made the one tool call. Created
+    # before the notification below (not after) so a property-less
+    # escalation can pass this lead's id through -- see the lead_id comment
+    # on the create_notification call.
+    lead = await lead_service.upsert_lead(
         db,
         host_user_id,
         call_session_id,
         guest_profile_id=guest_profile_id,
         phone=args.guest_phone,
         conversation_summary=args.call_summary,
-        properties_discussed=[property_.name],
+        properties_discussed=[property_name] if property_name else [],
         escalated=True,
+    )
+
+    await notification_service.create_notification(
+        db,
+        channel="escalation",
+        property_id=property_.id if property_ is not None else None,
+        # A property-less escalation (Lead Agent line, no property chosen
+        # yet) would otherwise be permanently invisible on the dashboard --
+        # list_notifications' property_id.in_(...) filter can never match a
+        # NULL property_id. Same lead_id -> Lead.user_id fallback already
+        # relied on for busy-recovery's own property-less notifications (see
+        # that function's own comment); only needed when there's no
+        # property_id to match on, so property-scoped escalations keep their
+        # existing (simpler) matching path.
+        lead_id=lead.id if property_ is None else None,
+        call_session_id=call_session_id,
+        urgency=args.urgency,
+        message=message,
     )
 
     # In-app notification above covers hosts watching the dashboard live;
@@ -558,10 +580,10 @@ async def handle_escalate_to_host(
         asyncio.create_task(
             _send_escalation_email(
                 host_user.notification_email or host_user.email,
-                subject=f"{args.urgency.title()} escalation — {property_.name}",
+                subject=f"{args.urgency.title()} escalation — {subject_line}",
                 body=f"{message}\n\nView in dashboard: {settings.frontend_base_url}/dashboard/leads",
                 html_body=build_escalation_email_html(
-                    property_name=property_.name,
+                    property_name=subject_line,
                     urgency=args.urgency,
                     reason=args.reason,
                     call_summary=args.call_summary,
@@ -569,16 +591,15 @@ async def handle_escalate_to_host(
                 ),
             )
         )
-        # WhatsApp via Twilio Sandbox -- only reaches host_user.phone if
-        # that number has joined the sandbox (see twilio_client.py). Unset
-        # phone or unconfigured Twilio both no-op silently in
+        # WhatsApp via Twilio (see twilio_client.py). Unset phone or
+        # unconfigured Twilio both no-op silently in
         # _send_escalation_whatsapp, same as the email above.
         if host_user.phone:
             asyncio.create_task(
                 _send_escalation_whatsapp(
                     host_user.phone,
                     urgency=args.urgency,
-                    property_name=property_.name,
+                    property_name=subject_line,
                     reason=args.reason,
                     call_summary=args.call_summary,
                     guest_phone=args.guest_phone,

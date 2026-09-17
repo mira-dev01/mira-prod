@@ -81,6 +81,18 @@ export type UserUpdate = {
   whatsapp_assist_enabled?: boolean | null;
 };
 
+// GET /auth/me/call-hours-status -- the account's live routing decision
+// right now, computed by the same backend resolver the Exotel call-routing
+// webhook uses on a real inbound call. Distinct from the saved
+// host_call_hours_* config on UserOut: that's what was last saved, this is
+// what it currently resolves to (e.g. "enabled, but outside the window
+// right now -> MIRA").
+export type CallHoursStatus = {
+  enabled: boolean;
+  current_owner: "HOST" | "MIRA";
+  checked_at: string;
+};
+
 // Unified negotiation/pricing training rule -- replaces what used to be two
 // separate types (HostDiscountRule's host-wide discount triggers,
 // PropertyPricingRule's stay-pricing rules). The three discount_* rule

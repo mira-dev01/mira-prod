@@ -217,6 +217,23 @@ class UserOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class CallHoursStatus(BaseModel):
+    """GET /auth/me/call-hours-status's response -- the account's current,
+    live routing decision, computed the exact same way (same resolver
+    function) the Exotel call-routing webhook decides a real inbound call
+    right now. Lets the Settings page show "calls are going to your phone /
+    to Mira right now" instead of only reflecting what was last saved,
+    which can lag the actual effective state by however far `now` is from
+    the saved window's start/end."""
+
+    enabled: bool
+    current_owner: Literal["HOST", "MIRA"]
+    # Echoed back so the frontend can render "as of HH:MM <tz>" without
+    # doing its own UTC conversion -- the resolver already computed this
+    # exact wall-clock reading internally.
+    checked_at: datetime
+
+
 class HostOnboardingResponse(BaseModel):
     """The Bright Data snapshot_id for the first property's scrape, still
     running when this is returned -- POST /auth/onboarding doesn't block on

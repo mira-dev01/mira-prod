@@ -8,8 +8,8 @@ webhook contract is always application/x-www-form-urlencoded (fixed by the
 platform, not configurable), unlike Exotel's callback, which this account's
 Exotel App config can send as either form-encoded or JSON -- see exotel.py's
 own content-type branch. A JSON branch here would be dead code for a shape
-Twilio will never actually send. Configured as this account's WhatsApp
-sandbox "WHEN A MESSAGE COMES IN" webhook URL in the Twilio console.
+Twilio will never actually send. Configured as this WhatsApp Business
+number's "WHEN A MESSAGE COMES IN" webhook URL in the Twilio console.
 """
 
 import logging

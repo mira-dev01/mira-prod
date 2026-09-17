@@ -15,7 +15,6 @@ from datetime import datetime, timezone
 
 import pytest
 
-from app.config import settings
 from app.models.property import Property
 from app.models.user import User
 from app.services.call_ownership import CallOwner, InvalidCallOwnershipConfigError, resolve_effective_call_owner
@@ -335,73 +334,6 @@ def test_equal_start_and_end_is_always_mira():
     assert _resolve(host, at_exactly_9am_ist) == CallOwner.MIRA
     assert _resolve(host, at_midnight_ist) == CallOwner.MIRA
     assert _resolve(host, at_end_of_day_ist) == CallOwner.MIRA
-
-
-# 11. TEMPORARY fixed_host_hours_start/_end override -----------------------
-# See Settings.fixed_host_hours_start/_end's own comment in config.py and
-# the override block at the top of resolve_effective_call_owner. When both
-# are set, EVERY host is forced onto one hardcoded Asia/Kolkata HOST window
-# regardless of their own host_call_hours_* config -- these tests use
-# disabled-window hosts specifically to prove the override actually bypasses
-# per-account config, not just happens to agree with it.
-
-
-@pytest.fixture
-def fixed_host_hours_11_to_17(monkeypatch):
-    monkeypatch.setattr(settings, "fixed_host_hours_start", "11:00")
-    monkeypatch.setattr(settings, "fixed_host_hours_end", "17:00")
-
-
-def test_fixed_hours_override_ignores_disabled_window_during_host_window(fixed_host_hours_11_to_17):
-    host = _host(host_call_hours_enabled=False)
-    at_noon_ist = datetime(2026, 8, 11, 6, 30, tzinfo=timezone.utc)  # 12:00 IST
-    assert _resolve(host, at_noon_ist) == CallOwner.HOST
-
-
-def test_fixed_hours_override_ignores_enabled_window_outside_host_window(fixed_host_hours_11_to_17):
-    """Host's own window says 00:00-23:59 (always HOST); the override still
-    forces MIRA at 20:00 IST because 20:00 is outside the fixed 11-17."""
-    host = _host(
-        host_call_hours_enabled=True,
-        host_call_hours_start="00:00",
-        host_call_hours_end="23:59",
-        host_call_hours_timezone="Asia/Kolkata",
-    )
-    at_8pm_ist = datetime(2026, 8, 11, 14, 30, tzinfo=timezone.utc)  # 20:00 IST
-    assert _resolve(host, at_8pm_ist) == CallOwner.MIRA
-
-
-def test_fixed_hours_override_ignores_host_timezone(fixed_host_hours_11_to_17):
-    """The override always evaluates in Asia/Kolkata, never the host's own
-    timezone. Noon IST is 06:30 UTC; in America/New_York (EDT) that's 02:30
-    local -- if the override wrongly consulted the host timezone this would
-    resolve MIRA, not HOST."""
-    host = _host(host_call_hours_enabled=True, host_call_hours_timezone="America/New_York")
-    at_noon_ist = datetime(2026, 8, 11, 6, 30, tzinfo=timezone.utc)
-    assert _resolve(host, at_noon_ist) == CallOwner.HOST
-
-
-def test_fixed_hours_override_at_exact_boundaries(fixed_host_hours_11_to_17):
-    host = _host(host_call_hours_enabled=False)
-    at_exactly_11am_ist = datetime(2026, 8, 11, 5, 30, tzinfo=timezone.utc)
-    at_exactly_5pm_ist = datetime(2026, 8, 11, 11, 30, tzinfo=timezone.utc)
-    assert _resolve(host, at_exactly_11am_ist) == CallOwner.HOST
-    assert _resolve(host, at_exactly_5pm_ist) == CallOwner.MIRA
-
-
-def test_fixed_hours_override_unset_falls_back_to_host_config():
-    """Both settings unset (the default/production-today state) -- resolver
-    reads the host's own window."""
-    assert settings.fixed_host_hours_start is None
-    assert settings.fixed_host_hours_end is None
-    host = _host(
-        host_call_hours_enabled=True,
-        host_call_hours_start="22:00",
-        host_call_hours_end="06:00",
-        host_call_hours_timezone="Asia/Kolkata",
-    )
-    at_3am_ist = datetime(2026, 8, 11, 21, 30, tzinfo=timezone.utc)  # 03:00 IST next day
-    assert _resolve(host, at_3am_ist) == CallOwner.HOST
 
 
 def test_same_input_produces_same_output_repeatedly():

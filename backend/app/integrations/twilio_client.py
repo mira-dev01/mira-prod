@@ -1,7 +1,7 @@
-"""Twilio WhatsApp Sandbox client -- real WhatsApp delivery to opted-in
-numbers only (see the sandbox caveat in app/config.py's twilio_account_sid
-comment). Plain REST + Basic Auth, no twilio SDK dependency, matching the
-httpx-direct style of bright_data_client.py/searchapi_client.py.
+"""Twilio WhatsApp client -- a real WhatsApp Business number (see
+app/config.py's twilio_account_sid comment). Plain REST + Basic Auth, no
+twilio SDK dependency, matching the httpx-direct style of
+bright_data_client.py/searchapi_client.py.
 """
 
 import logging
@@ -43,24 +43,40 @@ def _to_whatsapp_address(phone: str) -> str:
     return f"whatsapp:+{digits}"
 
 
+def _sender_identity() -> dict[str, str] | None:
+    """Twilio's Messages.json takes either `MessagingServiceSid` or `From`,
+    never both, to identify the sender. A Messaging Service is Twilio's
+    recommended production pattern (handles sender failover/rotation), so
+    prefer it when configured; fall back to a raw From number otherwise.
+    None means no sender identity is configured at all."""
+    if settings.twilio_messaging_service_sid:
+        return {"MessagingServiceSid": settings.twilio_messaging_service_sid}
+    if settings.twilio_whatsapp_from:
+        return {"From": settings.twilio_whatsapp_from}
+    return None
+
+
 async def send_whatsapp_message(to_phone: str, body: str, timeout: float = 15.0) -> dict:
     if not (settings.twilio_account_sid and settings.twilio_auth_token):
         return {"status": "skipped", "reason": "Twilio is not configured"}
+    sender = _sender_identity()
+    if sender is None:
+        return {"status": "skipped", "reason": "No WhatsApp sender configured"}
 
     async with httpx.AsyncClient(timeout=timeout) as client:
         response = await client.post(
             f"{_BASE_URL}/Accounts/{settings.twilio_account_sid}/Messages.json",
             auth=(settings.twilio_account_sid, settings.twilio_auth_token),
             data={
-                "From": settings.twilio_whatsapp_from,
+                **sender,
                 "To": _to_whatsapp_address(to_phone),
                 "Body": body,
             },
         )
         if response.status_code >= 400:
             # Twilio's error body is JSON with `message`/`code` -- surface it
-            # verbatim rather than just the status, since the most common
-            # failure (63015: recipient never joined the sandbox) is only
+            # verbatim rather than just the status, since e.g. 63016 (outside
+            # the 24h session window, template required) is only
             # distinguishable that way.
             raise TwilioError(f"send failed ({response.status_code}): {response.text}")
         data = response.json()
@@ -95,13 +111,16 @@ async def send_whatsapp_template(
     placeholders as strings, e.g. {"1": "🔴", "2": "HIGH"}."""
     if not (settings.twilio_account_sid and settings.twilio_auth_token):
         return {"status": "skipped", "reason": "Twilio is not configured"}
+    sender = _sender_identity()
+    if sender is None:
+        return {"status": "skipped", "reason": "No WhatsApp sender configured"}
 
     async with httpx.AsyncClient(timeout=timeout) as client:
         response = await client.post(
             f"{_BASE_URL}/Accounts/{settings.twilio_account_sid}/Messages.json",
             auth=(settings.twilio_account_sid, settings.twilio_auth_token),
             data={
-                "From": settings.twilio_whatsapp_from,
+                **sender,
                 "To": _to_whatsapp_address(to_phone),
                 "ContentSid": content_sid,
                 "ContentVariables": json.dumps(content_variables),

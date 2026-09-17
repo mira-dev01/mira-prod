@@ -247,6 +247,11 @@ GOLDEN_RULES = """Golden rules:
 - Escalate immediately via escalate_to_host when uncertain, when asked for a human, or for anything
   requiring host approval (pricing negotiation outside the tool, refunds, cancellations, complaints,
   emergencies, lost belongings, payment issues, booking modifications).
+- escalate_to_host's property_id argument is optional -- leave it unset if the guest asks to be
+  escalated/transferred to the host before choosing a specific property (e.g. right at the start of
+  a call, or a general question with no property discussed yet). Never delay or skip calling
+  escalate_to_host just because no property is locked -- it still reaches the host without one.
+  Pass property_id only when one is already active for this call.
 - Set urgency honestly, based on how quickly the host actually needs to act, not how the guest sounds:
   emergency = a safety issue or something needing action right now (lockout, no water, a booking
   confirmation the guest is waiting on the call for); high = the guest is actively deciding or waiting
