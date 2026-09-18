@@ -276,6 +276,7 @@ async def handle_get_pricing(
     call_session_id: uuid.UUID | None = None,
     guest_profile_id: uuid.UUID | None = None,
     on_priced: Callable[[Property, PriceBreakdown], None] | None = None,
+    window_start: date | None = None,
 ) -> str:
     """on_priced (Phase 4.1, documentation/agent-conversation-improvement.md):
     optional synchronous callback receiving the real Property (for its name
@@ -291,26 +292,38 @@ async def handle_get_pricing(
     app/services/property/pitch_formatter.py's own docstring already
     explains the reasoning for (a prior version of
     property_recommendation_guard.py regex-parsed rendered text and broke
-    when the format changed)."""
+    when the format changed).
+
+    window_start (vague-timeline pricing): the guest's own loose start-of-
+    window estimate from state.slots, passed straight through to
+    pricing_engine.calculate_price as a cache-only probe -- see that
+    function's own docstring. Only ever used when args.check_in is unset."""
     property_ = await _get_property(db, args.property_id)
     if property_ is None:
         return "I couldn't find that property to price. Could you confirm which listing you're asking about?"
 
-    if args.check_out <= args.check_in:
+    has_exact_dates = args.check_in is not None and args.check_out is not None
+    if has_exact_dates and args.check_out <= args.check_in:
         return "The check-out date needs to be after check-in. Could you confirm the dates?"
 
     # Phase 6 (Negotiation engine) self-review fix: GOLDEN_RULES tells the
     # model get_pricing will surface a minimum-stay requirement -- this must
     # actually be true, not just check_calendar. Same check as
     # handle_check_calendar's own (host-configured, additive, host-opt-in;
-    # a host with no minimum_stay_nights rule sees zero change here).
+    # a host with no minimum_stay_nights rule sees zero change here). Runs
+    # for a nights-only call too -- minimum_stay_nights_violation's flat
+    # min_nights floor is date-position-independent (a "3 nights minimum"
+    # rule doesn't care which 3 nights), so it still applies; only its
+    # weekend-specific floor is skipped without exact dates (see that
+    # function's own docstring) -- that one gets its real enforcement from
+    # handle_check_calendar's later re-check once the guest has exact dates.
     required_min_nights = await pricing_engine.minimum_stay_nights_violation(
-        db, host_user_id, property_.id, args.check_in, args.check_out
+        db, host_user_id, property_.id, args.check_in, args.check_out, nights=args.nights
     )
     if required_min_nights is not None:
-        nights_requested = (args.check_out - args.check_in).days
+        nights_requested = (args.check_out - args.check_in).days if has_exact_dates else args.nights
         return (
-            f"{property_.name} needs a minimum stay of {required_min_nights} nights for those dates -- "
+            f"{property_.name} needs a minimum stay of {required_min_nights} nights -- "
             f"{nights_requested} night{'s' if nights_requested != 1 else ''} is below that. "
             "Would a longer stay work?"
         )
@@ -336,6 +349,8 @@ async def handle_get_pricing(
         host_id=host_user_id,
         requested_early_checkin=args.requested_early_checkin,
         requested_late_checkout=args.requested_late_checkout,
+        nights=args.nights,
+        window_start=window_start,
     )
 
     # Never quote a non-positive total as a real price -- see
@@ -352,14 +367,15 @@ async def handle_get_pricing(
         )
         return _PRICE_UNAVAILABLE_MESSAGE
 
-    # Lead with the total as one natural spoken sentence -- this string is
-    # what the LLM tends to read back almost verbatim. No cleaning fee/tax
-    # markup to itemize (see pricing_engine.calculate_price) -- base_total
-    # only differs from total when a length-of-stay discount applies, so
-    # that's the only case worth spelling out separately.
+    # Lead with the per-night rate, then the total, as one natural spoken
+    # sentence -- this string is what the LLM tends to read back almost
+    # verbatim. No cleaning fee/tax markup to itemize (see
+    # pricing_engine.calculate_price) -- base_total only differs from total
+    # when a length-of-stay discount applies, so that's the only case worth
+    # spelling out separately.
     summary = (
-        f"For {property_.name}, {breakdown.nights} night(s) comes to ₹{breakdown.total:,.0f} total "
-        f"(about ₹{breakdown.per_night_avg:,.0f} per night)"
+        f"For {property_.name}, that's ₹{breakdown.per_night_avg:,.0f} per night, "
+        f"₹{breakdown.total:,.0f} total for {breakdown.nights} night(s)"
     )
     if breakdown.discount_amount:
         summary += (
@@ -376,6 +392,20 @@ async def handle_get_pricing(
     if breakdown.late_checkout_fee:
         summary += f". Late checkout is an extra ₹{breakdown.late_checkout_fee:,.0f}"
     summary += "."
+    # Vague-timeline pricing: breakdown.is_estimate is only ever True when
+    # this ran off nights-only (no exact check_in/check_out) AND no cached
+    # live rate covered the guest's own loose window -- see
+    # pricing_engine.calculate_price's docstring. Tell the guest plainly
+    # that this is a ballpark off the base rate, not a locked live-Airbnb
+    # figure, and point them to the natural next step -- never leave the
+    # model to imply this number is as firm as a dates-anchored quote.
+    if breakdown.is_estimate:
+        summary += (
+            " Heads up -- since your dates aren't locked in yet, that's a ballpark based on our base rate; "
+            "the actual price can run a bit higher or lower depending on demand for those dates. Call back, "
+            "or let me know once you've settled on exact dates, and I can lock in the precise rate -- "
+            "ideally about a week before your stay."
+        )
     if on_priced is not None:
         on_priced(property_, breakdown)
     return summary
@@ -618,6 +648,7 @@ async def handle_negotiate_rate(
     call_session_id: uuid.UUID | None = None,
     on_priced: Callable[[Property, NegotiationResult], None] | None = None,
     prior_events: list["NegotiationEvent"] | None = None,
+    window_start: date | None = None,
 ) -> str:
     """on_priced (Phase 4b.1, documentation/agent-conversation-improvement.md):
     same pattern as handle_get_pricing's own on_priced -- an optional
@@ -632,12 +663,16 @@ async def handle_negotiate_rate(
     current call, already property-scoped by ConversationState -- passed
     straight through to pricing_engine.negotiate_rate (see that function's
     own docstring). Optional/None-default so every pre-Phase-4D call site
-    keeps resolving at stage 0, i.e. today's exact behavior."""
+    keeps resolving at stage 0, i.e. today's exact behavior.
+
+    window_start (vague-timeline pricing): same cache-only probe as
+    handle_get_pricing's own -- see that function's docstring."""
     property_ = await _get_property(db, args.property_id)
     if property_ is None:
         return "I couldn't find that property to negotiate a rate for."
 
-    if args.check_out <= args.check_in:
+    has_exact_dates = args.check_in is not None and args.check_out is not None
+    if has_exact_dates and args.check_out <= args.check_in:
         return "The check-out date needs to be after check-in. Could you confirm the dates?"
 
     if host_user_id is not None:
@@ -662,6 +697,8 @@ async def handle_negotiate_rate(
         host_id=host_user_id,
         guest_profile_id=guest_profile_id,
         prior_events=prior_events,
+        nights=args.nights,
+        window_start=window_start,
     )
     # Same non-positive-price guard as handle_get_pricing -- negotiate_rate
     # derives everything (asking price, floor, counter-offer) from
@@ -676,9 +713,23 @@ async def handle_negotiate_rate(
             result.counter_offer,
         )
         return _PRICE_UNAVAILABLE_MESSAGE
+    message = result.message
+    # Vague-timeline pricing: same caveat as handle_get_pricing's own --
+    # result.is_estimate mirrors PriceBreakdown.is_estimate (nights-only,
+    # no cached live rate covering the guest's loose window). Per user
+    # decision, negotiation itself still proceeds normally off this
+    # estimate (the host's own discount policy still applies) -- this only
+    # tells the guest the FIGURE being negotiated is provisional, not that
+    # negotiation itself is blocked.
+    if result.is_estimate:
+        message += (
+            " Just a heads-up -- since your dates aren't locked in yet, this is worked out from our base "
+            "rate as a ballpark, so the exact live price could land a little differently. Once you're closer "
+            "to your dates, call back and I can confirm the precise rate and finalize this for you."
+        )
     if on_priced is not None:
         on_priced(property_, result)
-    return result.message
+    return message
 
 
 async def handle_recommend_properties(

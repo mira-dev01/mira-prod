@@ -1027,7 +1027,7 @@ def test_lead_agent_instructed_to_re_check_exact_dates_before_finalizing():
     at step 5 (where check_calendar is actually called for the chosen
     property)."""
     prompt = build_lead_system_prompt(_user(), [_property()])
-    assert "ALWAYS call check_calendar with the guest's exact, finalized check-in/check-out dates" in prompt
+    assert "If the guest is ready with exact dates, ALWAYS call check_calendar with them" in prompt
     assert "even if recommend_properties already classified this property as available" in prompt
     assert 'This applies even if the earlier result said "full" for this property.' in prompt
 

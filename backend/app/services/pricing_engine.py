@@ -54,6 +54,13 @@ class PriceBreakdown:
     # discipline as every other PriceBreakdown field.
     early_checkin_fee: float = 0.0
     late_checkout_fee: float = 0.0
+    # Vague-timeline pricing: True only when this breakdown was computed from
+    # nights alone (no exact check_in/check_out) -- see calculate_price's own
+    # docstring. Always base_price*nights math in that case, never a live
+    # Airbnb fetch (there are no real dates to fetch a rate FOR), so the
+    # guest-facing summary must say so and caveat it as an estimate rather
+    # than presenting it with the same confidence as a dates-anchored quote.
+    is_estimate: bool = False
 
 
 async def _approved_negotiation_rules(db: AsyncSession, host_id: uuid.UUID | None) -> list[NegotiationRule]:
@@ -161,7 +168,12 @@ def _stay_includes_weekend_night(check_in: date, check_out: date) -> bool:
 
 
 async def minimum_stay_nights_violation(
-    db: AsyncSession, host_id: uuid.UUID | None, property_id: uuid.UUID, check_in: date, check_out: date
+    db: AsyncSession,
+    host_id: uuid.UUID | None,
+    property_id: uuid.UUID,
+    check_in: date | None,
+    check_out: date | None,
+    nights: int | None = None,
 ) -> int | None:
     """Returns the strictest applicable minimum-nights requirement if the
     requested stay is below it, else None. Read by tool_handlers.
@@ -172,18 +184,33 @@ async def minimum_stay_nights_violation(
     change" guarantee every other rule type in this module follows).
     weekend_min_nights only applies when the stay actually includes a Friday
     or Saturday night -- a host with no such rule, or a guest whose stay is
-    purely weekday, sees no change at all."""
-    nights = (check_out - check_in).days
+    purely weekday, sees no change at all.
+
+    Vague-timeline pricing: check_in/check_out are None and nights is set
+    instead for a nights-only get_pricing/negotiate_rate call (no exact
+    dates yet -- see calculate_price's own docstring). general_min (a flat
+    min_nights floor) is date-position-independent, so it still applies in
+    that case. weekend_min_nights genuinely cannot be evaluated without real
+    calendar dates (there's no way to know whether a vague window includes a
+    Friday/Saturday), so it's simply skipped when check_in/check_out are
+    unset -- handle_check_calendar's own re-check with the guest's eventual
+    exact dates is what actually enforces it, same as it always has."""
+    resolved_nights = (check_out - check_in).days if check_in is not None and check_out is not None else nights
     strictest: float | None = None
     for rule in await _approved_property_pricing_rules(db, host_id, property_id):
         if rule.rule_type != "minimum_stay_nights" or not isinstance(rule.condition, dict):
             continue
         general_min = _condition_number(rule.condition, "min_nights")
-        if general_min is not None and nights < general_min:
+        if general_min is not None and resolved_nights < general_min:
             strictest = general_min if strictest is None else max(strictest, general_min)
-        weekend_min = _condition_number(rule.condition, "weekend_min_nights")
-        if weekend_min is not None and nights < weekend_min and _stay_includes_weekend_night(check_in, check_out):
-            strictest = weekend_min if strictest is None else max(strictest, weekend_min)
+        if check_in is not None and check_out is not None:
+            weekend_min = _condition_number(rule.condition, "weekend_min_nights")
+            if (
+                weekend_min is not None
+                and resolved_nights < weekend_min
+                and _stay_includes_weekend_night(check_in, check_out)
+            ):
+                strictest = weekend_min if strictest is None else max(strictest, weekend_min)
     return int(strictest) if strictest is not None else None
 
 
@@ -227,12 +254,14 @@ async def _sum_cached_nightly_rates(listing_id: str, check_in: date, check_out: 
 async def calculate_price(
     db: AsyncSession,
     property_: Property,
-    check_in: date,
-    check_out: date,
+    check_in: date | None,
+    check_out: date | None,
     apply_discounts: bool = True,
     host_id: uuid.UUID | None = None,
     requested_early_checkin: bool = False,
     requested_late_checkout: bool = False,
+    nights: int | None = None,
+    window_start: date | None = None,
 ) -> PriceBreakdown:
     """host_id/requested_early_checkin/requested_late_checkout (Phase 6,
     Negotiation engine) are all optional and default to no-ops -- every
@@ -241,58 +270,96 @@ async def calculate_price(
     host_id is required for length_of_stay/early_checkin_fee/late_checkout_fee
     to read NegotiationRule at all (see _approved_property_pricing_rules) --
     omitting it simply means "no host-authored rules apply," never an
-    error, matching this module's existing fail-closed discipline."""
-    nights = (check_out - check_in).days
+    error, matching this module's existing fail-closed discipline.
+
+    Vague-timeline pricing: check_in/check_out are None and nights is set
+    instead when a guest has only given an approximate stay length ("3
+    nights, first week of October"), not exact dates yet -- see
+    GetPricingArgs/NegotiateRateArgs' own docstrings and GOLDEN_RULES' vague-
+    timeline pricing rule. window_start (optional) is the guest's own loose
+    start-of-window estimate (e.g. "first week of October" -> Oct 1) -- used
+    ONLY as a cache probe, never as a real check_in: if the daily cache-warm
+    job (smart_pricing_service.refresh_live_pricing_cache, 7-day rolling
+    window from today) happens to already have every night in
+    [window_start, window_start+nights) cached, that real near-term live
+    rate is used instead of a base_price estimate, at zero extra API cost.
+    Never triggers a live SearchApi fetch itself -- a speculative paid call
+    for a window the guest hasn't committed to isn't worth it; only an
+    exact-dates call (check_in/check_out both set) does that (see below).
+    Falls back to base_price*nights and marks the breakdown is_estimate=True
+    whenever nights-only pricing can't be served from cache AND the property
+    is on exact_airbnb_pricing -- a non-smart-pricing property's nights-only
+    quote is base_price*nights either way (dates never change that number
+    for it), so is_estimate stays False there regardless of window_start;
+    only a smart-pricing property's nights-only quote is ever provisional,
+    since only it would otherwise have had a real live-fetched rate."""
+    exact_dates = check_in is not None and check_out is not None
+    resolved_nights = (check_out - check_in).days if exact_dates else nights
     base_price = float(property_.base_price)
 
     live_total: float | None = None
+    # A nights-only quote is only ever "estimate-grade" for a smart-pricing
+    # property -- base_price*nights doesn't depend on dates at all, so a
+    # non-smart-pricing property's nights-only quote is exactly as firm as
+    # a dates-anchored one (both are always base_price*nights).
+    is_estimate = not exact_dates and bool(property_.exact_airbnb_pricing)
     if property_.exact_airbnb_pricing and property_.airbnb_listing_id:
         # Airbnb Smart Pricing changes the listing's rate daily/per-date --
         # no static base_price can stay accurate for a host on it (confirmed
         # live: Property.base_price was already stale again days after being
         # manually corrected). Fetch this exact listing's current price for
         # these exact dates instead of trusting the stored number.
-        #
-        # Try the daily cache-warm job's near-term window first (see
-        # smart_pricing_service.refresh_live_pricing_cache) -- if it fully
-        # covers these dates, this is instant with zero live API calls, no
-        # mid-call latency. Only falls through to a live fetch (below) for
-        # dates outside that cached window.
-        live_total = await _sum_cached_nightly_rates(property_.airbnb_listing_id, check_in, check_out)
+        if exact_dates:
+            # Try the daily cache-warm job's near-term window first (see
+            # smart_pricing_service.refresh_live_pricing_cache) -- if it
+            # fully covers these dates, this is instant with zero live API
+            # calls, no mid-call latency. Only falls through to a live fetch
+            # (below) for dates outside that cached window.
+            live_total = await _sum_cached_nightly_rates(property_.airbnb_listing_id, check_in, check_out)
 
-        if live_total is None:
-            # Coordinates are cached permanently once resolved (a listing's
-            # location doesn't change) -- otherwise this is a single live
-            # API call per pricing question, scoped to a tight bounding_box
-            # around the listing's own coordinates. A plain city-wide search
-            # does NOT reliably include this specific listing (confirmed
-            # live: a real 20-listing city search for a real listing never
-            # included it) -- see searchapi_client.fetch_listing_total_price.
-            #
-            # Falls back to the static base_price/night math below on any
-            # failure (coordinates unresolvable, listing not bookable for
-            # these exact dates, API down) -- never blocks a live pricing
-            # quote on this call succeeding.
-            if property_.airbnb_latitude is None or property_.airbnb_longitude is None:
-                coords = await fetch_property_coordinates(property_.airbnb_listing_id)
-                if coords is not None:
-                    property_.airbnb_latitude, property_.airbnb_longitude = coords
-                    await db.commit()
+            if live_total is None:
+                # Coordinates are cached permanently once resolved (a
+                # listing's location doesn't change) -- otherwise this is a
+                # single live API call per pricing question, scoped to a
+                # tight bounding_box around the listing's own coordinates. A
+                # plain city-wide search does NOT reliably include this
+                # specific listing (confirmed live: a real 20-listing city
+                # search for a real listing never included it) -- see
+                # searchapi_client.fetch_listing_total_price.
+                #
+                # Falls back to the static base_price/night math below on
+                # any failure (coordinates unresolvable, listing not
+                # bookable for these exact dates, API down) -- never blocks
+                # a live pricing quote on this call succeeding.
+                if property_.airbnb_latitude is None or property_.airbnb_longitude is None:
+                    coords = await fetch_property_coordinates(property_.airbnb_listing_id)
+                    if coords is not None:
+                        property_.airbnb_latitude, property_.airbnb_longitude = coords
+                        await db.commit()
 
-            if property_.airbnb_latitude is not None and property_.airbnb_longitude is not None:
-                live_total = await fetch_listing_total_price(
-                    float(property_.airbnb_latitude),
-                    float(property_.airbnb_longitude),
-                    property_.airbnb_listing_id,
-                    check_in,
-                    check_out,
-                )
+                if property_.airbnb_latitude is not None and property_.airbnb_longitude is not None:
+                    live_total = await fetch_listing_total_price(
+                        float(property_.airbnb_latitude),
+                        float(property_.airbnb_longitude),
+                        property_.airbnb_listing_id,
+                        check_in,
+                        check_out,
+                    )
+        elif window_start is not None:
+            # Nights-only quote, but the guest's own loose window happens to
+            # start within the already-warm cache -- a cache-only probe
+            # (never a live fetch, see docstring above), so this costs
+            # nothing even when it misses.
+            probe_check_out = window_start + timedelta(days=resolved_nights)
+            live_total = await _sum_cached_nightly_rates(property_.airbnb_listing_id, window_start, probe_check_out)
 
-    base_total = round(live_total, 2) if live_total is not None else round(base_price * nights, 2)
+    if live_total is not None:
+        is_estimate = False
+    base_total = round(live_total, 2) if live_total is not None else round(base_price * resolved_nights, 2)
 
     discount_percent = 0.0
     if apply_discounts:
-        discount_percent = await _length_of_stay_discount_percent(db, property_.id, nights, host_id=host_id)
+        discount_percent = await _length_of_stay_discount_percent(db, property_.id, resolved_nights, host_id=host_id)
     discount_amount = round(base_total * discount_percent / 100, 2)
 
     total = round(base_total - discount_amount, 2)
@@ -310,14 +377,15 @@ async def calculate_price(
         late_checkout_fee = await _flat_fee(db, host_id, property_.id, "late_checkout_fee")
 
     return PriceBreakdown(
-        nights=nights,
+        nights=resolved_nights,
         base_total=base_total,
         discount_percent=discount_percent,
         discount_amount=discount_amount,
         total=total,
         early_checkin_fee=early_checkin_fee,
         late_checkout_fee=late_checkout_fee,
-        per_night_avg=round(total / nights, 2) if nights else base_price,
+        per_night_avg=round(total / resolved_nights, 2) if resolved_nights else base_price,
+        is_estimate=is_estimate,
     )
 
 
@@ -354,6 +422,12 @@ class NegotiationResult:
     # grant. Always populated (never None) -- floor_price is computed
     # unconditionally above, on every path through this function.
     floor_price: float = 0.0
+    # Vague-timeline pricing: mirrors PriceBreakdown.is_estimate -- True
+    # when this negotiation ran off a nights-only base_price estimate
+    # rather than a real (live or cached) dates-anchored rate. tool_handlers
+    # appends a caveat to the spoken message when this is True, same as
+    # handle_get_pricing does for a plain quote.
+    is_estimate: bool = False
 
 
 @dataclass
@@ -440,13 +514,15 @@ async def _is_repeat_guest_for_host(db: AsyncSession, guest_profile_id: uuid.UUI
 async def negotiate_rate(
     db: AsyncSession,
     property_: Property,
-    check_in: date,
-    check_out: date,
+    check_in: date | None,
+    check_out: date | None,
     guest_offer: float | None,
     guest_loyalty: str = "new",
     host_id: uuid.UUID | None = None,
     guest_profile_id: uuid.UUID | None = None,
     prior_events: list["NegotiationEvent"] | None = None,
+    nights: int | None = None,
+    window_start: date | None = None,
 ) -> NegotiationResult:
     """prior_events (Phase 4D, generalized negotiation state -- see
     documentation design docs "Phase 4C: Negotiation Semantics Contract"):
@@ -459,8 +535,18 @@ async def negotiate_rate(
     a stage. Optional/None-default (-> stage 0, i.e. today's exact
     pre-Phase-4D behavior) so every pre-existing call site -- including
     every test in tests/test_pricing_engine.py that predates this phase --
-    continues to resolve identically without passing it."""
-    breakdown = await calculate_price(db, property_, check_in, check_out, apply_discounts=False)
+    continues to resolve identically without passing it.
+
+    nights/window_start (vague-timeline pricing): same exact-dates-or-nights
+    shape as calculate_price itself -- negotiation runs off whatever base
+    figure calculate_price resolves (a real cached live rate if window_start
+    happens to land in the smart-pricing cache, else base_price*nights),
+    same as get_pricing. Per user decision: negotiation is never blocked
+    just because dates aren't final yet -- the host's own discount policy
+    still applies to the estimate."""
+    breakdown = await calculate_price(
+        db, property_, check_in, check_out, apply_discounts=False, nights=nights, window_start=window_start
+    )
     asking_price = breakdown.total
 
     policy = await _get_host_negotiation_policy(db, host_id)
@@ -472,6 +558,7 @@ async def negotiate_rate(
             asking_price=asking_price,
             floor_price=asking_price,
             refused=True,
+            is_estimate=breakdown.is_estimate,
             message=(
                 f"I checked, but ₹{asking_price:,.0f} for {breakdown.nights} nights is already our best price "
                 f"on {property_.name} -- I'm not able to offer a further discount. Happy to connect you with "
@@ -623,9 +710,11 @@ async def negotiate_rate(
             stage_count=stage_count,
             progressed_this_event=False,
             exhausted=exhausted,
+            is_estimate=breakdown.is_estimate,
             message=(
-                f"Good news -- for {property_.name} over {breakdown.nights} nights, I can bring it down to "
-                f"₹{floor_price:,.0f} (our standard rate is ₹{asking_price:,.0f})."
+                f"Good news -- for {property_.name}, I can bring it down to ₹{floor_price / breakdown.nights:,.0f} "
+                f"per night, ₹{floor_price:,.0f} total over {breakdown.nights} nights "
+                f"(our standard rate is ₹{asking_price:,.0f})."
             ),
         )
 
@@ -640,9 +729,10 @@ async def negotiate_rate(
             stage_count=stage_count,
             progressed_this_event=progressed_this_event,
             exhausted=exhausted,
+            is_estimate=breakdown.is_estimate,
             message=(
-                f"Good news -- I was able to accept ₹{guest_offer:,.0f} for {property_.name} over "
-                f"{breakdown.nights} nights."
+                f"Good news -- I was able to accept ₹{guest_offer / breakdown.nights:,.0f} per night for "
+                f"{property_.name}, ₹{guest_offer:,.0f} total over {breakdown.nights} nights."
             ),
         )
 
@@ -656,9 +746,11 @@ async def negotiate_rate(
         stage_count=stage_count,
         progressed_this_event=progressed_this_event,
         exhausted=exhausted,
+        is_estimate=breakdown.is_estimate,
         message=(
             f"I checked, but ₹{guest_offer:,.0f} is a bit below what I can do on {property_.name}. "
-            f"The best I can offer for {breakdown.nights} nights is ₹{floor_price:,.0f} "
+            f"The best I can offer is ₹{floor_price / breakdown.nights:,.0f} per night, "
+            f"₹{floor_price:,.0f} total for {breakdown.nights} nights "
             f"(our standard rate is ₹{asking_price:,.0f})."
         ),
     )

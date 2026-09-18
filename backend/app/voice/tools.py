@@ -188,9 +188,10 @@ def build_voice_tools(
     async def get_pricing(
         params: FunctionCallParams,
         property_id: str,
-        check_in: str,
-        check_out: str,
         num_guests: int,
+        check_in: str | None = None,
+        check_out: str | None = None,
+        nights: int | None = None,
         apply_discounts: bool = False,
         requested_early_checkin: bool = False,
         requested_late_checkout: bool = False,
@@ -199,9 +200,16 @@ def build_voice_tools(
 
         Args:
             property_id: The property's id, as given to you in your instructions.
-            check_in: Check-in date, ISO format (YYYY-MM-DD).
-            check_out: Check-out date, ISO format (YYYY-MM-DD).
             num_guests: Number of guests.
+            check_in: Check-in date, ISO format (YYYY-MM-DD). Required together with check_out
+                UNLESS the guest has only given a vague/approximate timeline (e.g. "first week of
+                October", "sometime mid-September") rather than exact dates -- in that case, leave
+                check_in/check_out unset and pass nights instead (see below). Do not invent a date.
+            check_out: Check-out date, ISO format (YYYY-MM-DD). Same rule as check_in -- both or
+                neither.
+            nights: Number of nights, ONLY when check_in/check_out are unset because the guest gave
+                a vague timeline instead of exact dates. Pass either check_in+check_out, or nights --
+                never both, never neither.
             apply_discounts: Leave false for the standard, first-quoted price -- never lead with a
                 discounted number. If the guest pushes back and asks for a lower price after
                 hearing the standard quote, use negotiate_rate instead of calling this again with
@@ -221,17 +229,35 @@ def build_voice_tools(
                     property_id=property_id,
                     check_in=check_in,
                     check_out=check_out,
+                    nights=nights,
                     num_guests=num_guests,
                     apply_discounts=apply_discounts,
                     requested_early_checkin=requested_early_checkin,
                     requested_late_checkout=requested_late_checkout,
                 )
 
-                state.set_slot("check_in", args.check_in)
-                state.set_slot("check_out", args.check_out)
+                if args.check_in is not None:
+                    state.set_slot("check_in", args.check_in)
+                    state.set_slot("check_out", args.check_out)
+                    # Exact dates supersede an earlier vague nights-only
+                    # answer -- same clearing update_lead's own wrapper
+                    # already does when real dates arrive there.
+                    state.slots.pop("nights", None)
+                    state.slots.pop("window_start", None)
+                    state.slots.pop("window_end", None)
+                elif args.nights is not None:
+                    state.set_slot("nights", args.nights)
                 state.set_slot("num_guests", args.num_guests)
                 state.lock_property(args.property_id)
                 state.mark_checking_availability()
+
+                # Vague-timeline pricing: a guest-stated loose window
+                # (window_start, set via update_lead) is the only extra
+                # signal a nights-only get_pricing call can use for a real
+                # cache-only probe -- see pricing_engine.calculate_price's
+                # own docstring. None if the guest never gave one (or exact
+                # dates are already known), which simply means no probe runs.
+                window_start = _parse_iso_date(state.slots.get("window_start")) if args.check_in is None else None
 
                 # Phase 4.1 (documentation/agent-conversation-improvement.md):
                 # records the real quoted total into state so the prompt can
@@ -251,7 +277,14 @@ def build_voice_tools(
                 # the real structured fact directly" pattern already used for
                 # recommend_properties above, not a new mechanism.
                 def _on_priced(property_, breakdown):
-                    state.record_quoted_price(property_.name, check_in, check_out, breakdown.total)
+                    state.record_quoted_price(
+                        property_.name,
+                        check_in,
+                        check_out,
+                        breakdown.total,
+                        nights=breakdown.nights,
+                        is_estimate=breakdown.is_estimate,
+                    )
                     # Phase 4F: a plain get_pricing quote supersedes any
                     # earlier negotiation as "the current price fact" --
                     # clearing it here (at the point of invalidation) rather
@@ -266,7 +299,13 @@ def build_voice_tools(
                         )
 
                 result = await tool_handlers.handle_get_pricing(
-                    db, args, host_user_id, call_session_id, guest_profile_id=guest_profile_id, on_priced=_on_priced
+                    db,
+                    args,
+                    host_user_id,
+                    call_session_id,
+                    guest_profile_id=guest_profile_id,
+                    on_priced=_on_priced,
+                    window_start=window_start,
                 )
             except ValidationError:
                 result = INVALID_ARGS_MESSAGE
@@ -395,8 +434,9 @@ def build_voice_tools(
     async def negotiate_rate(
         params: FunctionCallParams,
         property_id: str,
-        check_in: str,
-        check_out: str,
+        check_in: str | None = None,
+        check_out: str | None = None,
+        nights: int | None = None,
         guest_offer: float | None = None,
         num_guests: int | None = None,
         guest_loyalty: GuestLoyalty = "new",
@@ -405,8 +445,15 @@ def build_voice_tools(
 
         Args:
             property_id: The property's id, as given to you in your instructions.
-            check_in: Check-in date, ISO format (YYYY-MM-DD).
-            check_out: Check-out date, ISO format (YYYY-MM-DD).
+            check_in: Check-in date, ISO format (YYYY-MM-DD). Required together with check_out
+                UNLESS the guest only has a vague/approximate timeline -- see nights below. Do not
+                invent a date.
+            check_out: Check-out date, ISO format (YYYY-MM-DD). Same rule as check_in -- both or
+                neither.
+            nights: Number of nights, ONLY when check_in/check_out are unset because the guest gave
+                a vague timeline instead of exact dates. Pass either check_in+check_out, or nights --
+                never both, never neither. Negotiation still runs normally off this -- you don't
+                need exact dates to negotiate a price with the guest.
             guest_offer: The rate the guest is offering, in INR. Leave unset if the guest
                 asked you to name a price instead of stating their own offer (e.g. "what
                 can you offer?") -- you'll get back the best price to propose directly.
@@ -419,6 +466,7 @@ def build_voice_tools(
                     property_id=property_id,
                     check_in=check_in,
                     check_out=check_out,
+                    nights=nights,
                     guest_offer=guest_offer,
                     num_guests=num_guests,
                     guest_loyalty=guest_loyalty,
@@ -450,6 +498,7 @@ def build_voice_tools(
                 existing_check_in = state.slots.get("check_in")
                 existing_check_out = state.slots.get("check_out")
                 existing_num_guests = state.slots.get("num_guests")
+                existing_nights = state.slots.get("nights")
                 last_negotiated_property_id = (
                     state.negotiation_events[-1].property_id if state.negotiation_events else None
                 )
@@ -461,10 +510,28 @@ def build_voice_tools(
                         and args.num_guests is not None
                         and existing_num_guests != args.num_guests
                     )
+                    or (existing_nights is not None and args.nights is not None and existing_nights != args.nights)
                     or (last_negotiated_property_id is not None and last_negotiated_property_id != args.property_id)
                 )
                 if context_changed:
                     state.reset_negotiation_context()
+
+                if args.check_in is not None:
+                    state.set_slot("check_in", args.check_in)
+                    state.set_slot("check_out", args.check_out)
+                    # Exact dates supersede an earlier vague nights-only
+                    # answer -- same clearing get_pricing's/update_lead's own
+                    # wrappers already do when real dates arrive there.
+                    state.slots.pop("nights", None)
+                    state.slots.pop("window_start", None)
+                    state.slots.pop("window_end", None)
+                elif args.nights is not None:
+                    state.set_slot("nights", args.nights)
+
+                # Vague-timeline pricing: same cache-only probe as
+                # get_pricing's own wrapper -- see that wrapper's comment and
+                # pricing_engine.calculate_price's docstring.
+                window_start = _parse_iso_date(state.slots.get("window_start")) if args.check_in is None else None
 
                 # Phase 4b.1 (documentation/agent-conversation-improvement.md):
                 # same pattern as get_pricing's _on_priced above -- feeds the
@@ -498,7 +565,14 @@ def build_voice_tools(
                 # see state_prompt_sync.py's build_state_block_content for
                 # where this fact is turned into a natural-language hint.
                 def _on_negotiated(property_, negotiation_result):
-                    state.record_quoted_price(property_.name, check_in, check_out, negotiation_result.counter_offer)
+                    state.record_quoted_price(
+                        property_.name,
+                        check_in,
+                        check_out,
+                        negotiation_result.counter_offer,
+                        nights=nights,
+                        is_estimate=negotiation_result.is_estimate,
+                    )
                     state.record_negotiation_decision(
                         property_name=property_.name,
                         asking_price=negotiation_result.asking_price,
@@ -531,11 +605,11 @@ def build_voice_tools(
                     call_session_id,
                     on_priced=_on_negotiated,
                     prior_events=state.negotiation_events,
+                    window_start=window_start,
                 )
                 state.record_negotiation_event(args.guest_offer, args.property_id)
-                state.set_slot("check_in", args.check_in)
-                state.set_slot("check_out", args.check_out)
-                state.set_slot("num_guests", args.num_guests)
+                if args.num_guests is not None:
+                    state.set_slot("num_guests", args.num_guests)
                 state.lock_property(args.property_id)
                 state.mark_negotiating()
             except ValidationError:

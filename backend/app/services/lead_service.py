@@ -160,8 +160,8 @@ async def backfill_lead_from_engagement(
     user_id: uuid.UUID,
     call_session_id: uuid.UUID | None,
     property_name: str,
-    check_in: date,
-    check_out: date,
+    check_in: date | None,
+    check_out: date | None,
     num_guests: int | None,
     guest_profile_id: uuid.UUID | None = None,
 ) -> None:
@@ -180,6 +180,14 @@ async def backfill_lead_from_engagement(
     already set via update_lead (same blank-only semantics as backfill_lead
     above), and never sets guest_name/phone/email/lead_temperature, which
     only mean something if actually given by the guest.
+
+    check_in/check_out are None for a vague-timeline get_pricing/
+    negotiate_rate call (nights-only, no exact dates yet -- see
+    GetPricingArgs/NegotiateRateArgs) -- simply skipped in that case rather
+    than backfilling a Lead's check_in/check_out with a null value; the
+    guest's own update_lead call (nights/window_start/window_end) is what
+    captures that signal instead, same as it already does for
+    recommend_properties' own nights-only path.
     """
     if call_session_id is None:
         return
@@ -191,10 +199,10 @@ async def backfill_lead_from_engagement(
     if property_name not in (lead.properties_discussed or []):
         lead.properties_discussed = [*(lead.properties_discussed or []), property_name]
         changed = True
-    if not lead.check_in:
+    if check_in is not None and not lead.check_in:
         lead.check_in = check_in
         changed = True
-    if not lead.check_out:
+    if check_out is not None and not lead.check_out:
         lead.check_out = check_out
         changed = True
     if num_guests and not lead.num_guests:
