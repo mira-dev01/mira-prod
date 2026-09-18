@@ -106,6 +106,84 @@ async def test_calculate_price_falls_back_when_nightly_cache_incomplete(test_pro
     assert breakdown.base_total == round(float(test_property.base_price) * 2, 2)
 
 
+async def test_nights_only_base_price_property_is_not_an_estimate(test_property, db_session):
+    # A property with exact_airbnb_pricing off has no date-dependent live
+    # rate to begin with -- a nights-only quote for it is just as firm as a
+    # dates-anchored one, so is_estimate must stay False.
+    breakdown = await calculate_price(db_session, test_property, None, None, nights=3)
+    assert breakdown.nights == 3
+    assert breakdown.base_total == round(float(test_property.base_price) * 3, 2)
+    assert breakdown.is_estimate is False
+
+
+async def test_nights_only_smart_pricing_property_with_no_window_is_an_estimate(test_property, db_session):
+    # exact_airbnb_pricing on, but no window_start given at all -- nothing
+    # to probe the cache with, so this must fall back to a base_price
+    # estimate, clearly marked, and must never attempt (or need) a live
+    # SearchApi call.
+    test_property.exact_airbnb_pricing = True
+    test_property.airbnb_listing_id = "123456789"
+    await db_session.commit()
+
+    breakdown = await calculate_price(db_session, test_property, None, None, nights=3)
+    assert breakdown.base_total == round(float(test_property.base_price) * 3, 2)
+    assert breakdown.is_estimate is True
+
+
+async def test_nights_only_smart_pricing_property_uses_cache_when_window_hits(test_property, db_session, monkeypatch):
+    # window_start happens to land inside the already-warm cache -- a real
+    # cached live rate should be used instead of the base_price estimate,
+    # and this must be served with zero live API calls (no key configured
+    # in tests, so a live fetch would silently fail through to base_price
+    # if this path were wrongly attempted instead of the cache).
+    _install_fake_redis(monkeypatch)
+    test_property.exact_airbnb_pricing = True
+    test_property.airbnb_listing_id = "123456789"
+    await db_session.commit()
+
+    monday = _next_weekday(date.today(), 0)
+    await redis_client.cache_set_json(nightly_rate_cache_key("123456789", monday), 4000.0, 3600)
+    await redis_client.cache_set_json(nightly_rate_cache_key("123456789", monday + timedelta(days=1)), 4500.0, 3600)
+
+    breakdown = await calculate_price(db_session, test_property, None, None, nights=2, window_start=monday)
+    assert breakdown.base_total == 8500.0
+    assert breakdown.is_estimate is False
+
+
+async def test_nights_only_smart_pricing_property_with_window_miss_falls_back_to_estimate(
+    test_property, db_session, monkeypatch
+):
+    # window_start given, but the cache doesn't fully cover it -- must fall
+    # back to the base_price estimate rather than attempting a live fetch
+    # for a window the guest hasn't committed to yet.
+    _install_fake_redis(monkeypatch)
+    test_property.exact_airbnb_pricing = True
+    test_property.airbnb_listing_id = "123456789"
+    await db_session.commit()
+
+    far_future = date.today() + timedelta(days=60)
+    breakdown = await calculate_price(db_session, test_property, None, None, nights=2, window_start=far_future)
+    assert breakdown.base_total == round(float(test_property.base_price) * 2, 2)
+    assert breakdown.is_estimate is True
+
+
+async def test_negotiate_rate_off_nights_only_estimate_still_negotiates(test_property, db_session):
+    # Per product decision: negotiation is never blocked just because dates
+    # aren't final yet -- it still runs the host's normal discount policy
+    # against the nights-only estimate, and flags the result as an estimate
+    # (only meaningful for a smart-pricing property -- see
+    # test_nights_only_base_price_property_is_not_an_estimate above for why
+    # a plain base-price property's nights-only quote is never "an estimate").
+    test_property.exact_airbnb_pricing = True
+    test_property.airbnb_listing_id = "123456789"
+    await db_session.commit()
+
+    result = await negotiate_rate(db_session, test_property, None, None, None, nights=3)
+    assert result.accepted is True
+    assert result.is_estimate is True
+    assert result.floor_price > 0
+
+
 async def test_length_of_stay_discount_applied(test_property, db_session):
     db_session.add(
         PricingRule(

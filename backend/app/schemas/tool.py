@@ -8,7 +8,7 @@ import re
 from datetime import date
 from typing import Literal
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 
 Urgency = Literal["low", "medium", "high", "emergency"]
 IssueType = Literal["plumbing", "electrical", "ac", "wifi", "lock", "general"]
@@ -46,8 +46,18 @@ class CheckCalendarArgs(BaseModel):
 
 class GetPricingArgs(BaseModel):
     property_id: str
-    check_in: date
-    check_out: date
+    # Exact dates OR nights (never both, never neither -- see the validator
+    # below) -- a guest with only a vague/approximate timeline ("first week
+    # of October") has a real stay length before they have finalized dates;
+    # pass that as nights so get_pricing can still quote instead of the
+    # model having to keep pressing for an exact check-in date it doesn't
+    # have yet. See GOLDEN_RULES' vague-timeline pricing rule and
+    # pricing_engine.calculate_price's own docstring for how nights-only
+    # quotes differ (estimate-only, no live Airbnb fetch, no weekend-minimum
+    # check) from an exact-dates quote.
+    check_in: date | None = None
+    check_out: date | None = None
+    nights: int | None = None
     num_guests: int
     apply_discounts: bool = True
     # Phase 6 (Negotiation engine): only True if the GUEST explicitly asked
@@ -58,6 +68,20 @@ class GetPricingArgs(BaseModel):
     # forbids for discounts; the same "only when asked" rule applies here.
     requested_early_checkin: bool = False
     requested_late_checkout: bool = False
+
+    @model_validator(mode="after")
+    def _check_dates_xor_nights(self) -> "GetPricingArgs":
+        has_dates = self.check_in is not None and self.check_out is not None
+        has_one_date = (self.check_in is not None) != (self.check_out is not None)
+        if has_one_date:
+            raise ValueError("check_in and check_out must both be set, or both left unset")
+        if not has_dates and self.nights is None:
+            raise ValueError("either check_in/check_out or nights is required")
+        if has_dates and self.nights is not None:
+            raise ValueError("pass either check_in/check_out or nights, not both")
+        if self.nights is not None and self.nights <= 0:
+            raise ValueError("nights must be positive")
+        return self
 
 
 class DispatchTechnicianArgs(BaseModel):
@@ -105,11 +129,29 @@ class EscalateToHostArgs(BaseModel):
 
 class NegotiateRateArgs(BaseModel):
     property_id: str
-    check_in: date
-    check_out: date
+    # Same exact-dates-or-nights shape as GetPricingArgs -- see that class's
+    # own docstring/validator. A guest can push back on price ("any
+    # discount?") before finalizing dates just as easily as after.
+    check_in: date | None = None
+    check_out: date | None = None
+    nights: int | None = None
     guest_offer: float | None = None
     num_guests: int | None = None
     guest_loyalty: GuestLoyalty = "new"
+
+    @model_validator(mode="after")
+    def _check_dates_xor_nights(self) -> "NegotiateRateArgs":
+        has_dates = self.check_in is not None and self.check_out is not None
+        has_one_date = (self.check_in is not None) != (self.check_out is not None)
+        if has_one_date:
+            raise ValueError("check_in and check_out must both be set, or both left unset")
+        if not has_dates and self.nights is None:
+            raise ValueError("either check_in/check_out or nights is required")
+        if has_dates and self.nights is not None:
+            raise ValueError("pass either check_in/check_out or nights, not both")
+        if self.nights is not None and self.nights <= 0:
+            raise ValueError("nights must be positive")
+        return self
 
 
 class RecommendPropertiesArgs(BaseModel):

@@ -326,10 +326,22 @@ def build_state_block_content(state: ConversationState, quality: "ConversationQu
         # property) instead of asking the model to recall a specific number
         # from a long transcript -- same principle as recommendations_shown.
         qp = state.quoted_price
+        # Vague-timeline pricing: check_in/check_out are None for a
+        # nights-only quote (see get_pricing/negotiate_rate's wrappers) --
+        # render nights instead of "None to None" in that case, and surface
+        # the estimate caveat so the model doesn't restate the number with
+        # more confidence than the original quote actually had.
+        if qp.get("check_in") and qp.get("check_out"):
+            when = f"{qp['check_in']} to {qp['check_out']}"
+        elif qp.get("nights"):
+            when = f"{qp['nights']} night(s), exact dates not yet finalized"
+        else:
+            when = "dates not yet finalized"
+        estimate_note = " This was an estimate, not a locked-in rate." if qp.get("is_estimate") else ""
         lines.append(
-            f"You already quoted ₹{qp['total']:,.0f} for {qp['property_name']} ({qp['check_in']} to "
-            f"{qp['check_out']}). Do not re-quote a different number for the same property/dates unless "
-            "the guest asks for a discount or something has genuinely changed."
+            f"You already quoted ₹{qp['total']:,.0f} for {qp['property_name']} ({when}).{estimate_note} "
+            "Do not re-quote a different number for the same property/dates unless the guest asks for a "
+            "discount or something has genuinely changed."
         )
     if goal_hint:
         lines.append(f"Current objective: {goal_hint}")

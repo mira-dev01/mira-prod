@@ -456,15 +456,30 @@ class ConversationState:
             return None
         return max(guest_counts) + 1
 
-    def record_quoted_price(self, property_name: str, check_in: str, check_out: str, total: float) -> None:
+    def record_quoted_price(
+        self,
+        property_name: str,
+        check_in: str | None,
+        check_out: str | None,
+        total: float,
+        nights: int | None = None,
+        is_estimate: bool = False,
+    ) -> None:
         """Phase 4.1 -- always overwrites, never merges: a later quote (a
         discount applied on request, or different dates) is always the
-        current one the model should reference, not the first one given."""
+        current one the model should reference, not the first one given.
+
+        Vague-timeline pricing: check_in/check_out are None for a nights-only
+        quote (see get_pricing/negotiate_rate's wrappers) -- nights/
+        is_estimate carry the same information state_prompt_sync's
+        already-quoted hint needs to render sensibly without them."""
         self.quoted_price = {
             "property_name": property_name,
             "check_in": check_in,
             "check_out": check_out,
             "total": total,
+            "nights": nights,
+            "is_estimate": is_estimate,
         }
 
     def record_negotiation_decision(
