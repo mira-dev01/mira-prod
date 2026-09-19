@@ -5,6 +5,22 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Query params that a provider's connection string may include but that
+# asyncpg's own connect() doesn't accept as kwargs -- forwarding any of these
+# raises TypeError: connect() got an unexpected keyword argument, same
+# failure mode sslmode/ssl already had before those were stripped in
+# Settings._normalize_database_url below. Confirmed live: a Neon
+# DATABASE_URL's own ?sslmode=require&channel_binding=require crashed every
+# alembic upgrade/app startup on channel_binding specifically, since only
+# sslmode/ssl were being stripped -- channel_binding is a libpq-level TLS
+# channel-binding negotiation hint (asyncpg negotiates this automatically as
+# part of its own TLS handshake, so dropping the param doesn't weaken the
+# connection's actual security), not something asyncpg's connect() signature
+# exposes as a parameter at all. Module-level, not a class attribute, since a
+# leading-underscore attribute on a pydantic BaseSettings subclass becomes a
+# ModelPrivateAttr descriptor rather than a plain value.
+_ASYNCPG_UNSUPPORTED_QUERY_PARAMS = ("sslmode", "ssl", "channel_binding")
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
@@ -53,7 +69,7 @@ class Settings(BaseSettings):
         mode = next((v for k, v in params if k in ("sslmode", "ssl")), None)
         data["database_requires_ssl"] = mode is not None and mode not in ("disable", "false", "0")
         if parsed.query:
-            remaining = [(k, v) for k, v in params if k not in ("sslmode", "ssl")]
+            remaining = [(k, v) for k, v in params if k not in _ASYNCPG_UNSUPPORTED_QUERY_PARAMS]
             parsed = parsed._replace(query=urlencode(remaining))
             value = urlunsplit(parsed)
 
