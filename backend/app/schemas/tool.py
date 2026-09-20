@@ -127,6 +127,18 @@ class EscalateToHostArgs(BaseModel):
         return _normalize_phone(value) if value else value
 
 
+class RequestHostTransferArgs(BaseModel):
+    # No property_id/guest_phone -- unlike escalation, a live transfer is
+    # scoped to THIS call itself; call_session_id/property_id/host_user_id
+    # are already in closure scope inside voice/tools.py's tool-building
+    # function, same as every other tool there. Distinct from
+    # EscalateToHostArgs: this is for a guest's EXPLICIT "transfer me" /
+    # "let me talk to a human" request, which attempts a real live call
+    # transfer (see handle_request_host_transfer) -- not the general
+    # escalation-and-notify path.
+    reason: str | None = None
+
+
 class NegotiateRateArgs(BaseModel):
     property_id: str
     # Same exact-dates-or-nights shape as GetPricingArgs -- see that class's

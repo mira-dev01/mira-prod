@@ -11,7 +11,7 @@ import uuid
 from datetime import date, timedelta
 from typing import TYPE_CHECKING, Callable
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:
@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 from app.config import settings
 from app.integrations import email_client, twilio_client
 from app.integrations.email_templates import build_escalation_email_html, build_photos_email_html
+from app.models.call_session import CallSession
 from app.models.property import Property
 from app.models.unanswered_question import UnansweredQuestion
 from app.models.user import User
@@ -30,6 +31,7 @@ from app.schemas.tool import (
     GetPricingArgs,
     NegotiateRateArgs,
     RecommendPropertiesArgs,
+    RequestHostTransferArgs,
     SearchFaqArgs,
     SendPhotosArgs,
     SendWhatsappArgs,
@@ -47,6 +49,13 @@ from app.services import (
 from app.services.pricing_engine import NegotiationResult, PriceBreakdown
 from app.services.property.pitch_formatter import RecommendationResult
 from app.services.property.retrieval import orchestrator as property_retrieval_orchestrator
+from app.voice.handoff_signal import request_handoff
+
+# Same routable-state constant as webhooks/exotel.py's _ACTIVE_CALL_STATUSES
+# -- a handoff can only be claimed against a call that's still actually in
+# progress. Duplicated (not imported) for the same circular-import reason
+# _has_usable_host_phone below is duplicated rather than imported.
+_ACTIVE_CALL_STATUSES = {"in_progress"}
 
 logger = logging.getLogger(__name__)
 
@@ -478,8 +487,19 @@ async def handle_send_whatsapp(
         urgency="low",
         message=f"To {args.phone}: {args.message}",
     )
-    asyncio.create_task(twilio_client.send_whatsapp_best_effort(args.phone, args.message))
-    return f"Got it, I've queued a WhatsApp message to {args.phone}." + _phone_confirmation_warning(args.phone)
+    # Don't claim a WhatsApp send is queued when Twilio is disabled -- the
+    # in-app notification above still always fires, but there is no WhatsApp
+    # fallback for this direct-message tool (unlike send_photos/
+    # escalate_to_host, which have an email fallback because they have a
+    # host to email); the host simply won't see this one on WhatsApp until
+    # TWILIO_ENABLED is back on. See config.py's twilio_enabled.
+    if settings.twilio_enabled:
+        asyncio.create_task(twilio_client.send_whatsapp_best_effort(args.phone, args.message))
+        return f"Got it, I've queued a WhatsApp message to {args.phone}." + _phone_confirmation_warning(args.phone)
+    return (
+        f"I've noted that down, but I'm not able to send a WhatsApp message to {args.phone} right now."
+        + _phone_confirmation_warning(args.phone)
+    )
 
 
 async def handle_send_photos(
@@ -506,16 +526,27 @@ async def handle_send_photos(
         message=f"To {args.guest_phone}: Here are photos of {property_.name} -- {gallery_url}",
     )
 
-    # Real WhatsApp send via Twilio. Freeform (no Content Template), so this
-    # only succeeds inside Meta's 24h customer-service session window -- see
-    # twilio_account_sid's docstring in config.py.
-    asyncio.create_task(
-        twilio_client.send_whatsapp_best_effort(args.guest_phone, f"Here are photos of {property_.name} -- {gallery_url}")
-    )
+    # Real WhatsApp send via Twilio -- only attempted when Twilio is enabled
+    # (see config.py's twilio_enabled). Freeform (no Content Template), so
+    # even when attempted this only succeeds inside Meta's 24h
+    # customer-service session window -- see twilio_account_sid's docstring
+    # in config.py.
+    if settings.twilio_enabled:
+        asyncio.create_task(
+            twilio_client.send_whatsapp_best_effort(
+                args.guest_phone, f"Here are photos of {property_.name} -- {gallery_url}"
+            )
+        )
 
-    # Email stays as a parallel channel (not a fallback) so this is testable
-    # against the host's own inbox even when the WhatsApp send above fails
-    # (e.g. outside the 24h session window).
+    # Email/wa.me-link is a parallel channel when Twilio is enabled (so this
+    # is testable against the host's own inbox even when the WhatsApp send
+    # above fails, e.g. outside the 24h session window), and the ONLY
+    # channel when Twilio is disabled -- build_photos_email_html includes
+    # its own wa.me link built from args.guest_phone, so the host can always
+    # reach the guest from the email regardless of Twilio's state.
+    call_page_url = (
+        f"{settings.frontend_base_url}/dashboard/calls/{call_session_id}" if call_session_id else None
+    )
     host_user = await db.get(User, host_user_id)
     if host_user is not None:
         asyncio.create_task(
@@ -523,16 +554,25 @@ async def handle_send_photos(
                 host_user.notification_email or host_user.email,
                 subject=f"Photos requested — {property_.name}",
                 body=f"A guest ({args.guest_phone}) asked to see photos of {property_.name}.\n\n"
-                f"Gallery link: {gallery_url}",
+                f"Gallery link: {gallery_url}"
+                + (f"\nCall details: {call_page_url}" if call_page_url else ""),
                 html_body=build_photos_email_html(
-                    property_name=property_.name, guest_phone=args.guest_phone, gallery_url=gallery_url
+                    property_name=property_.name,
+                    guest_phone=args.guest_phone,
+                    gallery_url=gallery_url,
+                    call_page_url=call_page_url,
                 ),
             )
         )
 
+    if settings.twilio_enabled:
+        return (
+            f"Got it, I've sent a photo gallery link for {property_.name} to {args.guest_phone}."
+            + _phone_confirmation_warning(args.guest_phone)
+        )
     return (
-        f"Got it, I've sent a photo gallery link for {property_.name} to {args.guest_phone}."
-        + _phone_confirmation_warning(args.guest_phone)
+        f"Got it -- I've let the host know you'd like to see photos of {property_.name}, and they'll "
+        f"reach out to you shortly." + _phone_confirmation_warning(args.guest_phone)
     )
 
 
@@ -604,27 +644,46 @@ async def handle_escalate_to_host(
     # latency to this tool call's result -- the guest is still on the line.
     host_user = await db.get(User, host_user_id)
     if host_user is not None:
+        # Deep-links to this specific call's transcript + AI summary rather
+        # than the generic leads list -- a host clicking through from an
+        # escalation email almost always wants THIS call.
+        call_page_url = (
+            f"{settings.frontend_base_url}/dashboard/calls/{call_session_id}"
+            if call_session_id
+            else f"{settings.frontend_base_url}/dashboard/leads"
+        )
+        # lead.lead_temperature is the LLM's own qualification judgment (set
+        # via update_lead earlier in the same call, if it was called) -- may
+        # be None if update_lead was never invoked. Only "hot" gets a badge;
+        # "warm"/"cold"/None all render identically (no badge) so a routine
+        # escalation doesn't get visual noise.
         # notification_email (Settings -> Notifications) lets a host route
         # escalations to a different inbox -- a shared front-desk address,
         # say -- without changing their login email. Unset = login email.
+        hot_prefix = "\U0001F525 HOT — " if lead.lead_temperature == "hot" else ""
         asyncio.create_task(
             _send_escalation_email(
                 host_user.notification_email or host_user.email,
-                subject=f"{args.urgency.title()} escalation — {subject_line}",
-                body=f"{message}\n\nView in dashboard: {settings.frontend_base_url}/dashboard/leads",
+                subject=f"{hot_prefix}{args.urgency.title()} escalation — {subject_line}",
+                body=f"{message}\n\nView in dashboard: {call_page_url}",
                 html_body=build_escalation_email_html(
                     property_name=subject_line,
                     urgency=args.urgency,
                     reason=args.reason,
                     call_summary=args.call_summary,
                     guest_phone=args.guest_phone,
+                    call_session_id=call_session_id,
+                    lead_temperature=lead.lead_temperature,
                 ),
             )
         )
-        # WhatsApp via Twilio (see twilio_client.py). Unset phone or
-        # unconfigured Twilio both no-op silently in
-        # _send_escalation_whatsapp, same as the email above.
-        if host_user.phone:
+        # WhatsApp via Twilio (see twilio_client.py) -- only attempted when
+        # Twilio is enabled (config.py's twilio_enabled); unset phone or
+        # unconfigured/disabled Twilio all no-op silently in
+        # _send_escalation_whatsapp, same as the email above, which is why
+        # the guest-facing return string below no longer promises "on
+        # WhatsApp" specifically -- the email always goes out regardless.
+        if host_user.phone and settings.twilio_enabled:
             asyncio.create_task(
                 _send_escalation_whatsapp(
                     host_user.phone,
@@ -633,11 +692,131 @@ async def handle_escalate_to_host(
                     reason=args.reason,
                     call_summary=args.call_summary,
                     guest_phone=args.guest_phone,
-                    dashboard_url=f"{settings.frontend_base_url}/dashboard/leads",
+                    dashboard_url=call_page_url,
                 )
             )
 
-    return f"I've flagged this to the host as {args.urgency} priority, and they'll follow up with you on WhatsApp shortly."
+    return f"I've flagged this to the host as {args.urgency} priority, and they'll follow up with you shortly."
+
+
+# Same digit-only, +91-defaulting normalization as webhooks/exotel.py's
+# _normalize_destination_phone -- duplicated rather than imported, since
+# that module is in app/api/v1/ and already imports from app/services/
+# (call_ownership, call_service), so importing it back from here would be
+# circular. This codebase already carries a couple of near-identical copies
+# of this same normalization (see app/utils/phone.py's own docstring); this
+# is one more, kept minimal and scoped to exactly what this function needs
+# (a yes/no on "is this phone usable"), not the full webhook response shape.
+def _has_usable_host_phone(phone: str | None) -> bool:
+    if not phone or not phone.strip():
+        return False
+    digits = "".join(ch for ch in phone if ch.isdigit())
+    return len(digits) >= 10
+
+
+async def handle_request_host_transfer(
+    db: AsyncSession,
+    args: RequestHostTransferArgs,
+    call_session_id: uuid.UUID | None,
+    property_id: uuid.UUID | None,
+    host_user_id: uuid.UUID,
+    guest_profile_id: uuid.UUID | None = None,
+) -> str:
+    """Guest explicitly asked to be transferred/connected to the host or a
+    human, right now -- distinct from escalate_to_host's general "notify the
+    host, guest stays with Mira" path. Attempts a REAL live call transfer by
+    reusing the existing host-initiated "Take Call" machinery
+    (app/voice/handoff_signal.py, app/voice/pipeline.py's
+    _wait_and_trigger_handoff, and the /webhooks/exotel/connect-routing
+    webhook that resolves User.phone) -- none of those are modified here;
+    this function only needs to (a) decide whether a transfer is even
+    possible, and (b) if so, make the exact same atomic handoff_status claim
+    take_call.py makes, then call handoff_signal.request_handoff. That
+    webhook keys its routing decision purely on CallSession.handoff_status,
+    not on who requested it, so a guest-initiated and host-initiated
+    handoff are indistinguishable to it by design.
+    """
+    if property_id is None:
+        # No handoff listener is ever registered for a Lead Agent call
+        # (pipeline.py's handoff_registered = property_id is not None) --
+        # signaling handoff_signal.request_handoff here would silently
+        # return False with nothing to explain that to the guest. Fall back
+        # to a plain escalation instead of a dead-end transfer attempt.
+        escalate_args = EscalateToHostArgs(
+            reason=args.reason or "Guest asked to be transferred to the host, before a property was selected",
+            urgency="high",
+        )
+        return await handle_escalate_to_host(db, escalate_args, call_session_id, host_user_id, guest_profile_id)
+
+    host_user = await db.get(User, host_user_id)
+    if host_user is None or not _has_usable_host_phone(host_user.phone):
+        # No transfer destination Exotel could actually dial -- same
+        # fallback as above, so the guest still reaches the host, just via
+        # notification instead of a live connect.
+        escalate_args = EscalateToHostArgs(
+            property_id=str(property_id),
+            reason=args.reason or "Guest asked to be transferred to the host",
+            urgency="high",
+        )
+        return await handle_escalate_to_host(db, escalate_args, call_session_id, host_user_id, guest_profile_id)
+
+    if call_session_id is None:
+        # Nothing to claim a handoff against (e.g. a browser test call with
+        # no real CallSession id threaded through) -- same fallback.
+        escalate_args = EscalateToHostArgs(
+            property_id=str(property_id),
+            reason=args.reason or "Guest asked to be transferred to the host",
+            urgency="high",
+        )
+        return await handle_escalate_to_host(db, escalate_args, call_session_id, host_user_id, guest_profile_id)
+
+    # The exact same atomic claim take_call.py's POST handler makes --
+    # exotel_connect_routing trusts this DB state, not the caller's
+    # identity, so replicating it here (rather than some other signal) is
+    # what makes this handoff routable at all. Also closes the TOCTOU race
+    # against a host's own "Take Call" WhatsApp tap landing at the same time.
+    stmt = (
+        update(CallSession)
+        .where(
+            CallSession.id == call_session_id,
+            CallSession.handoff_status.is_(None),
+            CallSession.status.in_(_ACTIVE_CALL_STATUSES),
+        )
+        .values(handoff_status="requested")
+        # "fetch" (not False) so any CallSession instance already loaded
+        # into this session's identity map (e.g. by earlier code in the
+        # same request/task) gets its in-memory handoff_status corrected
+        # to match what this UPDATE just wrote, instead of silently going
+        # stale -- take_call.py's own equivalent claim achieves the same
+        # end via an explicit db.refresh(session) right after, since it
+        # already holds that object; this function never loads CallSession
+        # itself, so "fetch" is the equivalent fix at the statement level.
+        .execution_options(synchronize_session="fetch")
+    )
+    result = await db.execute(stmt)
+    await db.commit()
+
+    if result.rowcount == 0:
+        # Either the call already ended, or a handoff was already claimed
+        # (e.g. the host tapped Take Call at the same moment) -- either way,
+        # don't attempt a second signal/claim. A generic, still-true line:
+        # if a handoff really is already in flight, the deterministic
+        # handoff phrase from that other trigger will speak momentarily
+        # anyway; if the call already ended, this return value never
+        # reaches a live guest to hear it.
+        return "One moment, I'm connecting you now."
+
+    # This transfer path is Exotel/telephony only -- deliberately does NOT
+    # check settings.twilio_enabled anywhere in this function. Twilio
+    # outages must never block a live call transfer.
+    request_handoff(call_session_id)
+
+    # _wait_and_trigger_handoff (already running as a background task for
+    # every property-scoped call) speaks the deterministic handoff phrase
+    # once it observes this signal -- keep this tool's own returned string
+    # short and non-contradictory, since the model will speak this FIRST,
+    # then the deterministic phrase fires moments later.
+    return "Sure, connecting you to the host now."
 
 
 async def handle_negotiate_rate(

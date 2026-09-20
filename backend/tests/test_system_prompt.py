@@ -1032,6 +1032,25 @@ def test_lead_agent_instructed_to_re_check_exact_dates_before_finalizing():
     assert 'This applies even if the earlier result said "full" for this property.' in prompt
 
 
+def test_vague_timeline_pricing_only_chases_exact_dates_when_a_caveat_came_back():
+    """A get_pricing/negotiate_rate result with no estimate caveat is already
+    the real, exact rate (true for any non-smart-pricing property, and for a
+    smart-pricing property whose vague window happened to land inside the
+    7-day live-rate cache) -- the prompt must not send the model chasing
+    exact dates just because the guest asked for "the exact price" in that
+    case. Only a genuinely caveated (ballpark) quote is worth resolving down
+    to real dates for, and even then only on one of two specific guest
+    reactions (a price pushback, or an explicit ask for the precise figure
+    itself) -- confirms both halves of this conditional actually landed in
+    the prompt, not just the caveated-quote branch."""
+    prompt = build_lead_system_prompt(_user(), [_property()])
+    assert "No caveat came back: this is already the real, exact rate" in prompt
+    assert "Do NOT ask for exact dates just because the" in prompt
+    assert "A caveat came back: the number you just gave is a ballpark" in prompt
+    assert "The guest pushes back on PRICE" in prompt
+    assert "The guest asks for the EXACT/PRECISE/CONFIRMED figure itself" in prompt
+
+
 def test_lead_agent_workflow_recommends_before_asking_every_field():
     """Availability-first recommendations, Implementation 4: confirms the
     rewritten step 3 preserves Phase 2.3's original spirit (recommend once

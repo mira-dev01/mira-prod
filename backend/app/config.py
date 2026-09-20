@@ -173,6 +173,20 @@ class Settings(BaseSettings):
     twilio_whatsapp_from: str | None = None
     twilio_messaging_service_sid: str | None = None
 
+    # Platform-wide kill switch, independent of whether Twilio credentials are
+    # even set. Default True (today's unchanged behavior). Flip to False at
+    # the infra level (Render env var or local .env, no code change) when
+    # Twilio is degraded/down account-wide -- every send_whatsapp/send_photos/
+    # escalate_to_host WhatsApp attempt is skipped and the email + wa.me-link
+    # fallback takes over instead (see tool_handlers.py). Deliberately NOT a
+    # per-host setting -- a Twilio outage is a platform-wide event, not a
+    # host preference (contrast host_call_hours_enabled above, which IS
+    # per-host). Checked in exactly one place (twilio_client.py's
+    # send_whatsapp_message/send_whatsapp_template) so every existing caller
+    # already routes through it -- no other code should independently
+    # re-derive "is Twilio usable" from just the credential vars.
+    twilio_enabled: bool = True
+
     # ContentSid of the "mira_escalation" twilio/call-to-action template
     # (see scripts/create_escalation_template.py) -- gives the escalation
     # WhatsApp message a real "Go to Dashboard" button instead of a raw,

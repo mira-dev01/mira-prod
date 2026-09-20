@@ -63,6 +63,7 @@ from app.services import (
     call_classification_service,
     call_coordinator,
     call_service,
+    call_summary_email,
     call_summary_service,
     faq_service,
     guest_calling_notification,
@@ -1591,6 +1592,25 @@ async def _run_pipeline_inner(
                     logger.exception("Guest memory update failed for call_session_id=%s", call_session_id)
 
             asyncio.create_task(_update_guest_memory())
+
+            # Host-facing call summary email -- one per call that reaches
+            # this handler normally, independent of whether it was
+            # escalated (see app/services/call_summary_email.py). Skipped
+            # for a host handoff: the guest isn't actually done talking to
+            # someone yet (Exotel's Connect applet is about to bridge them
+            # to the host), so a "call summary" email would be premature --
+            # send it (if ever) once the Connect leg's own outcome is known,
+            # which nothing reports back yet (same TRANSFERRED_TO_HOST_MISSED
+            # gap noted above). Own session + detached task, same pattern as
+            # _update_guest_memory above, so a slow/misconfigured SMTP
+            # server can't add latency to call teardown.
+            if not is_host_handoff:
+
+                async def _send_call_summary_email():
+                    async with AsyncSessionLocal() as summary_email_db:
+                        await call_summary_email.send_call_summary_email(summary_email_db, call_session_id)
+
+                asyncio.create_task(_send_call_summary_email())
 
         greeting_sent = False
 

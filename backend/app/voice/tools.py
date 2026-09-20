@@ -52,6 +52,7 @@ from app.schemas.tool import (
     LeadTemperature,
     NegotiateRateArgs,
     RecommendPropertiesArgs,
+    RequestHostTransferArgs,
     SearchFaqArgs,
     SendPhotosArgs,
     SendWhatsappArgs,
@@ -425,6 +426,34 @@ def build_voice_tools(
                 )
                 result = await tool_handlers.handle_escalate_to_host(
                     db, args, call_session_id, host_user_id, guest_profile_id=guest_profile_id
+                )
+                state.mark_escalated()
+            except ValidationError:
+                result = INVALID_ARGS_MESSAGE
+        await params.result_callback(result)
+
+    async def request_host_transfer(
+        params: FunctionCallParams,
+        reason: str | None = None,
+    ):
+        """Call this when the guest EXPLICITLY asks to be transferred or
+        connected to the host/owner, or to talk to a human, right now --
+        not for general uncertainty, complaints, or anything escalate_to_host
+        already covers, which keeps the guest with you and notifies the host
+        for later. This attempts a REAL live transfer of this call to the
+        host's phone. If the host isn't reachable (no property chosen yet,
+        or no usable phone on file), this tells you that in its own result
+        instead of transferring -- relay that honestly to the guest and
+        never claim a transfer is happening if it isn't.
+
+        Args:
+            reason: Why the guest wants to be transferred, if known.
+        """
+        async with AsyncSessionLocal() as db:
+            try:
+                args = RequestHostTransferArgs(reason=reason)
+                result = await tool_handlers.handle_request_host_transfer(
+                    db, args, call_session_id, property_id, host_user_id, guest_profile_id=guest_profile_id
                 )
                 state.mark_escalated()
             except ValidationError:
@@ -1112,6 +1141,7 @@ def build_voice_tools(
         send_whatsapp,
         send_photos,
         escalate_to_host,
+        request_host_transfer,
         negotiate_rate,
         recommend_properties,
         update_lead,

@@ -73,6 +73,14 @@ services:
         generateValue: true
       - key: EXOTEL_VIRTUAL_NUMBER
         sync: false
+      # Twilio credentials (TWILIO_ACCOUNT_SID etc.) are set manually in the
+      # Render dashboard, not blueprint-managed here. This kill switch IS
+      # blueprint-managed since it's a plain boolean with a safe default --
+      # flip it in the Render dashboard's env var editor (still works even
+      # though it's declared here) when Twilio is degraded, no redeploy
+      # needed, just a service restart. See config.py's twilio_enabled.
+      - key: TWILIO_ENABLED
+        value: "true"
 
   - type: web
     name: mira-frontend
