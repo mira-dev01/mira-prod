@@ -9,16 +9,53 @@ from app.services import tool_handlers
 from app.voice import handoff_signal
 
 
-async def test_request_host_transfer_falls_back_to_escalation_with_no_property(
+async def test_request_host_transfer_falls_back_to_escalation_with_no_call_session(
     test_user, db_session
 ):
-    # Lead Agent call (no property_id) -- no handoff listener is ever
-    # registered for one, so this must not attempt a transfer at all.
+    # No call_session_id at all (e.g. a browser test call) -- nothing to
+    # claim a handoff against, so this must fall back to escalation
+    # regardless of property_id.
     args = RequestHostTransferArgs(reason="wants to talk to someone")
     result = await tool_handlers.handle_request_host_transfer(
         db_session, args, call_session_id=None, property_id=None, host_user_id=test_user.id
     )
     assert "flagged" in result.lower() or "follow up" in result.lower()
+
+
+async def test_request_host_transfer_transfers_portfolio_wide_with_no_property(
+    test_property, test_call_session, db_session
+):
+    # Lead Agent call: property_id=None is passed as the tool argument
+    # (mirrors a portfolio-wide call, where build_voice_tools never had a
+    # single property to bind), but a real CallSession/handoff listener
+    # exists (keyed by call_session_id/user_id, not property_id) -- must
+    # attempt a REAL transfer, not fall back to escalation. Regression
+    # guard: this used to bail out to handle_escalate_to_host purely
+    # because property_id was None, even when a live call and a usable
+    # host phone were both available.
+    test_property.owner.phone = "9876543210"
+    await db_session.commit()
+
+    handoff_signal.register_call(test_call_session.id)
+    try:
+        args = RequestHostTransferArgs(reason="wants to talk to the owner")
+        result = await tool_handlers.handle_request_host_transfer(
+            db_session,
+            args,
+            call_session_id=test_call_session.id,
+            property_id=None,
+            host_user_id=test_property.user_id,
+        )
+        assert "connecting" in result.lower()
+        assert "flagged" not in result.lower()
+
+        refreshed = await db_session.get(CallSession, test_call_session.id)
+        assert refreshed.handoff_status == "requested"
+
+        event = handoff_signal._handoff_events[test_call_session.id]
+        assert event.is_set()
+    finally:
+        handoff_signal.unregister_call(test_call_session.id)
 
 
 async def test_request_host_transfer_falls_back_when_host_has_no_phone(

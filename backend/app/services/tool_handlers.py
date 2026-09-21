@@ -732,29 +732,21 @@ async def handle_request_host_transfer(
     this function only needs to (a) decide whether a transfer is even
     possible, and (b) if so, make the exact same atomic handoff_status claim
     take_call.py makes, then call handoff_signal.request_handoff. That
-    webhook keys its routing decision purely on CallSession.handoff_status,
-    not on who requested it, so a guest-initiated and host-initiated
-    handoff are indistinguishable to it by design.
+    webhook keys its routing decision purely on CallSession.handoff_status
+    and CallSession.user_id, not on property_id or who requested it, so a
+    guest-initiated and host-initiated handoff, and a property-scoped and
+    portfolio-wide (Lead Agent) call, are all indistinguishable to it by
+    design -- see exotel_connect_routing's own "user_id, not property_id"
+    comment. property_id is deliberately NOT a gate here anymore: it's only
+    ever used below to enrich the escalation fallback's args when present.
     """
-    if property_id is None:
-        # No handoff listener is ever registered for a Lead Agent call
-        # (pipeline.py's handoff_registered = property_id is not None) --
-        # signaling handoff_signal.request_handoff here would silently
-        # return False with nothing to explain that to the guest. Fall back
-        # to a plain escalation instead of a dead-end transfer attempt.
-        escalate_args = EscalateToHostArgs(
-            reason=args.reason or "Guest asked to be transferred to the host, before a property was selected",
-            urgency="high",
-        )
-        return await handle_escalate_to_host(db, escalate_args, call_session_id, host_user_id, guest_profile_id)
-
     host_user = await db.get(User, host_user_id)
     if host_user is None or not _has_usable_host_phone(host_user.phone):
-        # No transfer destination Exotel could actually dial -- same
-        # fallback as above, so the guest still reaches the host, just via
-        # notification instead of a live connect.
+        # No transfer destination Exotel could actually dial -- fall back
+        # to a plain escalation, so the guest still reaches the host, just
+        # via notification instead of a live connect.
         escalate_args = EscalateToHostArgs(
-            property_id=str(property_id),
+            property_id=str(property_id) if property_id is not None else None,
             reason=args.reason or "Guest asked to be transferred to the host",
             urgency="high",
         )
@@ -764,7 +756,7 @@ async def handle_request_host_transfer(
         # Nothing to claim a handoff against (e.g. a browser test call with
         # no real CallSession id threaded through) -- same fallback.
         escalate_args = EscalateToHostArgs(
-            property_id=str(property_id),
+            property_id=str(property_id) if property_id is not None else None,
             reason=args.reason or "Guest asked to be transferred to the host",
             urgency="high",
         )

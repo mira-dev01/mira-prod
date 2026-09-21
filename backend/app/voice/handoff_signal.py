@@ -42,9 +42,10 @@ def register_call(call_session_id: uuid.UUID) -> None:
 def unregister_call(call_session_id: uuid.UUID) -> None:
     """Called from the pipeline's own cleanup path, unconditionally --
     every call that registers must also unregister, or this dict grows
-    without bound for the life of the process. Safe to call even if
-    register_call was never called for this id (e.g. a Lead Agent call,
-    which never registers at all -- see pipeline.py's call site)."""
+    without bound for the life of the process. register_call now runs for
+    every call (property-scoped or Lead Agent alike -- see pipeline.py's
+    call site); this None-safe pop remains as a defensive no-op for any
+    future call path that doesn't register."""
     _handoff_events.pop(call_session_id, None)
 
 

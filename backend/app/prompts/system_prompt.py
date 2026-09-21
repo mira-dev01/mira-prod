@@ -74,9 +74,11 @@ def resolve_host_handoff_phrase(host: User | None) -> str:
     row saved before that validator existed can still carry one, and this
     is a path that hands the value straight to TTS -- so fall back to the
     safe default rather than trusting a stored value that fails the
-    read-side check. `host` is None only for call modes that never reach a
-    handoff (Lead Agent / browser test), where the default is returned and
-    never actually spoken."""
+    read-side check. Every real call mode (property-scoped and Lead Agent
+    alike) now passes a real `host`/`lead_user`; a browser test call never
+    calls this at all and gets pipeline.py's own default instead. `host`
+    stays optional here only as a defensive fallback for a caller that
+    can't supply one."""
     phrase = (host.agent_handoff_phrase if host is not None else None) or DEFAULT_HOST_HANDOFF_PHRASE
     if _LOOP_IN_HOST_RE.search(phrase):
         return DEFAULT_HOST_HANDOFF_PHRASE
