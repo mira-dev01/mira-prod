@@ -63,6 +63,7 @@ from app.services import (
     call_classification_service,
     call_coordinator,
     call_service,
+    call_summary_email,
     call_summary_service,
     faq_service,
     guest_calling_notification,
@@ -77,6 +78,7 @@ from app.voice.end_call_reliability_guard import EndCallReliabilityGuardProcesso
 from app.voice.escalation_phrase_guard import EscalationPhraseGuardProcessor
 from app.voice.handoff_signal import register_call, unregister_call, wait_for_handoff_request
 from app.voice.language_sync import DEFAULT_TTS_LANGUAGE, LanguageSyncProcessor
+from app.voice.low_confidence_transcript_guard import LowConfidenceTranscriptGuardProcessor
 from app.voice.meta_commentary_guard import MetaCommentaryGuardProcessor
 from app.voice.premature_end_call_guard import PrematureEndCallGuardProcessor
 from app.voice.property_recommendation_guard import PropertyRecommendationGuardProcessor
@@ -1044,6 +1046,21 @@ async def _run_pipeline_inner(
     # Conversation Style Engine below -- this still owns the live TTS switch
     # and ConversationState.current_spoken_language/explicit_language_preference
     # exactly as before.
+    # Catches a transcript Sarvam itself was unsure about (low
+    # language_probability on the raw response attached to the
+    # TranscriptionFrame) and substitutes a clarification request before it
+    # reaches language_sync/the LLM -- confirmed live: a guest's city name
+    # was dropped entirely by STT on a hi-IN utterance Sarvam itself only
+    # tagged with language_probability=0.843, and nothing previously
+    # inspected that signal, so the garbled transcript reached the LLM as if
+    # it were a genuine complete answer. See
+    # app/voice/low_confidence_transcript_guard.py for the full reasoning,
+    # including why language_probability is an imprecise but usable proxy
+    # here despite config.py's sarvam_vad_* comment declining to use the same
+    # field as a noise-rejection signal (a different concern -- that guards
+    # against non-speech audio being transcribed at all, this guards against
+    # genuine speech being transcribed wrong).
+    low_confidence_transcript_guard = LowConfidenceTranscriptGuardProcessor()
     language_sync = LanguageSyncProcessor(conversation_state)
     # Conversation Style Engine: computes ConversationState.conversation_style
     # from a rolling, hysteresis-smoothed window of the guest's own turns --
@@ -1264,6 +1281,7 @@ async def _run_pipeline_inner(
             [
                 transport.input(),
                 stt,
+                low_confidence_transcript_guard,
                 silence_watchdog,
                 language_sync,
                 conversation_style_engine,
@@ -1592,6 +1610,25 @@ async def _run_pipeline_inner(
 
             asyncio.create_task(_update_guest_memory())
 
+            # Host-facing call summary email -- one per call that reaches
+            # this handler normally, independent of whether it was
+            # escalated (see app/services/call_summary_email.py). Skipped
+            # for a host handoff: the guest isn't actually done talking to
+            # someone yet (Exotel's Connect applet is about to bridge them
+            # to the host), so a "call summary" email would be premature --
+            # send it (if ever) once the Connect leg's own outcome is known,
+            # which nothing reports back yet (same TRANSFERRED_TO_HOST_MISSED
+            # gap noted above). Own session + detached task, same pattern as
+            # _update_guest_memory above, so a slow/misconfigured SMTP
+            # server can't add latency to call teardown.
+            if not is_host_handoff:
+
+                async def _send_call_summary_email():
+                    async with AsyncSessionLocal() as summary_email_db:
+                        await call_summary_email.send_call_summary_email(summary_email_db, call_session_id)
+
+                asyncio.create_task(_send_call_summary_email())
+
         greeting_sent = False
 
         @transport.event_handler("on_client_connected")
@@ -1658,15 +1695,23 @@ async def _run_pipeline_inner(
             except asyncio.CancelledError:
                 pass
 
-        # Phase 7: only real property calls are ever reachable via Take
-        # Call (a Lead Agent call has no single property_id -- Phase 5's
-        # guest_calling_notification is scoped the same way, never fired
-        # for property_id=None; see that module's own pipeline.py call
-        # sites). Registering a Lead Agent or browser-test call here would
-        # just be a registry entry nothing could ever legitimately signal
-        # -- not harmful, but not reused elsewhere in this codebase's
-        # pattern of only allocating state a call can actually use.
-        handoff_registered = property_id is not None
+        # Phase 7/9: registered for every call, property-scoped or not.
+        # guest_calling_notification (Phase 5, the WhatsApp "Take Call"
+        # card) stays scoped to property_id is not None -- that's a real
+        # product constraint on that specific notification's content, not
+        # on the handoff machinery itself. But request_host_transfer (the
+        # guest-initiated, in-call trigger) has no property dependency:
+        # _wait_and_trigger_handoff only needs call_session_id, and
+        # exotel_connect_routing's live-handoff branch already resolves
+        # the transfer destination via CallSession.user_id, not
+        # property_id, specifically so a portfolio-wide (Lead Agent) call
+        # can be handed off too. Registering unconditionally is what makes
+        # that reachable -- previously a Lead Agent call's guest asking to
+        # be transferred fell through to handle_request_host_transfer's
+        # property_id-is-None escalation fallback instead of a real
+        # transfer, and even removing that fallback alone would have left
+        # request_handoff() signaling into a call with no listener here.
+        handoff_registered = True
         handoff_listener_task: asyncio.Task | None = None
         if handoff_registered:
             register_call(call_session_id)
@@ -1826,10 +1871,12 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
         # this `db` session, at all.
         busy_recovery_property_id = property_.id if property_ is not None else None
         # Resolved once here from the host row loaded below, threaded into
-        # _run_pipeline, never re-fetched mid-call. Stays at the default
-        # until the property branch sets it; a Lead Agent call never
-        # reaches a handoff (handoff_registered is False when property_id is
-        # None) so the default is harmless there.
+        # _run_pipeline, never re-fetched mid-call. Overwritten below by
+        # whichever branch (property or Lead Agent) actually runs -- both
+        # now call resolve_host_handoff_phrase on their own host, since a
+        # Lead Agent call can reach a real handoff too (see
+        # handoff_registered above). This default is only ever seen if
+        # neither branch runs (e.g. BUSY_RECOVERY exits first).
         host_handoff_phrase = _HOST_HANDOFF_PHRASE
 
         # CallCoordinator is the single authority on "is this host/property
@@ -1965,6 +2012,11 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
                 property_id = None
                 property_name = None
                 voice_gender = lead_user.agent_voice_gender
+                # A Lead Agent call can now reach a real handoff too (see
+                # handoff_registered above) -- resolve the host's own
+                # phrase the same way the property branch does, instead of
+                # silently leaving the module default in place.
+                host_handoff_phrase = resolve_host_handoff_phrase(lead_user)
 
             call_session_id = session.id
 
@@ -2106,7 +2158,7 @@ async def run_voice_pipeline_twilio(websocket: WebSocket, call_data: CallData) -
         else:
             host_user_id = lead_user.id
         busy_recovery_property_id = property_.id if property_ is not None else None
-        host_handoff_phrase = _HOST_HANDOFF_PHRASE  # set in the property branch below
+        host_handoff_phrase = _HOST_HANDOFF_PHRASE  # overwritten below by whichever branch runs
 
         try:
             decision, lease = await call_coordinator.acquire_or_reject(
@@ -2202,6 +2254,11 @@ async def run_voice_pipeline_twilio(websocket: WebSocket, call_data: CallData) -
                 property_id = None
                 property_name = None
                 voice_gender = lead_user.agent_voice_gender
+                # A Lead Agent call can now reach a real handoff too (see
+                # handoff_registered above) -- resolve the host's own
+                # phrase the same way the property branch does, instead of
+                # silently leaving the module default in place.
+                host_handoff_phrase = resolve_host_handoff_phrase(lead_user)
 
             call_session_id = session.id
 

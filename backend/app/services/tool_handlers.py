@@ -11,7 +11,7 @@ import uuid
 from datetime import date, timedelta
 from typing import TYPE_CHECKING, Callable
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:
@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 from app.config import settings
 from app.integrations import email_client, twilio_client
 from app.integrations.email_templates import build_escalation_email_html, build_photos_email_html
+from app.models.call_session import CallSession
 from app.models.property import Property
 from app.models.unanswered_question import UnansweredQuestion
 from app.models.user import User
@@ -30,6 +31,7 @@ from app.schemas.tool import (
     GetPricingArgs,
     NegotiateRateArgs,
     RecommendPropertiesArgs,
+    RequestHostTransferArgs,
     SearchFaqArgs,
     SendPhotosArgs,
     SendWhatsappArgs,
@@ -47,6 +49,13 @@ from app.services import (
 from app.services.pricing_engine import NegotiationResult, PriceBreakdown
 from app.services.property.pitch_formatter import RecommendationResult
 from app.services.property.retrieval import orchestrator as property_retrieval_orchestrator
+from app.voice.handoff_signal import request_handoff
+
+# Same routable-state constant as webhooks/exotel.py's _ACTIVE_CALL_STATUSES
+# -- a handoff can only be claimed against a call that's still actually in
+# progress. Duplicated (not imported) for the same circular-import reason
+# _has_usable_host_phone below is duplicated rather than imported.
+_ACTIVE_CALL_STATUSES = {"in_progress"}
 
 logger = logging.getLogger(__name__)
 
@@ -276,6 +285,7 @@ async def handle_get_pricing(
     call_session_id: uuid.UUID | None = None,
     guest_profile_id: uuid.UUID | None = None,
     on_priced: Callable[[Property, PriceBreakdown], None] | None = None,
+    window_start: date | None = None,
 ) -> str:
     """on_priced (Phase 4.1, documentation/agent-conversation-improvement.md):
     optional synchronous callback receiving the real Property (for its name
@@ -291,26 +301,38 @@ async def handle_get_pricing(
     app/services/property/pitch_formatter.py's own docstring already
     explains the reasoning for (a prior version of
     property_recommendation_guard.py regex-parsed rendered text and broke
-    when the format changed)."""
+    when the format changed).
+
+    window_start (vague-timeline pricing): the guest's own loose start-of-
+    window estimate from state.slots, passed straight through to
+    pricing_engine.calculate_price as a cache-only probe -- see that
+    function's own docstring. Only ever used when args.check_in is unset."""
     property_ = await _get_property(db, args.property_id)
     if property_ is None:
         return "I couldn't find that property to price. Could you confirm which listing you're asking about?"
 
-    if args.check_out <= args.check_in:
+    has_exact_dates = args.check_in is not None and args.check_out is not None
+    if has_exact_dates and args.check_out <= args.check_in:
         return "The check-out date needs to be after check-in. Could you confirm the dates?"
 
     # Phase 6 (Negotiation engine) self-review fix: GOLDEN_RULES tells the
     # model get_pricing will surface a minimum-stay requirement -- this must
     # actually be true, not just check_calendar. Same check as
     # handle_check_calendar's own (host-configured, additive, host-opt-in;
-    # a host with no minimum_stay_nights rule sees zero change here).
+    # a host with no minimum_stay_nights rule sees zero change here). Runs
+    # for a nights-only call too -- minimum_stay_nights_violation's flat
+    # min_nights floor is date-position-independent (a "3 nights minimum"
+    # rule doesn't care which 3 nights), so it still applies; only its
+    # weekend-specific floor is skipped without exact dates (see that
+    # function's own docstring) -- that one gets its real enforcement from
+    # handle_check_calendar's later re-check once the guest has exact dates.
     required_min_nights = await pricing_engine.minimum_stay_nights_violation(
-        db, host_user_id, property_.id, args.check_in, args.check_out
+        db, host_user_id, property_.id, args.check_in, args.check_out, nights=args.nights
     )
     if required_min_nights is not None:
-        nights_requested = (args.check_out - args.check_in).days
+        nights_requested = (args.check_out - args.check_in).days if has_exact_dates else args.nights
         return (
-            f"{property_.name} needs a minimum stay of {required_min_nights} nights for those dates -- "
+            f"{property_.name} needs a minimum stay of {required_min_nights} nights -- "
             f"{nights_requested} night{'s' if nights_requested != 1 else ''} is below that. "
             "Would a longer stay work?"
         )
@@ -336,6 +358,8 @@ async def handle_get_pricing(
         host_id=host_user_id,
         requested_early_checkin=args.requested_early_checkin,
         requested_late_checkout=args.requested_late_checkout,
+        nights=args.nights,
+        window_start=window_start,
     )
 
     # Never quote a non-positive total as a real price -- see
@@ -352,14 +376,15 @@ async def handle_get_pricing(
         )
         return _PRICE_UNAVAILABLE_MESSAGE
 
-    # Lead with the total as one natural spoken sentence -- this string is
-    # what the LLM tends to read back almost verbatim. No cleaning fee/tax
-    # markup to itemize (see pricing_engine.calculate_price) -- base_total
-    # only differs from total when a length-of-stay discount applies, so
-    # that's the only case worth spelling out separately.
+    # Lead with the per-night rate, then the total, as one natural spoken
+    # sentence -- this string is what the LLM tends to read back almost
+    # verbatim. No cleaning fee/tax markup to itemize (see
+    # pricing_engine.calculate_price) -- base_total only differs from total
+    # when a length-of-stay discount applies, so that's the only case worth
+    # spelling out separately.
     summary = (
-        f"For {property_.name}, {breakdown.nights} night(s) comes to ₹{breakdown.total:,.0f} total "
-        f"(about ₹{breakdown.per_night_avg:,.0f} per night)"
+        f"For {property_.name}, that's ₹{breakdown.per_night_avg:,.0f} per night, "
+        f"₹{breakdown.total:,.0f} total for {breakdown.nights} night(s)"
     )
     if breakdown.discount_amount:
         summary += (
@@ -376,6 +401,20 @@ async def handle_get_pricing(
     if breakdown.late_checkout_fee:
         summary += f". Late checkout is an extra ₹{breakdown.late_checkout_fee:,.0f}"
     summary += "."
+    # Vague-timeline pricing: breakdown.is_estimate is only ever True when
+    # this ran off nights-only (no exact check_in/check_out) AND no cached
+    # live rate covered the guest's own loose window -- see
+    # pricing_engine.calculate_price's docstring. Tell the guest plainly
+    # that this is a ballpark off the base rate, not a locked live-Airbnb
+    # figure, and point them to the natural next step -- never leave the
+    # model to imply this number is as firm as a dates-anchored quote.
+    if breakdown.is_estimate:
+        summary += (
+            " Heads up -- since your dates aren't locked in yet, that's a ballpark based on our base rate; "
+            "the actual price can run a bit higher or lower depending on demand for those dates. Call back, "
+            "or let me know once you've settled on exact dates, and I can lock in the precise rate -- "
+            "ideally about a week before your stay."
+        )
     if on_priced is not None:
         on_priced(property_, breakdown)
     return summary
@@ -448,8 +487,19 @@ async def handle_send_whatsapp(
         urgency="low",
         message=f"To {args.phone}: {args.message}",
     )
-    asyncio.create_task(twilio_client.send_whatsapp_best_effort(args.phone, args.message))
-    return f"Got it, I've queued a WhatsApp message to {args.phone}." + _phone_confirmation_warning(args.phone)
+    # Don't claim a WhatsApp send is queued when Twilio is disabled -- the
+    # in-app notification above still always fires, but there is no WhatsApp
+    # fallback for this direct-message tool (unlike send_photos/
+    # escalate_to_host, which have an email fallback because they have a
+    # host to email); the host simply won't see this one on WhatsApp until
+    # TWILIO_ENABLED is back on. See config.py's twilio_enabled.
+    if settings.twilio_enabled:
+        asyncio.create_task(twilio_client.send_whatsapp_best_effort(args.phone, args.message))
+        return f"Got it, I've queued a WhatsApp message to {args.phone}." + _phone_confirmation_warning(args.phone)
+    return (
+        f"I've noted that down, but I'm not able to send a WhatsApp message to {args.phone} right now."
+        + _phone_confirmation_warning(args.phone)
+    )
 
 
 async def handle_send_photos(
@@ -476,16 +526,27 @@ async def handle_send_photos(
         message=f"To {args.guest_phone}: Here are photos of {property_.name} -- {gallery_url}",
     )
 
-    # Real WhatsApp send via Twilio. Freeform (no Content Template), so this
-    # only succeeds inside Meta's 24h customer-service session window -- see
-    # twilio_account_sid's docstring in config.py.
-    asyncio.create_task(
-        twilio_client.send_whatsapp_best_effort(args.guest_phone, f"Here are photos of {property_.name} -- {gallery_url}")
-    )
+    # Real WhatsApp send via Twilio -- only attempted when Twilio is enabled
+    # (see config.py's twilio_enabled). Freeform (no Content Template), so
+    # even when attempted this only succeeds inside Meta's 24h
+    # customer-service session window -- see twilio_account_sid's docstring
+    # in config.py.
+    if settings.twilio_enabled:
+        asyncio.create_task(
+            twilio_client.send_whatsapp_best_effort(
+                args.guest_phone, f"Here are photos of {property_.name} -- {gallery_url}"
+            )
+        )
 
-    # Email stays as a parallel channel (not a fallback) so this is testable
-    # against the host's own inbox even when the WhatsApp send above fails
-    # (e.g. outside the 24h session window).
+    # Email/wa.me-link is a parallel channel when Twilio is enabled (so this
+    # is testable against the host's own inbox even when the WhatsApp send
+    # above fails, e.g. outside the 24h session window), and the ONLY
+    # channel when Twilio is disabled -- build_photos_email_html includes
+    # its own wa.me link built from args.guest_phone, so the host can always
+    # reach the guest from the email regardless of Twilio's state.
+    call_page_url = (
+        f"{settings.frontend_base_url}/dashboard/calls/{call_session_id}" if call_session_id else None
+    )
     host_user = await db.get(User, host_user_id)
     if host_user is not None:
         asyncio.create_task(
@@ -493,16 +554,25 @@ async def handle_send_photos(
                 host_user.notification_email or host_user.email,
                 subject=f"Photos requested — {property_.name}",
                 body=f"A guest ({args.guest_phone}) asked to see photos of {property_.name}.\n\n"
-                f"Gallery link: {gallery_url}",
+                f"Gallery link: {gallery_url}"
+                + (f"\nCall details: {call_page_url}" if call_page_url else ""),
                 html_body=build_photos_email_html(
-                    property_name=property_.name, guest_phone=args.guest_phone, gallery_url=gallery_url
+                    property_name=property_.name,
+                    guest_phone=args.guest_phone,
+                    gallery_url=gallery_url,
+                    call_page_url=call_page_url,
                 ),
             )
         )
 
+    if settings.twilio_enabled:
+        return (
+            f"Got it, I've sent a photo gallery link for {property_.name} to {args.guest_phone}."
+            + _phone_confirmation_warning(args.guest_phone)
+        )
     return (
-        f"Got it, I've sent a photo gallery link for {property_.name} to {args.guest_phone}."
-        + _phone_confirmation_warning(args.guest_phone)
+        f"Got it -- I've let the host know you'd like to see photos of {property_.name}, and they'll "
+        f"reach out to you shortly." + _phone_confirmation_warning(args.guest_phone)
     )
 
 
@@ -574,27 +644,46 @@ async def handle_escalate_to_host(
     # latency to this tool call's result -- the guest is still on the line.
     host_user = await db.get(User, host_user_id)
     if host_user is not None:
+        # Deep-links to this specific call's transcript + AI summary rather
+        # than the generic leads list -- a host clicking through from an
+        # escalation email almost always wants THIS call.
+        call_page_url = (
+            f"{settings.frontend_base_url}/dashboard/calls/{call_session_id}"
+            if call_session_id
+            else f"{settings.frontend_base_url}/dashboard/leads"
+        )
+        # lead.lead_temperature is the LLM's own qualification judgment (set
+        # via update_lead earlier in the same call, if it was called) -- may
+        # be None if update_lead was never invoked. Only "hot" gets a badge;
+        # "warm"/"cold"/None all render identically (no badge) so a routine
+        # escalation doesn't get visual noise.
         # notification_email (Settings -> Notifications) lets a host route
         # escalations to a different inbox -- a shared front-desk address,
         # say -- without changing their login email. Unset = login email.
+        hot_prefix = "\U0001F525 HOT — " if lead.lead_temperature == "hot" else ""
         asyncio.create_task(
             _send_escalation_email(
                 host_user.notification_email or host_user.email,
-                subject=f"{args.urgency.title()} escalation — {subject_line}",
-                body=f"{message}\n\nView in dashboard: {settings.frontend_base_url}/dashboard/leads",
+                subject=f"{hot_prefix}{args.urgency.title()} escalation — {subject_line}",
+                body=f"{message}\n\nView in dashboard: {call_page_url}",
                 html_body=build_escalation_email_html(
                     property_name=subject_line,
                     urgency=args.urgency,
                     reason=args.reason,
                     call_summary=args.call_summary,
                     guest_phone=args.guest_phone,
+                    call_session_id=call_session_id,
+                    lead_temperature=lead.lead_temperature,
                 ),
             )
         )
-        # WhatsApp via Twilio (see twilio_client.py). Unset phone or
-        # unconfigured Twilio both no-op silently in
-        # _send_escalation_whatsapp, same as the email above.
-        if host_user.phone:
+        # WhatsApp via Twilio (see twilio_client.py) -- only attempted when
+        # Twilio is enabled (config.py's twilio_enabled); unset phone or
+        # unconfigured/disabled Twilio all no-op silently in
+        # _send_escalation_whatsapp, same as the email above, which is why
+        # the guest-facing return string below no longer promises "on
+        # WhatsApp" specifically -- the email always goes out regardless.
+        if host_user.phone and settings.twilio_enabled:
             asyncio.create_task(
                 _send_escalation_whatsapp(
                     host_user.phone,
@@ -603,11 +692,123 @@ async def handle_escalate_to_host(
                     reason=args.reason,
                     call_summary=args.call_summary,
                     guest_phone=args.guest_phone,
-                    dashboard_url=f"{settings.frontend_base_url}/dashboard/leads",
+                    dashboard_url=call_page_url,
                 )
             )
 
-    return f"I've flagged this to the host as {args.urgency} priority, and they'll follow up with you on WhatsApp shortly."
+    return f"I've flagged this to the host as {args.urgency} priority, and they'll follow up with you shortly."
+
+
+# Same digit-only, +91-defaulting normalization as webhooks/exotel.py's
+# _normalize_destination_phone -- duplicated rather than imported, since
+# that module is in app/api/v1/ and already imports from app/services/
+# (call_ownership, call_service), so importing it back from here would be
+# circular. This codebase already carries a couple of near-identical copies
+# of this same normalization (see app/utils/phone.py's own docstring); this
+# is one more, kept minimal and scoped to exactly what this function needs
+# (a yes/no on "is this phone usable"), not the full webhook response shape.
+def _has_usable_host_phone(phone: str | None) -> bool:
+    if not phone or not phone.strip():
+        return False
+    digits = "".join(ch for ch in phone if ch.isdigit())
+    return len(digits) >= 10
+
+
+async def handle_request_host_transfer(
+    db: AsyncSession,
+    args: RequestHostTransferArgs,
+    call_session_id: uuid.UUID | None,
+    property_id: uuid.UUID | None,
+    host_user_id: uuid.UUID,
+    guest_profile_id: uuid.UUID | None = None,
+) -> str:
+    """Guest explicitly asked to be transferred/connected to the host or a
+    human, right now -- distinct from escalate_to_host's general "notify the
+    host, guest stays with Mira" path. Attempts a REAL live call transfer by
+    reusing the existing host-initiated "Take Call" machinery
+    (app/voice/handoff_signal.py, app/voice/pipeline.py's
+    _wait_and_trigger_handoff, and the /webhooks/exotel/connect-routing
+    webhook that resolves User.phone) -- none of those are modified here;
+    this function only needs to (a) decide whether a transfer is even
+    possible, and (b) if so, make the exact same atomic handoff_status claim
+    take_call.py makes, then call handoff_signal.request_handoff. That
+    webhook keys its routing decision purely on CallSession.handoff_status
+    and CallSession.user_id, not on property_id or who requested it, so a
+    guest-initiated and host-initiated handoff, and a property-scoped and
+    portfolio-wide (Lead Agent) call, are all indistinguishable to it by
+    design -- see exotel_connect_routing's own "user_id, not property_id"
+    comment. property_id is deliberately NOT a gate here anymore: it's only
+    ever used below to enrich the escalation fallback's args when present.
+    """
+    host_user = await db.get(User, host_user_id)
+    if host_user is None or not _has_usable_host_phone(host_user.phone):
+        # No transfer destination Exotel could actually dial -- fall back
+        # to a plain escalation, so the guest still reaches the host, just
+        # via notification instead of a live connect.
+        escalate_args = EscalateToHostArgs(
+            property_id=str(property_id) if property_id is not None else None,
+            reason=args.reason or "Guest asked to be transferred to the host",
+            urgency="high",
+        )
+        return await handle_escalate_to_host(db, escalate_args, call_session_id, host_user_id, guest_profile_id)
+
+    if call_session_id is None:
+        # Nothing to claim a handoff against (e.g. a browser test call with
+        # no real CallSession id threaded through) -- same fallback.
+        escalate_args = EscalateToHostArgs(
+            property_id=str(property_id) if property_id is not None else None,
+            reason=args.reason or "Guest asked to be transferred to the host",
+            urgency="high",
+        )
+        return await handle_escalate_to_host(db, escalate_args, call_session_id, host_user_id, guest_profile_id)
+
+    # The exact same atomic claim take_call.py's POST handler makes --
+    # exotel_connect_routing trusts this DB state, not the caller's
+    # identity, so replicating it here (rather than some other signal) is
+    # what makes this handoff routable at all. Also closes the TOCTOU race
+    # against a host's own "Take Call" WhatsApp tap landing at the same time.
+    stmt = (
+        update(CallSession)
+        .where(
+            CallSession.id == call_session_id,
+            CallSession.handoff_status.is_(None),
+            CallSession.status.in_(_ACTIVE_CALL_STATUSES),
+        )
+        .values(handoff_status="requested")
+        # "fetch" (not False) so any CallSession instance already loaded
+        # into this session's identity map (e.g. by earlier code in the
+        # same request/task) gets its in-memory handoff_status corrected
+        # to match what this UPDATE just wrote, instead of silently going
+        # stale -- take_call.py's own equivalent claim achieves the same
+        # end via an explicit db.refresh(session) right after, since it
+        # already holds that object; this function never loads CallSession
+        # itself, so "fetch" is the equivalent fix at the statement level.
+        .execution_options(synchronize_session="fetch")
+    )
+    result = await db.execute(stmt)
+    await db.commit()
+
+    if result.rowcount == 0:
+        # Either the call already ended, or a handoff was already claimed
+        # (e.g. the host tapped Take Call at the same moment) -- either way,
+        # don't attempt a second signal/claim. A generic, still-true line:
+        # if a handoff really is already in flight, the deterministic
+        # handoff phrase from that other trigger will speak momentarily
+        # anyway; if the call already ended, this return value never
+        # reaches a live guest to hear it.
+        return "One moment, I'm connecting you now."
+
+    # This transfer path is Exotel/telephony only -- deliberately does NOT
+    # check settings.twilio_enabled anywhere in this function. Twilio
+    # outages must never block a live call transfer.
+    request_handoff(call_session_id)
+
+    # _wait_and_trigger_handoff (already running as a background task for
+    # every property-scoped call) speaks the deterministic handoff phrase
+    # once it observes this signal -- keep this tool's own returned string
+    # short and non-contradictory, since the model will speak this FIRST,
+    # then the deterministic phrase fires moments later.
+    return "Sure, connecting you to the host now."
 
 
 async def handle_negotiate_rate(
@@ -618,6 +819,7 @@ async def handle_negotiate_rate(
     call_session_id: uuid.UUID | None = None,
     on_priced: Callable[[Property, NegotiationResult], None] | None = None,
     prior_events: list["NegotiationEvent"] | None = None,
+    window_start: date | None = None,
 ) -> str:
     """on_priced (Phase 4b.1, documentation/agent-conversation-improvement.md):
     same pattern as handle_get_pricing's own on_priced -- an optional
@@ -632,12 +834,16 @@ async def handle_negotiate_rate(
     current call, already property-scoped by ConversationState -- passed
     straight through to pricing_engine.negotiate_rate (see that function's
     own docstring). Optional/None-default so every pre-Phase-4D call site
-    keeps resolving at stage 0, i.e. today's exact behavior."""
+    keeps resolving at stage 0, i.e. today's exact behavior.
+
+    window_start (vague-timeline pricing): same cache-only probe as
+    handle_get_pricing's own -- see that function's docstring."""
     property_ = await _get_property(db, args.property_id)
     if property_ is None:
         return "I couldn't find that property to negotiate a rate for."
 
-    if args.check_out <= args.check_in:
+    has_exact_dates = args.check_in is not None and args.check_out is not None
+    if has_exact_dates and args.check_out <= args.check_in:
         return "The check-out date needs to be after check-in. Could you confirm the dates?"
 
     if host_user_id is not None:
@@ -662,6 +868,8 @@ async def handle_negotiate_rate(
         host_id=host_user_id,
         guest_profile_id=guest_profile_id,
         prior_events=prior_events,
+        nights=args.nights,
+        window_start=window_start,
     )
     # Same non-positive-price guard as handle_get_pricing -- negotiate_rate
     # derives everything (asking price, floor, counter-offer) from
@@ -676,9 +884,23 @@ async def handle_negotiate_rate(
             result.counter_offer,
         )
         return _PRICE_UNAVAILABLE_MESSAGE
+    message = result.message
+    # Vague-timeline pricing: same caveat as handle_get_pricing's own --
+    # result.is_estimate mirrors PriceBreakdown.is_estimate (nights-only,
+    # no cached live rate covering the guest's loose window). Per user
+    # decision, negotiation itself still proceeds normally off this
+    # estimate (the host's own discount policy still applies) -- this only
+    # tells the guest the FIGURE being negotiated is provisional, not that
+    # negotiation itself is blocked.
+    if result.is_estimate:
+        message += (
+            " Just a heads-up -- since your dates aren't locked in yet, this is worked out from our base "
+            "rate as a ballpark, so the exact live price could land a little differently. Once you're closer "
+            "to your dates, call back and I can confirm the precise rate and finalize this for you."
+        )
     if on_priced is not None:
         on_priced(property_, result)
-    return result.message
+    return message
 
 
 async def handle_recommend_properties(

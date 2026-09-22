@@ -57,6 +57,8 @@ def _sender_identity() -> dict[str, str] | None:
 
 
 async def send_whatsapp_message(to_phone: str, body: str, timeout: float = 15.0) -> dict:
+    if not settings.twilio_enabled:
+        return {"status": "skipped", "reason": "Twilio is disabled (TWILIO_ENABLED=false)"}
     if not (settings.twilio_account_sid and settings.twilio_auth_token):
         return {"status": "skipped", "reason": "Twilio is not configured"}
     sender = _sender_identity()
@@ -109,6 +111,8 @@ async def send_whatsapp_template(
     button (custom label, no raw URL text, no link-preview card) rather than
     an auto-linkified URL. content_variables keys are the template's "{{N}}"
     placeholders as strings, e.g. {"1": "🔴", "2": "HIGH"}."""
+    if not settings.twilio_enabled:
+        return {"status": "skipped", "reason": "Twilio is disabled (TWILIO_ENABLED=false)"}
     if not (settings.twilio_account_sid and settings.twilio_auth_token):
         return {"status": "skipped", "reason": "Twilio is not configured"}
     sender = _sender_identity()

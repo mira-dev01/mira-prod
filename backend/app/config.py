@@ -5,6 +5,22 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Query params that a provider's connection string may include but that
+# asyncpg's own connect() doesn't accept as kwargs -- forwarding any of these
+# raises TypeError: connect() got an unexpected keyword argument, same
+# failure mode sslmode/ssl already had before those were stripped in
+# Settings._normalize_database_url below. Confirmed live: a Neon
+# DATABASE_URL's own ?sslmode=require&channel_binding=require crashed every
+# alembic upgrade/app startup on channel_binding specifically, since only
+# sslmode/ssl were being stripped -- channel_binding is a libpq-level TLS
+# channel-binding negotiation hint (asyncpg negotiates this automatically as
+# part of its own TLS handshake, so dropping the param doesn't weaken the
+# connection's actual security), not something asyncpg's connect() signature
+# exposes as a parameter at all. Module-level, not a class attribute, since a
+# leading-underscore attribute on a pydantic BaseSettings subclass becomes a
+# ModelPrivateAttr descriptor rather than a plain value.
+_ASYNCPG_UNSUPPORTED_QUERY_PARAMS = ("sslmode", "ssl", "channel_binding")
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
@@ -53,7 +69,7 @@ class Settings(BaseSettings):
         mode = next((v for k, v in params if k in ("sslmode", "ssl")), None)
         data["database_requires_ssl"] = mode is not None and mode not in ("disable", "false", "0")
         if parsed.query:
-            remaining = [(k, v) for k, v in params if k not in ("sslmode", "ssl")]
+            remaining = [(k, v) for k, v in params if k not in _ASYNCPG_UNSUPPORTED_QUERY_PARAMS]
             parsed = parsed._replace(query=urlencode(remaining))
             value = urlunsplit(parsed)
 
@@ -156,6 +172,20 @@ class Settings(BaseSettings):
     twilio_auth_token: str | None = None
     twilio_whatsapp_from: str | None = None
     twilio_messaging_service_sid: str | None = None
+
+    # Platform-wide kill switch, independent of whether Twilio credentials are
+    # even set. Default True (today's unchanged behavior). Flip to False at
+    # the infra level (Render env var or local .env, no code change) when
+    # Twilio is degraded/down account-wide -- every send_whatsapp/send_photos/
+    # escalate_to_host WhatsApp attempt is skipped and the email + wa.me-link
+    # fallback takes over instead (see tool_handlers.py). Deliberately NOT a
+    # per-host setting -- a Twilio outage is a platform-wide event, not a
+    # host preference (contrast host_call_hours_enabled above, which IS
+    # per-host). Checked in exactly one place (twilio_client.py's
+    # send_whatsapp_message/send_whatsapp_template) so every existing caller
+    # already routes through it -- no other code should independently
+    # re-derive "is Twilio usable" from just the credential vars.
+    twilio_enabled: bool = True
 
     # ContentSid of the "mira_escalation" twilio/call-to-action template
     # (see scripts/create_escalation_template.py) -- gives the escalation

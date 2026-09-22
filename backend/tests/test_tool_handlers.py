@@ -1,5 +1,7 @@
 from datetime import date, timedelta
 
+import pytest
+from pydantic import ValidationError
 from sqlalchemy import select
 
 from app.models.technician import Technician
@@ -204,6 +206,50 @@ async def test_get_pricing_includes_total(test_property, db_session):
     assert test_property.name in result
 
 
+async def test_get_pricing_args_rejects_dates_and_nights_together():
+    with pytest.raises(ValidationError):
+        GetPricingArgs(
+            property_id="x",
+            check_in=date.today(),
+            check_out=date.today() + timedelta(days=1),
+            nights=2,
+            num_guests=2,
+        )
+
+
+async def test_get_pricing_args_rejects_neither_dates_nor_nights():
+    with pytest.raises(ValidationError):
+        GetPricingArgs(property_id="x", num_guests=2)
+
+
+async def test_get_pricing_nights_only_base_price_property_quotes_without_caveat(test_property, db_session):
+    # A vague-timeline guest ("3 nights sometime in October") on a plain
+    # base-price property must still get a real quote -- no exact dates
+    # required, and no estimate caveat since base_price*nights is always
+    # exact for this kind of property, dates or not.
+    args = GetPricingArgs(property_id=str(test_property.id), nights=3, num_guests=2)
+    result = await tool_handlers.handle_get_pricing(db_session, args)
+    assert "total" in result.lower()
+    assert "3 night" in result
+    assert "ballpark" not in result.lower()
+
+
+async def test_get_pricing_nights_only_smart_pricing_property_adds_estimate_caveat(test_property, db_session):
+    # Same vague-timeline call, but exact_airbnb_pricing is on and no
+    # window_start was passed -- must fall back to a base_price estimate
+    # AND tell the guest plainly that it's provisional, per the user's
+    # explicit requirement that this caveat never be silently dropped.
+    test_property.exact_airbnb_pricing = True
+    test_property.airbnb_listing_id = "123456789"
+    await db_session.commit()
+
+    args = GetPricingArgs(property_id=str(test_property.id), nights=3, num_guests=2)
+    result = await tool_handlers.handle_get_pricing(db_session, args)
+    assert "total" in result.lower()
+    assert "ballpark" in result.lower()
+    assert "week" in result.lower()
+
+
 async def test_get_pricing_early_checkin_fee_only_surfaced_when_requested(test_property, db_session, test_user):
     """Phase 6: a host-configured early_checkin_fee is only ever included in
     the spoken summary when the guest explicitly asked (requested_early_checkin
@@ -269,6 +315,31 @@ async def test_get_pricing_weekend_minimum_stay_rule_blocks_short_quote(test_pro
     )
     result = await tool_handlers.handle_get_pricing(db_session, args, host_user_id=test_user.id)
     assert "minimum stay of 2 nights" in result
+    assert "total" not in result.lower()
+
+
+async def test_get_pricing_nights_only_still_enforces_flat_minimum_stay_rule(test_property, db_session, test_user):
+    """A flat min_nights floor (unlike weekend_min_nights) is date-position-
+    independent, so it must still block a too-short nights-only quote even
+    with no exact dates yet -- confirms the vague-timeline path didn't
+    silently drop this enforcement along with the (correctly-skipped)
+    weekend-specific check."""
+    from app.models.negotiation_rule import NegotiationRule
+
+    db_session.add(
+        NegotiationRule(
+            host_id=test_user.id,
+            rule_type="minimum_stay_nights",
+            condition={"min_nights": 3},
+            property_ids=[str(test_property.id)],
+            status="approved",
+        )
+    )
+    await db_session.commit()
+
+    args = GetPricingArgs(property_id=str(test_property.id), nights=2, num_guests=2)
+    result = await tool_handlers.handle_get_pricing(db_session, args, host_user_id=test_user.id)
+    assert "minimum stay of 3 nights" in result
     assert "total" not in result.lower()
 
 
