@@ -94,3 +94,38 @@ async def test_boundary_probability_exactly_at_threshold_passes_through():
 
     transcriptions = [f for f in down_frames if isinstance(f, TranscriptionFrame)]
     assert transcriptions[0].text == "borderline"
+
+
+@pytest.mark.asyncio
+async def test_default_threshold_no_longer_misfires_on_ordinary_hinglish():
+    """Regression for the critical live bug: the 0.85 default used to fire
+    on essentially every genuine Hindi/Hinglish utterance, since a
+    code-mixed sentence is inherently ambiguous between hi-IN/en-IN and
+    routinely scores well below 0.85 even when transcribed correctly. Uses
+    the module DEFAULT (no threshold override) -- this is the actual
+    production behavior, not just the mechanism in isolation."""
+    processor = LowConfidenceTranscriptGuardProcessor()
+
+    down_frames, _ = await run_test(
+        processor,
+        frames_to_send=[_transcription("Delhi ke hisaab se batao", language_probability=0.65)],
+    )
+
+    transcriptions = [f for f in down_frames if isinstance(f, TranscriptionFrame)]
+    assert transcriptions[0].text == "Delhi ke hisaab se batao"
+
+
+@pytest.mark.asyncio
+async def test_default_threshold_still_catches_genuinely_low_confidence():
+    """The recalibration trades away the original 0.843 edge case, but must
+    still catch something -- a near-coin-flip/no-real-read score should
+    still trigger clarification at the new default."""
+    processor = LowConfidenceTranscriptGuardProcessor()
+
+    down_frames, _ = await run_test(
+        processor,
+        frames_to_send=[_transcription("के लिए लगा के हिसाब से", language_probability=0.25)],
+    )
+
+    transcriptions = [f for f in down_frames if isinstance(f, TranscriptionFrame)]
+    assert transcriptions[0].text == DEFAULT_CLARIFICATION_TEXT

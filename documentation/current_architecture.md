@@ -1,4 +1,4 @@
-# Current Architecture (as of 2026-08-09)
+# Current Architecture (as of 2026-09-22)
 
 The clearest, single technical description of how Mira works **today**. This file is the
 authoritative architecture overview; for full detail, follow the links into `docs/` rather than
@@ -6,18 +6,16 @@ expecting this file to repeat them. See [project_state.md](project_state.md) for
 implemented vs. in-progress vs. planned, and [../CLAUDE.md](../CLAUDE.md) for constraints/invariants
 a future coding session must respect.
 
-**Scope note on "current"**: everything described below is real, working code in this working
-tree. Most of it (voice pipeline, tools, prompts, dashboard) is committed on `main`. The
-Redis-backed `CallCoordinator`/Busy Call Recovery/WhatsApp-reply subsystem (§3–§5 below) is
-implemented, tested, and wired end-to-end, but as of this date is **uncommitted local work**, not
-yet merged — see [project_state.md](project_state.md)'s "Uncommitted work" section for exactly
-which files.
+**Scope note on "current"**: everything described below is real, working code, committed and
+merged into `main`/`shagun` as of this date (the Redis-backed `CallCoordinator`/Busy Call
+Recovery/WhatsApp-reply subsystem that was flagged uncommitted as of 2026-08-09 has since landed —
+no subsystem described in this file is uncommitted local-only work anymore).
 
-**Since 2026-08-09**: §4b (call-ownership routing + live *Take Call* handoff) was added to reflect
-the Phases 1–8 call-ownership/handoff code plus the account-global host-call-hours rework
-([host-call-hours-and-handoff.md](host-call-hours-and-handoff.md) — implemented, uncommitted, not
-yet run through `pytest`). The rest of this file has not been re-verified against source since
-2026-08-09.
+**Since 2026-08-09**: §2 gained the low-confidence transcript guard; §4b's live handoff now covers
+Lead Agent (portfolio-wide) calls too, plus a new guest-initiated `request_host_transfer` tool;
+§7's pricing/negotiation tools gained vague-timeline (nights-only) quoting. See
+[project_state.md](project_state.md)'s "Recent fixes" log for the full dated history — this file
+only reflects the current end-state, not the path taken to get here.
 
 ---
 
@@ -70,10 +68,27 @@ Full stage-by-stage detail: [docs/agents.md](../docs/agents.md#pipeline-stages).
 responsibility boundaries:
 
 - **STT/TTS** (Sarvam) — transcription and speech synthesis only.
+- **Input-side guard**: `LowConfidenceTranscriptGuardProcessor`
+  (`app/voice/low_confidence_transcript_guard.py`, added 2026-09-21, recalibrated 2026-09-22) sits
+  right after STT, before anything else sees the transcript. Confirmed live: a guest's city name
+  was dropped entirely by STT on an utterance Sarvam itself only tagged `language_probability=0.843`
+  — well-formed enough to pass every downstream filter and reach the LLM as if it were a genuine
+  complete answer. Uses that same `language_probability` (a language-detection confidence, not a
+  transcript-accuracy score — the only confidence-adjacent field Sarvam's codemix STT response
+  exposes at all) as a threshold below which the guest's transcript text is deterministically
+  replaced with a fixed clarification request ("Sorry, I didn't quite catch that -- could you say
+  that again?") before it reaches the LLM. No second LLM call. **Threshold was `0.85` at launch,
+  which turned out to be a critical bug**: a genuinely code-mixed Hinglish sentence is ambiguous
+  between hi-IN/en-IN by construction, so correctly-transcribed Hinglish routinely scored below
+  0.85, firing on ordinary conversation, not just garbled speech. Recalibrated to `0.4` the same
+  day, deliberately trading away the original 0.843 edge case to stop breaking Hindi/Hinglish
+  calls — still an unvalidated starting point pending real production `language_probability`
+  distributions (logged on every transcript for exactly this purpose).
 - **LLM** (Groq primary, multi-model fallback chain; Anthropic/OpenRouter as configured) — intent,
   reasoning, and the actual conversational response text. See §7.
 - **Tools** (`app/voice/tools.py` → `app/services/tool_handlers.py`) — the only way the LLM causes
-  a side effect (DB write, WhatsApp send, calendar check, pricing calc). Twelve tools total; see
+  a side effect (DB write, WhatsApp send, calendar check, pricing calc). Thirteen tools total (added
+  `request_host_transfer`, 2026-09-20 — see §4b); see
   [docs/agents.md](../docs/agents.md#tools-appvoicetoolspy--appservicestool_handlerspy).
 - **Guards** (`app/voice/*_guard.py`, `app/voice/response_shape_guard.py`,
   `app/voice/end_call_reliability_guard.py`) — deterministic, code-level backstops for specific,
@@ -196,6 +211,23 @@ Mira:
      handoff phrase" field on the AI Training tab (`system_prompt.resolve_host_handoff_phrase`
      resolves it once at pipeline start, with the same loop-in-host guard the escalation phrase
      has). Default: "Hold on — the host is available now. I'm passing the call to them."
+   - **As of 2026-09-21, handoff is registered for every call, not just property-scoped ones**
+     (`pipeline.py`'s `handoff_registered` is now unconditionally `True`). Previously a Lead Agent
+     (portfolio-wide) call had no handoff listener at all — `handoff_registered = property_id is
+     not None` — so a guest asking to be transferred on such a call fell through to a plain
+     escalation with no real transfer attempted, and even fixing that fallback alone would have
+     left `request_handoff()` signaling into a call nothing was listening to. The routing webhook
+     (`connect-routing`) already keyed its decision off `CallSession.user_id`, not `property_id`,
+     specifically so this was reachable once the listener gap closed.
+   - **Guest-initiated transfer**: the `request_host_transfer` tool (`handle_request_host_transfer`,
+     `app/services/tool_handlers.py`, added 2026-09-20) lets the guest explicitly ask to be
+     connected to the host/a human, right now — distinct from `escalate_to_host`'s
+     notify-and-continue path. It makes the same atomic `handoff_status` claim `take_call.py` makes
+     and signals `request_handoff` directly; the routing webhook can't tell a guest-initiated
+     handoff from a host-initiated one, by design. Falls back to a plain `escalate_to_host` call if
+     the host has no usable phone number, or there's no live `call_session_id` to claim a handoff
+     against (e.g. a browser test call) — `property_id` is *not* a gate on this path anymore, only
+     used to enrich the escalation fallback's args when present.
 
 Both mechanisms deliberately keep the pipeline out of the routing decision: it only ever learns of
 a handoff via the `handoff_signal` Event, never re-derives ownership.
@@ -285,11 +317,20 @@ prompt.
   immediately as they arrive rather than buffering a full response first (see §2 and
   [docs/agents.md](../docs/agents.md#pipeline-stages)'s streaming-discipline note). This is a
   genuine architectural property of the current pipeline, not aspirational.
-- **Tools**: `app/voice/tools.py` defines 12 pipecat "direct functions" (name/schema derived from
+- **Tools**: `app/voice/tools.py` defines 13 pipecat "direct functions" (name/schema derived from
   type hints + docstring); each delegates to a handler in `app/services/tool_handlers.py` that
   contains the actual business logic. Tool wrappers are where `ConversationState` gets read/written
   (locking a property, recording slots) — handlers themselves stay state-agnostic. Full tool table:
   [docs/agents.md](../docs/agents.md#tools-appvoicetoolspy--appservicestool_handlerspy).
+- **Vague-timeline pricing** (2026-09-18): `get_pricing`/`negotiate_rate` accept `check_in`+
+  `check_out` **or** `nights` (never both, never neither — enforced by a pydantic model validator),
+  so a guest with only an approximate timeline ("first week of October") can get a real quote from
+  a stay length alone before an exact check-in date is settled, instead of the model repeatedly
+  pressing for one. A nights-only quote is flat `base_price × nights` (no live Airbnb fetch — there
+  are no real dates to fetch a rate for) and skips the weekend-minimum-stay rule (unevaluable
+  without real calendar dates; re-checked once `check_calendar` runs against the guest's eventual
+  exact dates). `PriceBreakdown.is_estimate=True` on this path tells the model to caveat the number
+  as an estimate rather than a firm quote.
 
 ## 8. Database boundaries
 

@@ -18,13 +18,40 @@ language_probability is Sarvam's confidence in which LANGUAGE it detected
 (hi-IN vs. en-IN vs. ...), not a direct transcript-accuracy score -- see
 config.py's sarvam_vad_* comment block, which explicitly calls this out and
 declines to use it as a noise-rejection signal for exactly that reason. This
-processor uses it anyway as a proxy: in practice, Sarvam being unsure what
-language it's even hearing correlates with the transcript for that utterance
-being unreliable (this module exists because of one such confirmed case), and
-"ask the guest to repeat" costs an extra conversational turn on a false
-positive but no correctness risk, unlike using the same threshold as a hard
-noise-reject would. Deliberately narrower than that VAD tuning: this only
-ever asks for clarification, never drops/ignores audio.
+processor uses it anyway as a proxy, since it's the only confidence-adjacent
+field Sarvam's codemix STT response exposes at all (confirmed directly
+against the `sarvamai` SDK's `SpeechToTextTranscriptionData` schema --
+`transcript`/`timestamps`/`diarized_transcript`/`language_code`/
+`language_probability`/`metrics{audio_duration,processing_latency}` is the
+complete field list; nothing else in that payload is a usable accuracy
+signal), and "ask the guest to repeat" costs an extra conversational turn on
+a false positive but no correctness risk, unlike using the same threshold as
+a hard noise-reject would. Deliberately narrower than that VAD tuning: this
+only ever asks for clarification, never drops/ignores audio.
+
+CRITICAL RECALIBRATION (2026-09-22): the original 0.85 threshold made this
+guard fire on essentially every genuine Hindi/Hinglish utterance, not just
+garbled ones -- confirmed as a critical live bug (constant "could you say
+that again?" on ordinary Hinglish speech, MIRA's primary real-world use
+case, not an edge case). The root issue: `language_probability` measures
+confidence in *which single language* was heard, and a genuinely
+code-mixed Hinglish sentence is, by construction, ambiguous between hi-IN
+and en-IN -- a CORRECTLY transcribed Hinglish utterance routinely scores
+well below 0.85 for the same reason a coin flip isn't "90% heads," not
+because anything was misheard. The single confirmed-bad case that
+originally grounded 0.85 (language_probability=0.843, see module docstring
+above) was itself uncomfortably close to that old bar, which in hindsight
+was the first sign 0.85 was measuring the wrong thing (near-certain
+language-mix ambiguity, not transcript accuracy). Lowered to 0.4 -- a
+genuinely low-confidence signal (closer to "Sarvam has no real read on this
+at all"), not merely "this sentence blends two languages." Explicit,
+accepted tradeoff: this may no longer catch a transcript that scores
+similarly to the original 0.843 case; given the asymmetry between that (a
+single rare confirmed incident) and firing on most Hindi/Hinglish calls (an
+ongoing, critical failure of the core product for its core market), erring
+toward not interrupting the conversation is the right side to be wrong on
+until real production language_probability distributions (already logged
+below, on every transcript) can properly calibrate this.
 
 Sits right after stt, before silence_watchdog, language_sync, and the user
 aggregator -- so a substituted clarification line never reaches
@@ -46,18 +73,20 @@ from loguru import logger
 from pipecat.frames.frames import Frame, TranscriptionFrame
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
-# Starting point, not yet validated against a corpus of real call transcripts
-# with known-correct ground truth -- there is no existing baseline in this
-# repo to derive a specific number from (same caveat sarvam_vad_* in
-# config.py documents for itself). Sarvam's docs describe language_probability
-# as 0.0-1.0 with higher = more confident; 0.85 is set just above the
-# confirmed live failure case (language_probability=0.843) so that exact
-# transcript would have triggered clarification instead of silently reaching
-# the LLM as ground truth. Revisit against real production language_probability
-# distributions once logged (this processor logs every value observed, see
-# below) -- 0.843 being this close to a round 0.85 is coincidence, not
-# evidence the boundary is precisely tuned.
-DEFAULT_LANGUAGE_PROBABILITY_THRESHOLD = 0.85
+# Recalibrated 2026-09-22 (see module docstring's "CRITICAL RECALIBRATION"
+# section) -- the original 0.85 fired on nearly every genuine Hindi/Hinglish
+# utterance, a critical bug for MIRA's primary real-world use case. Still not
+# validated against a corpus of real call transcripts with known-correct
+# ground truth -- there is no existing baseline in this repo to derive a
+# precise number from (same caveat sarvam_vad_* in config.py documents for
+# itself) -- but 0.4 is deliberately far below the single confirmed-bad case
+# (language_probability=0.843) this module was originally built around,
+# trading away that edge case in favor of not breaking ordinary Hinglish
+# conversation. Revisit against real production language_probability
+# distributions once logged in volume (this processor logs every value
+# observed, see below) -- this is still a starting point, just a much safer
+# one than 0.85 turned out to be.
+DEFAULT_LANGUAGE_PROBABILITY_THRESHOLD = 0.4
 
 DEFAULT_CLARIFICATION_TEXT = "Sorry, I didn't quite catch that -- could you say that again?"
 

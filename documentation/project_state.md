@@ -1,12 +1,12 @@
 # Project State
 
-Living snapshot for session continuity — not a chronological log. See `CLAUDE.md` and `docs/` for stable reference material. The section immediately below (**Status summary**) is the current authoritative snapshot, verified directly against source on 2026-08-09 (a documentation-only architecture sync pass — no application code was changed to produce it). Everything under "Recent fixes" further down is the historical, reverse-chronological log this summary was derived from — preserved, not superseded.
+Living snapshot for session continuity — not a chronological log. See `CLAUDE.md` and `docs/` for stable reference material. The section immediately below (**Status summary**) was originally verified directly against source on 2026-08-09 (a documentation-only architecture sync pass); **as of 2026-09-22**, every item that section marked `**Uncommitted**` has since been committed and merged — confirmed directly via `git status` (clean working tree, only unrelated skill/tooling files untracked) and `git log` earlier this same session, not assumed. The `**Uncommitted**` tags below are left in place as historical record of what that 2026-08-09 pass found, not as a claim about current commit status — treat everything in "Currently implemented" as committed unless a bullet says otherwise. Everything under "Recent fixes" further down is the historical, reverse-chronological log this summary was derived from — preserved, not superseded.
 
 ## Active branch
 
-`abhaya` (current working branch as of 2026-08-09). `main` is current HEAD of the merged history; see git log for the latest merged commit.
+`shagun` (current working branch as of 2026-09-22), tracking `origin/shagun`. Recently merged `dev` into `shagun` (`9c485f3`); `main` is a separate, also-current branch — see git log for the latest merged commit on each.
 
-## Status summary (2026-08-09)
+## Status summary (2026-08-09, commit status corrected 2026-09-22)
 
 See [current_architecture.md](current_architecture.md) for the full technical picture behind every line below.
 
@@ -28,11 +28,11 @@ See [current_architecture.md](current_architecture.md) for the full technical pi
 - **Host notifications**: `Notification` model extended with `lead_id` (indexed) + `responded_at`, new channels `busy_recovery`/`busy_recovery_reply` alongside existing `whatsapp`/`escalation`/`system`. **Uncommitted** (model/service changes only — the `whatsapp`/`escalation`/`system` channels themselves are pre-existing and committed).
 - **Cross-call analytics/learning surfaces** (`docs/tasks/building-intelligence.md`, 2026-08-16) — four pieces closing the gap between "MIRA stores call data" and "MIRA surfaces patterns across calls," each read-only/human-facing, none autonomously feeding back into live pricing/negotiation or the voice pipeline: (1) `CallQualityEvent` — persists `ConversationQuality`'s guard/validator firings per call (previously discarded at call-end) for cross-call querying, written from `on_pipeline_finished` only, `ConversationQuality`'s own live/read-side behavior untouched; (2) `CallSummary.objection_tags` — a controlled 8-value vocabulary (`PRICE_TOO_HIGH`/`DATES_UNAVAILABLE`/etc./`NO_OBJECTION`) extending the existing one-shot post-call summarization prompt, zero new LLM calls; (3) `GET /analytics/quality-events` — guard-firing frequency analytics, modeled directly on `faq_service.faq_gap_analytics`'s delegation pattern; (4) `GET /analytics/objection-insights` + a Pricing-page card — conversion rate by objection tag vs. baseline, with a resolved/unresolved breakdown (a tag fires whether or not the objection was overcome) and a low-sample-size caveat below 5 calls. All four implemented+reviewed; **uncommitted**. One known gap: the Implementation 4 frontend card's actual rendering was never visually confirmed (see Known limitations below).
 
-### In progress / uncommitted (implemented and tested, not yet merged to `main`)
+### In progress / uncommitted — CORRECTED 2026-09-22, this section is now historical only
 
-Per `git status`/`git diff --stat HEAD` on 2026-08-09, the entire Redis-lease/Busy-Call-Recovery/WhatsApp-reply subsystem is real, working code in the local working tree but has not been committed: `app/models/call_lease.py`, `app/services/call_coordinator.py`, `app/services/recovery_service.py`, `app/services/whatsapp_reply_service.py`, `app/api/v1/webhooks/whatsapp.py`, `app/utils/webhook_auth.py`, associated Alembic migrations (`356d5c923c77`, `3fae82f7b3d0`, `6384600c83f2`, `7a236ad1ffd1`), the frontend opportunities pages/components, and matching test files. `docs/agents.md`/`docs/database.md`/`docs/api.md` already describe this subsystem as current (they were written/updated alongside the code) — treat them as accurate regardless of commit status, but be aware a fresh `git clone` of `main` alone would not yet include any of it.
+As of 2026-08-09, the entire Redis-lease/Busy-Call-Recovery/WhatsApp-reply subsystem listed below was real, working code in a local working tree not yet committed: `app/models/call_lease.py`, `app/services/call_coordinator.py`, `app/services/recovery_service.py`, `app/services/whatsapp_reply_service.py`, `app/api/v1/webhooks/whatsapp.py`, `app/utils/webhook_auth.py`, associated Alembic migrations (`356d5c923c77`, `3fae82f7b3d0`, `6384600c83f2`, `7a236ad1ffd1`), the frontend opportunities pages/components, and matching test files.
 
-By contrast, `ConversationStyle`/`ConversationQuality`/`StyleComplianceMonitor`/the streaming response-output rewrite **are already committed** on `main` (see commits `5a8e1bc`, `1b2b36f`, and later) — only the Redis-lease/recovery/WhatsApp-reply work above is uncommitted.
+**All of it is committed and merged now** — verified this session via `git status` (clean, every one of these files present and tracked) and `git log`. A fresh `git clone` of `main`/`shagun` today includes all of it; the "would not yet include any of it" caveat this section used to end on no longer applies. Kept here as the historical record of the 2026-08-09 snapshot, not as current status — see the top-of-file correction note.
 
 ### Known limitations
 
@@ -46,14 +46,16 @@ By contrast, `ConversationStyle`/`ConversationQuality`/`StyleComplianceMonitor`/
 
 ### Known risks
 
-- The entire Redis-lease/Recovery/WhatsApp-reply subsystem being uncommitted means it exists only in this working tree — not backed up via git history, not on any other branch, not deployed. A lost/reset working tree would lose real, tested, working code with no recovery path other than this session's own history.
+- ~~The entire Redis-lease/Recovery/WhatsApp-reply subsystem being uncommitted means it exists only in this working tree~~ — **resolved 2026-09-22**: committed and merged, backed by real git history on `main`/`shagun`. No longer a risk.
 - `CallLease`'s staged-removal state depends on human follow-through ("drop it in a later cleanup phase") — if that phase never happens, the dead table/model persists indefinitely as a documentation/maintenance hazard (low severity, not urgent).
 - Redis is a single point of failure for busy-call protection specifically (not for the live call itself, which fails open) — if Redis is down for an extended period, double-booking protection is silently degraded for that entire window, discoverable only via log-based alerting on `lease_redis_unavailable`, not any dashboard signal today.
 
 ### Next priorities
 
 - **Account-global host call hours + configurable live-ownership handoff** (`documentation/host-call-hours-and-handoff.md`) — **implemented and merged** (`ef133a6`, `d331be9`, PR #52), migration `a3f1c9d24e08` has run in production. Two changes: (1) an editable account-global window on the Settings page — `User.host_call_hours_enabled/_start/_end/_timezone` columns, `resolve_effective_call_owner(property_, host, now)` gained a `host` param and a host-level branch, stopped reading `Property.call_handling_*` (columns kept in schema, `CallLease` precedent), per-property Call Handling UI removed; (2) `_HOST_HANDOFF_PHRASE` is now host-configurable via `User.agent_handoff_phrase` + `system_prompt.resolve_host_handoff_phrase` (loop-in-host guarded) + a "Live call handoff phrase" field on the AI Training tab, default reworded to "Hold on — the host is available now. I'm passing the call to them." **Follow-up now done**: the temporary `FIXED_HOST_HOURS_*` env override (`render.yaml`, `config.py`, and the override branch in `call_ownership.py`) has been removed entirely — the Settings-page window is the sole routing input, with no env var able to shadow it. Every existing account defaults to `host_call_hours_enabled=false` (Mira answers 24/7) per the migration's `server_default` — a host must explicitly turn the toggle on in Settings for calls to route to their phone during set hours.
-- Commit the Redis-lease/Busy-Call-Recovery/WhatsApp-reply working tree (currently the single largest gap between what's real and what's on `main`).
+- ~~Commit the Redis-lease/Busy-Call-Recovery/WhatsApp-reply working tree~~ — **done**, see above.
+- **New, 2026-09-22**: `shagun` is 7 commits ahead of `origin/shagun` (post-merge of `dev`, not yet pushed) — push once ready, and reconcile whether `main`'s own separate history should also pick up the `dev` commits this merge brought into `shagun`, or whether that's already covered upstream.
+- **New, 2026-09-22**: production's own Neon Postgres project (`ep-long-mode-axzw5oy6...neon.tech`, a *separate* Neon project from the dev/local database) hit its compute-time quota, causing every DB-backed request (including login) to fail — manifested confusingly as a Clerk auth redirect loop with no obvious connection to the real cause until backend logs were checked directly. Worth moving production off a quota-limited Neon tier given it's a live product, not just re-checking usage after each occurrence.
 - Commit the availability-first-recommendations working tree (`docs/tasks/availability-first-recommendations.md`) — currently uncommitted alongside the Redis-lease work above.
 - Decide and execute the `CallLease` Postgres table drop, once the Redis-backed path has run in production long enough to trust (per its own staging docstring).
 - A real live/browser voice call to close out the outstanding verification gaps flagged throughout `agent-conversation-improvement.md`, and to close the one verification gap `availability-first-recommendations.md`'s own closing pass flagged: every individual transition in the new availability-first flow has real, quoted evidence behind it from separate passes, but the full chain (vague window → nights → availability-checked recommendation → partial-availability disclosure → exact-date re-check) was never driven as one single unbroken live call.
@@ -62,6 +64,139 @@ By contrast, `ConversationStyle`/`ConversationQuality`/`StyleComplianceMonitor`/
 ---
 
 ## Recent fixes
+
+**2026-09-22/23 — Two same-day follow-ups to the merge below, both user-reported: a critical
+low-confidence-guard false-positive on Hindi/Hinglish, and a call-summary-email investigation that
+turned out not to be a bug.**
+- **Low-confidence transcript guard recalibration (CRITICAL FIX)** -- `DEFAULT_LANGUAGE_PROBABILITY_THRESHOLD`
+  dropped from `0.85` to `0.4` in `app/voice/low_confidence_transcript_guard.py`. Root cause: Sarvam's
+  `language_probability` measures confidence in *which single language* was heard, and a genuinely
+  code-mixed Hinglish sentence is ambiguous between hi-IN/en-IN by construction -- a CORRECTLY
+  transcribed Hinglish utterance routinely scores well below 0.85 for the same structural reason,
+  not because anything was misheard. At 0.85 this fired on nearly every real Hindi/Hinglish call,
+  MIRA's primary real-world use case -- reported directly as "not understanding any Hinglish/Hindi
+  sentence." Confirmed via the `sarvamai` SDK's own response schema
+  (`speech_to_text_transcription_data.py`) that no better confidence signal exists in Sarvam's
+  codemix payload (`transcript`/`timestamps`/`diarized_transcript`/`language_code`/
+  `language_probability`/`metrics{audio_duration,processing_latency}` is the complete field list) --
+  this is a calibration fix, not a mechanism change. Explicit, accepted tradeoff: 0.4 is deliberately
+  below the single original confirmed-bad case (0.843), so that exact edge case may no longer trigger
+  clarification -- judged the right side to be wrong on given the asymmetry (one rare incident vs.
+  breaking the core product for its core market). Still unvalidated against real production data
+  (same caveat the original 0.85 carried, just a safer number) -- the existing per-transcript
+  `stt_language_probability_observed` logging is what future calibration should use. This never
+  reached production (only merged to `dev`/`shagun`, `main` doesn't have the guard at all yet), so
+  no live guest was actually affected -- caught and fixed same-day as the merge. 2 new regression
+  tests (`test_default_threshold_no_longer_misfires_on_ordinary_hinglish`,
+  `test_default_threshold_still_catches_genuinely_low_confidence`) added to
+  `tests/test_low_confidence_transcript_guard.py`, all 7 tests in that file pass.
+- **Call-summary-email investigation -- no bug found, a testing gap.** Reported as "emails are not
+  being sent to the host." Traced via Railway logs (`railway logs --since`/`--filter`, both
+  `production` and `dev` environments): (1) the feature isn't deployed to `main`/production at all
+  yet -- only `dev`/`shagun` have it; (2) on `dev`, exactly one real call has reached teardown since
+  the feature went live (2026-09-21), and it was a host-handoff ("Take Call") call, which
+  `on_pipeline_finished`'s own `if not is_host_handoff:` guard deliberately excludes from getting a
+  summary email (confirmed by explicit product decision to keep this exclusion, 2026-09-22 -- a
+  handoff call isn't "done" from the guest's perspective yet). No normal (non-handoff) call has ever
+  exercised this path on `dev`. The `test_send_call_summary_email_skips_smtp_when_unconfigured`
+  test failure noted in the entry below is a local-environment mismatch (real SMTP credentials
+  present in this `.env`), not a code bug -- corrected in that entry directly rather than left as
+  "not yet root-caused."
+
+**2026-09-18 to 2026-09-21 — Four commits merged from `dev` into `shagun` (`9c485f3`, 2026-09-22):
+low-confidence transcript guard, guest-initiated live host transfer, vague-timeline (nights-only)
+pricing/negotiation, a call-summary email, and a real production deploy-crashing bug fix. Tool
+count is now 13 (added `request_host_transfer`). Docs (`docs/agents.md`,
+`documentation/current_architecture.md`, `docs/how-it-works.md`, `CLAUDE.md`) updated to match in
+this same pass — see those files for the full technical detail; this entry is the changelog.**
+- **Low-confidence transcript guard** (`56f182b`, 2026-09-21) — `LowConfidenceTranscriptGuardProcessor`
+  (`app/voice/low_confidence_transcript_guard.py`, new file, 128 lines) sits right after `stt`.
+  Confirmed live: a guest's city name was dropped entirely by STT on an utterance Sarvam itself only
+  tagged `language_probability=0.843` -- well-formed enough to pass every downstream filter and reach
+  the LLM as if it were a genuine complete answer (`recommend_properties` then correctly extracted
+  `preferred_location=None` from what it was given -- a correct extraction from a wrong transcript,
+  not a tool bug). Below `DEFAULT_LANGUAGE_PROBABILITY_THRESHOLD` (explicitly flagged as an
+  unvalidated starting point, logged on every transcript for future tuning against real data), the
+  guest's transcript text is deterministically replaced in place with a fixed clarification request
+  -- no second LLM call, consistent with this codebase's standing "no hidden LLM regeneration" rule.
+  12 new tests in `tests/test_low_confidence_transcript_guard.py`. **Shipped with `threshold=0.85`
+  -- see the 2026-09-22 entry below for the critical recalibration to `0.4` this caused, found and
+  fixed the day after merge, before it ever reached production.**
+- **Live handoff extended to Lead Agent calls** (`56f182b`) -- `pipeline.py`'s `handoff_registered`
+  changed from `property_id is not None` to unconditionally `True`. Previously a Lead Agent
+  (portfolio-wide) call had no handoff listener registered at all, so a guest asking to be
+  transferred on such a call had no real transfer path available -- the routing webhook
+  (`connect-routing`) already keyed its decision off `CallSession.user_id`, not `property_id`,
+  specifically so this was reachable once the listener gap closed. Both `run_voice_pipeline` and
+  `run_voice_pipeline_twilio` now resolve `host_handoff_phrase` for the Lead Agent branch too,
+  not just the property branch.
+- **`request_host_transfer` tool** (`9688277`, 2026-09-20) -- new guest-initiated tool
+  (`RequestHostTransferArgs`/`handle_request_host_transfer`) for a guest explicitly asking to be
+  connected to the host/a human right now, distinct from `escalate_to_host`'s notify-and-continue
+  path. Reuses the existing host-initiated "Take Call" handoff machinery unmodified (same atomic
+  `handoff_status` claim `take_call.py` makes, same `handoff_signal.request_handoff` call) --
+  falls back to a plain `escalate_to_host` if the host has no usable phone number or there's no
+  live `call_session_id` to claim a handoff against (e.g. a browser test call). Initially gated on
+  `property_id is not None` (since Lead Agent calls had no listener yet at the time this was
+  written); that gate was removed in the same merge once `56f182b` closed the listener gap -- the
+  current code explicitly comments "`property_id` is deliberately NOT a gate here anymore." 43 + 121
+  new/changed test lines across two commits in `tests/test_request_host_transfer.py`.
+- **Vague-timeline pricing** (`113fb14`, 2026-09-18) -- `GetPricingArgs`/`NegotiateRateArgs` accept
+  `check_in`+`check_out` **or** `nights` (never both, never neither -- a pydantic `model_validator`
+  enforces this), so a guest with only an approximate timeline ("first week of October", "around 3
+  nights") can get a real quote from a stay length alone instead of the model repeatedly pressing
+  for an exact check-in date it doesn't have yet. A nights-only quote is flat `base_price x nights`
+  (never a live Airbnb fetch -- no real dates to fetch a rate for) and skips the weekend-minimum-stay
+  rule (unevaluable without real calendar dates; re-checked once `check_calendar` runs against the
+  guest's eventual exact dates). New `PriceBreakdown.is_estimate: bool` flag tells the model to
+  caveat a nights-only number as an estimate, never present it with the same confidence as a
+  dates-anchored quote. `minimum_stay_nights_violation` (`pricing_engine.py`) and `GOLDEN_RULES`
+  (`system_prompt.py`) both updated to match. 78 new lines in `tests/test_pricing_engine.py`, 71 in
+  `tests/test_tool_handlers.py`, 2 in `tests/test_system_prompt.py`.
+- **Call summary email** (`9688277`) -- new `app/services/call_summary_email.py`
+  (`send_call_summary_email`, fire-and-forget via `asyncio.create_task`, never raises into pipeline
+  teardown), fired once per call from `on_pipeline_finished` for every call that reaches it normally
+  -- independent of whether the call was escalated. Reuses the existing `email_client`/
+  `email_templates` transport rather than inventing a second one; a hot lead gets a
+  "🔥 Hot lead —" subject prefix. 49 new lines in `tests/test_call_summary_email.py`.
+- **Production deploy-crashing bug fix** (`41a539b`, 2026-09-19) -- `config.py`'s `DATABASE_URL`
+  query-param stripping only stripped `sslmode`/`ssl`, not `channel_binding`; a Neon connection
+  string's `?sslmode=require&channel_binding=require` crashed every alembic upgrade/app startup with
+  `TypeError: connect() got an unexpected keyword argument` since `channel_binding` isn't a kwarg
+  asyncpg's `connect()` accepts (asyncpg already negotiates TLS channel binding automatically, so
+  dropping the param doesn't weaken the connection). Fixed by stripping a full
+  `_ASYNCPG_UNSUPPORTED_QUERY_PARAMS` tuple instead of two hardcoded names. Added to
+  [CLAUDE.md](../CLAUDE.md)'s Common pitfalls list in this same doc-update pass. 36 new lines in
+  `tests/test_config_database_url.py`.
+- **Twilio fallback** (`9688277`) -- `twilio_client.py`/`config.py` gained fallback-related config
+  (4 lines in `twilio_client.py`, 14 in `config.py`); `render.yaml` gained 8 lines of corresponding
+  env var wiring. Not independently investigated in this doc-update pass beyond confirming the diff
+  exists -- flagged here so a future session knows to look if Twilio fallback behavior needs
+  explaining in more detail.
+- **Full `pytest` run after the merge (2026-09-22): 1481 passed, 28 failed** (1479 tests were
+  collected as a static count -- 1481 passed reflects parametrized/fixture expansion at run time).
+  Of the 28 failures: ~20 are the same class of pre-existing environment-only failures already
+  documented elsewhere in this file (no Twilio WhatsApp sender configured locally --
+  `test_availability_recovery.py` x4 joins this bucket newly; real Postgres pool/SMTP/embedding-API
+  config gaps -- `test_database.py`/`test_email_client.py`/`test_embedding_service.py`; plus the
+  same long-standing `test_calls_api.py`/`test_tool_handlers.py` x2/`test_turn_strategies.py`/
+  `test_twilio_client.py` failures already called out earlier in this file). **Two findings are
+  real and NOT environment noise, discovered during this doc-verification pass, not yet
+  investigated or fixed (out of scope for a docs-only pass):**
+  1. `tests/test_ringing_audio.py::test_committed_busy_message_asset_is_actually_8000hz` and
+     `test_busy_message_is_the_real_spoken_asset_not_the_beep_placeholder`, plus
+     `tests/test_run_voice_pipeline_ringing.py::test_busy_recovery_plays_placeholder_and_hangs_up_without_building_a_pipeline`
+     are failing. The committed `busy_message_speech_8000.wav` asset's real WAV header is 22050Hz,
+     not 8000Hz -- **a recurrence of the exact 2026-08-12 production incident** these tests were
+     written to catch (the message plays back ~2.76x too fast with dropped pitch, "slow, robotic,
+     garbled" per that incident's own description). The asset appears to have been overwritten or
+     reverted since. Needs a real fix (regenerate/re-export the asset at 8000Hz), not a doc note.
+  2. ~~`tests/test_call_summary_email.py::test_send_call_summary_email_skips_smtp_when_unconfigured`
+     fails~~ -- **root-caused 2026-09-22, not a code bug**: this local `.env` has real SMTP
+     credentials configured (`miraoncall@gmail.com`), so `email_client.send_email` doesn't take the
+     "skipped" branch at all in this environment -- the test's own comment ("Test env has no SMTP
+     configured") is simply wrong for this machine. See the 2026-09-22 entry below for the real
+     call-summary-email investigation this triggered.
 
 **2026-08-10 — Conversation attention/salience tracking: repetition + recency weighting, feeding both
 the LLM-facing state summary and amenity ranking. Deliberately narrower than "attention mechanism" as

@@ -29,7 +29,7 @@ _run_pipeline (pipeline.py:385) builds the pipecat Pipeline, cancels+awaits
 │                                                           re-fire)    slots)   │
 │                                                              │                 │
 │                                                              ▼                 │
-│                                          LLM (Groq gpt-oss-120b, 12 tools)     │
+│                                          LLM (Groq gpt-oss-120b, 13 tools)     │
 │                                                │           │                  │
 │                                    (function call)   (reply text)             │
 │                                                ▼           ▼                  │
@@ -69,7 +69,7 @@ Everything from Redundant Context Guard through Response Shape Validator is a de
 3. **`_run_pipeline`** (`pipeline.py:385`) constructs the actual pipecat `Pipeline`: STT, the guard chain, LLM, TTS, tools, turn-detection strategy. Right before `runner.run()`, the ring-tone task is cancelled and awaited — no window where two writers hit the same socket.
 4. **Greeting**: pre-seeded into the LLM context as an assistant turn, then spoken via `worker.queue_frame(TTSSpeakFrame(first_message))` on `on_client_connected`, guarded by a one-shot flag.
 5. **Guest speaks** → STT → Silence Watchdog (resets its timer) → Language Sync (may push a live TTS voice switch) → `user_aggregator` decides turn-end (0.9s post-speech silence) → Redundant Context Guard (drops a spurious pipecat re-fire) → State Prompt Sync (injects the current slot/goal summary as one system message, mutated in place) → LLM.
-6. **LLM** either replies directly or calls one of 12 tools (`app/voice/tools.py` → `app/services/tool_handlers.py`, some of which delegate further into `app/services/property/retrieval/` or `pricing_engine.py`). The tool result is appended as a `tool`-role message and triggers the next completion.
+6. **LLM** either replies directly or calls one of 13 tools (`app/voice/tools.py` → `app/services/tool_handlers.py`, some of which delegate further into `app/services/property/retrieval/` or `pricing_engine.py`). The tool result is appended as a `tool`-role message and triggers the next completion.
 7. **Guard chain** (LLM → TTS): Repetition → Meta-Commentary → Property Recommendation → Escalation Phrase → Premature End-Call → Response Shape Validator. Each is pass-through by default; each activates only around the one narrow condition it exists for.
 8. **TTS** (Sarvam) synthesizes the guarded text → `transport.output()` → Exotel → guest's phone. `assistant_aggregator` appends the *actually-spoken* (post-guard) text back into context, so the model's own memory matches reality.
 9. **Teardown** (`on_pipeline_finished`): assembles transcript, `call_service.finalize_call_session`, then two one-shot post-call LLM calls (`call_classification_service.classify_call`, `call_summary_service.summarize_call`) and lead backfill/cleanup.
