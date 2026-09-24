@@ -420,16 +420,21 @@ class Settings(BaseSettings):
 
     # Email escalation summaries -- interim stand-in for a WhatsApp Business
     # API host notification (that needs Meta business verification + Exotel
-    # KYC approval, no instant sandbox exists unlike Twilio's). Any SMTP
-    # provider works (Gmail app password, Zoho, Amazon SES SMTP, ...); unset
-    # = escalate_to_host still creates the in-app notification, just skips
+    # KYC approval, no instant sandbox exists unlike Twilio's). Sent via
+    # Resend's HTTP API (port 443), not SMTP -- confirmed live 2026-09-24
+    # via a from-inside-the-container connectivity test (see
+    # app/integrations/email_client.py's own module docstring) that Railway
+    # blocks outbound SMTP ports (587/465) at the network level on both
+    # `dev` and `production`, identically, while port 443 connects
+    # instantly -- no SMTP host/credential combination could ever have
+    # worked here, so this isn't a config choice, it's the only transport
+    # that actually reaches the network. Resend picked over SendGrid for its
+    # free tier (SendGrid's account already in place is a paid one -- no
+    # need for a second paid provider just for this). Unset = escalate_to_host/
+    # call summary emails still create their in-app notification, just skip
     # the email (see app/integrations/email_client.py).
-    smtp_host: str | None = None
-    smtp_port: int = 587
-    smtp_username: str | None = None
-    smtp_password: str | None = None
-    smtp_from_email: str | None = None
-    smtp_use_tls: bool = True
+    resend_api_key: str | None = None
+    resend_from_email: str | None = None
 
     ical_sync_interval_minutes: int = 15
 
