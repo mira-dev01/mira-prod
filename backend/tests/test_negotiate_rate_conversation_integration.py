@@ -26,7 +26,10 @@ class _FakeFunctionCallParams:
         self.properties = None
 
     async def result_callback(self, result, properties=None):
-        self.result = result
+        # Tools return app/voice/tool_contract.py's envelope; keep it whole
+        # and expose its text for the existing content assertions.
+        self.envelope = result
+        self.result = result.get("result", result.get("message")) if isinstance(result, dict) else result
         self.properties = properties
 
 

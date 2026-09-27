@@ -45,7 +45,7 @@ async def test_orchestrator_semantic_search_never_fires_for_pure_structured_quer
 
     monkeypatch.setattr(embedding_service, "get_embedding", _should_not_be_called)
 
-    args = RecommendPropertiesArgs(required_amenities=None, budget=5000)
+    args = RecommendPropertiesArgs(required_amenities=None, budget_amount=5000, budget_basis="per_night")
     result = await orchestrator.recommend_properties(db_session, args, test_user.id)
     assert len(result.options) == 1
 
