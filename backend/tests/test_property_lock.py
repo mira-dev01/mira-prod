@@ -20,7 +20,10 @@ class _FakeFunctionCallParams:
         self.result = None
 
     async def result_callback(self, result):
-        self.result = result
+        # Tools return app/voice/tool_contract.py's envelope; keep it whole
+        # and expose its text for the existing content assertions.
+        self.envelope = result
+        self.result = result.get("result", result.get("message")) if isinstance(result, dict) else result
 
 
 async def _second_property(db_session, test_user, name="Ocean View"):

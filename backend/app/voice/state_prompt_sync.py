@@ -154,7 +154,16 @@ def _format_slots(state: ConversationState) -> str:
     for key, label in known:
         value = state.slots[key]
         if key == "budget":
-            value = f"~₹{value:,.0f}"
+            basis = {"per_night": " per night", "total_stay": " total for the stay"}.get(
+                state.slots.get("budget_basis"),
+                # Never an open invitation to ask: the basis question is
+                # asked at most once per call, and only when
+                # recommend_properties says the stay length makes it matter.
+                " (assumed per night -- don't ask again)"
+                if state.budget_basis_clarification_asked
+                else " (per night vs total not stated -- only ask if recommend_properties asks)",
+            )
+            value = f"~₹{value:,.0f}{basis}"
         text = f"{label}: {value}"
         salience = state.attention.get(f"slot:{key}")
         if salience is not None and salience.count >= 2:

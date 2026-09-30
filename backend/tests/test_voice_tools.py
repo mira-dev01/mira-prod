@@ -31,7 +31,10 @@ class _FakeFunctionCallParams:
         self.properties = None
 
     async def result_callback(self, result, properties=None):
-        self.result = result
+        # Tools return app/voice/tool_contract.py's envelope; keep it whole
+        # and expose its text for the existing content assertions.
+        self.envelope = result
+        self.result = result.get("result", result.get("message")) if isinstance(result, dict) else result
         self.properties = properties
 
 
@@ -57,7 +60,11 @@ async def test_check_calendar_invalid_args_returns_graceful_message(db_session, 
 
     params = _FakeFunctionCallParams()
     await check_calendar(params, property_id="not-a-uuid", check_in="not-a-date", check_out="also-not-a-date")
-    assert "repeat the dates" in params.result.lower()
+    # A structured invalid-arguments result naming the bad field, so the
+    # model fixes its own call instead of asking the guest to repeat things.
+    assert params.envelope["success"] is False
+    assert params.envelope["error_type"] == "invalid_tool_arguments"
+    assert "check_in" in params.result
 
 
 async def test_get_pricing_includes_total(test_property, db_session, test_user):

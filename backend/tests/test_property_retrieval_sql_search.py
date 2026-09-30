@@ -176,7 +176,7 @@ async def test_zero_price_property_excluded_even_with_budget_filter_active(test_
     db_session.add_all([zero_priced, real])
     await db_session.commit()
 
-    args = RecommendPropertiesArgs(budget=5000)
+    args = RecommendPropertiesArgs(budget_amount=5000, budget_basis="per_night")
     base_stmt = filter_builder.build_base_filters(args, test_user.id)
     results, _ = await sql_search.run_sql_search(db_session, base_stmt, args)
 

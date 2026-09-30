@@ -32,12 +32,22 @@ async def run_sql_search(
     base_stmt: Select,
     args: RecommendPropertiesArgs,
     amenity_weights: dict[str, float] | None = None,
+    candidate_pool: int | None = None,
 ) -> tuple[list[Property], str]:
     """Returns (properties, combo_note) -- combo_note is a non-empty string
     only when the small-units fallback fired (no single property sleeps the
-    full requested group, so smaller units are suggested for combining)."""
+    full requested group, so smaller units are suggested for combining).
+
+    candidate_pool (budget eligibility): when set, fetch up to that many
+    candidates and return them all, ranked but NOT trimmed to 3 -- the
+    orchestrator prices them and applies the budget before capping, so the
+    3 shown are the best-ranked properties that actually fit the budget
+    rather than the 3 cheapest-by-base_price."""
     stmt = apply_guest_count_filter(base_stmt, args)
-    pool_size = _AMENITY_CANDIDATE_POOL_SIZE if args.required_amenities else 3
+    if candidate_pool is not None:
+        pool_size = candidate_pool
+    else:
+        pool_size = _AMENITY_CANDIDATE_POOL_SIZE if args.required_amenities else 3
     stmt = stmt.order_by(Property.base_price.asc()).limit(pool_size)
     properties = list((await db.scalars(stmt)).all())
 
@@ -49,7 +59,7 @@ async def run_sql_search(
         # booking two units together to cover the group. Hosts with several
         # small 1BHKs at the same property (e.g. the Pause Project in Siolim)
         # routinely accommodate larger groups exactly this way.
-        fallback_stmt = base_stmt.order_by(Property.base_price.asc()).limit(4)
+        fallback_stmt = base_stmt.order_by(Property.base_price.asc()).limit(candidate_pool or 4)
         properties = list((await db.scalars(fallback_stmt)).all())
         if properties:
             combo_note = (
@@ -67,6 +77,8 @@ async def run_sql_search(
     # meaning ("combine these"), same reasoning ranking.diversify_leading_candidates
     # already uses to skip that path.
     if args.required_amenities and not combo_note:
-        properties = apply_amenity_boost(properties, args.required_amenities, amenity_weights)[:3]
+        properties = apply_amenity_boost(properties, args.required_amenities, amenity_weights)
+        if candidate_pool is None:
+            properties = properties[:3]
 
     return properties, combo_note

@@ -62,14 +62,14 @@ def test_guest_count_not_comfortably_covered_produces_no_reason():
 
 def test_budget_match_produces_within_budget_reason():
     card = _card(base_price=4000)
-    args = RecommendPropertiesArgs(budget=6000)
+    args = RecommendPropertiesArgs(budget_amount=6000, budget_basis="per_night")
     reasons = match_reasons_for_card(card, args)
     assert "comfortably within budget" in reasons
 
 
 def test_budget_not_comfortably_under_produces_no_budget_reason():
     card = _card(base_price=5900)
-    args = RecommendPropertiesArgs(budget=6000)
+    args = RecommendPropertiesArgs(budget_amount=6000, budget_basis="per_night")
     reasons = match_reasons_for_card(card, args)
     assert "comfortably within budget" not in reasons
 
@@ -117,7 +117,7 @@ def test_amenity_match_uses_canonical_synonym_matching():
 def test_capped_at_two_reasons_even_with_every_criterion_matching():
     card = _card(max_guests=6, base_price=1000, top_amenities=["pool"])
     args = RecommendPropertiesArgs(
-        num_guests=4, budget=6000, purpose_of_stay="friends trip", required_amenities=["pool"]
+        num_guests=4, budget_amount=6000, budget_basis="per_night", purpose_of_stay="friends trip", required_amenities=["pool"]
     )
     reasons = match_reasons_for_card(card, args)
     assert len(reasons) <= 2
@@ -128,7 +128,7 @@ def test_amenity_reason_takes_priority_over_vaguer_reasons_when_both_fit():
     over a vaguer one when the cap forces a choice."""
     card = _card(max_guests=6, base_price=1000, top_amenities=["pool"])
     args = RecommendPropertiesArgs(
-        num_guests=4, budget=6000, purpose_of_stay="friends trip", required_amenities=["pool"]
+        num_guests=4, budget_amount=6000, budget_basis="per_night", purpose_of_stay="friends trip", required_amenities=["pool"]
     )
     reasons = match_reasons_for_card(card, args)
     assert any("pool" in r for r in reasons)

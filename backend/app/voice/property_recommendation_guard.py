@@ -269,6 +269,12 @@ def strip_property_ids(text: str) -> str:
     return re.sub(r"[ \t]{2,}", " ", text).strip()
 
 
+_RECOMMENDATION_FAILED_REPLY = (
+    "Sorry, I'm not able to pull up the property options right now. "
+    "I can have the host get back to you with options that fit -- would that be alright?"
+)
+
+
 def _fallback_recommendation_text(options: list[dict]) -> str:
     # Availability-first recommendations, Implementation 5 (explicit
     # decision, not a silent gap): this emergency path only ever fires for a
@@ -380,13 +386,15 @@ class PropertyRecommendationGuardProcessor(FrameProcessor):
         self._pending_price_fact: dict | None = None
         self._pending_availability_fact: dict | None = None
         self._pending_faq_fact: dict | None = None
+        self._pending_recommendation_failed = False
         self._buffering = False
         self._buffer: list[str] = []
 
     def record_tool_result(self, function_name: str, result) -> None:
         if function_name == "recommend_properties" and isinstance(result, RecommendationResult):
+            self._pending_recommendation_failed = result.failed
             self._pending_options = [
-                {"name": card.spoken_name, "price": card.base_price, "guests": card.max_guests}
+                {"name": card.spoken_name, "price": card.nightly_rate, "guests": card.max_guests}
                 for card in result.options
             ]
             # Availability-first recommendations, Implementation 5:
@@ -473,6 +481,8 @@ class PropertyRecommendationGuardProcessor(FrameProcessor):
             price_fact = self._pending_price_fact
             availability_fact = self._pending_availability_fact
             faq_fact = self._pending_faq_fact
+            recommendation_failed = self._pending_recommendation_failed
+            self._pending_recommendation_failed = False
             self._armed_tool = None
             self._pending_options = []
             self._pending_partial_facts = []
@@ -481,6 +491,26 @@ class PropertyRecommendationGuardProcessor(FrameProcessor):
             self._pending_faq_fact = None
 
             if not text.strip():
+                if recommendation_failed:
+                    # A tool-call-only response (e.g. escalate_to_host) right
+                    # after a failed search -- keep the override armed for
+                    # the next spoken reply rather than letting it lapse.
+                    self._armed_tool = armed_tool
+                    self._pending_recommendation_failed = True
+                await self.push_frame(frame, direction)
+                return
+
+            if recommendation_failed:
+                # Hard invariant: a recommend_properties call that errored
+                # returned no properties, so nothing in this reply can be a
+                # grounded recommendation. Replaced unconditionally -- no
+                # detection step to miss a new phrasing (see
+                # escalation_phrase_guard.py for the same reasoning).
+                logger.warning(
+                    "PropertyRecommendationGuardProcessor: replacing reply after a FAILED recommend_properties call"
+                )
+                await self.push_frame(LLMFullResponseStartFrame(), direction)
+                await self.push_frame(LLMTextFrame(_RECOMMENDATION_FAILED_REPLY), direction)
                 await self.push_frame(frame, direction)
                 return
 

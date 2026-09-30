@@ -35,6 +35,7 @@ from app.schemas.tool import (
     SearchFaqArgs,
     SendPhotosArgs,
     SendWhatsappArgs,
+    ToolBusinessError,
     UpdateLeadArgs,
 )
 from app.services import (
@@ -193,10 +194,10 @@ async def handle_check_calendar(
     """
     property_ = await _get_property(db, args.property_id)
     if property_ is None:
-        return "I couldn't find that property. Could you confirm which listing you're asking about?"
+        return ToolBusinessError("I couldn't find that property. Could you confirm which listing you're asking about?")
 
     if args.check_out <= args.check_in:
-        return "The check-out date needs to be after check-in. Could you confirm the dates?"
+        return ToolBusinessError("The check-out date needs to be after check-in. Could you confirm the dates?")
 
     if args.num_guests is not None and args.num_guests > property_.max_guests:
         return f"{property_.name} sleeps up to {property_.max_guests} guests, which is fewer than {args.num_guests}."
@@ -309,11 +310,13 @@ async def handle_get_pricing(
     function's own docstring. Only ever used when args.check_in is unset."""
     property_ = await _get_property(db, args.property_id)
     if property_ is None:
-        return "I couldn't find that property to price. Could you confirm which listing you're asking about?"
+        return ToolBusinessError(
+            "I couldn't find that property to price. Could you confirm which listing you're asking about?"
+        )
 
     has_exact_dates = args.check_in is not None and args.check_out is not None
     if has_exact_dates and args.check_out <= args.check_in:
-        return "The check-out date needs to be after check-in. Could you confirm the dates?"
+        return ToolBusinessError("The check-out date needs to be after check-in. Could you confirm the dates?")
 
     # Phase 6 (Negotiation engine) self-review fix: GOLDEN_RULES tells the
     # model get_pricing will surface a minimum-stay requirement -- this must
@@ -374,7 +377,7 @@ async def handle_get_pricing(
             breakdown.base_total,
             breakdown.total,
         )
-        return _PRICE_UNAVAILABLE_MESSAGE
+        return ToolBusinessError(_PRICE_UNAVAILABLE_MESSAGE)
 
     # Lead with the per-night rate, then the total, as one natural spoken
     # sentence -- this string is what the LLM tends to read back almost
@@ -425,7 +428,7 @@ async def handle_dispatch_technician(
 ) -> str:
     property_ = await _get_property(db, args.property_id)
     if property_ is None:
-        return "I couldn't find that property to dispatch a technician for."
+        return ToolBusinessError("I couldn't find that property to dispatch a technician for.")
 
     # "general" covers non-maintenance in-stay asks (towels, housekeeping,
     # amenity requests) routed here instead of escalate_to_host -- "our
@@ -507,7 +510,7 @@ async def handle_send_photos(
 ) -> str:
     property_ = await _get_property(db, args.property_id)
     if property_ is None:
-        return "I couldn't find that property to send photos for."
+        return ToolBusinessError("I couldn't find that property to send photos for.")
     if not property_.photos:
         return f"I don't have photos on file for {property_.name} yet -- I'll flag that to the host."
 
@@ -820,8 +823,13 @@ async def handle_negotiate_rate(
     on_priced: Callable[[Property, NegotiationResult], None] | None = None,
     prior_events: list["NegotiationEvent"] | None = None,
     window_start: date | None = None,
+    apply_stay_offer: bool = False,
 ) -> str:
-    """on_priced (Phase 4b.1, documentation/agent-conversation-improvement.md):
+    """apply_stay_offer: negotiate from the automatic length-of-stay offer
+    price (already pitched to the guest by recommend_properties) instead of
+    the standard rate -- see pricing_engine.negotiate_rate's apply_discounts.
+
+    on_priced (Phase 4b.1, documentation/agent-conversation-improvement.md):
     same pattern as handle_get_pricing's own on_priced -- an optional
     synchronous callback receiving the real Property and NegotiationResult
     right before the result is returned, called only on a real successful
@@ -840,11 +848,11 @@ async def handle_negotiate_rate(
     handle_get_pricing's own -- see that function's docstring."""
     property_ = await _get_property(db, args.property_id)
     if property_ is None:
-        return "I couldn't find that property to negotiate a rate for."
+        return ToolBusinessError("I couldn't find that property to negotiate a rate for.")
 
     has_exact_dates = args.check_in is not None and args.check_out is not None
     if has_exact_dates and args.check_out <= args.check_in:
-        return "The check-out date needs to be after check-in. Could you confirm the dates?"
+        return ToolBusinessError("The check-out date needs to be after check-in. Could you confirm the dates?")
 
     if host_user_id is not None:
         await lead_service.backfill_lead_from_engagement(
@@ -870,6 +878,7 @@ async def handle_negotiate_rate(
         prior_events=prior_events,
         nights=args.nights,
         window_start=window_start,
+        apply_discounts=apply_stay_offer,
     )
     # Same non-positive-price guard as handle_get_pricing -- negotiate_rate
     # derives everything (asking price, floor, counter-offer) from
@@ -883,7 +892,7 @@ async def handle_negotiate_rate(
             result.asking_price,
             result.counter_offer,
         )
-        return _PRICE_UNAVAILABLE_MESSAGE
+        return ToolBusinessError(_PRICE_UNAVAILABLE_MESSAGE)
     message = result.message
     # Vague-timeline pricing: same caveat as handle_get_pricing's own --
     # result.is_estimate mirrors PriceBreakdown.is_estimate (nights-only,
@@ -912,6 +921,10 @@ async def handle_recommend_properties(
     nights: int | None = None,
     call_session_id: uuid.UUID | None = None,
     amenity_weights: dict[str, float] | None = None,
+    stay_check_in: date | None = None,
+    stay_check_out: date | None = None,
+    stay_window_start: date | None = None,
+    budget_basis_assumed: bool = False,
 ) -> RecommendationResult:
     """Thin delegate to app/services/property/retrieval/orchestrator.py --
     the actual filter -> SQL search -> (conditionally) semantic search ->
@@ -929,7 +942,9 @@ async def handle_recommend_properties(
     candidate diversity rotation so the SAME call stays internally consistent
     while DIFFERENT calls see genuine variety. amenity_weights (attention/
     salience tracking, ConversationState.attention) is optional, same
-    pass-through shape as check_in/check_out -- see orchestrator.recommend_properties."""
+    pass-through shape as check_in/check_out -- see orchestrator.recommend_properties.
+    stay_check_in/stay_check_out/stay_window_start/budget_basis_assumed feed
+    applicable-stay pricing and budget eligibility -- same pass-through."""
     return await property_retrieval_orchestrator.recommend_properties(
         db,
         args,
@@ -939,6 +954,10 @@ async def handle_recommend_properties(
         nights=nights,
         call_session_id=call_session_id,
         amenity_weights=amenity_weights,
+        stay_check_in=stay_check_in,
+        stay_check_out=stay_check_out,
+        stay_window_start=stay_window_start,
+        budget_basis_assumed=budget_basis_assumed,
     )
 
 

@@ -33,6 +33,7 @@ result_callback, so recording it just beforehand always beats any frame from
 that completion reaching the guard. See app/voice/property_recommendation_guard.py.
 """
 
+import functools
 import uuid
 from datetime import date
 from typing import Literal
@@ -60,16 +61,20 @@ from app.schemas.tool import (
 )
 from app.services import tool_handlers
 from app.services.amenity_taxonomy import canonicalize_amenities, canonicalize_amenity
-from app.services.property.pitch_formatter import render_recommendation_text
+from app.services.property.budget import coerce_budget_basis, infer_budget_basis, mentions_amount
+from app.services.property.pitch_formatter import (
+    RECOMMENDATION_FAILED_TEXT,
+    recommendation_failed_result,
+    render_recommendation_text,
+)
 from app.voice.conversation_state import ConversationState
 from app.voice.property_recommendation_guard import PropertyRecommendationGuardProcessor
 from app.voice.silence_watchdog import SilenceWatchdogProcessor
+from app.voice.tool_contract import ToolOutcome, voice_tool
 
 Urgency = Literal["low", "medium", "high", "emergency"]
 IssueType = Literal["plumbing", "electrical", "ac", "wifi", "lock", "general"]
 GuestLoyalty = Literal["new", "returning", "frequent"]
-
-INVALID_ARGS_MESSAGE = "I'm missing some details to do that -- could you repeat the dates/details?"
 
 # Phase 3.3 (documentation/agent-conversation-improvement.md): maps
 # update_lead's preferred_language argument (free text the model supplies,
@@ -112,6 +117,41 @@ def _parse_iso_date(value: "str | date | None") -> date | None:
         return None
 
 
+def _recent_guest_texts(params: FunctionCallParams, limit: int = 3) -> list[str]:
+    """The guest's last few transcribed turns, newest first -- read only as
+    a deterministic backstop for budget_basis when the model leaves it
+    unset. Fails open to [] (e.g. no context on a test double)."""
+    context = getattr(params, "context", None)
+    try:
+        messages = context.get_messages() if context is not None else []
+    except Exception:
+        return []
+    texts: list[str] = []
+    for message in reversed(messages):
+        if not isinstance(message, dict) or message.get("role") != "user":
+            continue
+        content = message.get("content")
+        if isinstance(content, list):
+            content = " ".join(part.get("text", "") for part in content if isinstance(part, dict))
+        if isinstance(content, str) and content.strip():
+            texts.append(content)
+            if len(texts) >= limit:
+                break
+    return texts
+
+
+def _basis_from_guest_words(params: FunctionCallParams, established: str | None) -> str | None:
+    """Deterministic budget_basis backstop from the guest's recent words.
+    Once a basis is established this call, only an utterance that also
+    states an amount can change it -- "total" said about something else
+    ("we're total 4 people") must not flip an established per-night budget."""
+    for text in _recent_guest_texts(params):
+        basis = infer_budget_basis(text)
+        if basis is not None and (established is None or mentions_amount(text)):
+            return basis
+    return None
+
+
 def build_voice_tools(
     call_session_id: uuid.UUID | None,
     property_id: uuid.UUID | None,
@@ -136,7 +176,24 @@ def build_voice_tools(
     even if the model doesn't parrot it back explicitly.
     """
     state = conversation_state or ConversationState()
+    # Every tool below goes through app/voice/tool_contract.py's voice_tool:
+    # validation against its own signature (the same source pipecat builds
+    # the LLM schema from), exactly one structured result envelope, and
+    # internal errors kept distinct from invalid arguments.
+    tool = functools.partial(voice_tool, call_session_id=call_session_id)
 
+    def _stay_offer_pitched(property_id: str | None) -> bool:
+        """recommend_properties already pitched this property's automatic
+        length-of-stay offer to the guest -- get_pricing/negotiate_rate then
+        price it from that offer, so the guest never hears a higher number
+        than the one just pitched. (The discount only applies when the stay
+        still qualifies -- calculate_price re-derives it for the requested
+        nights.)"""
+        return any(
+            o.get("offer_percent") and o.get("property_id") == str(property_id) for o in state.recommendations_shown
+        )
+
+    @tool()
     async def check_calendar(
         params: FunctionCallParams,
         property_id: str,
@@ -182,10 +239,11 @@ def build_voice_tools(
                 state.set_slot("num_guests", args.num_guests)
                 state.lock_property(args.property_id)
                 state.mark_checking_availability()
-            except ValidationError:
-                result = INVALID_ARGS_MESSAGE
+            except ValidationError as exc:
+                result = ToolOutcome.invalid_arguments(exc)
         await params.result_callback(result)
 
+    @tool()
     async def get_pricing(
         params: FunctionCallParams,
         property_id: str,
@@ -232,7 +290,7 @@ def build_voice_tools(
                     check_out=check_out,
                     nights=nights,
                     num_guests=num_guests,
-                    apply_discounts=apply_discounts,
+                    apply_discounts=apply_discounts or _stay_offer_pitched(property_id),
                     requested_early_checkin=requested_early_checkin,
                     requested_late_checkout=requested_late_checkout,
                 )
@@ -308,10 +366,11 @@ def build_voice_tools(
                     on_priced=_on_priced,
                     window_start=window_start,
                 )
-            except ValidationError:
-                result = INVALID_ARGS_MESSAGE
+            except ValidationError as exc:
+                result = ToolOutcome.invalid_arguments(exc)
         await params.result_callback(result)
 
+    @tool()
     async def dispatch_technician(
         params: FunctionCallParams,
         property_id: str,
@@ -337,10 +396,11 @@ def build_voice_tools(
                     guest_phone=guest_phone or caller_number,
                 )
                 result = await tool_handlers.handle_dispatch_technician(db, args, call_session_id)
-            except ValidationError:
-                result = INVALID_ARGS_MESSAGE
+            except ValidationError as exc:
+                result = ToolOutcome.invalid_arguments(exc)
         await params.result_callback(result)
 
+    @tool()
     async def send_whatsapp(
         params: FunctionCallParams,
         message: str,
@@ -358,16 +418,19 @@ def build_voice_tools(
         """
         resolved_phone = phone or caller_number
         if not resolved_phone:
-            await params.result_callback("I don't have a phone number for that yet -- could you share one?")
+            await params.result_callback(
+                ToolOutcome.needs_clarification("I don't have a phone number for that yet -- could you share one?")
+            )
             return
         async with AsyncSessionLocal() as db:
             try:
                 args = SendWhatsappArgs(phone=resolved_phone, message=message, template_name=template_name)
                 result = await tool_handlers.handle_send_whatsapp(db, args, property_id, call_session_id)
-            except ValidationError:
-                result = INVALID_ARGS_MESSAGE
+            except ValidationError as exc:
+                result = ToolOutcome.invalid_arguments(exc)
         await params.result_callback(result)
 
+    @tool()
     async def send_photos(
         params: FunctionCallParams,
         property_id: str,
@@ -385,16 +448,19 @@ def build_voice_tools(
         """
         resolved_phone = guest_phone or caller_number
         if not resolved_phone:
-            await params.result_callback("I don't have a phone number for that yet -- could you share one?")
+            await params.result_callback(
+                ToolOutcome.needs_clarification("I don't have a phone number for that yet -- could you share one?")
+            )
             return
         async with AsyncSessionLocal() as db:
             try:
                 args = SendPhotosArgs(property_id=property_id, guest_phone=resolved_phone)
                 result = await tool_handlers.handle_send_photos(db, args, call_session_id, host_user_id)
-            except ValidationError:
-                result = INVALID_ARGS_MESSAGE
+            except ValidationError as exc:
+                result = ToolOutcome.invalid_arguments(exc)
         await params.result_callback(result)
 
+    @tool()
     async def escalate_to_host(
         params: FunctionCallParams,
         reason: str,
@@ -428,10 +494,11 @@ def build_voice_tools(
                     db, args, call_session_id, host_user_id, guest_profile_id=guest_profile_id
                 )
                 state.mark_escalated()
-            except ValidationError:
-                result = INVALID_ARGS_MESSAGE
+            except ValidationError as exc:
+                result = ToolOutcome.invalid_arguments(exc)
         await params.result_callback(result)
 
+    @tool()
     async def request_host_transfer(
         params: FunctionCallParams,
         reason: str | None = None,
@@ -456,10 +523,11 @@ def build_voice_tools(
                     db, args, call_session_id, property_id, host_user_id, guest_profile_id=guest_profile_id
                 )
                 state.mark_escalated()
-            except ValidationError:
-                result = INVALID_ARGS_MESSAGE
+            except ValidationError as exc:
+                result = ToolOutcome.invalid_arguments(exc)
         await params.result_callback(result)
 
+    @tool()
     async def negotiate_rate(
         params: FunctionCallParams,
         property_id: str,
@@ -635,19 +703,32 @@ def build_voice_tools(
                     on_priced=_on_negotiated,
                     prior_events=state.negotiation_events,
                     window_start=window_start,
+                    apply_stay_offer=_stay_offer_pitched(args.property_id),
                 )
                 state.record_negotiation_event(args.guest_offer, args.property_id)
                 if args.num_guests is not None:
                     state.set_slot("num_guests", args.num_guests)
                 state.lock_property(args.property_id)
                 state.mark_negotiating()
-            except ValidationError:
-                result = INVALID_ARGS_MESSAGE
+            except ValidationError as exc:
+                result = ToolOutcome.invalid_arguments(exc)
         await params.result_callback(result)
 
+    def _arm_recommendation_failure() -> None:
+        if property_recommendation_guard is not None:
+            property_recommendation_guard.record_tool_result("recommend_properties", recommendation_failed_result())
+
+    @tool(
+        aliases={"budget": "budget_amount"},
+        internal_error_text=RECOMMENDATION_FAILED_TEXT,
+        on_internal_error=_arm_recommendation_failure,
+    )
     async def recommend_properties(
         params: FunctionCallParams,
-        budget: float | None = None,
+        budget_amount: float | None = None,
+        budget_basis: str | None = None,
+        budget_currency: str | None = None,
+        nights: int | None = None,
         num_guests: int | None = None,
         preferred_location: str | None = None,
         purpose_of_stay: str | None = None,
@@ -663,9 +744,24 @@ def build_voice_tools(
         check_calendar/get_pricing for that property instead. Only call this
         again if the guest gives a new, different location/name/criteria,
         e.g. explicitly asking to compare with or switch to another property.
+        This tool alone decides which properties fit the budget -- only name
+        or price properties it actually returned. If its result says FAILED,
+        it found nothing either way: never name a property from it.
 
         Args:
-            budget: The guest's nightly budget in INR, if known.
+            budget_amount: The rupee amount the guest said, exactly as a
+                number (e.g. "7k" -> 7000), if they gave one. Just the
+                number -- say whether it's per night or total via
+                budget_basis, never by converting it yourself.
+            budget_basis: "per_night" if the guest said per night / a night
+                / nightly; "total_stay" if they said total / overall / for
+                the whole stay. Leave unset if their words didn't say which
+                (e.g. just "my budget is 7000" or "under 7k") -- never guess,
+                and never pick total_stay just because you know the number
+                of nights.
+            budget_currency: Only if the guest named a currency other than
+                rupees (e.g. "USD") -- never convert it yourself.
+            nights: Number of nights the guest wants to stay, if known.
             num_guests: Number of guests, if known.
             preferred_location: Preferred city/area, if known.
             purpose_of_stay: e.g. family trip, couples getaway, workcation.
@@ -680,10 +776,10 @@ def build_voice_tools(
             cheaper_than_shown: Set True ONLY if the guest asks for something
                 cheaper than what you already recommended this call (e.g.
                 "something cheaper", "anything less expensive") -- never
-                invent a rupee figure yourself for this; leave budget unset
-                and this resolves to a real number automatically. Do not set
-                this if the guest names an actual number themselves -- use
-                budget directly for that instead.
+                invent a rupee figure yourself for this; leave budget_amount
+                unset and this resolves to a real number automatically. Do
+                not set this if the guest names an actual number themselves
+                -- use budget_amount directly for that instead.
             larger_than_shown: Set True ONLY if the guest asks for something
                 bigger than what you already recommended (e.g. "something
                 larger", "a bigger place") with no specific guest count
@@ -710,7 +806,8 @@ def build_voice_tools(
         if state.selected_property_id and not any(
             [
                 preferred_location,
-                budget,
+                budget_amount,
+                budget_basis,
                 purpose_of_stay,
                 required_amenities,
                 near_landmark,
@@ -736,7 +833,16 @@ def build_voice_tools(
         # call's own explicit argument always wins if the model did supply one
         # -- this only fills a gap, never overrides a real value just given.
         effective_num_guests = num_guests if num_guests is not None else state.slots.get("num_guests")
-        effective_budget = budget if budget is not None else state.slots.get("budget")
+        effective_budget = budget_amount if budget_amount is not None else state.slots.get("budget")
+        # Explicit budget semantics (app/services/property/budget.py): the
+        # basis the model passed wins; if it left it unset, the guest's own
+        # recent words (deterministic phrase match), then the basis already
+        # established earlier this call. Otherwise it stays "unspecified" and
+        # the backend asks rather than guessing.
+        effective_basis = coerce_budget_basis(budget_basis)
+        if effective_basis == "unspecified":
+            established = state.slots.get("budget_basis")
+            effective_basis = _basis_from_guest_words(params, established) or established or "unspecified"
         # Recommendation conversations ("Phase X"): the same backfill Phase 1.4
         # already established for num_guests/budget, extended to the three
         # remaining filter-relevant slots -- previously these were only ever
@@ -786,9 +892,15 @@ def build_voice_tools(
         # stated, rather than falling back to no filter at all.
         budget_is_derived = False
         num_guests_is_derived = False
-        if cheaper_than_shown and effective_budget is None:
-            effective_budget = state.resolve_cheaper_budget()
-            budget_is_derived = effective_budget is not None
+        # "Something cheaper" resolves even when a budget was stated earlier
+        # (the shown options already fit it, so a ceiling below the cheapest
+        # of them is always the tighter one); only an amount given in THIS
+        # call wins over the relative request. Derived from shown nightly
+        # prices -- nightly by construction.
+        if cheaper_than_shown and budget_amount is None:
+            derived_budget = state.resolve_cheaper_budget()
+            if derived_budget is not None:
+                effective_budget, effective_basis, budget_is_derived = derived_budget, "per_night", True
         if larger_than_shown and effective_num_guests is None:
             effective_num_guests = state.resolve_larger_num_guests()
             num_guests_is_derived = effective_num_guests is not None
@@ -832,6 +944,16 @@ def build_voice_tools(
             recommend_check_in = _parse_iso_date(state.slots.get("window_start"))
             recommend_check_out = _parse_iso_date(state.slots.get("window_end"))
             recommend_nights = state.slots.get("nights")
+        # Stay length for budget conversion: this call's own nights arg (the
+        # guest's latest statement), else the exact-dates span, else a
+        # nights-only slot from an earlier turn.
+        exact_check_in = _parse_iso_date(state.slots.get("check_in"))
+        exact_check_out = _parse_iso_date(state.slots.get("check_out"))
+        exact_dates = exact_check_in is not None and exact_check_out is not None and exact_check_out > exact_check_in
+        if not exact_dates:
+            exact_check_in = exact_check_out = None
+        exact_span = (exact_check_out - exact_check_in).days if exact_dates else None
+        budget_nights = nights if nights is not None and nights > 0 else exact_span or state.slots.get("nights")
         # Attention/salience -> ranking: an amenity the guest has emphasized
         # (mentioned repeatedly and/or recently) outweighs one only ever
         # said once, when apply_amenity_boost (filter_builder.py) ranks
@@ -845,9 +967,15 @@ def build_voice_tools(
             if effective_amenities
             else None
         )
+        # Any exception from here on is reported by voice_tool as an internal
+        # error (never an empty search), and _arm_recommendation_failure
+        # makes the guard replace the next reply outright.
         async with AsyncSessionLocal() as db:
             args = RecommendPropertiesArgs(
-                budget=effective_budget,
+                budget_amount=effective_budget,
+                budget_basis=effective_basis,
+                budget_currency=budget_currency or "INR",
+                nights=budget_nights,
                 num_guests=effective_num_guests,
                 preferred_location=effective_location,
                 purpose_of_stay=effective_purpose,
@@ -866,30 +994,61 @@ def build_voice_tools(
                 nights=recommend_nights,
                 call_session_id=call_session_id,
                 amenity_weights=amenity_weights,
+                stay_check_in=exact_check_in,
+                stay_check_out=exact_check_out,
+                stay_window_start=None if exact_dates else _parse_iso_date(state.slots.get("window_start")),
+                budget_basis_assumed=effective_basis == "unspecified" and state.budget_basis_clarification_asked,
             )
         rendered_result = render_recommendation_text(structured_result)
         if property_recommendation_guard is not None:
             property_recommendation_guard.record_tool_result("recommend_properties", structured_result)
         if not num_guests_is_derived:
             state.set_slot("num_guests", effective_num_guests)
-        if not budget_is_derived:
+        if not budget_is_derived and effective_budget is not None:
             state.set_slot("budget", effective_budget)
+            # Only stored alongside a real amount -- "how much per night?"
+            # with no budget given must not pin a basis a later, different
+            # amount would silently inherit.
+            if effective_basis != "unspecified":
+                state.set_slot("budget_basis", effective_basis)
+        if nights is not None and nights > 0 and not state.slots.get("check_in"):
+            # Same rule as update_lead's wrapper: a nights-only stay length
+            # is only kept while no exact check-in is known.
+            state.set_slot("nights", nights)
         state.set_slot("preferred_location", effective_location)
         state.set_slot("purpose_of_stay", effective_purpose)
         state.set_slot("required_amenities", effective_amenities)
-        state.record_recommendations(
-            [
-                {
-                    "property_id": str(card.property_id),
-                    "name": card.spoken_name,
-                    "price": card.base_price,
-                    "guests": card.max_guests,
-                }
-                for card in structured_result.options
-            ]
-        )
-        await params.result_callback(rendered_result)
+        budget = structured_result.budget
+        if budget is not None and budget.clarification == "budget_basis":
+            state.budget_basis_clarification_asked = True
+        shown_cards = [*structured_result.options, *structured_result.near_budget]
+        if structured_result.upsell is not None:
+            shown_cards.append(structured_result.upsell)
+        # Only a result that actually named properties replaces what was
+        # shown -- a clarification or zero-match result must not wipe the
+        # earlier recommendations ("something cheaper" is relative to them).
+        if shown_cards:
+            state.record_recommendations(
+                [
+                    {
+                        "property_id": str(card.property_id),
+                        "name": card.spoken_name,
+                        "price": card.applicable_nightly_rate,
+                        "guests": card.max_guests,
+                        "offer_percent": card.stay_price.offer_percent if card.stay_price is not None else 0.0,
+                    }
+                    for card in shown_cards
+                ]
+            )
+        if budget is not None and budget.clarification is not None:
+            outcome = ToolOutcome.needs_clarification(rendered_result)
+        elif structured_result.options:
+            outcome = ToolOutcome.ok(rendered_result)
+        else:
+            outcome = ToolOutcome.no_results(rendered_result)
+        await params.result_callback(outcome)
 
+    @tool(aliases={"budget": "budget_amount"})
     async def update_lead(
         params: FunctionCallParams,
         guest_name: str | None = None,
@@ -902,7 +1061,8 @@ def build_voice_tools(
         window_end: str | None = None,
         num_guests: int | None = None,
         purpose_of_stay: str | None = None,
-        budget: float | None = None,
+        budget_amount: float | None = None,
+        budget_basis: str | None = None,
         preferred_location: str | None = None,
         lead_temperature: LeadTemperature | None = None,
         properties_discussed: list[str] | None = None,
@@ -951,7 +1111,11 @@ def build_voice_tools(
                 if given.
             num_guests: Number of guests, if known.
             purpose_of_stay: e.g. family trip, couples getaway, workcation.
-            budget: The guest's nightly budget in INR, if known.
+            budget_amount: The rupee amount the guest gave as their budget,
+                if known -- just the number they said, never converted (same
+                name and meaning as recommend_properties' budget_amount).
+            budget_basis: "per_night" or "total_stay", exactly as for
+                recommend_properties -- leave unset if the guest didn't say.
             preferred_location: Preferred city/area, if known.
             lead_temperature: One of hot, warm, cold.
             properties_discussed: Property names discussed so far (the dashboard's Leads
@@ -1000,7 +1164,7 @@ def build_voice_tools(
                     window_end=window_end,
                     num_guests=num_guests,
                     purpose_of_stay=purpose_of_stay,
-                    budget=budget,
+                    budget=budget_amount,
                     preferred_location=preferred_location,
                     lead_temperature=lead_temperature,
                     properties_discussed=properties_discussed,
@@ -1040,14 +1204,19 @@ def build_voice_tools(
                     state.set_slot("window_end", args.window_end.isoformat() if args.window_end else None)
                 state.set_slot("num_guests", args.num_guests)
                 state.set_slot("budget", args.budget)
+                # Call-local only (no Lead column), same as nights -- read
+                # back by recommend_properties' wrapper.
+                if coerce_budget_basis(budget_basis) != "unspecified":
+                    state.set_slot("budget_basis", coerce_budget_basis(budget_basis))
                 state.set_slot("preferred_location", args.preferred_location)
                 state.set_slot("purpose_of_stay", args.purpose_of_stay)
                 state.set_slot("phone", args.phone)
                 state.set_slot("guest_name", args.guest_name)
-            except ValidationError:
-                result = INVALID_ARGS_MESSAGE
+            except ValidationError as exc:
+                result = ToolOutcome.invalid_arguments(exc)
         await params.result_callback(result)
 
+    @tool()
     async def search_faq(
         params: FunctionCallParams,
         query: str,
@@ -1091,6 +1260,7 @@ def build_voice_tools(
             )
         await params.result_callback(result)
 
+    @tool()
     async def end_call(params: FunctionCallParams):
         """Call this the moment the guest has confirmed they have nothing
         further and the conversation has reached a natural close. Always say
@@ -1114,6 +1284,7 @@ def build_voice_tools(
             "Call will end after this turn.", properties=FunctionCallResultProperties(run_llm=False)
         )
 
+    @tool()
     async def decline_irrelevant_call(params: FunctionCallParams):
         """Call this to end a call that is clearly NOT about a booking,
         property, or guest support -- spam/telemarketing, a robocall, a wrong

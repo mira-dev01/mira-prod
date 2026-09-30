@@ -10,10 +10,20 @@ from typing import Literal
 
 from pydantic import BaseModel, field_validator, model_validator
 
+from app.services.property.budget import BudgetBasis, BudgetConstraint, coerce_budget_basis, normalize_budget
+
 Urgency = Literal["low", "medium", "high", "emergency"]
 IssueType = Literal["plumbing", "electrical", "ac", "wifi", "lock", "general"]
 GuestLoyalty = Literal["new", "returning", "frequent"]
 LeadTemperature = Literal["hot", "warm", "cold"]
+
+
+class ToolBusinessError(str):
+    """A tool result that is a valid call's business-level failure (property
+    not found, invalid date order, no price on file, ...) rather than a
+    normal answer. Still a plain str -- every existing caller/test comparing
+    the text keeps working -- but app/voice/tool_contract.py reports it to
+    the LLM as status "business_error" instead of "ok"."""
 
 
 def _normalize_phone(value: str) -> str:
@@ -167,7 +177,20 @@ class NegotiateRateArgs(BaseModel):
 
 
 class RecommendPropertiesArgs(BaseModel):
-    budget: float | None = None
+    # Explicit budget semantics (app/services/property/budget.py): an amount
+    # is meaningless without its basis -- "₹7000 per night" and "₹7000 for
+    # the whole stay" are different ceilings. budget_basis stays "unspecified"
+    # unless the guest's words established it; normalize_budget turns
+    # amount+basis+nights into the actual filter, never the LLM.
+    budget_amount: float | None = None
+    budget_basis: BudgetBasis = "unspecified"
+    budget_currency: str = "INR"
+    # Stay length, used to convert a total-stay budget to a nightly ceiling
+    # (and vice versa for logging/rendering). Confirmed live 2026-09-25: the
+    # LLM passed nights= to recommend_properties when it wasn't part of the
+    # tool's signature, and the call died with a TypeError before any code
+    # ran. Non-positive values mean "unknown", never an error mid-call.
+    nights: int | None = None
     num_guests: int | None = None
     preferred_location: str | None = None
     purpose_of_stay: str | None = None
@@ -192,6 +215,25 @@ class RecommendPropertiesArgs(BaseModel):
     cheaper_than_shown: bool = False
     larger_than_shown: bool = False
     more_premium_than_shown: bool = False
+
+    @field_validator("budget_basis", mode="before")
+    @classmethod
+    def _coerce_budget_basis(cls, value: str | None) -> BudgetBasis:
+        return coerce_budget_basis(value)
+
+    @field_validator("nights", mode="before")
+    @classmethod
+    def _unknown_nights(cls, value) -> int | None:
+        try:
+            nights = int(value)
+        except (TypeError, ValueError):
+            return None
+        return nights if nights > 0 else None
+
+    def budget_constraint(self, assume_per_night: bool = False) -> BudgetConstraint | None:
+        return normalize_budget(
+            self.budget_amount, self.budget_basis, self.nights, self.budget_currency, assume_per_night=assume_per_night
+        )
 
 
 class UpdateLeadArgs(BaseModel):

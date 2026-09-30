@@ -5,11 +5,15 @@ Property becomes guest-facing content.
 """
 
 import dataclasses
+import uuid
 from datetime import date
 
 from app.models.property import Property
 from app.schemas.tool import RecommendPropertiesArgs
+from app.services.property.budget import BudgetConstraint
+from app.services.pricing_engine import StayPrice
 from app.services.property.card import (
+    PropertyCard,
     amenity_checklist_note,
     build_property_card,
     comparison_notes,
@@ -27,6 +31,11 @@ def build_recommendation_result(
     combo_note: str = "",
     args: RecommendPropertiesArgs | None = None,
     partially_available: list[tuple[Property, list[tuple[date, date]]]] | None = None,
+    near_budget: list[Property] | None = None,
+    budget: BudgetConstraint | None = None,
+    stay_prices: "dict[uuid.UUID, StayPrice] | None" = None,
+    upsell: Property | None = None,
+    upsell_reason: str = "",
 ) -> RecommendationResult:
     """partially_available (Availability-first recommendations,
     Implementation 3): properties excluded from `properties` because
@@ -36,7 +45,25 @@ def build_recommendation_result(
     lightweight PartiallyAvailableProperty entries -- never PropertyCards,
     so it's structurally impossible for one to be rendered through
     format_property_pitch_line's normal per-option path as if it were a
-    clean recommendation."""
+    clean recommendation.
+
+    upsell/upsell_reason: at most one better-but-pricier property and the
+    real reason it's better (orchestrator._pick_upsell) -- also never an
+    option, only ever rendered as a labelled steeper alternative.
+
+    near_budget (explicit budget semantics): properties within
+    NEAR_BUDGET_STRETCH of the guest's budget but NOT within it -- carried
+    separately from `options` so they can only ever be rendered with an
+    explicit over-budget label, never as a match."""
+    stay_prices = stay_prices or {}
+
+    def _card(p: Property) -> PropertyCard:
+        # The applicable stay price (offer included) rides on the card, so
+        # the pitch, the guard and ConversationState all see the same number.
+        return dataclasses.replace(build_property_card(p), stay_price=stay_prices.get(p.id))
+
+    near_budget_cards = [_card(p) for p in (near_budget or [])]
+    upsell_card = _card(upsell) if upsell is not None else None
     partial_cards = [
         PartiallyAvailableProperty(
             spoken_name=p.spoken_name or p.display_name or p.raw_name or p.name,
@@ -53,14 +80,24 @@ def build_recommendation_result(
         # it's just not a clean match for the guest's exact window. Only
         # fall back to not_found when there's truly nothing to say, partial
         # or otherwise.
-        return RecommendationResult(options=[], not_found=not partial_cards, partially_available=partial_cards)
-    cards = [build_property_card(p) for p in properties]
+        return RecommendationResult(
+            options=[],
+            not_found=not partial_cards and not near_budget_cards and upsell_card is None,
+            partially_available=partial_cards,
+            near_budget=near_budget_cards,
+            budget=budget,
+            upsell=upsell_card,
+            upsell_reason=upsell_reason,
+        )
+    cards = [_card(p) for p in properties]
     # Phase 2.1 (documentation/agent-conversation-improvement.md): args is
     # optional so any other/future caller of build_recommendation_result that
     # doesn't have guest criteria in scope still works, correctly producing
     # no fabricated reasons rather than erroring.
     if args is not None:
-        cards = [dataclasses.replace(card, match_reasons=match_reasons_for_card(card, args)) for card in cards]
+        cards = [
+            dataclasses.replace(card, match_reasons=match_reasons_for_card(card, args, budget)) for card in cards
+        ]
         # Recommendation conversations ("Phase X"): required_amenities is now
         # a soft ranking preference (filter_builder.apply_amenity_boost), so
         # a returned card can genuinely have some but not all of a guest's
@@ -102,4 +139,8 @@ def build_recommendation_result(
         # right here -- never a new judgment call handed to the model.
         recommendation_confidence=confidence_for_result(cards, combo_note),
         partially_available=partial_cards,
+        near_budget=near_budget_cards,
+        budget=budget,
+        upsell=upsell_card,
+        upsell_reason=upsell_reason,
     )
