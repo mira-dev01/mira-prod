@@ -805,6 +805,50 @@ async def test_recommend_properties_matches_north_goa_locality(test_user, db_ses
     assert "Azure" not in result_text
 
 
+async def test_recommend_properties_matches_anglicized_city_name_to_official_name(test_user, db_session):
+    """Regression for the exact live failure on 2026-09-30: a guest asked
+    for "Bangalore," the property's own `city` is stored as "Bengaluru,"
+    and the guest was told no property matched at all -- "bangalore" and
+    "bengaluru" share no substring either direction, so a raw ILIKE match
+    structurally cannot bridge the two names for the same city."""
+    griha = Property(
+        user_id=test_user.id,
+        name="Griha 3BHK",
+        city="Bengaluru",
+        exophone="+918022223333",
+        base_price=4200,
+        max_guests=6,
+    )
+    db_session.add(griha)
+    await db_session.commit()
+
+    args = RecommendPropertiesArgs(preferred_location="Bangalore", num_guests=4)
+    result = await tool_handlers.handle_recommend_properties(db_session, args, test_user.id)
+    result_text = render_recommendation_text(result)
+    assert "Griha" in result_text
+
+
+async def test_recommend_properties_matches_official_city_name_to_anglicized_name(test_user, db_session):
+    """The reverse direction of the anglicized-name fix -- a guest asking
+    for the current official name ("Bengaluru") must still find a property
+    whose own city was typed as the older anglicized name ("Bangalore")."""
+    older_listing = Property(
+        user_id=test_user.id,
+        name="MG Road Studio",
+        city="Bangalore",
+        exophone="+918022224444",
+        base_price=3800,
+        max_guests=2,
+    )
+    db_session.add(older_listing)
+    await db_session.commit()
+
+    args = RecommendPropertiesArgs(preferred_location="Bengaluru")
+    result = await tool_handlers.handle_recommend_properties(db_session, args, test_user.id)
+    result_text = render_recommendation_text(result)
+    assert "MG Road Studio" in result_text
+
+
 async def test_recommend_properties_suggests_combining_units_for_large_group(test_user, db_session):
     # No single property in the portfolio sleeps 6 -- rather than a flat
     # "couldn't find", the tool should surface the smaller units and let the
