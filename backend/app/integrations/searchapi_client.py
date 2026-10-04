@@ -29,6 +29,7 @@ from datetime import date, timedelta
 import httpx
 
 from app.config import settings
+from app.services import usage_meter
 from app.integrations import redis_client
 
 _BASE_URL = "https://www.searchapi.io/api/v1/search"
@@ -70,6 +71,7 @@ async def fetch_comparable_nightly_rates(
 
     nights = max((check_out - check_in).days, 1)
     async with httpx.AsyncClient(timeout=timeout) as client:
+        usage_meter.record_usage_detached("searchapi", "requests", 1, metadata={"op": "comparable_rates"})
         response = await client.get(
             _BASE_URL,
             params={
@@ -126,6 +128,7 @@ async def fetch_property_coordinates(listing_id: str, timeout: float = 15.0) -> 
         return None
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
+            usage_meter.record_usage_detached("searchapi", "requests", 1, metadata={"op": "property_coordinates"})
             response = await client.get(
                 _BASE_URL,
                 params={
@@ -170,6 +173,7 @@ async def _fetch_listing_price_uncached(
     bounding_box = [[latitude + delta, longitude + delta], [latitude - delta, longitude - delta]]
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
+            usage_meter.record_usage_detached("searchapi", "requests", 1, metadata={"op": "listing_price"})
             response = await client.get(
                 _BASE_URL,
                 params={

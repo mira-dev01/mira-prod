@@ -282,3 +282,22 @@ def build_call_summary_email_html(
 </body>
 </html>
 """
+
+
+def build_admin_login_code_email_html(code: str, ttl_minutes: int) -> str:
+    """One-time login code for the internal /admin panel (app/api/v1/admin_auth.py)."""
+    return f"""<!doctype html>
+<html><body style="margin:0;padding:24px;background:{_BACKGROUND};font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:{_FOREGROUND};">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;margin:0 auto;background:{_CARD};border:1px solid {_BORDER};border-radius:14px;">
+    <tr><td style="padding:28px 28px 8px 28px;">
+      <div style="font-size:20px;"><span style="color:{_PRIMARY};">&#10035;</span> mira <span style="color:{_MUTED};font-size:13px;">admin</span></div>
+    </td></tr>
+    <tr><td style="padding:8px 28px 4px 28px;font-size:15px;">Your admin sign-in code:</td></tr>
+    <tr><td style="padding:8px 28px 8px 28px;">
+      <div style="font-size:32px;font-weight:600;letter-spacing:8px;font-family:Menlo,Consolas,monospace;">{code}</div>
+    </td></tr>
+    <tr><td style="padding:4px 28px 28px 28px;font-size:13px;color:{_MUTED};">
+      Expires in {ttl_minutes} minutes and works once. If you didn't request it, ignore this email.
+    </td></tr>
+  </table>
+</body></html>"""

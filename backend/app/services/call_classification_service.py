@@ -36,6 +36,7 @@ import json
 import logging
 
 from app.config import settings
+from app.services import usage_meter
 from app.schemas.call_classification import CallType, ClassificationResult
 
 logger = logging.getLogger(__name__)
@@ -126,6 +127,7 @@ async def _call_groq(prompt: str) -> str:
         messages=[{"role": "user", "content": prompt}],
         response_format={"type": "json_object"},
     )
+    usage_meter.record_llm_response_usage("groq", response, model=settings.groq_model, purpose="call_classification")
     return response.choices[0].message.content or ""
 
 
@@ -138,6 +140,9 @@ async def _call_anthropic(prompt: str) -> str:
         max_tokens=256,
         messages=[{"role": "user", "content": prompt}],
     )
+    usage_meter.record_llm_response_usage(
+        "anthropic", response, model=settings.anthropic_model, purpose="call_classification"
+    )
     return "".join(block.text for block in response.content if block.type == "text")
 
 
@@ -148,6 +153,9 @@ async def _call_openrouter(prompt: str) -> str:
     response = await client.chat.completions.create(
         model=settings.openrouter_model,
         messages=[{"role": "user", "content": prompt}],
+    )
+    usage_meter.record_llm_response_usage(
+        "openrouter", response, model=settings.openrouter_model, purpose="call_classification"
     )
     return response.choices[0].message.content or ""
 

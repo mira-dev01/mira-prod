@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.call_quality_event import CallQualityEvent
+from app.models.call_quality_event import INTERNAL_TELEMETRY_RULES, CallQualityEvent
 from app.models.call_session import CallSession
 from app.models.guest_profile import GuestProfile
 from app.models.property import Property
@@ -393,7 +393,10 @@ async def quality_event_analytics(db: AsyncSession, user_id: uuid.UUID, bucket: 
     POST /faq/gaps/{gap_id}/answer endpoint -- this task adds no equivalent
     action.
     """
-    base_filters = [CallSession.user_id == user_id]
+    base_filters = [
+        CallSession.user_id == user_id,
+        CallQualityEvent.rule.not_in(INTERNAL_TELEMETRY_RULES),
+    ]
 
     most_frequent_stmt = (
         select(

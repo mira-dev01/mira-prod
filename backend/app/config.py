@@ -450,6 +450,41 @@ class Settings(BaseSettings):
     # production config.
     turn_detection_strategy: Literal["vad_fixed", "hybrid_experimental"] = "vad_fixed"
 
+    # Phase 1A audio-input telemetry (app/voice/audio_input_observer.py) --
+    # observation only, never changes what Mira hears or says. On by default
+    # so the shadow-week data actually accumulates; kill-switch exists only
+    # in case the per-frame level measurement ever shows up as CPU pressure
+    # (its own measured cost is persisted per call as observer_overhead_ms).
+    audio_input_telemetry_enabled: bool = True
+
+    # Usage metering for the internal /admin panel (app/services/
+    # usage_meter.py) -- every paid external call is recorded fail-open into
+    # service_usage_events. Kill-switch only; on by default.
+    usage_metering_enabled: bool = True
+
+    # Internal /admin panel (app/api/v1/admin_auth.py, app/api/v1/admin.py).
+    # Entirely separate from host (Clerk) auth: an emailed one-time code,
+    # then a short-lived HS256 JWT signed with admin_jwt_secret. Only the
+    # comma-separated admin_emails can request a code; the allowlist is
+    # re-checked on every request, so removing an address revokes access
+    # immediately. admin_jwt_secret has NO default on purpose -- unset means
+    # admin login is disabled (503), never "signed with a guessable key".
+    admin_emails: str = "abhayatrivedi2005@gmail.com,shagunverma.2004@gmail.com"
+    admin_jwt_secret: str | None = None
+    admin_session_hours: int = 12
+    admin_otp_ttl_minutes: int = 10
+
+    # Neon (Postgres) usage for the admin panel's Balances view -- an API key
+    # from Neon Console -> Account settings -> API keys, and the project id
+    # from Project settings. Both unset = the Neon card shows "not
+    # configured", nothing else is affected.
+    neon_api_key: str | None = None
+    neon_project_id: str | None = None
+
+    @property
+    def admin_email_set(self) -> frozenset[str]:
+        return frozenset(e.strip().lower() for e in self.admin_emails.split(",") if e.strip())
+
     # Kill-switch for recommend_properties' semantic search layer
     # (app/services/property/retrieval/semantic_search.py) -- the one place
     # in this codebase that makes a synchronous embedding API call on the

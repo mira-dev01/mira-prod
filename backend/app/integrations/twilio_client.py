@@ -11,6 +11,7 @@ import re
 import httpx
 
 from app.config import settings
+from app.services import usage_meter
 from app.utils.webhook_auth import verify_shared_secret_token
 
 logger = logging.getLogger(__name__)
@@ -83,6 +84,7 @@ async def send_whatsapp_message(to_phone: str, body: str, timeout: float = 15.0)
             raise TwilioError(f"send failed ({response.status_code}): {response.text}")
         data = response.json()
 
+    usage_meter.record_usage_detached("twilio_whatsapp", "messages", 1, metadata={"kind": "freeform"})
     return {"status": "sent", "sid": data.get("sid"), "twilio_status": data.get("status")}
 
 
@@ -134,6 +136,7 @@ async def send_whatsapp_template(
             raise TwilioError(f"template send failed ({response.status_code}): {response.text}")
         data = response.json()
 
+    usage_meter.record_usage_detached("twilio_whatsapp", "messages", 1, metadata={"kind": "template"})
     return {"status": "sent", "sid": data.get("sid"), "twilio_status": data.get("status")}
 
 

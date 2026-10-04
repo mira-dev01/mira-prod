@@ -16,6 +16,7 @@ listing URL rather than one profile link.
 import httpx
 
 from app.config import settings
+from app.services import usage_meter
 
 _BASE_URL = "https://api.brightdata.com/datasets/v3"
 _DATASET_ID = "gd_ld7ll037kqy322v05"
@@ -38,6 +39,7 @@ async def trigger_scrape(urls: list[str], timeout: float = 15.0) -> str:
     """Starts an async scrape job for the given Airbnb listing URLs.
     Returns a snapshot_id used to poll status and fetch results."""
     async with httpx.AsyncClient(timeout=timeout) as client:
+        usage_meter.record_usage_detached("brightdata", "scrapes", len(urls))
         response = await client.post(
             f"{_BASE_URL}/trigger",
             params={"dataset_id": _DATASET_ID, "format": "json"},
@@ -82,4 +84,5 @@ async def get_snapshot_data(snapshot_id: str, timeout: float = 30.0) -> list[dic
         data = response.json()
         if not isinstance(data, list):
             raise BrightDataError(f"expected a list of records, got: {type(data)}")
+        usage_meter.record_usage_detached("brightdata", "records", len(data) if isinstance(data, list) else 0)
         return data

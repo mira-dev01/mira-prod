@@ -1,6 +1,6 @@
 import uuid
 
-from app.models.call_quality_event import CallQualityEvent
+from app.models.call_quality_event import AUDIO_INPUT_TELEMETRY_RULE, CallQualityEvent
 from app.models.call_session import CallSession
 from app.models.lead import Lead
 from app.models.user import User
@@ -129,6 +129,42 @@ async def test_quality_events_analytics_groups_by_rule_and_severity(
     most_frequent = resp.json()["most_frequent"]
     assert {"rule": "style_compliance", "severity": "FAIL", "count": 2} in most_frequent
     assert {"rule": "response_shape", "severity": "WARNING", "count": 1} in most_frequent
+
+
+async def test_quality_events_analytics_excludes_internal_audio_telemetry(
+    client, auth_headers, test_user, test_call_session, db_session
+):
+    """The per-call audio_input_telemetry row (app/voice/
+    audio_input_observer.py) is operator-facing telemetry, not a guard
+    firing -- it must not appear in, or inflate, a host's quality analytics."""
+    db_session.add_all(
+        [
+            CallQualityEvent(
+                call_session_id=test_call_session.id,
+                rule="style_compliance",
+                severity="FAIL",
+                confidence=0.9,
+                turn_index=1,
+                processing_time_ms=1.0,
+            ),
+            CallQualityEvent(
+                call_session_id=test_call_session.id,
+                rule=AUDIO_INPUT_TELEMETRY_RULE,
+                severity="INFO",
+                confidence=1.0,
+                turn_index=12,
+                processing_time_ms=4.0,
+                metadata_json={"summary": {"segments_total": 12}},
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    resp = await client.get("/api/v1/analytics/quality-events", headers=auth_headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert all(row["rule"] != AUDIO_INPUT_TELEMETRY_RULE for row in body["most_frequent"])
+    assert sum(row["count"] for row in body["over_time"]) == 1
 
 
 async def test_quality_events_analytics_scoped_to_authenticated_host(

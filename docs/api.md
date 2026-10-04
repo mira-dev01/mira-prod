@@ -143,6 +143,19 @@ See [agents.md](agents.md) for what runs behind these endpoints.
 |---|---|---|
 | `POST /webhooks/whatsapp/inbound` | Twilio's inbound-message callback for a guest replying to the Busy Recovery menu (see `app/services/recovery_service.py`). Routes the reply via `app/services/whatsapp_reply_service.py` — resolves the guest's existing recovery `Lead` by phone (reuses `GuestProfile`/`Lead` identity, never creates a second Lead for the same guest) and answers Property/Pricing/FAQs/Photos directly, or notifies the host for "talk to host"/free-text replies | `token` query param (`TWILIO_WHATSAPP_WEBHOOK_TOKEN`), verified via `verify_whatsapp_webhook_token` |
 
+## `admin_auth.py` + `admin.py` — `/admin` (internal operator panel)
+
+Not host-facing and not Clerk-authenticated. Login is an emailed one-time code for an address in `ADMIN_EMAILS`, exchanged for a 12h HS256 admin JWT (`app/auth/admin.py`); every `/admin/*` data route requires it. Frontend lives at `/admin` (`frontend/src/app/admin/`), outside the host dashboard.
+
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/admin/auth/request-code` | `{email}`. Same response for non-admin addresses (no allowlist disclosure). 5 codes / 15 min per address; a new code retires older ones. 503 if `ADMIN_JWT_SECRET` or Resend isn't configured. |
+| POST | `/admin/auth/verify-code` | `{email, code}` → `{token, email, expires_at}`. Single-use, 10-min TTL, locked after 5 wrong attempts. |
+| GET | `/admin/auth/me` | Validates the session; 403 once the address leaves the allowlist. |
+| GET | `/admin/overview` · `/admin/audio` · `/admin/conversations` · `/admin/performance` · `/admin/leads` · `/admin/hosts` · `/admin/usage` | All take `start_date`, `end_date` (inclusive UTC days, default last 7) and `include_test_calls`. Cross-host aggregates from `app/services/admin_monitor_service.py`; each payload reports its own telemetry `coverage`. |
+| GET | `/admin/balances?refresh=` | Prepaid (Sarvam, Exotel: entered amount − metered spend since entry), postpaid (Groq: month spend vs budget), quota (Resend) and live provider balances (Twilio, OpenRouter, SearchApi, Bright Data, Cloudinary, Neon — `app/integrations/billing_clients.py`, cached 5 min). |
+| GET / PUT | `/admin/settings/services[/{account}]` | Prepaid amounts, unit prices, USD→INR rate (`fx`). Entering a prepaid amount restarts its "spent since" clock. |
+
 ## `GET /health` and `GET /api/v1/health/llm`
 
 Not domain-grouped — defined directly in `app/main.py`.
