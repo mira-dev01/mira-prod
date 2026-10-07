@@ -22,7 +22,7 @@ import { WhatsAppButton } from "@/components/whatsapp-button";
 import { useAsync } from "@/hooks/use-async";
 import { useDateRange } from "@/hooks/use-date-range";
 import { api, ApiError } from "@/lib/api";
-import { leadGuestLabel, leadPhoneLabel } from "@/lib/leads";
+import { leadGuestLabel, leadPhoneLabel, leadTemperatureLabel, leadTemperatureTone } from "@/lib/leads";
 import { cn, isBrowserTestIdentity, matchesSearch } from "@/lib/utils";
 import type { LeadOut, LeadStatus } from "@/lib/types";
 
@@ -36,11 +36,6 @@ const urgencyTone = leadUrgencyTone;
 // amber (warming up), neutral gray (not yet) -- reusing the same tones the
 // Calls/Overview pages use for status, so "what does this color mean"
 // stays answerable from one system instead of a lead-specific palette.
-const temperatureTone: Record<string, StatusTone> = {
-  hot: "destructive",
-  warm: "pending",
-  cold: "neutral",
-};
 
 // status is the host's own follow-up lifecycle, separate from temperature
 // (see CLAUDE.md) -- open needs attention (pending/amber), contacted is in
@@ -118,7 +113,7 @@ function LeadsTable({
               <TableCell>{lead.num_guests ?? "—"}</TableCell>
               <TableCell>
                 {lead.lead_temperature ? (
-                  <StatusChip status={lead.lead_temperature} tone={temperatureTone[lead.lead_temperature]} />
+                  <StatusChip status={leadTemperatureLabel(lead.lead_temperature)} tone={leadTemperatureTone[lead.lead_temperature]} />
                 ) : (
                   "—"
                 )}
@@ -195,7 +190,7 @@ function LeadCard({
           <div className="flex shrink-0 items-center gap-1.5">
             <WhatsAppButton phone={lead.phone} size="icon-sm" stopPropagation />
             {lead.lead_temperature && (
-              <StatusChip status={lead.lead_temperature} tone={temperatureTone[lead.lead_temperature]} />
+              <StatusChip status={leadTemperatureLabel(lead.lead_temperature)} tone={leadTemperatureTone[lead.lead_temperature]} />
             )}
           </div>
         </div>

@@ -1156,7 +1156,8 @@ def build_voice_tools(
             budget_basis: "per_night" or "total_stay", exactly as for
                 recommend_properties -- leave unset if the guest didn't say.
             preferred_location: Preferred city/area, if known.
-            lead_temperature: One of hot, warm, cold.
+            lead_temperature: One of very_hot, hot, warm, cold. very_hot only when the guest
+                explicitly says they want to go ahead with the booking.
             properties_discussed: Property names discussed so far (the dashboard's Leads
                 page displays these as-is -- never pass a property_id here).
             questions_asked: Questions the guest asked.

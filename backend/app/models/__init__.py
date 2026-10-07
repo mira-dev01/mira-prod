@@ -8,6 +8,7 @@ from app.models.guest_profile import GuestProfile
 from app.models.lead import Lead
 from app.models.negotiation_rule import NegotiationRule
 from app.models.notification import Notification
+from app.models.price_event import PriceEvent
 from app.models.pricing_rule import PricingRule
 from app.models.service_usage_event import ServiceUsageEvent
 from app.models.property import Property
@@ -28,6 +29,7 @@ __all__ = [
     "Lead",
     "NegotiationRule",
     "Notification",
+    "PriceEvent",
     "PricingRule",
     "Property",
     "PropertyChunk",

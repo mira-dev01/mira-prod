@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAsync } from "@/hooks/use-async";
@@ -36,6 +37,7 @@ export function CloseLeadDialog({
 }) {
   const { data: properties } = useAsync(() => api.properties.list(), []);
   const [propertyId, setPropertyId] = useState<string>("");
+  const [finalPrice, setFinalPrice] = useState("");
   const [submitting, setSubmitting] = useState(false);
   // Re-seed once per lead AND once properties finishes loading -- properties
   // is always still null on the dialog's first render (useAsync resolves it
@@ -48,6 +50,7 @@ export function CloseLeadDialog({
 
   if (lead && properties && loadedFor !== lead.id) {
     setPropertyId(discussedMatches.length === 1 ? discussedMatches[0].id : "");
+    setFinalPrice("");
     setLoadedFor(lead.id);
   }
 
@@ -68,6 +71,11 @@ export function CloseLeadDialog({
           guest_name: lead.guest_name,
           guest_phone: lead.phone,
           platform: "manual",
+          // Links the calendar booking to this Mira lead (confirmed
+          // attribution) and captures the price once, here, instead of
+          // asking for it again later.
+          lead_id: lead.id,
+          final_booking_price: finalPrice ? Number(finalPrice) : null,
         });
       }
       await api.leads.update(lead.id, { status: "closed" });
@@ -141,6 +149,20 @@ export function CloseLeadDialog({
                   <p className="text-xs text-muted-foreground">
                     No property selected — this lead will close without blocking the calendar.
                   </p>
+                )}
+                {propertyId && (
+                  <div className="space-y-2 pt-1">
+                    <Label htmlFor="close-lead-price">Final booking price (optional, total stay ₹)</Label>
+                    <Input
+                      id="close-lead-price"
+                      type="number"
+                      inputMode="numeric"
+                      min={1}
+                      value={finalPrice}
+                      onChange={(e) => setFinalPrice(e.target.value)}
+                      placeholder="Leave empty if not decided yet"
+                    />
+                  </div>
                 )}
               </div>
             ) : (

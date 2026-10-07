@@ -1,5 +1,6 @@
 """Fetches and parses Airbnb (or any) iCal export feeds into booking date ranges."""
 
+import re
 from dataclasses import dataclass
 from datetime import date, datetime
 
@@ -13,6 +14,19 @@ class ICalEvent:
     check_in: date
     check_out: date
     summary: str | None = None
+    # Airbnb reservation DESCRIPTION: "Phone Number (Last 4 Digits): 1234".
+    # None for blocks and for feeds that don't carry it.
+    phone_last4: str | None = None
+
+
+_PHONE_LAST4_RE = re.compile(r"last\s*4\s*digits\)?\s*:\s*(\d{4})", re.IGNORECASE)
+
+
+def _phone_last4(description: str | None) -> str | None:
+    if not description:
+        return None
+    match = _PHONE_LAST4_RE.search(description)
+    return match.group(1) if match else None
 
 
 def parse_ical(raw: str | bytes) -> list[ICalEvent]:
@@ -43,6 +57,7 @@ def parse_ical(raw: str | bytes) -> list[ICalEvent]:
                 check_in=check_in,
                 check_out=check_out,
                 summary=str(component.get("summary")) if component.get("summary") else None,
+                phone_last4=_phone_last4(str(component.get("description")) if component.get("description") else None),
             )
         )
 

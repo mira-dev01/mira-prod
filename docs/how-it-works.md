@@ -114,7 +114,7 @@ Collection mechanics, per `LEAD_AGENT_INSTRUCTIONS` (`system_prompt.py:900-1014`
    exact, finalized dates, even if an earlier `recommend_properties` classification already looked
    clean — that earlier signal was only ever scoped to a looser window or a stay-length estimate.
 4. `update_lead` called incrementally, every time any field becomes known — **this is the actual persistence step**; it upserts into `Lead` via `lead_service.upsert_lead`, additive-only (never blanks a field already set).
-5. The moment a guest verbally accepts a price: `update_lead(lead_temperature="hot", …)` then `escalate_to_host` in the same turn. **There is no tool that finalizes a booking** — this is a hard architectural line: MIRA can qualify and escalate, never confirm. A host closes the loop manually (WhatsApp/dashboard) outside the pipeline entirely.
+5. The moment a guest verbally accepts a price: `update_lead(lead_temperature="very_hot", …)` then `escalate_to_host` in the same turn. **There is no tool that finalizes a booking** — this is a hard architectural line: MIRA can qualify and escalate, never confirm. A host closes the loop manually (WhatsApp/dashboard) outside the pipeline entirely.
 
 **Real gap, not addressed anywhere in the existing plans**: no payment/deposit capture, no booking-confirmation webhook, no write-back to the property's calendar. `project_state.md`'s "Open design questions" section already flags this explicitly (Razorpay/Cashfree/PayU researched, not built) — it is *known and deprioritized*, not undiscovered.
 

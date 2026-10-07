@@ -69,7 +69,7 @@ def build_escalation_email_html(
         f'<span style="display:inline-block;background:{urgency_color};color:#ffffff;font-size:12px;font-weight:700;'
         f'text-transform:uppercase;letter-spacing:0.04em;padding:4px 10px;border-radius:999px;">{urgency}</span>'
     ]
-    if lead_temperature == "hot":
+    if lead_temperature in ("hot", "very_hot"):
         badges.append(
             f'<span style="display:inline-block;background:{_TEMPERATURE_COLORS["hot"]};color:#ffffff;font-size:12px;'
             f'font-weight:700;text-transform:uppercase;letter-spacing:0.04em;padding:4px 10px;border-radius:999px;'
@@ -207,7 +207,7 @@ def build_call_summary_email_html(
     call_page_url: str,
 ) -> str:
     badges_html = ""
-    if lead_temperature == "hot":
+    if lead_temperature in ("hot", "very_hot"):
         badges_html = (
             f'<span style="display:inline-block;background:{_TEMPERATURE_COLORS["hot"]};color:#ffffff;font-size:12px;'
             f'font-weight:700;text-transform:uppercase;letter-spacing:0.04em;padding:4px 10px;border-radius:999px;'

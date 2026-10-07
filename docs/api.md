@@ -37,6 +37,13 @@ See [research-flow.md](research-flow.md) for the two import paths' internals.
 | `POST /bookings` | Create a booking | required |
 | `DELETE /bookings/{id}` | Cancel a booking | required |
 | `POST /bookings/check-availability` | Check a property's availability for a date range | required |
+| `GET /bookings/reconciliation` | "Booking details need confirmation" queue: reservations missing a final price that the host hasn't answered for, plus probable Mira matches awaiting Yes/No. Checking out within the last 90 days or later. Returns `items` (booking + property name + matched conversation), `total`, `price_missing`, `attribution_pending` | required |
+| `GET /bookings/{id}/reconciliation` | Same view for one booking (Calendar booking panel) | required |
+| `PATCH /bookings/{id}/price` | Host's final-price answer. `choice`: `mira_conversation` (detected price, or a corrected `final_booking_price`; stored as `price_source=host_confirmed`), `outside_mira` (`final_booking_price` required; `host_entered`), `not_confirmed_yet` (stays `pending_confirmation`, not asked again). 422 for a missing amount or blocked dates | required |
+| `PATCH /bookings/{id}/attribution` | Host's "Mira match?" answer, `{is_mira_match}`. Yes → `confirmed` (lead moves to `booked`); No → `not_attributed`, and conversation-derived prices are withdrawn. 422 if the booking has no matched conversation | required |
+| `PATCH /bookings/{id}/kind` | `reservation` ⇄ `blocked` (an iCal block that was really a stay, or vice versa) | required |
+
+`POST /bookings` also accepts `kind`, `final_booking_price` (→ `host_entered`, confirmed) and `lead_id` (booking created by closing a Mira lead → attribution `confirmed`). See `app/services/booking_reconciliation_service.py` for the attribution and price-detection rules.
 
 ## `calls.py` — `/calls`
 
@@ -88,6 +95,7 @@ See [research-flow.md](research-flow.md) for how these rules feed `negotiate_rat
 |---|---|---|
 | `GET /analytics/summary` | Dashboard stat cards: total/completed/escalated calls, open notifications, pipeline value, open leads, answer rate. Params: `days` (default 30), `start_date`/`end_date` (override `days`), `include_test_calls` | required |
 | `GET /analytics/timeseries` | Bucketed time series for one metric: `total_calls`, `completed_calls`, `escalated_calls`, `pipeline_value`, `open_leads`. Params: `metric`, `start_date`, `end_date`, `include_test_calls` | required |
+| `GET /analytics/dashboard` | Everything on the host Analytics page in one response: `portfolio` (occupancy, revenue, ADR, RevPAR, upcoming revenue, `completeness`, previous-period `comparison`), `funnel`, `impact` (counts CONFIRMED attribution only), `guest_intent`, `pricing` (sample-size gated), `needs_confirmation`. Financial metrics read `Booking.final_booking_price` only. Definitions are on each function in `app/services/analytics_service.py`. Params: `start_date`/`end_date` (default last 30 days IST, max 1 year), `property_id`, `include_test_calls`, `compare` | required |
 | `GET /analytics/recovery` | Busy Call Recovery funnel/KPIs (Opportunities page's Recovery Analytics card): `busy_calls` (one per rejected call attempt, from `Notification(channel="busy_recovery")` — not `Lead`, which dedups repeat attempts from the same guest), `recovered` (distinct leads with a `busy_recovery_reply` notification), `converted`/`lost` (recovery leads with `status="booked"`/`"closed"`), `avg_recovery_time_seconds` (first rejection → guest's first reply, per lead, averaged), `avg_host_response_seconds` (notification created → first marked read, via `Notification.responded_at`), `recovery_rate`/`conversion_rate`, and a `funnel` array (`busy_calls`→`recovered`→`converted`). Scoped by `Lead.user_id` (not `property_id.in_(owned_property_ids)`) since a reply notification can have `property_id=NULL`. Params: `days` (default 30), `start_date`/`end_date` (override `days`) | required |
 
 ## `notifications.py` — `/notifications`

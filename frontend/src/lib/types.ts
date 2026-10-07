@@ -390,16 +390,42 @@ export type GuestProfileUpdate = {
   notes?: string | null;
 };
 
+// Mirrors backend/app/schemas/booking.py -- see app/services/
+// booking_reconciliation_service.py for what each status means.
+export type BookingKind = "reservation" | "blocked";
+export type PriceSource = "mira_conversation" | "host_confirmed" | "host_entered" | "external_pms" | "unknown";
+export type PriceStatus = "confirmed" | "pending_confirmation" | "unknown";
+export type AttributionStatus = "confirmed" | "probable" | "not_attributed" | "unknown";
+export type PriceChoice = "mira_conversation" | "outside_mira" | "not_confirmed_yet";
+
 export type BookingOut = {
   id: string;
   property_id: string;
   guest_phone: string | null;
+  guest_phone_last4: string | null;
   guest_name: string | null;
   check_in: string;
   check_out: string;
   platform: string;
   status: string;
+  kind: BookingKind;
   created_at: string;
+  initial_price: number | null;
+  negotiated_price: number | null;
+  final_booking_price: number | null;
+  currency: string;
+  price_source: PriceSource;
+  price_status: PriceStatus;
+  price_confirmed_at: string | null;
+  price_confirmed_by: string | null;
+  mira_attribution_status: AttributionStatus;
+  mira_attribution_call_session_id: string | null;
+  mira_attribution_lead_id: string | null;
+  mira_attribution_signals: string[];
+  // Derived server-side -- the single definition of "does this need the host?".
+  needs_price_confirmation: boolean;
+  needs_attribution_review: boolean;
+  detected_price: number | null;
 };
 
 export type BookingCreate = {
@@ -409,6 +435,32 @@ export type BookingCreate = {
   check_in: string;
   check_out: string;
   platform?: string;
+  kind?: BookingKind;
+  final_booking_price?: number | null;
+  lead_id?: string | null;
+};
+
+export type MatchedConversation = {
+  lead_id: string;
+  call_session_id: string | null;
+  guest_name: string | null;
+  guest_phone: string | null;
+  lead_temperature: string | null;
+  conversation_at: string | null;
+  summary: string | null;
+};
+
+export type BookingReconciliation = {
+  booking: BookingOut;
+  property_name: string;
+  conversation: MatchedConversation | null;
+};
+
+export type ReconciliationQueue = {
+  items: BookingReconciliation[];
+  total: number;
+  price_missing: number;
+  attribution_pending: number;
 };
 
 export type PricingRuleOut = {
@@ -583,9 +635,12 @@ export type ServiceRequestOut = {
   dismissed_at: string | null;
 };
 
+// very_hot = explicit booking intent -- see backend/app/services/lead_temperature.py.
+export type LeadTemperature = "very_hot" | "hot" | "warm" | "cold";
+
 export type LeadUpdate = {
   guest_name?: string | null;
-  lead_temperature?: "hot" | "warm" | "cold" | null;
+  lead_temperature?: LeadTemperature | null;
   next_follow_up?: string | null;
   conversation_summary?: string | null;
   transferred_to_host?: boolean | null;
@@ -656,4 +711,89 @@ export type BaselineStats = {
 export type ObjectionInsights = {
   by_tag: ObjectionTagStats[];
   baseline: BaselineStats;
+};
+
+// GET /analytics/dashboard -- definitions live on each function in
+// backend/app/services/analytics_service.py.
+export type Completeness = {
+  bookings_total: number;
+  bookings_priced: number;
+  bookings_missing_price: number;
+  is_complete: boolean;
+};
+
+export type SampledMetric = {
+  value: number | null;
+  sample_size: number;
+  sufficient: boolean;
+  min_sample_size: number;
+};
+
+export type PortfolioMetricKey = "occupancy" | "revenue" | "adr" | "revpar";
+
+export type PortfolioPerformance = {
+  occupancy: number | null;
+  revenue: number | null;
+  adr: number | null;
+  revpar: number | null;
+  upcoming_revenue: number | null;
+  booked_nights: number;
+  available_nights: number;
+  blocked_nights: number;
+  currency: string;
+  completeness: Completeness;
+  upcoming_completeness: Completeness;
+  comparison: {
+    start_date: string;
+    end_date: string;
+    change: Record<PortfolioMetricKey, number | null>;
+  } & Record<PortfolioMetricKey, number | null> | null;
+};
+
+export type FunnelStage = {
+  key: string;
+  label: string;
+  value: number;
+  unit: "conversations" | "guests";
+  rate_from_previous: number | null;
+};
+
+export type MiraImpact = {
+  attributed_bookings: number;
+  attributed_revenue: number | null;
+  attributed_completeness: Completeness;
+  awaiting_confirmation: number;
+  after_hours_opportunities: { configured: boolean; value: number | null; share: number | null };
+  revenue_recovered: number | null;
+  recovery: { busy_calls: number; recovered: number; converted: number };
+  resolved_by_mira: number;
+  resolved_by_mira_rate: number | null;
+  host_escalations: number;
+  conversations: number;
+};
+
+export type GuestIntentCategory = { key: string; label: string; count: number; share: number | null };
+
+export type PricingAnalytics = {
+  avg_initial_quote_per_night: SampledMetric;
+  avg_negotiated_price_per_night: SampledMetric;
+  avg_final_price_per_night: SampledMetric;
+  negotiations: number;
+  negotiation_conversion: SampledMetric;
+  avg_discount: SampledMetric;
+  price_objections: number;
+  price_objection_rate: SampledMetric;
+  currency: string;
+};
+
+export type AnalyticsDashboard = {
+  start_date: string;
+  end_date: string;
+  property_ids: string[];
+  portfolio: PortfolioPerformance;
+  funnel: { stages: FunnelStage[] };
+  impact: MiraImpact;
+  guest_intent: { conversations_with_data: number; categories: GuestIntentCategory[] };
+  pricing: PricingAnalytics;
+  needs_confirmation: { total: number; price_missing: number; attribution_pending: number };
 };

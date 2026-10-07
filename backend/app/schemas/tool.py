@@ -15,7 +15,8 @@ from app.services.property.budget import BudgetBasis, BudgetConstraint, coerce_b
 Urgency = Literal["low", "medium", "high", "emergency"]
 IssueType = Literal["plumbing", "electrical", "ac", "wifi", "lock", "general"]
 GuestLoyalty = Literal["new", "returning", "frequent"]
-LeadTemperature = Literal["hot", "warm", "cold"]
+# very_hot = explicit booking intent -- see app/services/lead_temperature.py.
+LeadTemperature = Literal["very_hot", "hot", "warm", "cold"]
 
 
 class ToolBusinessError(str):

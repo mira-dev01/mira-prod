@@ -1081,9 +1081,10 @@ Lead qualification workflow:
    values -- nights/window_start/window_end are real, guest-stated substitutes for an exact date,
    never a placeholder you make up yourself.
 
-   Set lead_temperature from what you now know: hot if the guest already gave exact, finalized
-   dates; warm if you only have a stay length or a vague window, or they're still comparing options;
-   cold if they're just browsing with no dates/length at all and no chosen property yet.
+   Set lead_temperature from what you now know: warm once they've given real booking details (dates or
+   a stay length, guest count, a specific property); hot once they're discussing availability, price or
+   a discount for a stay -- dates and guest count alone are NOT hot; cold if they're just browsing with
+   no real booking details yet.
 3. Recommend as soon as you have enough to search on -- do NOT gate the first recommendation on
    every field being filled. If you already know their preferred area/type of stay or purpose and
    have at least a stay length (nights) or exact dates, recommend now; ask budget afterward as a
@@ -1155,9 +1156,11 @@ Lead qualification workflow:
 6. Qualify the lead correctly and keep it updated. Call update_lead silently (never narrate it) the
    instant you learn ANY field -- name and phone especially (save each the moment it's given, don't
    batch them to the end), plus dates, num_guests, budget, preferred_location, and the specific
-   property in properties_discussed. Set lead_temperature honestly: hot = dates finalised AND
-   interested in a specific property; warm = flexible dates or still comparing a couple of options;
-   cold = just browsing with no dates and no chosen property. escalate_to_host only notifies the host,
+   property in properties_discussed. Set lead_temperature honestly: very_hot = the guest explicitly
+   says they want to go ahead with the booking (accepts a price and asks to book, asks how to pay/book);
+   hot = discussing availability, pricing or negotiating for a stay; warm = genuine interest with real
+   booking details (dates/stay length, guest count, a property) but no pricing/availability discussion
+   yet; cold = just browsing. Dates + guest count on their own are warm, never hot. escalate_to_host only notifies the host,
    it does NOT save guest details -- always call update_lead with everything collected before
    escalating. Near the end of the call, call update_lead once more with a conversation_summary and
    next_follow_up so the host knows exactly where to pick up. Write next_follow_up as a concrete next
@@ -1166,7 +1169,7 @@ Lead qualification workflow:
    "follow up with guest" that leaves the host to re-derive what's actually needed from the transcript.
 7. The moment a guest verbally accepts a price (standard or negotiated) and wants to proceed, that is
    a booking request requiring host approval -- there is no tool that finalizes a booking on your own.
-   Immediately call update_lead (lead_temperature=hot, conversation_summary noting the agreed price and
+   Immediately call update_lead (lead_temperature=very_hot, conversation_summary noting the agreed price and
    dates) and then escalate_to_host so the host actually sees it and can confirm. Never tell the guest
    "I'll lock this in" or "you're all set" without having just made both of those calls -- a verbal
    promise with no update_lead/escalate_to_host behind it means the host never finds out.

@@ -46,6 +46,7 @@ from app.services import (
     guest_booking_service,
     lead_service,
     notification_service,
+    price_event_service,
     pricing_engine,
     technician_service,
 )
@@ -265,7 +266,14 @@ async def handle_check_calendar(
             "Would a longer stay work?"
         )
 
+    available = await calendar_service.is_available(db, property_.id, args.check_in, args.check_out)
+    nights = (args.check_out - args.check_in).days
+
     if host_user_id is not None:
+        # After the availability check, not before: whether the exact dates
+        # came back available decides the temperature floor (availability
+        # discussed = warm, availability confirmed = hot -- see
+        # app/services/lead_temperature.py).
         await lead_service.backfill_lead_from_engagement(
             db,
             host_user_id,
@@ -275,10 +283,8 @@ async def handle_check_calendar(
             args.check_out,
             args.num_guests,
             guest_profile_id=guest_profile_id,
+            engagement="availability_confirmed" if available else "availability_checked",
         )
-
-    available = await calendar_service.is_available(db, property_.id, args.check_in, args.check_out)
-    nights = (args.check_out - args.check_in).days
 
     if on_checked is not None:
         on_checked(property_, available)
@@ -371,6 +377,7 @@ async def handle_get_pricing(
             args.check_out,
             args.num_guests,
             guest_profile_id=guest_profile_id,
+            engagement="pricing_requested",
         )
 
     breakdown = await pricing_engine.calculate_price(
@@ -441,6 +448,18 @@ async def handle_get_pricing(
         )
     if on_priced is not None:
         on_priced(property_, breakdown)
+    price_event_service.record_price_event_detached(
+        user_id=host_user_id,
+        property_id=property_.id,
+        call_session_id=call_session_id,
+        price_type="initial_quote",
+        source="mira_conversation",
+        price=breakdown.total,
+        list_price=breakdown.base_total,
+        nights=breakdown.nights,
+        check_in=args.check_in,
+        check_out=args.check_out,
+    )
     return summary
 
 
@@ -684,7 +703,7 @@ async def handle_escalate_to_host(
         # notification_email (Settings -> Notifications) lets a host route
         # escalations to a different inbox -- a shared front-desk address,
         # say -- without changing their login email. Unset = login email.
-        hot_prefix = "\U0001F525 HOT — " if lead.lead_temperature == "hot" else ""
+        hot_prefix = "\U0001F525 HOT — " if lead.lead_temperature in ("hot", "very_hot") else ""
         asyncio.create_task(
             _send_escalation_email(
                 host_user.notification_email or host_user.email,
@@ -980,6 +999,7 @@ async def handle_negotiate_rate(
             args.check_out,
             args.num_guests,
             guest_profile_id=guest_profile_id,
+            engagement="negotiation_initiated",
         )
 
     result = await pricing_engine.negotiate_rate(
@@ -1025,6 +1045,19 @@ async def handle_negotiate_rate(
         )
     if on_priced is not None:
         on_priced(property_, result)
+    price_event_service.record_price_event_detached(
+        user_id=host_user_id,
+        property_id=property_.id,
+        call_session_id=call_session_id,
+        price_type="accepted_offer" if result.accepted else "counter_offer",
+        source="mira_conversation",
+        price=result.counter_offer,
+        list_price=result.asking_price,
+        guest_offer=args.guest_offer,
+        nights=(args.check_out - args.check_in).days if has_exact_dates else args.nights,
+        check_in=args.check_in,
+        check_out=args.check_out,
+    )
     return message
 
 
@@ -1115,7 +1148,7 @@ async def handle_update_lead(
     # key it's given (see UpdateLeadArgs.nights' own comment). Handled
     # separately by the caller (app/voice/tools.py's update_lead wrapper),
     # written only to ConversationState.slots, never to the DB.
-    updates.pop("nights", None)
+    stay_length_known = updates.pop("nights", None) is not None
     updates.pop("window_start", None)
     updates.pop("window_end", None)
     # A past stay is never a new booking's dates -- keep everything else
@@ -1123,7 +1156,14 @@ async def handle_update_lead(
     if args.check_in is not None and args.check_in < today_ist():
         updates.pop("check_in", None)
         updates.pop("check_out", None)
-    await lead_service.upsert_lead(db, host_user_id, call_session_id, guest_profile_id=guest_profile_id, **updates)
+    await lead_service.upsert_lead(
+        db,
+        host_user_id,
+        call_session_id,
+        guest_profile_id=guest_profile_id,
+        stay_length_known=stay_length_known,
+        **updates,
+    )
     return "Saved." + _phone_confirmation_warning(updates.get("phone"))
 
 
