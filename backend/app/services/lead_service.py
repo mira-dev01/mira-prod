@@ -13,6 +13,7 @@ from app.api.v1.common import DateRange
 from app.models.call_session import CallSession
 from app.models.lead import Lead
 from app.models.notification import Notification
+from app.utils.dates import today_ist
 
 # A returning guest's follow-up call reuses their existing Lead only while
 # it's still an unresolved, in-progress inquiry. Once the host marks it
@@ -375,7 +376,7 @@ async def get_active_booking(db: AsyncSession, guest_profile_id: uuid.UUID | Non
         .order_by(Lead.updated_at.desc())
     )
     leads = (await db.scalars(stmt)).all()
-    today = date.today()
+    today = today_ist()
     for lead in leads:
         if lead.check_out is None or lead.check_out >= today:
             return lead

@@ -29,6 +29,7 @@ from app.schemas.tool import (
     DispatchTechnicianArgs,
     EscalateToHostArgs,
     GetPricingArgs,
+    LookupBookingArgs,
     NegotiateRateArgs,
     RecommendPropertiesArgs,
     RequestHostTransferArgs,
@@ -42,6 +43,7 @@ from app.services import (
     calendar_service,
     embedding_service,
     faq_service,
+    guest_booking_service,
     lead_service,
     notification_service,
     pricing_engine,
@@ -50,6 +52,7 @@ from app.services import (
 from app.services.pricing_engine import NegotiationResult, PriceBreakdown
 from app.services.property.pitch_formatter import RecommendationResult
 from app.services.property.retrieval import orchestrator as property_retrieval_orchestrator
+from app.utils.dates import today_ist
 from app.voice.handoff_signal import request_handoff
 
 # Same routable-state constant as webhooks/exotel.py's _ACTIVE_CALL_STATUSES
@@ -176,6 +179,20 @@ async def _get_property(db: AsyncSession, property_id: str) -> Property | None:
     return await db.get(Property, pid)
 
 
+def _past_dates_error(check_in: date) -> ToolBusinessError | None:
+    """A stay starting before today can't be a new booking -- most often the
+    guest is asking about an earlier or existing stay. Checked before
+    backfill_lead_from_engagement, so no lead is ever created for it.
+    Same-day check-in is allowed."""
+    if check_in >= today_ist():
+        return None
+    return ToolBusinessError(
+        f"{check_in.isoformat()} has already passed, so it can't be booked -- don't check or quote it. Ask the "
+        "guest whether they're asking about a previous or existing booking, and if so, what name or phone number "
+        "it was booked under, then call lookup_booking. If they actually meant a future date, confirm it first."
+    )
+
+
 async def handle_check_calendar(
     db: AsyncSession,
     args: CheckCalendarArgs,
@@ -198,6 +215,8 @@ async def handle_check_calendar(
 
     if args.check_out <= args.check_in:
         return ToolBusinessError("The check-out date needs to be after check-in. Could you confirm the dates?")
+    if past_error := _past_dates_error(args.check_in):
+        return past_error
 
     if args.num_guests is not None and args.num_guests > property_.max_guests:
         return f"{property_.name} sleeps up to {property_.max_guests} guests, which is fewer than {args.num_guests}."
@@ -317,6 +336,8 @@ async def handle_get_pricing(
     has_exact_dates = args.check_in is not None and args.check_out is not None
     if has_exact_dates and args.check_out <= args.check_in:
         return ToolBusinessError("The check-out date needs to be after check-in. Could you confirm the dates?")
+    if has_exact_dates and (past_error := _past_dates_error(args.check_in)):
+        return past_error
 
     # Phase 6 (Negotiation engine) self-review fix: GOLDEN_RULES tells the
     # model get_pricing will surface a minimum-stay requirement -- this must
@@ -717,6 +738,14 @@ def _has_usable_host_phone(phone: str | None) -> bool:
     return len(digits) >= 10
 
 
+# What the guest hears when a transfer can't be attempted -- the escalation
+# behind it has already notified the host (in-app, email, WhatsApp).
+_HOST_UNAVAILABLE_REPLY = (
+    "The host isn't available to take the call at the moment. I've let them know, and they'll follow up with "
+    "you shortly."
+)
+
+
 async def handle_request_host_transfer(
     db: AsyncSession,
     args: RequestHostTransferArgs,
@@ -753,7 +782,8 @@ async def handle_request_host_transfer(
             reason=args.reason or "Guest asked to be transferred to the host",
             urgency="high",
         )
-        return await handle_escalate_to_host(db, escalate_args, call_session_id, host_user_id, guest_profile_id)
+        await handle_escalate_to_host(db, escalate_args, call_session_id, host_user_id, guest_profile_id)
+        return _HOST_UNAVAILABLE_REPLY
 
     if call_session_id is None:
         # Nothing to claim a handoff against (e.g. a browser test call with
@@ -763,7 +793,8 @@ async def handle_request_host_transfer(
             reason=args.reason or "Guest asked to be transferred to the host",
             urgency="high",
         )
-        return await handle_escalate_to_host(db, escalate_args, call_session_id, host_user_id, guest_profile_id)
+        await handle_escalate_to_host(db, escalate_args, call_session_id, host_user_id, guest_profile_id)
+        return _HOST_UNAVAILABLE_REPLY
 
     # The exact same atomic claim take_call.py's POST handler makes --
     # exotel_connect_routing trusts this DB state, not the caller's
@@ -805,13 +836,96 @@ async def handle_request_host_transfer(
     # check settings.twilio_enabled anywhere in this function. Twilio
     # outages must never block a live call transfer.
     request_handoff(call_session_id)
+    await _record_transfer_for_follow_up(db, args, call_session_id, property_id, host_user_id, guest_profile_id)
 
     # _wait_and_trigger_handoff (already running as a background task for
     # every property-scoped call) speaks the deterministic handoff phrase
     # once it observes this signal -- keep this tool's own returned string
     # short and non-contradictory, since the model will speak this FIRST,
     # then the deterministic phrase fires moments later.
-    return "Sure, connecting you to the host now."
+    return "Sure, connecting you to the host now. If they can't pick up, they'll follow up with you shortly."
+
+
+async def _record_transfer_for_follow_up(
+    db: AsyncSession,
+    args: RequestHostTransferArgs,
+    call_session_id: uuid.UUID,
+    property_id: uuid.UUID | None,
+    host_user_id: uuid.UUID,
+    guest_profile_id: uuid.UUID | None,
+) -> None:
+    """Once the call is handed to Exotel, Mira's leg ends -- if the host
+    doesn't pick up, nothing ever comes back to this codebase. An in-app
+    notification and a flagged lead are written at transfer time so a missed
+    transfer still leaves the host something to follow up on. In-app only
+    (no email/WhatsApp, unlike escalate_to_host): the host's phone is already
+    ringing. Best-effort -- runs after request_handoff and never raises, so
+    it can't delay or break the transfer itself."""
+    try:
+        lead = await lead_service.upsert_lead(
+            db, host_user_id, call_session_id, guest_profile_id=guest_profile_id, transferred_to_host=True
+        )
+        await notification_service.create_notification(
+            db,
+            channel="escalation",
+            property_id=property_id,
+            lead_id=lead.id if property_id is None else None,
+            call_session_id=call_session_id,
+            urgency="high",
+            message=(
+                f"Guest asked to be transferred to you: {args.reason or 'no reason given'}. "
+                "If you missed the call, please follow up with them."
+            ),
+        )
+    except Exception:
+        logger.exception("Recording transfer follow-up failed for call_session_id=%s", call_session_id)
+
+
+async def handle_lookup_booking(db: AsyncSession, args: LookupBookingArgs, host_user_id: uuid.UUID) -> str:
+    """A guest asking about a booking they already made (often after naming a
+    date that has passed). Phone matches get the full stay details; name-only
+    matches share just the property and dates -- anyone can say a name. Phone
+    numbers are never read back either way. No match hands off to
+    request_host_transfer, which itself falls back to a "host will follow up"
+    escalation when the host can't be reached."""
+    matches = await guest_booking_service.find_bookings(
+        db, host_user_id, phone=args.phone, name=args.name, property_hint=args.property_name
+    )
+    searched_under = " / ".join(value for value in (args.name, args.phone) if value)
+    if not matches:
+        return ToolBusinessError(
+            f"No booking found under {searched_under}. Tell the guest you couldn't find a booking under that, then "
+            "call request_host_transfer so the host can help them directly."
+        )
+
+    name_only = [m for m in matches if m.matched_by == "name"]
+    if len(name_only) > 3:
+        return ToolBusinessError(
+            f"Several bookings match the name {args.name}. Ask the guest for the phone number the booking was made "
+            "with, or which property they stayed at, then call lookup_booking again."
+        )
+
+    today = today_ist()
+    lines = []
+    for match in matches:
+        if match.check_in and match.check_out:
+            dates = f"{match.check_in.isoformat()} to {match.check_out.isoformat()}"
+            when = "past stay" if match.is_past(today) else ("current stay" if match.check_in <= today else "upcoming")
+        else:
+            dates, when = "dates not on file", "booked"
+        line = f"- {match.property_name}, {dates} ({when})"
+        if match.matched_by == "phone" and match.guest_name:
+            line += f", under {match.guest_name}"
+        if match.matched_by == "name":
+            line += " [matched by name only]"
+        lines.append(line)
+
+    note = (
+        "\nFor bookings matched by name only, share just the property and dates, nothing else about the booking."
+        if name_only
+        else ""
+    )
+    return "Bookings found:\n" + "\n".join(lines) + note
 
 
 async def handle_negotiate_rate(
@@ -853,6 +967,8 @@ async def handle_negotiate_rate(
     has_exact_dates = args.check_in is not None and args.check_out is not None
     if has_exact_dates and args.check_out <= args.check_in:
         return ToolBusinessError("The check-out date needs to be after check-in. Could you confirm the dates?")
+    if has_exact_dates and (past_error := _past_dates_error(args.check_in)):
+        return past_error
 
     if host_user_id is not None:
         await lead_service.backfill_lead_from_engagement(
@@ -1002,6 +1118,11 @@ async def handle_update_lead(
     updates.pop("nights", None)
     updates.pop("window_start", None)
     updates.pop("window_end", None)
+    # A past stay is never a new booking's dates -- keep everything else
+    # (name/phone matter most for a previous-booking enquiry), drop the dates.
+    if args.check_in is not None and args.check_in < today_ist():
+        updates.pop("check_in", None)
+        updates.pop("check_out", None)
     await lead_service.upsert_lead(db, host_user_id, call_session_id, guest_profile_id=guest_profile_id, **updates)
     return "Saved." + _phone_confirmation_warning(updates.get("phone"))
 

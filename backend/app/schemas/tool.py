@@ -149,6 +149,25 @@ class RequestHostTransferArgs(BaseModel):
     reason: str | None = None
 
 
+class LookupBookingArgs(BaseModel):
+    # At least one identifier the booking was made under; property_name is
+    # an optional narrowing hint ("I booked Alpine Ridge under Priya").
+    name: str | None = None
+    phone: str | None = None
+    property_name: str | None = None
+
+    @field_validator("phone")
+    @classmethod
+    def _clean_phone(cls, value: str | None) -> str | None:
+        return _normalize_phone(value) if value else value
+
+    @model_validator(mode="after")
+    def _require_identifier(self) -> "LookupBookingArgs":
+        if not (self.name or self.phone):
+            raise ValueError("name or phone is required")
+        return self
+
+
 class NegotiateRateArgs(BaseModel):
     property_id: str
     # Same exact-dates-or-nights shape as GetPricingArgs -- see that class's

@@ -66,9 +66,11 @@ from app.services import (
     call_summary_email,
     call_summary_service,
     faq_service,
+    guest_booking_service,
     guest_calling_notification,
     guest_memory_service,
     lead_service,
+    pricing_engine,
     recovery_service,
     usage_meter,
 )
@@ -2057,7 +2059,10 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
             )
         else:
             guest = await call_service.get_or_create_guest_profile(db, caller_number, host_user_id)
-            active_booking = await lead_service.get_active_booking(db, guest.id if guest else None, host_user_id)
+            active_booking = await guest_booking_service.find_active_booking(
+                db, host_user_id, guest.id if guest else None, caller_number
+            )
+            repeat_guest_discount = await pricing_engine.has_repeat_guest_discount(db, host_user_id)
 
             if property_ is not None:
                 host = await db.get(User, property_.user_id)
@@ -2084,7 +2089,7 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
                 verified_faq_entries = await faq_service.list_verified_property_faq(db, property_.id)
                 system_prompt = build_system_prompt(
                     property_, guest, host, active_booking, caller_phone=caller_number,
-                    verified_faq_entries=verified_faq_entries,
+                    verified_faq_entries=verified_faq_entries, repeat_guest_discount=repeat_guest_discount,
                 )
                 first_message = first_message_for(property_, guest, host)
                 property_id = property_.id
@@ -2104,7 +2109,8 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
                     user_id=lead_user.id,
                 )
                 system_prompt = build_lead_system_prompt(
-                    lead_user, properties, guest, active_booking, caller_phone=caller_number
+                    lead_user, properties, guest, active_booking, caller_phone=caller_number,
+                    repeat_guest_discount=repeat_guest_discount,
                 )
                 first_message = lead_first_message_for(lead_user)
                 property_id = None
@@ -2304,7 +2310,10 @@ async def run_voice_pipeline_twilio(websocket: WebSocket, call_data: CallData) -
             )
         else:
             guest = await call_service.get_or_create_guest_profile(db, caller_number, host_user_id)
-            active_booking = await lead_service.get_active_booking(db, guest.id if guest else None, host_user_id)
+            active_booking = await guest_booking_service.find_active_booking(
+                db, host_user_id, guest.id if guest else None, caller_number
+            )
+            repeat_guest_discount = await pricing_engine.has_repeat_guest_discount(db, host_user_id)
 
             if property_ is not None:
                 host = await db.get(User, property_.user_id)
@@ -2326,7 +2335,7 @@ async def run_voice_pipeline_twilio(websocket: WebSocket, call_data: CallData) -
                 verified_faq_entries = await faq_service.list_verified_property_faq(db, property_.id)
                 system_prompt = build_system_prompt(
                     property_, guest, host, active_booking, caller_phone=caller_number,
-                    verified_faq_entries=verified_faq_entries,
+                    verified_faq_entries=verified_faq_entries, repeat_guest_discount=repeat_guest_discount,
                 )
                 first_message = first_message_for(property_, guest, host)
                 property_id = property_.id
@@ -2346,7 +2355,8 @@ async def run_voice_pipeline_twilio(websocket: WebSocket, call_data: CallData) -
                     user_id=lead_user.id,
                 )
                 system_prompt = build_lead_system_prompt(
-                    lead_user, properties, guest, active_booking, caller_phone=caller_number
+                    lead_user, properties, guest, active_booking, caller_phone=caller_number,
+                    repeat_guest_discount=repeat_guest_discount,
                 )
                 first_message = lead_first_message_for(lead_user)
                 property_id = None
@@ -2456,7 +2466,8 @@ async def run_browser_lead_pipeline(connection: SmallWebRTCConnection, user: Use
         guest = await call_service.get_or_create_guest_profile(
             db, call_service.BROWSER_TEST_CALLER_NUMBER, user.id, name="Browser test guest"
         )
-        active_booking = await lead_service.get_active_booking(db, guest.id if guest else None, user.id)
+        active_booking = await guest_booking_service.find_active_booking(db, user.id, guest.id if guest else None, None)
+        repeat_guest_discount = await pricing_engine.has_repeat_guest_discount(db, user.id)
         session = await call_service.get_or_create_call_session(
             db,
             exotel_call_id=None,
@@ -2465,7 +2476,9 @@ async def run_browser_lead_pipeline(connection: SmallWebRTCConnection, user: Use
             caller_number=call_service.BROWSER_TEST_CALLER_NUMBER,
             user_id=user.id,
         )
-        system_prompt = build_lead_system_prompt(user, properties, guest, active_booking)
+        system_prompt = build_lead_system_prompt(
+            user, properties, guest, active_booking, repeat_guest_discount=repeat_guest_discount
+        )
         first_message = lead_first_message_for(user)
         call_session_id = session.id
         guest_profile_id = guest.id if guest else None

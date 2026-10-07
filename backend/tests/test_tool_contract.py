@@ -46,9 +46,9 @@ def _tools(host_user_id=None, **kwargs):
 
 def test_every_tool_is_validated_against_exactly_its_llm_schema():
     """The validation model and the LLM-facing schema come from the same
-    signature -- same fields, same required set -- for all 13 tools."""
+    signature -- same fields, same required set -- for all 14 tools."""
     tools = _tools()
-    assert len(tools) == 13
+    assert len(tools) == 14
     for name, fn in tools.items():
         schema = DirectFunctionWrapper(fn).to_function_schema()
         model = _llm_args_model(fn.__wrapped__)

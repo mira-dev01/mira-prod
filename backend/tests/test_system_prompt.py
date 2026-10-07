@@ -7,6 +7,7 @@ from app.models.lead import Lead
 from app.models.property import Property
 from app.models.user import User
 from app.prompts import system_prompt
+from app.services.guest_booking_service import BookingMatch
 from app.prompts.system_prompt import (
     DEFAULT_ESCALATION_PHRASE,
     DEFAULT_HOST_HANDOFF_PHRASE,
@@ -56,7 +57,7 @@ def _guest(**overrides) -> GuestProfile:
     return GuestProfile(**defaults)
 
 
-def _booking(**overrides) -> Lead:
+def _booking(**overrides) -> BookingMatch:
     defaults = dict(
         id=uuid.uuid4(),
         user_id=uuid.uuid4(),
@@ -67,7 +68,7 @@ def _booking(**overrides) -> Lead:
         check_out=date(2026, 8, 3),
     )
     defaults.update(overrides)
-    return Lead(**defaults)
+    return BookingMatch.from_lead(Lead(**defaults))
 
 
 def test_first_message_default_has_no_placeholders_left_unresolved():
@@ -271,10 +272,20 @@ def test_guest_profile_with_zero_stays_is_treated_as_new():
     assert "returning guest" not in prompt
 
 
-def test_returning_guest_included_with_name_and_stay_count():
+def test_returning_guest_included_with_name_but_no_stay_count_without_loyalty_policy():
     guest = _guest(name="Priya", total_stays=3)
     prompt = build_system_prompt(_property(), guest, _user())
-    assert "returning guest: Priya, 3 past stay(s)" in prompt
+    assert "returning guest: Priya." in prompt
+    assert "past stay(s)" not in prompt
+    assert "guest_loyalty" not in prompt.split("returning guest: Priya.")[1]
+    assert "Never bring up their past stays" in prompt
+
+
+def test_returning_guest_stay_count_and_loyalty_hint_only_with_repeat_guest_discount():
+    guest = _guest(name="Priya", total_stays=3)
+    prompt = build_system_prompt(_property(), guest, _user(), repeat_guest_discount=True)
+    assert "They have 3 past stay(s) with this host" in prompt
+    assert 'pass guest_loyalty="returning" to negotiate_rate' in prompt
 
 
 def test_returning_guest_includes_preferred_language_and_last_outcome():
@@ -299,7 +310,7 @@ def test_returning_guest_includes_last_conversation_summary():
 def test_lead_agent_prompt_also_gets_guest_memory_section():
     guest = _guest(name="Priya", total_stays=1)
     prompt = build_lead_system_prompt(_user(), [], guest)
-    assert "returning guest: Priya, 1 past stay(s)" in prompt
+    assert "returning guest: Priya." in prompt
 
 
 def test_lead_agent_prompt_defaults_to_new_guest_when_omitted():
