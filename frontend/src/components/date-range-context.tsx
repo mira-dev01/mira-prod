@@ -12,8 +12,15 @@ export type DateRangeContextValue = {
 
 export const DateRangeContext = createContext<DateRangeContextValue | null>(null);
 
+// The host's LOCAL calendar day, not toISOString() (UTC): the picker hands
+// back local-midnight Dates, and in IST local midnight is 18:30 UTC the day
+// before -- toISOString() sent every picked range one day early (and "today"
+// as yesterday before 05:30 IST).
 function toISODate(date: Date): string {
-  return date.toISOString().slice(0, 10);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
 function defaultRange(days: number): { start: Date; end: Date } {

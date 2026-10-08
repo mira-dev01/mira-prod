@@ -173,9 +173,11 @@ export function BookingFunnelSection({ data }: { data: AnalyticsDashboard }) {
 export function MiraImpactSection({
   data,
   onReviewMatches,
+  propertySelected,
 }: {
   data: AnalyticsDashboard;
   onReviewMatches: () => void;
+  propertySelected?: boolean;
 }) {
   const i = data.impact;
   const afterHours = i.after_hours_opportunities;
@@ -215,7 +217,7 @@ export function MiraImpactSection({
             label="Revenue recovered"
             value={formatINRCompact(i.revenue_recovered)}
             muted={i.revenue_recovered === null}
-            hint={`${i.recovery.busy_calls} busy-line call${i.recovery.busy_calls === 1 ? "" : "s"} · ${i.recovery.recovered} guest${i.recovery.recovered === 1 ? "" : "s"} re-engaged`}
+            hint={`${i.recovery.busy_calls} busy-line call${i.recovery.busy_calls === 1 ? "" : "s"} · ${i.recovery.recovered} guest${i.recovery.recovered === 1 ? "" : "s"} re-engaged${propertySelected ? " (all properties)" : ""}`}
           />
           <MetricTile
             icon={MessageSquare}

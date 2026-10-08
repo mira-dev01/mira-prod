@@ -1,5 +1,6 @@
 import logging
 import uuid
+from typing import Literal
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -28,6 +29,8 @@ from app.services import booking_reconciliation_service as reconciliation
 from app.services.calendar_service import is_available
 
 logger = logging.getLogger(__name__)
+
+QUEUE_PAGE_SIZE = 50
 
 router = APIRouter(prefix="/bookings", tags=["bookings"])
 
@@ -75,6 +78,14 @@ async def create_booking(
         lead = await db.get(Lead, payload.lead_id)
         if lead is None or lead.user_id != current_user.id:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Lead not found")
+    # Built before the savepoint: a rolled-back savepoint expires `booking`,
+    # and reading an expired attribute afterwards would lazy-load (fails
+    # under asyncio).
+    host_price_event = (
+        reconciliation.final_price_event(booking, current_user.id, "host_entered")
+        if payload.final_booking_price is not None
+        else None
+    )
     # Best-effort, same as the iCal sync: a reconciliation failure leaves a
     # plain booking behind rather than failing the host's request.
     booking_id = booking.id
@@ -86,8 +97,8 @@ async def create_booking(
                 await reconciliation.reconcile_booking(db, booking, property_)
     except Exception:  # noqa: BLE001
         logger.exception("Booking reconciliation failed for booking %s", booking_id)
-    if payload.final_booking_price is not None:
-        db.add(reconciliation.final_price_event(booking, current_user.id, "host_entered"))
+    if host_price_event is not None:
+        db.add(host_price_event)
     await db.commit()
     await db.refresh(booking)
     return booking
@@ -128,7 +139,9 @@ async def _reconciliation_view(db: AsyncSession, booking: Booking, property_name
 
 @router.get("/reconciliation", response_model=ReconciliationQueueOut)
 async def reconciliation_queue(
-    current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+    kind: Literal["price", "attribution"] | None = Query(default=None),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ) -> ReconciliationQueueOut:
     """The "Booking details need confirmation" queue: bookings missing a
     final price the host hasn't answered for, and probable Mira matches
@@ -136,13 +149,13 @@ async def reconciliation_queue(
     properties = {
         p.id: p.name for p in (await db.scalars(select(Property).where(Property.user_id == current_user.id))).all()
     }
-    rows, total = await reconciliation.reconciliation_queue(db, list(properties))
-    items = [await _reconciliation_view(db, booking, properties[booking.property_id]) for booking in rows]
+    rows = await reconciliation.reconciliation_queue(db, list(properties), kind)
+    items = [await _reconciliation_view(db, booking, properties[booking.property_id]) for booking in rows[:QUEUE_PAGE_SIZE]]
     return ReconciliationQueueOut(
         items=items,
-        total=total,
-        price_missing=sum(1 for i in items if i.booking.needs_price_confirmation),
-        attribution_pending=sum(1 for i in items if i.booking.needs_attribution_review),
+        total=len(rows),
+        price_missing=sum(1 for b in rows if b.needs_price_confirmation),
+        attribution_pending=sum(1 for b in rows if b.needs_attribution_review),
     )
 
 

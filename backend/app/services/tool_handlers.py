@@ -1049,7 +1049,10 @@ async def handle_negotiate_rate(
         user_id=host_user_id,
         property_id=property_.id,
         call_session_id=call_session_id,
-        price_type="accepted_offer" if result.accepted else "counter_offer",
+        # accepted is also True when the guest offered nothing and Mira
+        # proposed its best (floor) price -- that's Mira's counter, not the
+        # guest accepting, so only a real guest_offer counts as accepted.
+        price_type="accepted_offer" if result.accepted and args.guest_offer is not None else "counter_offer",
         source="mira_conversation",
         price=result.counter_offer,
         list_price=result.asking_price,

@@ -797,3 +797,37 @@ export type AnalyticsDashboard = {
   pricing: PricingAnalytics;
   needs_confirmation: { total: number; price_missing: number; attribution_pending: number };
 };
+
+// GET /analytics/overview -- see analytics_service.overview for which
+// numbers follow the selected dates and which are current-state.
+export type OverviewData = {
+  start_date: string;
+  end_date: string;
+  has_properties: boolean;
+  portfolio: {
+    occupancy: number | null;
+    revenue: number | null;
+    adr: number | null;
+    revpar: number | null;
+    upcoming_revenue: number | null;
+    booked_nights: number;
+    available_nights: number;
+    completeness: Completeness;
+    upcoming_completeness: Completeness;
+    currency: string;
+  };
+  opportunities: { booking_opportunities: number; high_intent: number; booking_intent: number };
+  mira_attributed_bookings: number;
+  activity: {
+    total_calls: number;
+    completed_calls: number;
+    qualified_calls: number;
+    escalated_calls: number;
+    answer_rate: number | null;
+  };
+  attention: {
+    price_confirmations: number;
+    attribution_confirmations: number;
+    high_intent_unconverted: { count: number; potential_value: number | null; valued_count: number };
+  };
+};

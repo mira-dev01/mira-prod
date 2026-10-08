@@ -298,7 +298,9 @@ async def test_host_confirms_mira_match_yes(client, auth_headers, db_session, te
     lead_id = booking.mira_attribution_lead_id
     db_session.expire_all()
     lead = await db_session.get(Lead, lead_id)
-    assert lead.status == "booked"
+    # The host's own pipeline field is left alone (a later "No" couldn't
+    # restore it); analytics counts the confirmed booking as the conversion.
+    assert lead.status == "open"
 
 
 async def test_host_rejects_mira_match_withdraws_conversation_prices(
@@ -487,3 +489,128 @@ async def test_manual_price_is_recorded_in_price_history(client, auth_headers, d
         await db_session.scalars(select(PriceEvent).where(PriceEvent.booking_id == __import__("uuid").UUID(booking_id)))
     ).all()
     assert [(e.price_type, e.source, float(e.price)) for e in events] == [("final_price", "host_entered", 6400.0)]
+
+
+async def test_best_price_proposal_is_not_an_accepted_offer(db_session, test_user, test_property):
+    """guest_offer=None ("what's your best price?") makes pricing_engine
+    return accepted=True at the floor -- Mira's proposal, not the guest
+    accepting. It must never be stored (or auto-confirmed) as accepted."""
+    check_in, check_out = _stay()
+    call = CallSession(user_id=test_user.id, property_id=test_property.id, caller_number=GUEST_PHONE)
+    db_session.add(call)
+    await db_session.commit()
+    call_id = call.id
+    await tool_handlers.handle_negotiate_rate(
+        db_session,
+        NegotiateRateArgs(
+            property_id=str(test_property.id), check_in=check_in, check_out=check_out, guest_loyalty="new"
+        ),
+        host_user_id=test_user.id,
+        call_session_id=call_id,
+    )
+    await price_event_service.drain_pending_writes()
+    types = [
+        e.price_type for e in (await db_session.scalars(select(PriceEvent).where(PriceEvent.call_session_id == call_id))).all()
+    ]
+    assert types == ["counter_offer"]
+
+    [booking] = await _sync(db_session, test_property, _ics(("res-best", check_in, check_out, "Reserved", "3210")))
+    assert booking.final_booking_price is None
+    assert booking.price_status == "pending_confirmation"
+
+
+async def test_booking_rejects_check_out_not_after_check_in(client, auth_headers, test_property):
+    day = _stay()[0].isoformat()
+    resp = await client.post(
+        "/api/v1/bookings",
+        json={"property_id": str(test_property.id), "check_in": day, "check_out": day, "final_booking_price": 5000},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 422
+
+
+async def test_reconciliation_failure_with_entered_price_still_creates_booking(
+    client, auth_headers, db_session, test_property, monkeypatch
+):
+    async def _boom(*args, **kwargs):
+        raise RuntimeError("reconciliation bug")
+
+    monkeypatch.setattr(booking_reconciliation_service, "_link_events", _boom)
+    async def _flush_then_boom(db, booking, property_, reference_time=None):
+        await db.flush()
+        raise RuntimeError("reconciliation bug")
+
+    monkeypatch.setattr(booking_reconciliation_service, "reconcile_booking", _flush_then_boom)
+    check_in, check_out = _stay()
+    resp = await client.post(
+        "/api/v1/bookings",
+        json={
+            "property_id": str(test_property.id),
+            "check_in": check_in.isoformat(),
+            "check_out": check_out.isoformat(),
+            "final_booking_price": 7000,
+        },
+        headers=auth_headers,
+    )
+    assert resp.status_code == 201
+    assert resp.json()["final_booking_price"] == 7000
+
+
+async def test_yes_then_no_leaves_lead_not_converted(client, auth_headers, db_session, test_user, test_property):
+    from app.services import analytics_service
+
+    await _conversation(db_session, test_user, test_property, accept=False)
+    check_in, check_out = _stay()
+    [booking] = await _sync(db_session, test_property, _ics(("res-yn", check_in, check_out, "Reserved", "3210")))
+    url = f"/api/v1/bookings/{booking.id}/attribution"
+    await client.patch(url, json={"is_mira_match": True}, headers=auth_headers)
+    await client.patch(url, json={"is_mira_match": False}, headers=auth_headers)
+
+    await db_session.refresh(test_user)
+    scope = analytics_service.AnalyticsScope(
+        host=test_user, properties=[test_property], start=today_ist() - timedelta(days=1), end=today_ist()
+    )
+    conversations = await analytics_service._load_conversations(db_session, scope, all_properties=True)
+    assert conversations.converted_lead_ids == set()
+
+
+async def test_queue_filters_by_kind_before_paging(client, auth_headers, db_session, test_user, test_property):
+    """The Overview "Review" buttons ask for one kind; a probable match must
+    be reachable even when many price-missing bookings sort ahead of it."""
+    from app.api.v1 import bookings as bookings_api
+
+    base = _stay()[0]
+    for i in range(bookings_api.QUEUE_PAGE_SIZE + 2):
+        db_session.add(
+            Booking(
+                property_id=test_property.id,
+                check_in=base + timedelta(days=40 + i),
+                check_out=base + timedelta(days=41 + i),
+                source_uid=f"bulk-{i}",
+                price_status="pending_confirmation",
+            )
+        )
+    lead = Lead(user_id=test_user.id)
+    db_session.add(lead)
+    await db_session.commit()
+    db_session.add(
+        Booking(
+            property_id=test_property.id,
+            check_in=base,
+            check_out=base + timedelta(days=1),
+            source_uid="probable-1",
+            final_booking_price=5000,
+            price_status="confirmed",
+            mira_attribution_status="probable",
+            mira_attribution_lead_id=lead.id,
+        )
+    )
+    await db_session.commit()
+
+    mixed = (await client.get("/api/v1/bookings/reconciliation", headers=auth_headers)).json()
+    assert mixed["attribution_pending"] == 1
+    assert not any(i["booking"]["needs_attribution_review"] for i in mixed["items"])  # paged out
+
+    only = (await client.get("/api/v1/bookings/reconciliation?kind=attribution", headers=auth_headers)).json()
+    assert [i["booking"]["mira_attribution_status"] for i in only["items"]] == ["probable"]
+    assert only["total"] == 1

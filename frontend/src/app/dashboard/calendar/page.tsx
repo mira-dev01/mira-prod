@@ -27,8 +27,11 @@ const bookingSourceColor = {
   manual: "var(--chart-4)",
 } as const;
 
+// Local calendar day -- toISOString() is UTC, which in IST turns a local-
+// midnight cell date into the previous day (the block form was prefilled a
+// day early).
 function toISODate(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 function daysInMonth(year: number, month: number): number {
@@ -54,6 +57,7 @@ export default function CalendarPage() {
   const [blockGuestName, setBlockGuestName] = useState("");
   const [blockGuestPhone, setBlockGuestPhone] = useState<string | null>(null);
   const [blockPrice, setBlockPrice] = useState("");
+  const [blockKind, setBlockKind] = useState<"reservation" | "blocked">("reservation");
   const [submitting, setSubmitting] = useState(false);
 
   // Clicking a booked cell opens the booking's details (price, "Mira
@@ -119,6 +123,7 @@ export default function CalendarPage() {
     setBlockGuestName("");
     setBlockGuestPhone(null);
     setBlockPrice("");
+    setBlockKind("reservation");
     setBlockOpen(true);
   }
 
@@ -134,7 +139,8 @@ export default function CalendarPage() {
         guest_name: blockGuestName || null,
         guest_phone: blockGuestPhone,
         platform: "manual",
-        final_booking_price: blockPrice ? Number(blockPrice) : null,
+        kind: blockKind,
+        final_booking_price: blockKind === "reservation" && blockPrice ? Number(blockPrice) : null,
       });
       toast.success("Dates blocked");
       setBlockOpen(false);
@@ -402,6 +408,21 @@ export default function CalendarPage() {
             )}
           </div>
           <div className="space-y-2">
+            <Label>What are these dates for?</Label>
+            <Select value={blockKind} onValueChange={(v) => v && setBlockKind(v as "reservation" | "blocked")}>
+              <SelectTrigger className="w-full">
+                <SelectValue>
+                  {(value: string) => (value === "blocked" ? "Blocked — no guest (owner use, maintenance)" : "A guest booking")}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="reservation">A guest booking</SelectItem>
+                <SelectItem value="blocked">Blocked — no guest (owner use, maintenance)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {blockKind === "reservation" && (
+          <div className="space-y-2">
             <Label htmlFor="block-price">Final booking price (optional, total stay ₹)</Label>
             <Input
               id="block-price"
@@ -413,6 +434,7 @@ export default function CalendarPage() {
               placeholder="Leave empty if not decided yet"
             />
           </div>
+          )}
         </form>
       </RightPanel>
 

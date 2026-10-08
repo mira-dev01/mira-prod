@@ -12,7 +12,7 @@ each metric's `completeness`, rather than being valued at anything.
 import re
 import uuid
 from dataclasses import dataclass, field
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,12 +24,13 @@ from app.models.notification import Notification
 from app.models.price_event import PriceEvent
 from app.models.property import Property
 from app.models.user import User
+from app.schemas.call_classification import QUALIFIED_CALL_TYPES
 from app.services.call_ownership import CallOwner, InvalidCallOwnershipConfigError, resolve_effective_call_owner
 from app.services.call_service import BROWSER_TEST_CALLER_NUMBER
 from app.services.lead_temperature import HOT_OR_ABOVE, WARM_OR_ABOVE
 from app.services.recovery_service import NOTIFICATION_CHANNEL_BUSY_RECOVERY
 from app.services.whatsapp_reply_service import NOTIFICATION_CHANNEL_BUSY_RECOVERY_REPLY
-from app.utils.dates import today_ist
+from app.utils.dates import IST, today_ist
 
 
 async def recovery_metrics(db: AsyncSession, user_id: uuid.UUID, since: datetime, until: datetime | None) -> dict:
@@ -152,6 +153,81 @@ async def recovery_metrics(db: AsyncSession, user_id: uuid.UUID, since: datetime
     }
 
 
+async def call_activity(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    property_ids: list[uuid.UUID],
+    since: datetime,
+    until: datetime | None,
+    *,
+    include_test_calls: bool,
+) -> dict:
+    """Call counts for one host and window -- moved verbatim from
+    analytics.py's /analytics/summary handler so the Overview snapshot and
+    the summary endpoint share one definition. total/completed/qualified
+    are CallSession rows created in the window (browser-test calls excluded
+    unless include_test_calls); escalated counts channel="escalation"
+    Notifications on the host's properties (see the comment below)."""
+    call_filters = [CallSession.user_id == user_id, CallSession.created_at >= since]
+    if until is not None:
+        call_filters.append(CallSession.created_at < until)
+    if not include_test_calls:
+        call_filters.append(CallSession.caller_number != BROWSER_TEST_CALLER_NUMBER)
+
+    base = select(CallSession).where(*call_filters)
+
+    total_calls = await db.scalar(select(func.count()).select_from(base.subquery()))
+    completed_calls = await db.scalar(
+        select(func.count()).select_from(base.where(CallSession.status == "completed").subquery())
+    )
+    # "Qualified" (BOOKING_LEAD/GUEST_SUPPORT/EXISTING_BOOKING/GENERAL_QUERY)
+    # is never itself a stored call_type value -- see schemas/
+    # call_classification.py -- just this derived grouping, computed here
+    # the same way escalated_calls is derived from Notification.channel
+    # rather than a stored boolean.
+    qualified_calls = await db.scalar(
+        select(func.count()).select_from(base.where(CallSession.call_type.in_(QUALIFIED_CALL_TYPES)).subquery())
+    )
+    # CallSession.urgency is never written anywhere in the app (escalations
+    # are recorded as Notification rows, not on the CallSession itself) --
+    # counting it here always returned 0, contradicting the Live Requests
+    # panel on the same Overview page, which is populated from Notification
+    # rows with channel="escalation". Count that instead, so this card
+    # matches what the host actually sees in Live Requests.
+    #
+    # NOTE: like Live Requests itself, this is scoped by
+    # property_id IN owned_property_ids, so a Lead Agent escalation
+    # (property_id=NULL, portfolio-wide calls) won't be counted here either
+    # -- pre-existing gap in Live Requests' own query, not introduced by this
+    # fix. Tracked as a follow-up, not fixed here to keep this change scoped.
+    escalated_filters = [
+        Notification.property_id.in_(property_ids),
+        Notification.channel == "escalation",
+        Notification.created_at >= since,
+    ]
+    if not include_test_calls:
+        # Same browser-test exclusion as the call counts above, so the
+        # escalation count never includes a test call the totals leave out.
+        escalated_filters.append(
+            or_(
+                Notification.call_session_id.is_(None),
+                Notification.call_session_id.not_in(
+                    select(CallSession.id).where(CallSession.caller_number == BROWSER_TEST_CALLER_NUMBER)
+                ),
+            )
+        )
+    if until is not None:
+        escalated_filters.append(Notification.created_at < until)
+    escalated_calls = await db.scalar(select(func.count()).where(*escalated_filters))
+    return {
+        "total_calls": total_calls or 0,
+        "completed_calls": completed_calls or 0,
+        "qualified_calls": qualified_calls or 0,
+        "escalated_calls": escalated_calls or 0,
+        "answer_rate": round((completed_calls or 0) / total_calls, 3) if total_calls else None,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Analytics page (GET /analytics/dashboard)
 # ---------------------------------------------------------------------------
@@ -208,8 +284,9 @@ INTENT_LABELS = {
 @dataclass
 class AnalyticsScope:
     """One request's scope. start/end are inclusive calendar days; since/
-    until are the matching UTC datetimes for timestamp columns, the same
-    UTC-day convention as app/api/v1/common.DateRange."""
+    until are the matching IST-midnight datetimes for timestamp columns,
+    the same day convention as app/api/v1/common.DateRange. Booking nights
+    use start/end directly (dates, no timezone)."""
 
     host: User
     properties: list[Property]
@@ -228,11 +305,11 @@ class AnalyticsScope:
 
     @property
     def since(self) -> datetime:
-        return datetime.combine(self.start, time.min, tzinfo=timezone.utc)
+        return datetime.combine(self.start, time.min, tzinfo=IST)
 
     @property
     def until(self) -> datetime:
-        return datetime.combine(self.end, time.min, tzinfo=timezone.utc) + timedelta(days=1)
+        return datetime.combine(self.end + timedelta(days=1), time.min, tzinfo=IST)
 
     @property
     def days(self) -> int:
@@ -333,9 +410,11 @@ async def portfolio_performance(db: AsyncSession, scope: AnalyticsScope) -> dict
             continue
         booked[booking.property_id] |= nights
         reservations += 1
-        if booking.has_confirmed_price:
+        stay_nights = (booking.check_out - booking.check_in).days
+        # stay_nights > 0 guards rows written before BookingCreate validated
+        # check_out > check_in; such a row can't be apportioned per night.
+        if booking.has_confirmed_price and stay_nights > 0:
             priced += 1
-            stay_nights = (booking.check_out - booking.check_in).days
             revenue += float(booking.final_booking_price) * len(nights) / stay_nights
             priced_nights += len(nights)
 
@@ -380,10 +459,10 @@ async def _upcoming_revenue(db: AsyncSession, scope: AnalyticsScope) -> dict:
     total = 0.0
     priced = 0
     for booking in rows:
-        if not booking.has_confirmed_price:
+        stay_nights = (booking.check_out - booking.check_in).days
+        if not booking.has_confirmed_price or stay_nights <= 0:
             continue
         priced += 1
-        stay_nights = (booking.check_out - booking.check_in).days
         future_nights = (booking.check_out - max(booking.check_in, scope.today)).days
         total += float(booking.final_booking_price) * future_nights / stay_nights
     return {
@@ -792,9 +871,9 @@ async def needs_confirmation_counts(db: AsyncSession, scope: AnalyticsScope) -> 
     filtered properties."""
     from app.services.booking_reconciliation_service import reconciliation_queue
 
-    rows, total = await reconciliation_queue(db, scope.property_ids, limit=10_000)
+    rows = await reconciliation_queue(db, scope.property_ids)
     return {
-        "total": total,
+        "total": len(rows),
         "price_missing": sum(1 for b in rows if b.needs_price_confirmation),
         "attribution_pending": sum(1 for b in rows if b.needs_attribution_review),
     }
@@ -835,4 +914,149 @@ async def dashboard(db: AsyncSession, scope: AnalyticsScope, all_properties: boo
         "guest_intent": await guest_intent(db, conversations),
         "pricing": await pricing_and_negotiation(db, scope, conversations),
         "needs_confirmation": await needs_confirmation_counts(db, scope),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Overview page (GET /analytics/overview)
+#
+# "What matters right now?" -- a snapshot, not a report. Two kinds of data:
+#
+#   Reporting-period metrics (respect the selected start/end dates):
+#     occupancy, revenue, ADR, RevPAR (portfolio_performance), booking
+#     opportunities / high-intent / booking intent (booking_funnel stages
+#     3-5), Mira-attributed bookings, and call activity.
+#   Current-state items (deliberately NOT date-filtered -- the date picker is
+#     a reporting-period filter, not a visibility filter):
+#     upcoming revenue (today onward), bookings needing price/attribution
+#     confirmation, and high-intent guests who haven't converted yet.
+#
+# include_test_calls only affects conversation-derived numbers (call
+# activity, booking opportunities, high-intent guests). Bookings, prices and
+# attribution never come from browser test calls, so it can't change them.
+# ---------------------------------------------------------------------------
+
+_QUOTE_PRICE_TYPES = ("initial_quote", "counter_offer", "accepted_offer")
+
+
+async def _attributed_bookings(db: AsyncSession, scope: AnalyticsScope) -> int:
+    """Reservations booked (created) in the period with host-CONFIRMED Mira
+    attribution. Probable matches are never counted -- they surface as an
+    attention item instead."""
+    if not scope.property_ids:
+        return 0
+    return (
+        await db.scalar(
+            select(func.count()).where(
+                Booking.property_id.in_(scope.property_ids),
+                Booking.status == "confirmed",
+                Booking.kind == "reservation",
+                Booking.mira_attribution_status == "confirmed",
+                Booking.created_at >= scope.since,
+                Booking.created_at < scope.until,
+            )
+        )
+        or 0
+    )
+
+
+async def high_intent_unconverted(db: AsyncSession, scope: AnalyticsScope) -> dict:
+    """Current state: open/contacted leads at hot or very_hot whose stay
+    hasn't started (no check-in yet, or check-in today or later) and that
+    have no host-confirmed Mira booking. potential_value sums each guest's
+    LATEST Mira price (quote or offer, a stay total) -- what the guest was
+    last told -- over the guests that have one; valued_count says how many
+    that is, so a partial sum is never presented as complete."""
+    filters = [
+        Lead.user_id == scope.host.id,
+        Lead.status.in_(("open", "contacted")),
+        Lead.lead_temperature.in_(HOT_OR_ABOVE),
+        or_(Lead.check_in.is_(None), Lead.check_in >= scope.today),
+    ]
+    stmt = select(Lead)
+    if not scope.include_test_calls:
+        # A browser-test lead never carries the test number itself (the
+        # pipeline withholds it from tools), so test-ness comes from the call
+        # that created the lead. Leads with no originating call (e.g. Busy
+        # Call Recovery) are real guests and stay in.
+        stmt = stmt.outerjoin(CallSession, CallSession.id == Lead.call_session_id)
+        filters.append(
+            or_(CallSession.caller_number.is_(None), CallSession.caller_number != BROWSER_TEST_CALLER_NUMBER)
+        )
+    leads = list((await db.scalars(stmt.where(*filters))).all())
+    if not leads:
+        return {"count": 0, "potential_value": None, "valued_count": 0}
+    lead_ids = [lead.id for lead in leads]
+    converted = set(
+        (
+            await db.scalars(
+                select(Booking.mira_attribution_lead_id).where(
+                    Booking.mira_attribution_lead_id.in_(lead_ids),
+                    Booking.mira_attribution_status == "confirmed",
+                    Booking.status == "confirmed",
+                    Booking.kind == "reservation",
+                )
+            )
+        ).all()
+    )
+    remaining = [lid for lid in lead_ids if lid not in converted]
+    latest: dict[uuid.UUID, float] = {}
+    if remaining:
+        rows = (
+            await db.execute(
+                select(CallSession.lead_id, PriceEvent.price)
+                .join(PriceEvent, PriceEvent.call_session_id == CallSession.id)
+                .where(CallSession.lead_id.in_(remaining), PriceEvent.price_type.in_(_QUOTE_PRICE_TYPES))
+                .order_by(PriceEvent.created_at, PriceEvent.id)
+            )
+        ).all()
+        for lead_id, price in rows:
+            latest[lead_id] = float(price)
+    return {
+        "count": len(remaining),
+        "potential_value": _money(sum(latest.values())) if latest else None,
+        "valued_count": len(latest),
+    }
+
+
+async def overview(db: AsyncSession, scope: AnalyticsScope) -> dict:
+    conversations = await _load_conversations(db, scope, all_properties=True)
+    stages = {s["key"]: s["value"] for s in booking_funnel(conversations)["stages"]}
+    portfolio = await portfolio_performance(db, scope)
+    activity = await call_activity(
+        db, scope.host.id, scope.property_ids, scope.since, scope.until, include_test_calls=scope.include_test_calls
+    )
+    confirmation = await needs_confirmation_counts(db, scope)
+    return {
+        "start_date": scope.start.isoformat(),
+        "end_date": scope.end.isoformat(),
+        "has_properties": bool(scope.property_ids),
+        "portfolio": {
+            "occupancy": portfolio["occupancy"],
+            "revenue": portfolio["revenue"],
+            "adr": portfolio["adr"],
+            "revpar": portfolio["revpar"],
+            "upcoming_revenue": portfolio["upcoming_revenue"],
+            "booked_nights": portfolio["booked_nights"],
+            "available_nights": portfolio["available_nights"],
+            "completeness": portfolio["completeness"],
+            "upcoming_completeness": portfolio["upcoming_completeness"],
+            "currency": portfolio["currency"],
+        },
+        "opportunities": {
+            # Booking opportunities = qualified leads (warm or above) from
+            # booking-related conversations in the period; high_intent and
+            # booking_intent are the hot+/very_hot subsets -- the same
+            # stages the Analytics funnel shows.
+            "booking_opportunities": stages["qualified_leads"],
+            "high_intent": stages["hot_leads"],
+            "booking_intent": stages["booking_intent"],
+        },
+        "mira_attributed_bookings": await _attributed_bookings(db, scope),
+        "activity": activity,
+        "attention": {
+            "price_confirmations": confirmation["price_missing"],
+            "attribution_confirmations": confirmation["attribution_pending"],
+            "high_intent_unconverted": await high_intent_unconverted(db, scope),
+        },
     }

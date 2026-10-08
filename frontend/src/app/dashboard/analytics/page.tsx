@@ -156,7 +156,11 @@ export default function AnalyticsPage() {
             <BookingFunnelSection data={data} />
             <GuestIntentSection data={data} />
           </div>
-          <MiraImpactSection data={data} onReviewMatches={() => openFirstQueued((_, needsMatch) => needsMatch)} />
+          <MiraImpactSection
+            data={data}
+            propertySelected={!!selectedProperty}
+            onReviewMatches={() => openFirstQueued((_, needsMatch) => needsMatch)}
+          />
           <PricingSection data={data} />
         </>
       )}

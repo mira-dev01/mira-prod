@@ -356,3 +356,14 @@ def test_intent_keywords_match_whole_words_not_fragments():
     assert categorise("What are your rates for Diwali?") == {"pricing"}
     assert categorise("Are pets allowed?") == {"policies"}
     assert categorise("Is it available next weekend?") == {"availability"}
+
+
+async def test_zero_night_legacy_row_does_not_break_the_dashboard(db_session, test_user, test_property):
+    # Rows written before BookingCreate validated check_out > check_in.
+    db_session.add(_booking(test_property, date(2026, 1, 3), date(2026, 1, 3), price=5000))
+    await db_session.commit()
+    result = await analytics_service.portfolio_performance(
+        db_session, _scope(test_user, [test_property], today=date(2026, 1, 2))
+    )
+    assert result["revenue"] is None
+    assert result["upcoming_revenue"] is None

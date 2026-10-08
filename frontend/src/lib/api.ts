@@ -28,6 +28,7 @@ import type {
   NegotiationRuleOut,
   NegotiationRuleUpdate,
   NotificationOut,
+  OverviewData,
   ObjectionInsights,
   ServiceRequestOut,
   PriceBreakdown,
@@ -237,7 +238,8 @@ export const api = {
         body: JSON.stringify(data),
       }),
     cancel: (id: string) => request<void>(`/bookings/${id}`, { method: "DELETE" }),
-    reconciliationQueue: () => request<ReconciliationQueue>("/bookings/reconciliation"),
+    reconciliationQueue: (kind?: "price" | "attribution") =>
+      request<ReconciliationQueue>(`/bookings/reconciliation${buildQuery({ kind })}`),
     reconciliation: (id: string) => request<BookingReconciliation>(`/bookings/${id}/reconciliation`),
     confirmPrice: (id: string, data: { choice: PriceChoice; final_booking_price?: number | null }) =>
       request<BookingReconciliation>(`/bookings/${id}/price`, { method: "PATCH", body: JSON.stringify(data) }),
@@ -311,6 +313,14 @@ export const api = {
           days: params?.startDate || params?.endDate ? undefined : (params?.days ?? 30),
           start_date: params?.startDate,
           end_date: params?.endDate,
+        })}`
+      ),
+    overview: (params: { startDate?: string; endDate?: string; includeTestCalls?: boolean }) =>
+      request<OverviewData>(
+        `/analytics/overview${buildQuery({
+          start_date: params.startDate,
+          end_date: params.endDate,
+          include_test_calls: params.includeTestCalls ?? false,
         })}`
       ),
     dashboard: (params: { startDate?: string; endDate?: string; propertyId?: string; includeTestCalls?: boolean }) =>

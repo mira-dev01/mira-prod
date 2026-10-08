@@ -472,8 +472,10 @@ async def decide_attribution(
     a matched conversation (mira_attribution_lead_id), and the host may
     change their answer later.
 
-    Yes -> confirmed. The matched lead moves to "booked" if it was still
-    open/contacted, so Lead.status and booking attribution stay one story.
+    Yes -> confirmed. Lead.status is deliberately NOT changed: it's the
+    host's own pipeline field, and a Yes that later becomes a No couldn't
+    restore it. Analytics already treats a lead with a confirmed booking as
+    converted (analytics_service._load_conversations), so nothing is lost.
     No  -> not_attributed. Anything reconciliation pulled from that
     conversation is withdrawn: its linked mira_conversation PriceEvents, the
     informational initial/negotiated prices and an auto-confirmed (actor
@@ -489,8 +491,6 @@ async def decide_attribution(
         booking.mira_attribution_status = "confirmed"
         if lead is not None:
             await _apply_lead_evidence(db, booking, lead, property_)
-            if lead.status in ("open", "contacted"):
-                lead.status = "booked"
     else:
         booking.mira_attribution_status = "not_attributed"
         await db.execute(
@@ -524,23 +524,25 @@ async def attach_host_lead(db: AsyncSession, booking: Booking, lead: Lead, prope
 
 
 async def reconciliation_queue(
-    db: AsyncSession, property_ids: list[uuid.UUID], limit: int = 50
-) -> tuple[list[Booking], int]:
-    """Bookings needing a host answer, most recent stay first, plus the
-    total count. Only bookings checking out within RECONCILIATION_LOOKBACK
+    db: AsyncSession, property_ids: list[uuid.UUID], kind: str | None = None
+) -> list[Booking]:
+    """Every booking needing a host answer, most recent stay first. kind
+    narrows to one question: "price" (final price missing, not yet answered)
+    or "attribution" (probable Mira match awaiting Yes/No). Only bookings checking out within RECONCILIATION_LOOKBACK
     of today (or later) are asked about."""
     if not property_ids:
-        return [], 0
+        return []
     cutoff = today_ist() - RECONCILIATION_LOOKBACK
+    needs_price = and_(Booking.final_booking_price.is_(None), Booking.price_reviewed_at.is_(None))
+    needs_attribution = and_(
+        Booking.mira_attribution_status == "probable", Booking.mira_attribution_reviewed_at.is_(None)
+    )
+    condition = {"price": needs_price, "attribution": needs_attribution}.get(kind, or_(needs_price, needs_attribution))
     stmt = select(Booking).where(
         Booking.property_id.in_(property_ids),
         Booking.kind == "reservation",
         Booking.status == "confirmed",
         Booking.check_out >= cutoff,
-        or_(
-            and_(Booking.final_booking_price.is_(None), Booking.price_reviewed_at.is_(None)),
-            and_(Booking.mira_attribution_status == "probable", Booking.mira_attribution_reviewed_at.is_(None)),
-        ),
+        condition,
     )
-    rows = list((await db.scalars(stmt.order_by(Booking.check_in.desc()))).all())
-    return rows[:limit], len(rows)
+    return list((await db.scalars(stmt.order_by(Booking.check_in.desc()))).all())

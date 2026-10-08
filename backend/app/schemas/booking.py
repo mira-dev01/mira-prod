@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 # See app/models/booking.py and app/services/booking_reconciliation_service.py
 # for what each value means. Validated here at the API boundary; the DB
@@ -29,6 +29,12 @@ class BookingCreate(BaseModel):
     # Set when the booking is created by closing a Mira lead ("Confirm
     # booking") -- the host asserting the attribution.
     lead_id: uuid.UUID | None = None
+
+    @model_validator(mode="after")
+    def _check_out_after_check_in(self) -> "BookingCreate":
+        if self.check_out <= self.check_in:
+            raise ValueError("check_out must be after check_in")
+        return self
 
 
 class BookingOut(BaseModel):
