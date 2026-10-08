@@ -1155,8 +1155,13 @@ async def handle_update_lead(
     updates.pop("window_start", None)
     updates.pop("window_end", None)
     # A past stay is never a new booking's dates -- keep everything else
-    # (name/phone matter most for a previous-booking enquiry), drop the dates.
-    if args.check_in is not None and args.check_in < today_ist():
+    # (name/phone matter most for a previous-booking enquiry), drop the dates,
+    # and say so: update_lead is where the model records a date the moment
+    # the guest says it, usually long before any availability/pricing call,
+    # so a silent "Saved." here let a past date go unchallenged (confirmed
+    # live 2026-10-08: "2nd October" on 8 Oct was accepted and qualified).
+    past_error = _past_dates_error(args.check_in) if args.check_in is not None else None
+    if past_error:
         updates.pop("check_in", None)
         updates.pop("check_out", None)
     await lead_service.upsert_lead(
@@ -1167,6 +1172,11 @@ async def handle_update_lead(
         stay_length_known=stay_length_known,
         **updates,
     )
+    if past_error:
+        return ToolBusinessError(
+            f"Saved the other details, but not the dates. {past_error}"
+            + _phone_confirmation_warning(updates.get("phone"))
+        )
     return "Saved." + _phone_confirmation_warning(updates.get("phone"))
 
 

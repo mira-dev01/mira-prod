@@ -1,11 +1,14 @@
 """Fetches and parses Airbnb (or any) iCal export feeds into booking date ranges."""
 
 import re
+import time
 from dataclasses import dataclass
 from datetime import date, datetime
 
 import httpx
 from icalendar import Calendar
+
+from app.observability import health
 
 
 @dataclass
@@ -71,7 +74,20 @@ def _to_date(value: date | datetime) -> date:
 
 
 async def fetch_ical(url: str, timeout: float = 15.0) -> list[ICalEvent]:
-    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
-        response = await client.get(url)
-        response.raise_for_status()
+    # Health (app/observability/health.py): unreachable/5xx calendar hosts
+    # count against "iCal calendar sync"; a 4xx is one host's broken link,
+    # not a sync outage, so it doesn't.
+    started = time.monotonic()
+    try:
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        outcome = "error" if exc.response.status_code >= 500 else "ok"
+        health.record("ical_sync", outcome, latency_ms=(time.monotonic() - started) * 1000, error=exc, op="fetch")
+        raise
+    except Exception as exc:
+        health.record("ical_sync", "error", latency_ms=(time.monotonic() - started) * 1000, error=exc, op="fetch")
+        raise
+    health.record("ical_sync", "ok", latency_ms=(time.monotonic() - started) * 1000, op="fetch")
     return parse_ical(response.text)

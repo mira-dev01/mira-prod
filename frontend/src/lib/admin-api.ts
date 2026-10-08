@@ -329,6 +329,108 @@ export type ServiceSettingUpdate = {
   note?: string;
 };
 
+export type HealthState = "up" | "degraded" | "down" | "unknown" | "not_configured";
+
+export type HealthService = {
+  key: string;
+  label: string;
+  group: string;
+  description: string;
+  critical: boolean;
+  state: HealthState;
+  not_configured_reason?: string | null;
+  since: string | null;
+  last_ok_at: string | null;
+  last_activity_at: string | null;
+  stale: boolean;
+  last_error: {
+    at: string;
+    message: string;
+    kind: string | null;
+    op: string | null;
+    outcome: string;
+    call_session_id?: string | null;
+    host_id?: string | null;
+  } | null;
+  window: { requests: number; ok: number; warnings: number; errors: number; error_rate: number | null; p95_ms: number | null };
+  probe: { status: string | null; at: string | null; latency_ms: number | null; consecutive_failures: number; error: string | null } | null;
+  detail: Record<string, unknown>;
+  open_incident_id: string | null;
+  availability_24h: number | null;
+  incidents_24h: number;
+};
+
+export type HealthIncident = {
+  id: string;
+  service: string;
+  label: string;
+  group: string;
+  severity: "degraded" | "down";
+  state: HealthState;
+  opened_at: string;
+  resolved_at: string | null;
+  duration_s: number;
+  down_seconds: number;
+  first_error: string | null;
+  last_error: string | null;
+  error_count: number;
+  sample_call_session_id: string | null;
+  alerts_sent: number;
+  last_alert_at: string | null;
+};
+
+export type HealthSnapshot = {
+  environment: string;
+  generated_at: string;
+  version: number;
+  alerts_enabled: boolean;
+  alert_recipients: string[];
+  overall: "up" | "degraded" | "down";
+  counts: Partial<Record<HealthState, number>>;
+  groups: { key: string; label: string; services: HealthService[] }[];
+  incidents: HealthIncident[];
+};
+
+/** Server-sent events over fetch (EventSource can't send the Bearer header).
+ * Resolves when the stream ends (server closes it every ~15 min, or network
+ * drop) -- the caller reconnects. Rejects with AdminApiError on 401/403. */
+export async function streamHealth(onSnapshot: (s: HealthSnapshot) => void, signal: AbortSignal): Promise<void> {
+  const headers = new Headers({ Accept: "text/event-stream" });
+  const session = getAdminSession();
+  if (session) headers.set("Authorization", `Bearer ${session.token}`);
+  const res = await fetch(`${API_BASE_URL}/admin/health/stream`, { headers, signal, cache: "no-store" });
+  if (!res.ok || !res.body) {
+    if (res.status === 401 || res.status === 403) setAdminSession(null);
+    throw new AdminApiError(res.status, res.statusText || "Health stream failed");
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) return;
+    buffer += decoder.decode(value, { stream: true });
+    let boundary = buffer.indexOf("\n\n");
+    while (boundary !== -1) {
+      const chunk = buffer.slice(0, boundary);
+      buffer = buffer.slice(boundary + 2);
+      const data = chunk
+        .split("\n")
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice(5).trimStart())
+        .join("\n");
+      if (data) {
+        try {
+          onSnapshot(JSON.parse(data) as HealthSnapshot);
+        } catch {
+          // malformed frame -- skip it, the next tick replaces it anyway
+        }
+      }
+      boundary = buffer.indexOf("\n\n");
+    }
+  }
+}
+
 export const adminApi = {
   auth: {
     requestCode: (email: string) =>
@@ -347,6 +449,9 @@ export const adminApi = {
   leads: (f: AdminFilters) => request<LeadsData>(`/admin/leads${qs(f)}`),
   hosts: (f: AdminFilters) => request<HostsData>(`/admin/hosts${qs(f)}`),
   usage: (f: AdminFilters) => request<UsageData>(`/admin/usage${qs(f)}`),
+  health: () => request<HealthSnapshot>("/admin/health"),
+  sendHealthDigest: () =>
+    request<{ status: string; recipients?: string[] }>("/admin/health/digest", { method: "POST" }),
   balances: (refresh = false) => request<BalanceCard[]>(`/admin/balances${refresh ? "?refresh=true" : ""}`),
   settings: {
     list: () => request<ServiceSetting[]>("/admin/settings/services"),

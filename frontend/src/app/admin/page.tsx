@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ArrowRight, Clock, IndianRupee, MessageCircleQuestion, Phone, PhoneCall, ShieldAlert, Users, Zap } from "lucide-react";
 import { StatCard } from "@/components/stat-card";
+import { SystemHealth } from "@/components/admin/system-health";
 import { useAdminQuery } from "@/components/admin/admin-context";
 import {
   CoverageNote,
@@ -26,6 +27,8 @@ export default function AdminOverviewPage() {
   return (
     <>
       <PageHeader title="Overview" subtitle="Across every host and property" />
+      <SystemHealth />
+      <h2 className="pt-2 text-sm font-semibold text-muted-foreground">Activity in the selected range</h2>
       {error && <ErrorState error={error} />}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
         <StatCard icon={Phone} label="Calls" value={fmtNum(data?.kpis.calls)} loading={loading} />

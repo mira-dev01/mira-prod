@@ -353,3 +353,22 @@ async def test_lookup_booking_wrapper_searches_the_callers_own_number(test_user,
     await lookup_booking(params, name="Someone Else")
 
     assert "under Priya" in params.result["result"]
+
+
+async def test_update_lead_with_past_date_tells_the_model_to_ask_about_an_existing_booking(test_user, db_session):
+    # Regression 2026-10-08: "2nd October" said on 8 Oct was recorded via
+    # update_lead, silently dropped, and answered with a plain "Saved." --
+    # the model carried on qualifying it as a new booking.
+    result = await tool_handlers.handle_update_lead(
+        db_session, UpdateLeadArgs(check_in=TODAY - timedelta(days=6)), test_user.id, None
+    )
+    assert isinstance(result, ToolBusinessError)
+    assert "previous or existing booking" in result
+
+
+def test_past_date_rule_is_a_golden_rule_in_both_agent_modes():
+    from app.prompts.system_prompt import build_lead_system_prompt
+
+    lead_prompt = build_lead_system_prompt(User(id=uuid.uuid4(), email="h@example.com", name="Asha"), [])
+    assert "Past dates come before everything else" in lead_prompt
+    assert lead_prompt.index("Past dates come before everything else") < lead_prompt.index("Lead qualification workflow")

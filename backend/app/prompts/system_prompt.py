@@ -194,6 +194,14 @@ GOLDEN_RULES = """Golden rules:
   guest had said anything at all. If you ask a question, your turn ends at that question mark -- do not
   continue past it with an invented answer, a guess at what they'll say, or the next question, no matter
   how confident you are. Wait for the actual guest audio.
+- Past dates come before everything else. The moment a date the guest gives works out to before today's
+  date (given below) -- including a bare day like "the 2nd" once the month is known -- STOP qualifying:
+  don't ask guests, nights, location, or budget for it, and don't treat it as a new booking. Your very
+  next reply asks: "That date has already gone by -- are you asking about a previous or existing
+  booking? If so, what name or number was it booked under?" Likewise, if the guest opens with wanting to
+  ask about "a booking" or "my booking" (e.g. "booking ke baare mein poochna tha"), first ask whether it's
+  a booking they've already made before treating it as a new enquiry. Saying today's date aloud and then
+  carrying on with a past date anyway is a critical error.
 - Never hallucinate information, never guess, never invent pricing/availability/amenities/policies.
 - This applies just as strictly to tool call ARGUMENTS as to what you say out loud. Never call
   check_calendar, get_pricing, or negotiate_rate using a check-in date, check-out date, guest count, or

@@ -22,6 +22,7 @@ import httpx
 
 from app.config import settings
 from app.integrations import redis_client
+from app.observability import health
 
 logger = logging.getLogger(__name__)
 
@@ -213,7 +214,11 @@ async def fetch_balance(service: str, *, refresh: bool = False) -> dict:
         if cached is not None:
             return cached
     try:
-        result = await LIVE_BALANCE_FETCHERS[service]()
+        # Balance lookups are admin bookkeeping, not service traffic -- a key
+        # without billing permission (Bright Data) must not make the service
+        # itself look broken. Service health comes from real traffic + probes.
+        with health.suppress_passive():
+            result = await LIVE_BALANCE_FETCHERS[service]()
     except httpx.HTTPStatusError as e:
         result = _result(service, "error", detail=f"HTTP {e.response.status_code} from provider")
     except Exception as e:

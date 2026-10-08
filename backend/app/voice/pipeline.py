@@ -45,6 +45,7 @@ from pipecat.workers.runner import WorkerRunner
 from sqlalchemy import select
 
 from app.config import settings
+from app.observability import health
 from app.database import AsyncSessionLocal
 from app.integrations import exotel_client
 from app.models.call_session import CallSession
@@ -392,12 +393,16 @@ class _ReconnectingSarvamSTTService(SarvamSTTService):
                     self._stt_reconnecting = True
                     self._stt_last_reconnect_attempt = now
                     logger.warning("Sarvam STT connection appears dead -- reconnecting: %s", frame.error)
+                    # A recovered drop is a warning (3+ in 5 min = degraded);
+                    # a failed reconnect is a real failure.
+                    health.record("sarvam_stt", "warn", error=frame.error, kind="connection_dropped", op="reconnect")
                     try:
                         await self._disconnect()
                         await self._connect()
                         logger.info("Sarvam STT reconnected successfully")
-                    except Exception:
+                    except Exception as exc:
                         logger.exception("Failed to reconnect Sarvam STT")
+                        health.record("sarvam_stt", "error", error=exc, kind="reconnect_failed", op="reconnect")
                     finally:
                         self._stt_reconnecting = False
                 # Swallow this specific error frame instead of forwarding it --
@@ -687,6 +692,9 @@ async def _run_pipeline(
         else None
     )
     handoff_outcome = _HandoffOutcome()
+    # Services that already failed during this call (health is counted per
+    # call, not per error -- see _run_pipeline_inner's on_error handlers).
+    failed_services: set[str] = set()
     try:
         await _run_pipeline_inner(
             transport,
@@ -704,6 +712,7 @@ async def _run_pipeline(
             voice_gender=voice_gender,
             handoff_outcome=handoff_outcome,
             host_handoff_phrase=host_handoff_phrase,
+            failed_services=failed_services,
         )
     except asyncio.CancelledError:
         # Not a system failure -- normal shutdown path (e.g. worker restart,
@@ -712,7 +721,7 @@ async def _run_pipeline(
         # this module; the CallSession is left exactly as on_pipeline_
         # finished (if it ran) or CancelFrame handling already left it.
         raise
-    except Exception:
+    except Exception as pipeline_exc:
         # A genuine mid-call crash (STT/LLM/TTS/Pipeline construction
         # failure, an unhandled exception inside a frame processor) never
         # reaches on_pipeline_finished at all -- see that handler's own
@@ -740,6 +749,7 @@ async def _run_pipeline(
         # real exception, which is always re-raised regardless of whether
         # this bookkeeping succeeds -- the finally block below still runs its
         # own hangup/lease-release safety net either way.
+        health.record("voice_pipeline", "error", error=pipeline_exc, kind="pipeline_crash", op="call")
         if call_session_id is not None:
             try:
                 async with AsyncSessionLocal() as crash_db:
@@ -766,6 +776,14 @@ async def _run_pipeline(
                     "Failed to record MISSED_SYSTEM_FAILURE for call_session_id=%s", call_session_id
                 )
         raise
+    else:
+        # A call that ran to its normal end is the success signal for the
+        # pipeline, and -- if they didn't fail during it -- for the Sarvam
+        # websockets (which have no per-request success event to observe).
+        health.record("voice_pipeline", "ok", op="call")
+        for service in ("sarvam_stt", "sarvam_tts"):
+            if service not in failed_services:
+                health.record(service, "ok", op="call")
     finally:
         if renewal_task is not None and not renewal_task.done():
             renewal_task.cancel()
@@ -1057,6 +1075,7 @@ async def _run_pipeline_inner(
     voice_gender: str = "female",
     handoff_outcome: _HandoffOutcome | None = None,
     host_handoff_phrase: str = _HOST_HANDOFF_PHRASE,
+    failed_services: set[str] | None = None,
 ) -> None:
     # Attributes every out-of-pipeline paid request made during/after this
     # call (tool-triggered WhatsApp/SearchApi, post-call summary LLM, ...) to
@@ -1275,6 +1294,30 @@ async def _run_pipeline_inner(
             ),
         )
         llm = _build_llm()
+
+        # Service health (app/observability/health.py) -- observation only.
+        # Counted per CALL: the first STT/TTS error in a call is recorded
+        # immediately (an outage shows up mid-call), later ones in the same
+        # call aren't -- one noisy call must not read as an outage. A call
+        # with no error records a success at its end (_run_pipeline). LLM
+        # errors are already recorded at the HTTP layer.
+        call_failures = failed_services if failed_services is not None else set()
+
+        def _record_call_failure(service: str, error_frame) -> None:
+            if service in call_failures:
+                return
+            call_failures.add(service)
+            health.record(
+                service, "error", error=error_frame.error, kind="fatal" if error_frame.fatal else "stream_error", op="stream"
+            )
+
+        @stt.event_handler("on_error")
+        async def _on_stt_error(_processor, error_frame):
+            _record_call_failure("sarvam_stt", error_frame)
+
+        @tts.event_handler("on_error")
+        async def _on_tts_error(_processor, error_frame):
+            _record_call_failure("sarvam_tts", error_frame)
 
         # Browser test calls use a fixed placeholder identity (no real phone
         # number exists) -- never let that string flow through to tools as

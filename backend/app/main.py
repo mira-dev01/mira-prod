@@ -1,13 +1,13 @@
 import asyncio
 import logging
-import sys
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
+from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED, EVENT_JOB_MISSED
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from loguru import logger as _loguru_logger
 from sqlalchemy import text
 
 from app.api.v1 import (
@@ -29,26 +29,56 @@ from app.api.v1 import (
 from app.api.v1.webhooks import exotel, whatsapp
 from app.api.v1 import admin, admin_auth
 from app.config import settings
-from app.database import AsyncSessionLocal
+from app.database import AsyncSessionLocal, engine
+from app.observability import health, http_hook, probes
+from app.observability.logging_setup import configure_logging
+from app.observability.middleware import ObservabilityMiddleware, install_db_hook
+from app.services import health_monitor_service
 from app.services.calendar_service import sync_all_properties
 from app.services.call_service import reconcile_stuck_call_sessions
 from app.services.smart_pricing_service import refresh_live_pricing_cache, refresh_smart_pricing
 
-logging.basicConfig(level=logging.INFO)
+# One log pipeline (stdlib + loguru/pipecat), JSON lines on Railway -- see
+# app/observability/logging_setup.py.
+configure_logging()
 logger = logging.getLogger(__name__)
 
-
-class _PropagateToStdlib(logging.Handler):
-    def emit(self, record: logging.LogRecord) -> None:
-        stdlib_logger = logging.getLogger(record.name)
-        stdlib_logger.handle(record)
-
-
-_loguru_logger.remove()
-_loguru_logger.add(sys.stderr, level="DEBUG")
-_loguru_logger.add(_PropagateToStdlib(), level="DEBUG", format="{message}")
+# Passive health signal for every outbound HTTP call and every DB connection
+# error -- observation only, see app/observability/.
+http_hook.install()
+install_db_hook(engine)
 
 scheduler = AsyncIOScheduler()
+
+# APScheduler jobs that exist only to monitor health -- their own runs aren't
+# reported as "Background jobs" health.
+_HEALTH_JOB_IDS = frozenset({"health_tick", "health_probes", "health_credits", "health_digest", "llm_health_periodic", "db_keepalive"})
+_job_results: dict[str, dict] = {}
+
+
+def _on_scheduler_event(event) -> None:
+    """Background-job health: each job's last run, failed runs and missed
+    runs. Jobs that already catch-and-log their own errors still show as ok
+    here -- this catches the ones that don't, and jobs that stop running."""
+    try:
+        if event.job_id in _HEALTH_JOB_IDS:
+            return
+        now = datetime.now(timezone.utc).isoformat()
+        if event.code == EVENT_JOB_ERROR:
+            _job_results[event.job_id] = {"ok": False, "at": now, "error": f"{type(event.exception).__name__}: {event.exception}"}
+        elif event.code == EVENT_JOB_MISSED:
+            _job_results[event.job_id] = {"ok": False, "at": now, "error": "missed its scheduled run"}
+        else:
+            _job_results[event.job_id] = {"ok": True, "at": now, "error": None}
+        failing = {job: r for job, r in _job_results.items() if not r["ok"]}
+        health.record_probe(
+            "scheduler",
+            "degraded" if failing else "ok",
+            error="; ".join(f"{job}: {r['error']}" for job, r in failing.items()) or None,
+            detail={"jobs": _job_results},
+        )
+    except Exception:
+        logger.exception("scheduler_health_listener_failed")
 
 
 async def _scheduled_ical_sync() -> None:
@@ -111,11 +141,17 @@ async def _check_db_health() -> None:
     # window, keeps the connection warm so a real call never pays that cost.
     # Same rationale as _check_llm_health above, applied to the DB instead
     # of the LLM route. Failures are logged only -- never fatal.
+    #
+    # Doubles as the Postgres health probe for the /admin status page (every
+    # 60s now, down from 3 min, so an outage shows within ~2 minutes).
+    started = time.monotonic()
     try:
         async with AsyncSessionLocal() as db:
             await db.execute(text("SELECT 1"))
+        health.record_probe("postgres", "ok", latency_ms=(time.monotonic() - started) * 1000)
     except Exception as e:
         logger.warning("DB keep-alive ping failed: %s", e)
+        health.record_probe("postgres", "down", error=f"{type(e).__name__}: {e}")
 
 
 # Populated by _check_llm_health, read by app/voice/pipeline.py's _build_llm()
@@ -139,8 +175,14 @@ async def _check_llm_health() -> None:
     # 429 via multi-second retry/backoff. Failures are non-fatal; the app
     # still starts and callers still get a response via the next model down
     # the chain (or OpenRouter, as the last resort).
-    import time
+    # The probe's own requests aren't real traffic -- the result is folded
+    # into the Groq/OpenRouter health state explicitly below instead.
+    with health.suppress_passive():
+        await _ping_llm_routes()
+    probes.record_llm_health(llm_health)
 
+
+async def _ping_llm_routes() -> None:
     if settings.llm_provider == "groq" and settings.groq_api_key:
         from groq import AsyncGroq
 
@@ -221,7 +263,7 @@ async def lifespan(app: FastAPI):
     # Neon's default autosuspend is a few minutes of inactivity -- ping well
     # inside that window so the connection is always warm by the time a real
     # call needs it (see _check_db_health above).
-    scheduler.add_job(_check_db_health, "interval", minutes=3, id="db_keepalive")
+    scheduler.add_job(_check_db_health, "interval", seconds=60, id="db_keepalive")
     # Sweep any CallSession stranded at status="in_progress" by a finalize
     # path that never completed (see _reconcile_stuck_call_sessions). Every
     # 10 min is well inside "a host would notice a phantom live call on the
@@ -241,7 +283,30 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(
         _scheduled_live_pricing_cache_refresh, "cron", hour=1, minute=15, id="live_pricing_cache_refresh"
     )
+    # Service health monitoring for the /admin home page + alert emails --
+    # see app/services/health_monitor_service.py. max_instances=1 +
+    # coalesce: a slow tick (e.g. a slow alert email) never stacks.
+    scheduler.add_job(
+        health_monitor_service.tick, "interval", seconds=health_monitor_service.TICK_SECONDS,
+        id="health_tick", max_instances=1, coalesce=True,
+    )
+    scheduler.add_job(
+        health_monitor_service.probe_cycle, "interval", seconds=60, id="health_probes", max_instances=1, coalesce=True
+    )
+    scheduler.add_job(
+        health_monitor_service.credits_cycle, "interval", minutes=15, id="health_credits", max_instances=1, coalesce=True
+    )
+    scheduler.add_job(
+        health_monitor_service.send_daily_digest,
+        "cron",
+        hour=settings.health_digest_hour_utc,
+        minute=settings.health_digest_minute_utc,
+        id="health_digest",
+    )
+    scheduler.add_listener(_on_scheduler_event, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR | EVENT_JOB_MISSED)
     scheduler.start()
+    asyncio.create_task(health_monitor_service.probe_cycle())
+    asyncio.create_task(health_monitor_service.credits_cycle())
     asyncio.create_task(_scheduled_ical_sync())   # kick off one sync immediately, don't block startup on it
     asyncio.create_task(_check_llm_health())      # pre-warm + health-check LLM routes so first caller doesn't wait
     asyncio.create_task(_check_db_health())       # pre-warm the DB connection so the first caller doesn't wait
@@ -253,6 +318,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="MIRA API", version="0.1.0", lifespan=lifespan)
+
+app.add_middleware(ObservabilityMiddleware)
 
 app.add_middleware(
     CORSMiddleware,

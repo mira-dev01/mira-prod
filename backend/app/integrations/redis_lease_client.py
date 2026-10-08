@@ -42,6 +42,7 @@ from redis.asyncio import Redis
 from redis.commands.core import AsyncScript
 
 from app.integrations import redis_client
+from app.observability import health
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +128,14 @@ _release_script: AsyncScript | None = None
 _transfer_script: AsyncScript | None = None
 
 
+def _unavailable(message: str, exc: BaseException) -> RedisLeaseUnavailable:
+    """Every genuine Redis failure on the lease path also counts against
+    Redis's health on the /admin status page (observation only -- the
+    fail-open policy stays in call_coordinator.py)."""
+    health.record("redis", "error", error=exc, kind="lease_op_failed", op=message.split(" failed")[0])
+    return RedisLeaseUnavailable(message)
+
+
 def _require_client() -> Redis:
     """Unlike redis_client.get_client()'s callers (which treat None as
     "no-op, fall through"), a lease operation with no configured Redis has
@@ -168,7 +177,7 @@ async def acquire(key: str, value: str, ttl_seconds: int) -> bool:
     except RedisLeaseUnavailable:
         raise
     except Exception as exc:
-        raise RedisLeaseUnavailable(f"SET NX failed for key={key}") from exc
+        raise _unavailable(f"SET NX failed for key={key}", exc) from exc
     return bool(result)
 
 
@@ -181,7 +190,7 @@ async def get(key: str) -> str | None:
     except RedisLeaseUnavailable:
         raise
     except Exception as exc:
-        raise RedisLeaseUnavailable(f"GET failed for key={key}") from exc
+        raise _unavailable(f"GET failed for key={key}", exc) from exc
 
 
 async def renew(key: str, expected_token: str, ttl_seconds: int) -> bool:
@@ -199,7 +208,7 @@ async def renew(key: str, expected_token: str, ttl_seconds: int) -> bool:
     except RedisLeaseUnavailable:
         raise
     except Exception as exc:
-        raise RedisLeaseUnavailable(f"renew script failed for key={key}") from exc
+        raise _unavailable(f"renew script failed for key={key}", exc) from exc
     return bool(result)
 
 
@@ -218,7 +227,7 @@ async def release(key: str, expected_token: str) -> bool:
     except RedisLeaseUnavailable:
         raise
     except Exception as exc:
-        raise RedisLeaseUnavailable(f"release script failed for key={key}") from exc
+        raise _unavailable(f"release script failed for key={key}", exc) from exc
     return bool(result)
 
 
@@ -234,5 +243,5 @@ async def transfer(key: str, expected_token: str, new_lease_json: str, ttl_secon
     except RedisLeaseUnavailable:
         raise
     except Exception as exc:
-        raise RedisLeaseUnavailable(f"transfer script failed for key={key}") from exc
+        raise _unavailable(f"transfer script failed for key={key}", exc) from exc
     return bool(result)

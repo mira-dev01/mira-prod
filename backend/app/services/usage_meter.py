@@ -46,6 +46,13 @@ def bind_usage_context(call_session_id: uuid.UUID | None, user_id: uuid.UUID | N
     _usage_context.set((call_session_id, user_id))
 
 
+def current_usage_context() -> tuple[uuid.UUID | None, uuid.UUID | None]:
+    """(call_session_id, host user_id) bound for this task, if any -- also
+    stamped onto every structured log line and health failure record
+    (app/observability/), so a failure links straight to its call."""
+    return _usage_context.get()
+
+
 async def record_call_usage(
     db: AsyncSession,
     call_session_id: uuid.UUID | None,
