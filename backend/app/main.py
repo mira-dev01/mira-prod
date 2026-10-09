@@ -15,11 +15,14 @@ from app.api.v1 import (
     auth,
     bookings,
     calls,
+    capabilities,
     faq,
     guests,
     leads,
     negotiation_rules,
     notifications,
+    onboarding,
+    preferences,
     pricing,
     properties,
     take_call,
@@ -342,6 +345,9 @@ app.include_router(notifications.router, prefix=API_PREFIX)
 app.include_router(leads.router, prefix=API_PREFIX)
 app.include_router(faq.router, prefix=API_PREFIX)
 app.include_router(negotiation_rules.router, prefix=API_PREFIX)
+app.include_router(capabilities.router, prefix=API_PREFIX)
+app.include_router(onboarding.router, prefix=API_PREFIX)
+app.include_router(preferences.router, prefix=API_PREFIX)
 app.include_router(voice.router, prefix=API_PREFIX)
 app.include_router(take_call.router, prefix=API_PREFIX)
 app.include_router(exotel.router, prefix=API_PREFIX)

@@ -831,3 +831,148 @@ export type OverviewData = {
     high_intent_unconverted: { count: number; potential_value: number | null; valued_count: number };
   };
 };
+
+// ── Capabilities (backend app/services/capability_registry.py) ─────────
+// A capability is a functionality, not a sidebar tab -- several share
+// routes. See backend/app/schemas/capability.py for field semantics.
+export type CapabilityActivation = "core" | "bound" | "preference";
+export type CapabilityEnforcement = "always_on" | "enforced" | "advisory";
+export type CapabilityState = "available" | "disabled" | "needs_setup" | "ready" | "unavailable";
+export type CapabilitySetupState = "not_started" | "in_progress" | "complete" | "deferred";
+
+export type CapabilityGroup = { id: string; name: string; description: string };
+
+export type CapabilityRequirement = {
+  id: string;
+  label: string;
+  hard: boolean;
+  met: boolean;
+  action_label: string;
+  action_route: string;
+};
+
+export type CapabilityIntegration = { id: string; label: string; required: boolean; connected: boolean };
+
+export type CapabilityStatus = {
+  id: string;
+  name: string;
+  description: string;
+  benefit: string;
+  group: string;
+  activation: CapabilityActivation;
+  enforcement: CapabilityEnforcement;
+  selectable: boolean;
+  available: boolean;
+  enabled: boolean;
+  state: CapabilityState;
+  setup_state: CapabilitySetupState;
+  live_in_backend: boolean | null;
+  requirements: CapabilityRequirement[];
+  missing_dependencies: string[];
+  integrations: CapabilityIntegration[];
+  can_enable: boolean;
+  enable_blocked_reason: string | null;
+  can_disable: boolean;
+  disable_blocked_reason: string | null;
+  effect: string;
+  on_effect: string;
+  off_effect: string;
+  routes: string[];
+  onboarding_setup: string | null;
+  config: Record<string, unknown>;
+  updated_at: string | null;
+};
+
+export type HostCapabilities = { groups: CapabilityGroup[]; capabilities: CapabilityStatus[] };
+
+export type CapabilityUpdate = {
+  enabled?: boolean;
+  setup_state?: CapabilitySetupState;
+  config?: Record<string, unknown>;
+};
+
+// ── Onboarding (backend app/schemas/onboarding.py) ───────────────────
+export type OnboardingStep = "profile" | "capabilities" | "setup" | "review";
+
+export type FirstPropertyImport = {
+  airbnb_url: string;
+  ical_url: string | null;
+  live_pricing: boolean;
+  status: "importing" | "completed" | "failed";
+  property_id: string | null;
+  property_name: string | null;
+  error: string | null;
+  requested_at: string | null;
+  finished_at: string | null;
+};
+
+export type OnboardingState = {
+  status: "not_started" | "in_progress" | "completed";
+  source: "onboarding" | "legacy" | null;
+  current_step: string;
+  completed_steps: OnboardingStep[];
+  selected_capabilities: string[];
+  first_property: FirstPropertyImport | null;
+  completed_at: string | null;
+  selection_notes: string[];
+};
+
+export type OnboardingProgressUpdate = {
+  current_step?: OnboardingStep;
+  completed_steps?: OnboardingStep[];
+  selected_capabilities?: string[];
+};
+
+// ── Dashboard layout preferences (backend app/schemas/ui_preferences.py) ──
+// Layout only: hiding something here never disables a capability.
+export type NavPlacement = "pinned_top" | "movable" | "pinned_bottom";
+
+export type NavItem = {
+  id: string;
+  label: string;
+  href: string;
+  placement: NavPlacement;
+  hideable: boolean;
+  available: boolean;
+  hidden: boolean;
+  capabilities: string[];
+  unavailable_reason: string | null;
+};
+
+export type NavigationPreferences = {
+  items: NavItem[];
+  revision: number;
+  is_default: boolean;
+  updated_at: string | null;
+};
+
+export type NavigationPreferencesUpdate = { order: string[]; hidden: string[]; expected_revision: number };
+
+export type WidgetSize = "half" | "full";
+
+export type OverviewWidget = {
+  id: string;
+  name: string;
+  description: string;
+  capabilities: string[];
+  sizes: WidgetSize[];
+  size: WidgetSize;
+  hidden: boolean;
+  hideable: boolean;
+  default_visible: boolean;
+  available: boolean;
+  section: "summary" | "live" | "details";
+  unavailable_reason: string | null;
+};
+
+export type OverviewLayout = {
+  widgets: OverviewWidget[];
+  revision: number;
+  is_default: boolean;
+  updated_at: string | null;
+};
+
+export type OverviewLayoutUpdate = {
+  widgets: { id: string; size: WidgetSize; hidden: boolean }[];
+  expected_revision: number;
+};

@@ -4,47 +4,25 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Drawer } from "@base-ui/react/drawer";
-import {
-  Home,
-  Building2,
-  BrainCircuit,
-  Calendar,
-  ChartColumn,
-  Phone,
-  Users,
-  UserRound,
-  HelpCircle,
-  Settings,
-  Menu,
-  X,
-  Zap,
-  type LucideIcon,
-} from "lucide-react";
+import { ChevronDown, Menu, Pencil, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { NavigationEditor } from "@/components/navigation-editor";
 import { TalkToMiraDialog } from "@/components/talk-to-mira-dialog";
 import { useAuth } from "@/lib/auth-context";
+import { FALLBACK_NAV, activeNavId, NavIcon } from "@/lib/navigation";
+import { useNavigation } from "@/lib/navigation-context";
+import type { NavItem } from "@/lib/types";
 
-// Technicians stayed a Settings tab (see app/dashboard/settings/page.tsx) --
-// host configuration, same category as the rest of Settings, not something
-// checked day-to-day like Calls/Leads. AI Training (formerly the "Voice AI"
-// + "AI Training" Settings tabs, merged) instead gets its own top-level nav
-// entry right after Properties, since it configures the voice agent that
-// serves those properties.
-const links: { href: string; label: string; icon: LucideIcon }[] = [
-  { href: "/dashboard", label: "Overview", icon: Home },
-  { href: "/dashboard/analytics", label: "Analytics", icon: ChartColumn },
-  { href: "/dashboard/properties", label: "Properties", icon: Building2 },
-  { href: "/dashboard/properties/ai-training", label: "AI Training", icon: BrainCircuit },
-  { href: "/dashboard/calendar", label: "Calendar", icon: Calendar },
-  { href: "/dashboard/calls", label: "Calls", icon: Phone },
-  { href: "/dashboard/leads", label: "Live Requests", icon: Users },
-  { href: "/dashboard/opportunities", label: "Opportunities", icon: Zap },
-  { href: "/dashboard/guests", label: "Guests", icon: UserRound },
-  { href: "/dashboard/faq", label: "FAQ", icon: HelpCircle },
-  { href: "/dashboard/settings", label: "Settings", icon: Settings },
-];
+// Destinations, their order and which ones the host has hidden come from
+// the backend (GET /preferences/navigation -- app/services/
+// navigation_registry.py), already reconciled against the host's
+// capabilities; lib/navigation.ts only adds icons and the fallback list.
+// Technicians stays a Settings tab and AI Training a top-level entry, as
+// before. Hiding an entry is layout only -- never a capability change and
+// never an access control (every page's data is still guarded server-side).
 
 function MiraLogo() {
   return (
@@ -58,53 +36,95 @@ function MiraLogo() {
   );
 }
 
+function NavLink({ item, active, muted, onNavigate }: { item: NavItem; active: boolean; muted?: boolean; onNavigate?: () => void }) {
+  return (
+    <Link
+      href={item.href}
+      onClick={onNavigate}
+      aria-current={active ? "page" : undefined}
+      className={cn(
+        "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors duration-150 hover:bg-accent hover:text-accent-foreground",
+        active ? "bg-accent font-medium text-accent-foreground" : "font-normal text-muted-foreground",
+        muted && !active && "opacity-70"
+      )}
+    >
+      <NavIcon id={item.id} className="size-4 shrink-0" />
+      {item.label}
+    </Link>
+  );
+}
+
 function NavLinks({ onNavigate, onTalkToMira }: { onNavigate?: () => void; onTalkToMira: () => void }) {
   const pathname = usePathname();
   const { user, logout, isInternalOrg } = useAuth();
+  const { prefs, loading, error, editing, setEditing } = useNavigation();
+  const [showHidden, setShowHidden] = useState(false);
+
+  // While loading, show placeholders rather than a guessed menu; if the
+  // preferences can't load at all, fall back to the default destinations
+  // so a network error never strands the host without navigation.
+  const items: NavItem[] | null = prefs?.items ?? (error && !loading ? FALLBACK_NAV : null);
+  const visible = (items ?? []).filter((i) => i.available && !i.hidden);
+  const hidden = (items ?? []).filter((i) => i.available && i.hidden);
+  const activeId = activeNavId([...visible, ...hidden], pathname);
 
   return (
     <>
-      <nav className="flex flex-1 flex-col gap-1">
-        {isInternalOrg && (
-          <button
-            type="button"
-            onClick={() => {
-              onTalkToMira();
-              onNavigate?.();
-            }}
-            className="rounded-lg px-3 py-2 text-left text-sm font-medium text-accent-foreground transition-colors duration-150 hover:bg-accent"
-          >
-            <span className="mr-1.5 text-[var(--accent-warm)]">{"✳︎"}</span>
-            Talk to Mira
-          </button>
-        )}
-        <span className="text-micro px-2 pb-1 pt-2">Main</span>
-        {links.map((link) => {
-          const active =
-            link.href === "/dashboard"
-              ? pathname === link.href
-              : link.href === "/dashboard/properties"
-                ? pathname === link.href || (pathname.startsWith(link.href) && !pathname.startsWith("/dashboard/properties/ai-training"))
-                : pathname.startsWith(link.href);
-          const Icon = link.icon;
-          return (
-            <Link
-              key={link.href}
-              href={link.href}
-              onClick={onNavigate}
-              className={cn(
-                "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors duration-150 hover:bg-accent hover:text-accent-foreground",
-                active
-                  ? "bg-accent font-medium text-accent-foreground"
-                  : "font-normal text-muted-foreground"
-              )}
+      {editing && prefs ? (
+        <NavigationEditor key={prefs.revision} prefs={prefs} onClose={() => setEditing(false)} />
+      ) : (
+        <nav className="flex flex-1 flex-col gap-1 overflow-y-auto" aria-label="Main">
+          {isInternalOrg && (
+            <button
+              type="button"
+              onClick={() => {
+                onTalkToMira();
+                onNavigate?.();
+              }}
+              className="rounded-lg px-3 py-2 text-left text-sm font-medium text-accent-foreground transition-colors duration-150 hover:bg-accent"
             >
-              <Icon className="size-4 shrink-0" />
-              {link.label}
-            </Link>
-          );
-        })}
-      </nav>
+              <span className="mr-1.5 text-[var(--accent-warm)]">{"✳︎"}</span>
+              Talk to Mira
+            </button>
+          )}
+          <div className="flex items-center justify-between px-2 pb-1 pt-2">
+            <span className="text-micro">Main</span>
+            {prefs && (
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                aria-label="Customize navigation"
+              >
+                <Pencil className="size-3" />
+                Edit
+              </button>
+            )}
+          </div>
+          {items === null
+            ? Array.from({ length: 8 }, (_, i) => <Skeleton key={i} variant="text" className="mx-3 my-2 h-4" />)
+            : visible.map((item) => (
+                <NavLink key={item.id} item={item} active={item.id === activeId} onNavigate={onNavigate} />
+              ))}
+          {hidden.length > 0 && (
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => setShowHidden((v) => !v)}
+                aria-expanded={showHidden}
+                className="flex w-full items-center gap-1 px-3 py-1 text-xs text-muted-foreground hover:text-foreground"
+              >
+                <ChevronDown className={cn("size-3 transition-transform", !showHidden && "-rotate-90")} />
+                Hidden ({hidden.length})
+              </button>
+              {showHidden &&
+                hidden.map((item) => (
+                  <NavLink key={item.id} item={item} active={item.id === activeId} muted onNavigate={onNavigate} />
+                ))}
+            </div>
+          )}
+        </nav>
+      )}
       <div className="space-y-2 border-t pt-4">
         <Link
           href="/dashboard/profile"
@@ -131,6 +151,7 @@ export function SidebarNav() {
   const [open, setOpen] = useState(false);
   const [talkOpen, setTalkOpen] = useState(false);
   const pathname = usePathname();
+  const { editing } = useNavigation();
 
   // Belt-and-suspenders close on route change -- NavLinks' onNavigate
   // already closes on a direct link click, but this also covers browser
@@ -138,6 +159,16 @@ export function SidebarNav() {
   useEffect(() => {
     setOpen(false);
   }, [pathname]);
+
+  // "Customize navigation" can be started from Settings -- on mobile the
+  // editor lives in the drawer, so open it. Mobile only: the drawer is
+  // modal (focus trap, inert background), so opening it while it's
+  // display:none on desktop would trap focus in an invisible panel.
+  useEffect(() => {
+    if (!editing || !window.matchMedia("(max-width: 767px)").matches) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing the drawer to an external edit request
+    setOpen(true);
+  }, [editing]);
 
   return (
     <>

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { CapabilityNotice } from "@/components/capability-notice";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DictationTextarea } from "@/components/ui/dictation-textarea";
 import { Input } from "@/components/ui/input";
@@ -342,6 +343,10 @@ export function AiTrainingSection() {
           learned before it goes live.
         </p>
       </div>
+      <CapabilityNotice
+        capabilityId="negotiation"
+        whenOff="Discount negotiation is off, so Mira holds the quoted price and offers to connect guests with you instead of discounting. Your rules are kept and apply again when you turn it back on."
+      />
 
       <div className="grid gap-6 lg:grid-cols-5 lg:items-start">
         <div className="lg:col-span-3">

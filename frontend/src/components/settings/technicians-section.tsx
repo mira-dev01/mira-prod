@@ -5,6 +5,7 @@ import { Phone, Star, Wrench, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CapabilityNotice } from "@/components/capability-notice";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -66,6 +67,10 @@ export function TechniciansSection() {
       <p className="text-sm text-muted-foreground">
         Local service providers MIRA can dispatch for physical issues (plumbing, electrical, AC, wifi, lock).
       </p>
+      <CapabilityNotice
+        capabilityId="technician_dispatch"
+        whenOff="Technician dispatch is off, so Mira won't suggest anyone from this list to guests -- she flags maintenance issues to you instead. Your technicians are kept for when you turn it back on."
+      />
 
       <Card>
         <CardHeader>

@@ -45,8 +45,26 @@ async def test_parse_airbnb_listing_extracts_faq_entries():
     assert "alarm" in faq_by_category["safety"]["answer"].lower()
 
 
+<<<<<<< Updated upstream
 async def test_parse_airbnb_listing_handles_empty_input():
     parsed = await parse_airbnb_listing({})
+=======
+def test_parse_airbnb_listing_reads_top_level_photos():
+    raw = _load_fixture()
+    raw["photos"] = [
+        "https://res.cloudinary.com/demo/image/upload/v1/mira/a.jpg",
+        "  ",
+        "http://insecure.example.com/b.jpg",
+        123,
+    ]
+    parsed = parse_airbnb_listing(raw)
+    assert parsed["fields"]["photos"] == ["https://res.cloudinary.com/demo/image/upload/v1/mira/a.jpg"]
+    assert "photos" not in parse_airbnb_listing(_load_fixture())["fields"]
+
+
+def test_parse_airbnb_listing_handles_empty_input():
+    parsed = parse_airbnb_listing({})
+>>>>>>> Stashed changes
     assert parsed == {"fields": {}, "faq_entries": []}
 
 

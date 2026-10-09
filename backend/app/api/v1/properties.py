@@ -243,18 +243,27 @@ async def import_airbnb_urls_status(
     except BrightDataError as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
 
+    results = await import_snapshot_records(current_user.id, records)
+    return AirbnbUrlImportStatus(status="ready", results=results)
+
+
+async def import_snapshot_records(user_id: uuid.UUID, records: list[dict]) -> list[PropertyImportResult]:
+    """Parses and upserts every record of a ready Bright Data snapshot.
+    Shared by the poll endpoint above and the server-side onboarding import
+    (app/services/onboarding_service.py), so both create properties the
+    exact same way -- same parser, Cloudinary folder, FAQ sync and
+    airbnb_listing_id dedupe."""
     results: list[PropertyImportResult] = []
     for record in records:
         url = record.get("url") or record.get("final_url") or ""
         listing_id = str(record.get("property_id") or _listing_id_from_url(url))
         label = record.get("listing_title") or record.get("name") or url or listing_id
         try:
-            parsed = await parse_bright_data_listing(record, photo_folder=f"mira/properties/{current_user.id}")
-            results.append(await _upsert_property_from_parsed(current_user.id, listing_id, label, parsed))
+            parsed = await parse_bright_data_listing(record, photo_folder=f"mira/properties/{user_id}")
+            results.append(await _upsert_property_from_parsed(user_id, listing_id, label, parsed))
         except Exception as exc:  # noqa: BLE001 - one bad record shouldn't fail the whole batch
             results.append(PropertyImportResult(filename=label, status="error", error=str(exc)))
-
-    return AirbnbUrlImportStatus(status="ready", results=results)
+    return results
 
 
 @router.post("", response_model=PropertyOut, status_code=status.HTTP_201_CREATED)

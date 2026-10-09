@@ -15,4 +15,8 @@ __pycache__/
 .railway/
 .vercel
 .env*
+<<<<<<< Updated upstream
 .airbnb_imports_tmp/
+=======
+venv312/
+>>>>>>> Stashed changes

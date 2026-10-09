@@ -5,6 +5,8 @@ from app.models.call_quality_event import CallQualityEvent
 from app.models.call_session import CallSession
 from app.models.faq_entry import FaqEntry
 from app.models.guest_profile import GuestProfile
+from app.models.host_capability import HostCapability
+from app.models.host_onboarding import HostOnboarding
 from app.models.lead import Lead
 from app.models.negotiation_rule import NegotiationRule
 from app.models.notification import Notification
@@ -17,6 +19,7 @@ from app.models.property_chunk import PropertyChunk
 from app.models.technician import Technician
 from app.models.unanswered_question import UnansweredQuestion
 from app.models.user import User
+from app.models.user_ui_preference import UserUiPreference
 
 __all__ = [
     "AdminLoginCode",
@@ -27,6 +30,8 @@ __all__ = [
     "CallSession",
     "FaqEntry",
     "GuestProfile",
+    "HostCapability",
+    "HostOnboarding",
     "Lead",
     "NegotiationRule",
     "Notification",
@@ -39,4 +44,5 @@ __all__ = [
     "Technician",
     "UnansweredQuestion",
     "User",
+    "UserUiPreference",
 ]

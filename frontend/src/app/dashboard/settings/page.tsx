@@ -12,11 +12,14 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TechniciansSection } from "@/components/settings/technicians-section";
+import { FeaturesSection } from "@/components/settings/features-section";
+import { DashboardSection } from "@/components/settings/dashboard-section";
+import { CapabilityNotice } from "@/components/capability-notice";
 import { HostCallHoursCard } from "@/components/settings/host-call-hours-card";
 import { API_BASE_URL, ApiError, api, getToken } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 
-const VALID_TABS = ["your account", "technicians", "billing", "api", "team"] as const;
+const VALID_TABS = ["your account", "features", "dashboard", "technicians", "billing", "api", "team"] as const;
 type SettingsTab = (typeof VALID_TABS)[number];
 
 function ComingSoonTab({ icon: Icon, label }: { icon: React.ComponentType<{ className?: string }>; label: string }) {
@@ -39,14 +42,14 @@ function SettingsPageContent() {
   const { user, loading, refreshUser } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const initialTab = searchParams.get("tab");
-  const [tab, setTab] = useState<SettingsTab>(
-    VALID_TABS.includes(initialTab as SettingsTab) ? (initialTab as SettingsTab) : "your account"
-  );
+  // Derived from the URL rather than held in state, so in-page links (e.g.
+  // Features & modules' "Add a technician" -> ?tab=technicians) switch tabs
+  // too, not just the initial deep link.
+  const tabParam = searchParams.get("tab");
+  const tab: SettingsTab = VALID_TABS.includes(tabParam as SettingsTab) ? (tabParam as SettingsTab) : "your account";
 
   function handleTabChange(value: unknown) {
     if (typeof value !== "string" || !VALID_TABS.includes(value as SettingsTab)) return;
-    setTab(value as SettingsTab);
     // Keeps the URL deep-linkable without adding a history entry for every
     // tab click.
     router.replace(`/dashboard/settings?tab=${value}`, { scroll: false });
@@ -147,6 +150,8 @@ function SettingsPageContent() {
       <Tabs value={tab} onValueChange={handleTabChange}>
         <TabsList>
           <TabsTrigger value="your account">Your account</TabsTrigger>
+          <TabsTrigger value="features">Features &amp; modules</TabsTrigger>
+          <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
           <TabsTrigger value="technicians">Technicians</TabsTrigger>
           <TabsTrigger value="billing">Billing</TabsTrigger>
           <TabsTrigger value="api">API</TabsTrigger>
@@ -232,6 +237,11 @@ function SettingsPageContent() {
                 <CardTitle>Guest Call Number</CardTitle>
               </CardHeader>
               <CardContent>
+                <CapabilityNotice
+                  capabilityId="lead_agent"
+                  className="mb-3"
+                  whenOff="The Portfolio Lead Agent is off in your features. Saving a number here turns it back on -- Mira answers whenever a Guest Call Number is saved."
+                />
                 <p className="mb-3 text-sm text-muted-foreground">
                   Calls to this number run the Lead Agent across your full property portfolio instead of one
                   property — for booking enquiries, not existing-guest support. This is also your general
@@ -253,6 +263,14 @@ function SettingsPageContent() {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        <TabsContent value="features" className="pt-4">
+          <FeaturesSection />
+        </TabsContent>
+
+        <TabsContent value="dashboard" className="pt-4">
+          <DashboardSection />
         </TabsContent>
 
         <TabsContent value="technicians" className="pt-4">

@@ -41,6 +41,7 @@ from app.schemas.tool import (
 )
 from app.services import (
     calendar_service,
+    capability_service,
     embedding_service,
     faq_service,
     guest_booking_service,
@@ -477,6 +478,24 @@ async def handle_dispatch_technician(
     # notification text keeps saying "technician" either way, since that's
     # accurate for the host-facing record regardless of phrasing to the guest.
     role_label = "caretaker" if args.issue_type == "general" else f"{args.issue_type} technician"
+
+    # Host turned technician dispatch off (Settings > Features & modules):
+    # the issue is still logged and flagged to the host -- a guest's problem
+    # must never just disappear -- but no technician is named or suggested.
+    # The tool itself stays registered; only this outcome changes.
+    if not await capability_service.is_capability_enabled(property_.user_id, "technician_dispatch"):
+        await notification_service.create_notification(
+            db,
+            channel="escalation",
+            property_id=property_.id,
+            call_session_id=call_session_id,
+            urgency=args.urgency,
+            message=(
+                f"Guest reported a {args.issue_type} issue at {property_.name} (urgency: {args.urgency}). "
+                "Technician dispatch is turned off -- please arrange this directly."
+            ),
+        )
+        return f"I've flagged this to the host as {args.urgency} priority so they can arrange it directly."
 
     technician = await technician_service.find_technician(db, property_.id, args.issue_type)
 

@@ -6,12 +6,6 @@ import { useAuth as useClerkAuth, useClerk, useOrganization, useOrganizationList
 import { api, setTokenGetter } from "@/lib/api";
 import type { UserOut } from "@/lib/types";
 
-// Sessionstorage key the dashboard reads on first load after onboarding to
-// resume polling the Bright Data scrape triggered by POST /auth/onboarding
-// (that call never blocks on the scrape, so the poll has to continue
-// somewhere after the redirect).
-export const PENDING_IMPORT_KEY = "mira_pending_import";
-
 type AuthContextValue = {
   user: UserOut | null;
   loading: boolean;

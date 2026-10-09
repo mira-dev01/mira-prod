@@ -11,6 +11,7 @@ import type {
   CallHoursStatus,
   CallSessionDetailOut,
   CallSessionOut,
+  CapabilityUpdate,
   FaqEntryCreate,
   FaqEntryOut,
   FaqEntryUpdate,
@@ -20,16 +21,23 @@ import type {
   GuestProfileDetailOut,
   GuestProfileOut,
   GuestProfileUpdate,
+  HostCapabilities,
   HostOnboarding,
   HostOnboardingResponse,
   LeadOut,
   LeadUpdate,
+  NavigationPreferences,
+  NavigationPreferencesUpdate,
   NegotiationPolicyParseResponse,
   NegotiationRuleOut,
   NegotiationRuleUpdate,
   NotificationOut,
   OverviewData,
+  OverviewLayout,
+  OverviewLayoutUpdate,
   ObjectionInsights,
+  OnboardingProgressUpdate,
+  OnboardingState,
   ServiceRequestOut,
   PriceBreakdown,
   PriceChoice,
@@ -175,6 +183,36 @@ export const api = {
     // same resolver the Exotel webhook uses on a real call -- see
     // CallHoursStatus in backend/app/schemas/user.py.
     callHoursStatus: () => request<CallHoursStatus>("/auth/me/call-hours-status"),
+  },
+  // Capability management -- always scoped server-side to the signed-in
+  // host (backend app/api/v1/capabilities.py).
+  capabilities: {
+    list: () => request<HostCapabilities>("/capabilities"),
+    update: (id: string, data: CapabilityUpdate) =>
+      request<HostCapabilities>(`/capabilities/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  },
+  // Server-persisted onboarding progress (backend app/api/v1/onboarding.py).
+  // Business-profile fields go through auth.updateMe, not here.
+  onboarding: {
+    get: () => request<OnboardingState>("/onboarding"),
+    save: (data: OnboardingProgressUpdate) =>
+      request<OnboardingState>("/onboarding", { method: "PUT", body: JSON.stringify(data) }),
+    startFirstPropertyImport: (data: { airbnb_url: string; ical_url?: string | null; live_pricing?: boolean }) =>
+      request<OnboardingState>("/onboarding/first-property", { method: "POST", body: JSON.stringify(data) }),
+    complete: () => request<OnboardingState>("/onboarding/complete", { method: "POST" }),
+  },
+  // Dashboard layout (backend app/api/v1/preferences.py) -- the signed-in
+  // user's own navigation order/visibility and Overview widget layout.
+  // Stored separately from capability activation above.
+  preferences: {
+    navigation: () => request<NavigationPreferences>("/preferences/navigation"),
+    saveNavigation: (data: NavigationPreferencesUpdate) =>
+      request<NavigationPreferences>("/preferences/navigation", { method: "PUT", body: JSON.stringify(data) }),
+    resetNavigation: () => request<NavigationPreferences>("/preferences/navigation", { method: "DELETE" }),
+    overviewWidgets: () => request<OverviewLayout>("/preferences/overview-widgets"),
+    saveOverviewWidgets: (data: OverviewLayoutUpdate) =>
+      request<OverviewLayout>("/preferences/overview-widgets", { method: "PUT", body: JSON.stringify(data) }),
+    resetOverviewWidgets: () => request<OverviewLayout>("/preferences/overview-widgets", { method: "DELETE" }),
   },
   properties: {
     list: () => request<PropertyOut[]>("/properties"),
