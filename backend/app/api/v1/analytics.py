@@ -1,24 +1,25 @@
-from datetime import datetime, timedelta, timezone
+import uuid
+from datetime import date, datetime, timedelta, timezone
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.common import DateRange, date_range_query, owned_property_ids
+from app.api.v1.common import DateRange, date_range_query, get_owned_property, owned_property_ids
 from app.auth.dependencies import get_current_user
 from app.database import get_db
 from app.models.call_session import CallSession
 from app.models.lead import Lead
 from app.models.notification import Notification
+from app.models.property import Property
 from app.models.user import User
-from app.schemas.call_classification import QUALIFIED_CALL_TYPES
 from app.schemas.call_quality_event import QualityEventAnalyticsOut
 from app.schemas.objection_analytics import ObjectionConversionAnalyticsOut
-from app.services import call_service, lead_service
+from app.services import analytics_service, call_service, lead_service
 from app.services.call_service import BROWSER_TEST_CALLER_NUMBER
-from app.services.recovery_service import NOTIFICATION_CHANNEL_BUSY_RECOVERY
-from app.services.whatsapp_reply_service import NOTIFICATION_CHANNEL_BUSY_RECOVERY_REPLY
+from app.services.lead_temperature import WARM_OR_ABOVE
+from app.utils.dates import today_ist
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
@@ -55,46 +56,13 @@ async def analytics_summary(
         since = datetime.now(timezone.utc) - timedelta(days=days)
     until = date_range.until
 
-    call_filters = [CallSession.user_id == current_user.id, CallSession.created_at >= since]
-    if until is not None:
-        call_filters.append(CallSession.created_at < until)
-    if not include_test_calls:
-        call_filters.append(CallSession.caller_number != BROWSER_TEST_CALLER_NUMBER)
-
-    base = select(CallSession).where(*call_filters)
-
-    total_calls = await db.scalar(select(func.count()).select_from(base.subquery()))
-    completed_calls = await db.scalar(
-        select(func.count()).select_from(base.where(CallSession.status == "completed").subquery())
+    activity = await analytics_service.call_activity(
+        db, current_user.id, property_ids, since, until, include_test_calls=include_test_calls
     )
-    # "Qualified" (BOOKING_LEAD/GUEST_SUPPORT/EXISTING_BOOKING/GENERAL_QUERY)
-    # is never itself a stored call_type value -- see schemas/
-    # call_classification.py -- just this derived grouping, computed here
-    # the same way escalated_calls is derived from Notification.channel
-    # rather than a stored boolean.
-    qualified_calls = await db.scalar(
-        select(func.count()).select_from(base.where(CallSession.call_type.in_(QUALIFIED_CALL_TYPES)).subquery())
-    )
-    # CallSession.urgency is never written anywhere in the app (escalations
-    # are recorded as Notification rows, not on the CallSession itself) --
-    # counting it here always returned 0, contradicting the Live Requests
-    # panel on the same Overview page, which is populated from Notification
-    # rows with channel="escalation". Count that instead, so this card
-    # matches what the host actually sees in Live Requests.
-    #
-    # NOTE: like Live Requests itself, this is scoped by
-    # property_id IN owned_property_ids, so a Lead Agent escalation
-    # (property_id=NULL, portfolio-wide calls) won't be counted here either
-    # -- pre-existing gap in Live Requests' own query, not introduced by this
-    # fix. Tracked as a follow-up, not fixed here to keep this change scoped.
-    escalated_filters = [
-        Notification.property_id.in_(property_ids),
-        Notification.channel == "escalation",
-        Notification.created_at >= since,
-    ]
-    if until is not None:
-        escalated_filters.append(Notification.created_at < until)
-    escalated_calls = await db.scalar(select(func.count()).where(*escalated_filters))
+    total_calls = activity["total_calls"]
+    completed_calls = activity["completed_calls"]
+    qualified_calls = activity["qualified_calls"]
+    escalated_calls = activity["escalated_calls"]
     # CallSession.revenue_attributed has no writer anywhere in the app (no
     # booking-confirmation hook sets it) -- it would always read as 0,
     # despite Live Requests showing calls with real guest-stated prices.
@@ -107,7 +75,7 @@ async def analytics_summary(
     # revenue_attributed -> pipeline_value on the frontend).
     pipeline_filters = [
         Lead.user_id == current_user.id,
-        Lead.lead_temperature.in_(["hot", "warm"]),
+        Lead.lead_temperature.in_(WARM_OR_ABOVE),
         Lead.created_at >= since,
     ]
     if until is not None:
@@ -216,7 +184,7 @@ async def analytics_timeseries(
     elif metric == "pipeline_value":
         lead_filters = [
             Lead.user_id == current_user.id,
-            Lead.lead_temperature.in_(["hot", "warm"]),
+            Lead.lead_temperature.in_(WARM_OR_ABOVE),
             Lead.created_at >= since,
             Lead.created_at < until,
         ]
@@ -301,115 +269,13 @@ async def analytics_recovery(
         since = datetime.now(timezone.utc) - timedelta(days=days)
     until = date_range.until
 
-    window_filters = [Notification.created_at >= since]
-    if until is not None:
-        window_filters.append(Notification.created_at < until)
-
-    # Busy Calls: one row per rejected call attempt (recovery_service.py
-    # creates a fresh Notification every time, unlike Lead, which reuses an
-    # existing open/contacted lead across repeat attempts from the same
-    # guest -- see recovery_service.py's own docstring). Counting Lead rows
-    # instead would undercount repeat-caller volume.
-    busy_calls = await db.scalar(
-        select(func.count())
-        .select_from(Notification)
-        .join(Lead, Notification.lead_id == Lead.id)
-        .where(
-            Notification.channel == NOTIFICATION_CHANNEL_BUSY_RECOVERY,
-            Lead.user_id == current_user.id,
-            *window_filters,
-        )
-    )
-
-    # Recovered: the guest engaged back on WhatsApp at least once. Counted
-    # per distinct Lead (not per reply row) -- a guest who replies twice to
-    # the same busy-rejection thread is one recovered guest, not two.
-    recovered = await db.scalar(
-        select(func.count(func.distinct(Notification.lead_id)))
-        .select_from(Notification)
-        .join(Lead, Notification.lead_id == Lead.id)
-        .where(
-            Notification.channel == NOTIFICATION_CHANNEL_BUSY_RECOVERY_REPLY,
-            Lead.user_id == current_user.id,
-            *window_filters,
-        )
-    )
-
-    # Converted / Lost: Lead.status is the one and only sales-pipeline
-    # signal in this codebase (host-set via PATCH /leads/{id}, see
-    # docs/api.md's leads.py entry) -- "booked"/"closed" on a recovery lead
-    # (recovery_reason IS NOT NULL) is exactly what these mean, same
-    # convention analytics_summary's open_leads/pipeline_value already use
-    # for the general Lead funnel, filtered additionally to recovery leads.
-    # Windowed by Lead.created_at (when the recovery lead was born), not
-    # Notification.created_at, since a lead can convert well after the
-    # window that produced the original busy_recovery notification.
-    lead_window_filters = [Lead.created_at >= since]
-    if until is not None:
-        lead_window_filters.append(Lead.created_at < until)
-    converted = await db.scalar(
-        select(func.count()).where(
-            Lead.user_id == current_user.id,
-            Lead.recovery_reason.is_not(None),
-            Lead.status == "booked",
-            *lead_window_filters,
-        )
-    )
-    lost = await db.scalar(
-        select(func.count()).where(
-            Lead.user_id == current_user.id,
-            Lead.recovery_reason.is_not(None),
-            Lead.status == "closed",
-            *lead_window_filters,
-        )
-    )
-
-    # Average Recovery Time: time from the busy-rejection notification to
-    # this guest's FIRST reply, per lead, then averaged across leads.
-    # func.min() on each side collapses repeat busy-rejections/repeat
-    # replies for the same lead down to first-attempt -> first-reply, which
-    # is the "how long until the guest re-engaged" question this KPI asks --
-    # not every possible attempt/reply pairing.
-    busy_first = (
-        select(Notification.lead_id, func.min(Notification.created_at).label("busy_at"))
-        .where(Notification.channel == NOTIFICATION_CHANNEL_BUSY_RECOVERY, Notification.lead_id.is_not(None))
-        .group_by(Notification.lead_id)
-        .subquery()
-    )
-    reply_first = (
-        select(Notification.lead_id, func.min(Notification.created_at).label("reply_at"))
-        .where(Notification.channel == NOTIFICATION_CHANNEL_BUSY_RECOVERY_REPLY, Notification.lead_id.is_not(None))
-        .group_by(Notification.lead_id)
-        .subquery()
-    )
-    avg_recovery_seconds = await db.scalar(
-        select(func.avg(func.extract("epoch", reply_first.c.reply_at - busy_first.c.busy_at)))
-        .select_from(busy_first)
-        .join(reply_first, reply_first.c.lead_id == busy_first.c.lead_id)
-        .join(Lead, Lead.id == busy_first.c.lead_id)
-        .where(Lead.user_id == current_user.id, busy_first.c.busy_at >= since)
-    )
-
-    # Average Host Response: time from the busy_recovery notification being
-    # created to the host first marking it read (Notification.responded_at,
-    # set once by notification_service.mark_read -- see that field's own
-    # comment on why updated_at isn't reused for this).
-    avg_response_seconds = await db.scalar(
-        select(func.avg(func.extract("epoch", Notification.responded_at - Notification.created_at)))
-        .select_from(Notification)
-        .join(Lead, Notification.lead_id == Lead.id)
-        .where(
-            Notification.channel == NOTIFICATION_CHANNEL_BUSY_RECOVERY,
-            Notification.responded_at.is_not(None),
-            Lead.user_id == current_user.id,
-            *window_filters,
-        )
-    )
-
-    busy_calls = busy_calls or 0
-    recovered = recovered or 0
-    converted = converted or 0
-    lost = lost or 0
+    metrics = await analytics_service.recovery_metrics(db, current_user.id, since, until)
+    busy_calls = metrics["busy_calls"]
+    recovered = metrics["recovered"]
+    converted = metrics["converted"]
+    lost = metrics["lost"]
+    avg_recovery_seconds = metrics["avg_recovery_seconds"]
+    avg_response_seconds = metrics["avg_response_seconds"]
 
     return {
         "window_days": days,
@@ -470,3 +336,64 @@ async def analytics_objection_insights(
     codebase; nothing here applies a pricing change automatically.
     """
     return await lead_service.objection_conversion_analytics(db, current_user.id, date_range)
+
+
+def _reporting_window(date_range: DateRange) -> tuple[date, date]:
+    """Inclusive start/end days for the Analytics/Overview endpoints:
+    defaults to the last 30 days ending today (IST, same as the dashboard's
+    DateRangeProvider), at most a year, start <= end."""
+    end = date_range.end_date or today_ist()
+    start = date_range.start_date or end - timedelta(days=29)
+    if start > end:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "start_date must be on or before end_date")
+    if (end - start).days > 365:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Date range can be at most a year")
+    return start, end
+
+
+@router.get("/dashboard")
+async def analytics_dashboard(
+    property_id: uuid.UUID | None = Query(default=None),
+    include_test_calls: bool = Query(default=False),
+    compare: bool = Query(default=True),
+    date_range: DateRange = Depends(date_range_query),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Everything the host Analytics page shows, in one response: portfolio
+    performance (with the previous equal-length period for comparison),
+    booking funnel, Mira impact, guest intent, pricing & negotiation, and
+    the needs-confirmation counts. Definitions live on each
+    analytics_service function. Defaults to the last 30 days (IST) when no
+    dates are given, same window as the dashboard's DateRangeProvider."""
+    start, end = _reporting_window(date_range)
+
+    if property_id is not None:
+        properties = [await get_owned_property(db, property_id, current_user)]
+    else:
+        properties = list(
+            (await db.scalars(select(Property).where(Property.user_id == current_user.id).order_by(Property.name))).all()
+        )
+    scope = analytics_service.AnalyticsScope(
+        host=current_user, properties=properties, start=start, end=end, include_test_calls=include_test_calls
+    )
+    return await analytics_service.dashboard(db, scope, all_properties=property_id is None, compare=compare)
+
+
+@router.get("/overview")
+async def analytics_overview(
+    include_test_calls: bool = Query(default=False),
+    date_range: DateRange = Depends(date_range_query),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """The Overview page's snapshot + "Needs your attention" in one request.
+    Which numbers follow the selected dates and which are current-state is
+    documented on analytics_service.overview. Defaults to the last 30 days
+    (IST) when no dates are given."""
+    start, end = _reporting_window(date_range)
+    properties = list((await db.scalars(select(Property).where(Property.user_id == current_user.id))).all())
+    scope = analytics_service.AnalyticsScope(
+        host=current_user, properties=properties, start=start, end=end, include_test_calls=include_test_calls
+    )
+    return await analytics_service.overview(db, scope)

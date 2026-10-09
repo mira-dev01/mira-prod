@@ -10,7 +10,7 @@ from app.api.v1.common import get_owned_property
 from app.auth.dependencies import get_current_user
 from app.database import AsyncSessionLocal, get_db
 from app.integrations import bright_data_client, cloudinary_client
-from app.integrations.bright_data_client import BrightDataError
+from app.integrations.bright_data_client import BrightDataError, InvalidAirbnbUrlError
 from app.models.property import Property
 from app.models.user import User
 from app.schemas.property import (
@@ -213,6 +213,8 @@ async def import_airbnb_urls_trigger(
     snapshot_id; poll GET /import-airbnb-urls/{snapshot_id} for completion."""
     try:
         snapshot_id = await bright_data_client.trigger_scrape(payload.urls)
+    except InvalidAirbnbUrlError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
     except BrightDataError as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
     return AirbnbUrlImportTriggered(snapshot_id=snapshot_id)

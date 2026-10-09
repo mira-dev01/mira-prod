@@ -51,6 +51,7 @@ from app.schemas.tool import (
     EscalateToHostArgs,
     GetPricingArgs,
     LeadTemperature,
+    LookupBookingArgs,
     NegotiateRateArgs,
     RecommendPropertiesArgs,
     RequestHostTransferArgs,
@@ -67,6 +68,7 @@ from app.services.property.pitch_formatter import (
     recommendation_failed_result,
     render_recommendation_text,
 )
+from app.utils.dates import today_ist
 from app.voice.conversation_state import ConversationState
 from app.voice.property_recommendation_guard import PropertyRecommendationGuardProcessor
 from app.voice.silence_watchdog import SilenceWatchdogProcessor
@@ -115,6 +117,13 @@ def _parse_iso_date(value: "str | date | None") -> date | None:
         return date.fromisoformat(value)
     except (ValueError, TypeError):
         return None
+
+
+def _is_bookable(check_in: date | None) -> bool:
+    """A check-in before today is a past stay the handlers refuse
+    (tool_handlers._past_dates_error) -- it must never land in
+    state.slots either, where recommend_properties would reuse it."""
+    return check_in is not None and check_in >= today_ist()
 
 
 def _recent_guest_texts(params: FunctionCallParams, limit: int = 3) -> list[str]:
@@ -234,8 +243,9 @@ def build_voice_tools(
                     guest_profile_id=guest_profile_id,
                     on_checked=_on_checked,
                 )
-                state.set_slot("check_in", args.check_in)
-                state.set_slot("check_out", args.check_out)
+                if _is_bookable(args.check_in):
+                    state.set_slot("check_in", args.check_in)
+                    state.set_slot("check_out", args.check_out)
                 state.set_slot("num_guests", args.num_guests)
                 state.lock_property(args.property_id)
                 state.mark_checking_availability()
@@ -295,7 +305,7 @@ def build_voice_tools(
                     requested_late_checkout=requested_late_checkout,
                 )
 
-                if args.check_in is not None:
+                if _is_bookable(args.check_in):
                     state.set_slot("check_in", args.check_in)
                     state.set_slot("check_out", args.check_out)
                     # Exact dates supersede an earlier vague nights-only
@@ -504,8 +514,8 @@ def build_voice_tools(
         reason: str | None = None,
     ):
         """Call this when the guest EXPLICITLY asks to be transferred or
-        connected to the host/owner, or to talk to a human, right now --
-        not for general uncertainty, complaints, or anything escalate_to_host
+        connected to the host/owner, or to talk to a human, right now, or
+        when lookup_booking's result tells you to -- not for general uncertainty, complaints, or anything escalate_to_host
         already covers, which keeps the guest with you and notifies the host
         for later. This attempts a REAL live transfer of this call to the
         host's phone. If the host isn't reachable (no property chosen yet,
@@ -523,6 +533,35 @@ def build_voice_tools(
                     db, args, call_session_id, property_id, host_user_id, guest_profile_id=guest_profile_id
                 )
                 state.mark_escalated()
+            except ValidationError as exc:
+                result = ToolOutcome.invalid_arguments(exc)
+        await params.result_callback(result)
+
+    @tool()
+    async def lookup_booking(
+        params: FunctionCallParams,
+        name: str | None = None,
+        phone: str | None = None,
+        property_name: str | None = None,
+    ):
+        """Look up a booking the guest says they've already made (a current,
+        upcoming, or past stay) -- e.g. after they confirm a date that has
+        already passed was about an earlier booking, or whenever they ask
+        about "my booking" that isn't the confirmed booking in your
+        instructions. Ask what name or phone number it was booked under first.
+
+        Args:
+            name: The name the booking was made under, if the guest gave one.
+            phone: The phone number the booking was made with, if the guest gave
+                one. If they say it's the number they're calling from, leave unset.
+            property_name: Which property they say they booked, if they named one.
+        """
+        async with AsyncSessionLocal() as db:
+            try:
+                # The caller's own number is always searched too -- a booking
+                # under it is theirs, whatever name they gave.
+                args = LookupBookingArgs(name=name, phone=phone or caller_number, property_name=property_name)
+                result = await tool_handlers.handle_lookup_booking(db, args, host_user_id)
             except ValidationError as exc:
                 result = ToolOutcome.invalid_arguments(exc)
         await params.result_callback(result)
@@ -613,7 +652,7 @@ def build_voice_tools(
                 if context_changed:
                     state.reset_negotiation_context()
 
-                if args.check_in is not None:
+                if _is_bookable(args.check_in):
                     state.set_slot("check_in", args.check_in)
                     state.set_slot("check_out", args.check_out)
                     # Exact dates supersede an earlier vague nights-only
@@ -1117,7 +1156,8 @@ def build_voice_tools(
             budget_basis: "per_night" or "total_stay", exactly as for
                 recommend_properties -- leave unset if the guest didn't say.
             preferred_location: Preferred city/area, if known.
-            lead_temperature: One of hot, warm, cold.
+            lead_temperature: One of very_hot, hot, warm, cold. very_hot only when the guest
+                explicitly says they want to go ahead with the booking.
             properties_discussed: Property names discussed so far (the dashboard's Leads
                 page displays these as-is -- never pass a property_id here).
             questions_asked: Questions the guest asked.
@@ -1185,14 +1225,17 @@ def build_voice_tools(
                 # tool happens to be running) is captured here. set_slot only
                 # writes non-None values, so a call that only supplies `phone`
                 # never clobbers a `num_guests` set by an earlier turn.
-                state.set_slot("check_in", args.check_in.isoformat() if args.check_in else None)
-                state.set_slot("check_out", args.check_out.isoformat() if args.check_out else None)
+                # Only a past check_in is skipped -- a check_out given on its
+                # own (check_in captured on an earlier turn) still lands.
+                if args.check_in is None or _is_bookable(args.check_in):
+                    state.set_slot("check_in", args.check_in.isoformat() if args.check_in else None)
+                    state.set_slot("check_out", args.check_out.isoformat() if args.check_out else None)
                 # An exact check_in supersedes an earlier vague nights-only
                 # answer -- clear it directly (set_slot itself never
                 # overwrites with None, by design, so this can't ride on
                 # set_slot's own backfill-only semantics) rather than let a
                 # stale nights count linger once real dates are known.
-                if args.check_in is not None:
+                if _is_bookable(args.check_in):
                     state.slots.pop("nights", None)
                     state.slots.pop("window_start", None)
                     state.slots.pop("window_end", None)
@@ -1313,6 +1356,7 @@ def build_voice_tools(
         send_photos,
         escalate_to_host,
         request_host_transfer,
+        lookup_booking,
         negotiate_rate,
         recommend_properties,
         update_lead,

@@ -87,6 +87,15 @@ async def _approved_negotiation_rules(db: AsyncSession, host_id: uuid.UUID | Non
         return []
 
 
+async def has_repeat_guest_discount(db: AsyncSession, host_id: uuid.UUID | None) -> bool:
+    """Whether this host's approved policy includes a discount_repeat_guest
+    rule -- the only way a returning guest ever gets a loyalty discount (see
+    negotiate_rate). The prompt uses this to decide whether a guest's past
+    stays are worth telling the model about at all."""
+    rules = await _approved_negotiation_rules(db, host_id)
+    return any(rule.rule_type == "discount_repeat_guest" for rule in rules)
+
+
 async def _approved_property_pricing_rules(
     db: AsyncSession, host_id: uuid.UUID | None, property_id: uuid.UUID
 ) -> list[NegotiationRule]:
@@ -801,8 +810,11 @@ async def negotiate_rate(
         discount_percent = trigger_decision.percent
         discount_percent_source = trigger_decision
     else:
-        loyalty_bonus_percent = {"new": 0.0, "returning": 5.0, "frequent": 10.0}.get(guest_loyalty, 0.0)
-        discount_percent = loyalty_bonus_percent + 10.0
+        # No approved rule resolved: the flat default only. A loyalty bonus
+        # is never added here -- returning guests get a loyalty discount if
+        # and only if the host's policy has a discount_repeat_guest rule
+        # (resolved above), never from the LLM's guest_loyalty alone.
+        discount_percent = 10.0
         discount_percent_source = None
 
     # A rule_type="custom" NegotiationRule is a host-authored, per-property

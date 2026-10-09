@@ -16,9 +16,9 @@ import { WhatsAppButton } from "@/components/whatsapp-button";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError } from "@/lib/api";
 import { cn, isBrowserTestIdentity } from "@/lib/utils";
-import type { LeadOut, LeadStatus } from "@/lib/types";
+import { LEAD_TEMPERATURES, leadTemperatureLabel } from "@/lib/leads";
+import type { LeadOut, LeadStatus, LeadTemperature } from "@/lib/types";
 
-const TEMPERATURES = ["hot", "warm", "cold"] as const;
 export const LEAD_STATUSES: LeadStatus[] = ["open", "contacted", "booked", "closed"];
 
 // Same vocabulary as calls-table.tsx's urgency tones -- Lead.urgency is
@@ -126,7 +126,7 @@ export function LeadDetailPanel({
     setSubmitting(true);
     try {
       await api.leads.update(lead.id, {
-        lead_temperature: temperature as "hot" | "warm" | "cold",
+        lead_temperature: temperature as LeadTemperature,
         status,
         next_follow_up: nextFollowUp,
         conversation_summary: summary,
@@ -195,12 +195,12 @@ export function LeadDetailPanel({
           <Label>Temperature</Label>
           <Select value={temperature} onValueChange={(v) => v && setTemperature(v)}>
             <SelectTrigger className="w-full">
-              <SelectValue />
+              <SelectValue>{(value: string) => leadTemperatureLabel(value)}</SelectValue>
             </SelectTrigger>
             <SelectContent>
-              {TEMPERATURES.map((t) => (
+              {LEAD_TEMPERATURES.map((t) => (
                 <SelectItem key={t} value={t}>
-                  {t}
+                  {leadTemperatureLabel(t)}
                 </SelectItem>
               ))}
             </SelectContent>

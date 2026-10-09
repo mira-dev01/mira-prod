@@ -1,10 +1,13 @@
 import type {
   AirbnbUrlImportStatus,
+  AnalyticsDashboard,
   AnalyticsSummary,
   AnalyticsTimeseries,
   AnalyticsTimeseriesMetric,
   BookingCreate,
+  BookingKind,
   BookingOut,
+  BookingReconciliation,
   CallHoursStatus,
   CallSessionDetailOut,
   CallSessionOut,
@@ -25,15 +28,18 @@ import type {
   NegotiationRuleOut,
   NegotiationRuleUpdate,
   NotificationOut,
+  OverviewData,
   ObjectionInsights,
   ServiceRequestOut,
   PriceBreakdown,
+  PriceChoice,
   PricingRuleCreate,
   PricingRuleOut,
   PropertyCreate,
   PropertyImportResult,
   PropertyOut,
   PropertyUpdate,
+  ReconciliationQueue,
   RecoveryAnalytics,
   TechnicianCreate,
   TechnicianOut,
@@ -232,6 +238,18 @@ export const api = {
         body: JSON.stringify(data),
       }),
     cancel: (id: string) => request<void>(`/bookings/${id}`, { method: "DELETE" }),
+    reconciliationQueue: (kind?: "price" | "attribution") =>
+      request<ReconciliationQueue>(`/bookings/reconciliation${buildQuery({ kind })}`),
+    reconciliation: (id: string) => request<BookingReconciliation>(`/bookings/${id}/reconciliation`),
+    confirmPrice: (id: string, data: { choice: PriceChoice; final_booking_price?: number | null }) =>
+      request<BookingReconciliation>(`/bookings/${id}/price`, { method: "PATCH", body: JSON.stringify(data) }),
+    decideAttribution: (id: string, isMiraMatch: boolean) =>
+      request<BookingReconciliation>(`/bookings/${id}/attribution`, {
+        method: "PATCH",
+        body: JSON.stringify({ is_mira_match: isMiraMatch }),
+      }),
+    updateKind: (id: string, kind: BookingKind) =>
+      request<BookingReconciliation>(`/bookings/${id}/kind`, { method: "PATCH", body: JSON.stringify({ kind }) }),
   },
   pricing: {
     rules: (params?: { startDate?: string; endDate?: string }) =>
@@ -295,6 +313,23 @@ export const api = {
           days: params?.startDate || params?.endDate ? undefined : (params?.days ?? 30),
           start_date: params?.startDate,
           end_date: params?.endDate,
+        })}`
+      ),
+    overview: (params: { startDate?: string; endDate?: string; includeTestCalls?: boolean }) =>
+      request<OverviewData>(
+        `/analytics/overview${buildQuery({
+          start_date: params.startDate,
+          end_date: params.endDate,
+          include_test_calls: params.includeTestCalls ?? false,
+        })}`
+      ),
+    dashboard: (params: { startDate?: string; endDate?: string; propertyId?: string; includeTestCalls?: boolean }) =>
+      request<AnalyticsDashboard>(
+        `/analytics/dashboard${buildQuery({
+          start_date: params.startDate,
+          end_date: params.endDate,
+          property_id: params.propertyId,
+          include_test_calls: params.includeTestCalls ?? false,
         })}`
       ),
     objectionInsights: (params?: { startDate?: string; endDate?: string }) =>

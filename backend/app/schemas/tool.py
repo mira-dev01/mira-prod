@@ -15,7 +15,8 @@ from app.services.property.budget import BudgetBasis, BudgetConstraint, coerce_b
 Urgency = Literal["low", "medium", "high", "emergency"]
 IssueType = Literal["plumbing", "electrical", "ac", "wifi", "lock", "general"]
 GuestLoyalty = Literal["new", "returning", "frequent"]
-LeadTemperature = Literal["hot", "warm", "cold"]
+# very_hot = explicit booking intent -- see app/services/lead_temperature.py.
+LeadTemperature = Literal["very_hot", "hot", "warm", "cold"]
 
 
 class ToolBusinessError(str):
@@ -147,6 +148,25 @@ class RequestHostTransferArgs(BaseModel):
     # transfer (see handle_request_host_transfer) -- not the general
     # escalation-and-notify path.
     reason: str | None = None
+
+
+class LookupBookingArgs(BaseModel):
+    # At least one identifier the booking was made under; property_name is
+    # an optional narrowing hint ("I booked Alpine Ridge under Priya").
+    name: str | None = None
+    phone: str | None = None
+    property_name: str | None = None
+
+    @field_validator("phone")
+    @classmethod
+    def _clean_phone(cls, value: str | None) -> str | None:
+        return _normalize_phone(value) if value else value
+
+    @model_validator(mode="after")
+    def _require_identifier(self) -> "LookupBookingArgs":
+        if not (self.name or self.phone):
+            raise ValueError("name or phone is required")
+        return self
 
 
 class NegotiateRateArgs(BaseModel):

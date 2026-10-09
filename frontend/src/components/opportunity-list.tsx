@@ -2,17 +2,18 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { ListRow, ListRowFooter, ListRowHeader } from "@/components/ui/list-row";
 import { StatusChip } from "@/components/status-chip";
-import { formatLeadTimestamp, leadGuestLabel, leadPhoneLabel } from "@/lib/leads";
+import {
+  formatLeadTimestamp,
+  leadGuestLabel,
+  leadPhoneLabel,
+  leadTemperatureLabel,
+  leadTemperatureTone,
+} from "@/lib/leads";
 import { opportunityType } from "@/lib/opportunities";
 import type { LeadOut } from "@/lib/types";
 
 // hot/warm/cold reused verbatim -- same tone vocabulary lead-detail-panel.tsx
 // already established, not a new opportunity-specific palette.
-const temperatureTone: Record<string, "destructive" | "pending" | "neutral"> = {
-  hot: "destructive",
-  warm: "pending",
-  cold: "neutral",
-};
 
 /**
  * Shared row list for any opportunity type (see lib/opportunities.ts) --
@@ -45,7 +46,10 @@ export function OpportunityList({
               <div className="flex min-w-0 flex-wrap items-center gap-2">
                 {type && <StatusChip status={type.label} tone="orange" />}
                 {lead.lead_temperature && (
-                  <StatusChip status={lead.lead_temperature} tone={temperatureTone[lead.lead_temperature] ?? "neutral"} />
+                  <StatusChip
+                    status={leadTemperatureLabel(lead.lead_temperature)}
+                    tone={leadTemperatureTone[lead.lead_temperature] ?? "neutral"}
+                  />
                 )}
                 <span className="text-sm font-medium">{leadGuestLabel(lead)}</span>
                 <span className="text-xs text-muted-foreground">{leadPhoneLabel(lead)}</span>

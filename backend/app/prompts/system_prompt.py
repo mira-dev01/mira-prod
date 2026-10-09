@@ -20,15 +20,13 @@ safety rail while personalizing tone/wording.
 
 import re
 from datetime import date, datetime, timedelta
-from zoneinfo import ZoneInfo
 
 from app.models.guest_profile import GuestProfile
-from app.models.lead import Lead
 from app.services.call_service import BROWSER_TEST_CALLER_NUMBER
+from app.services.guest_booking_service import BookingMatch
 from app.models.property import Property
 from app.models.user import User
-
-IST = ZoneInfo("Asia/Kolkata")
+from app.utils.dates import IST
 
 # Same pattern as app/schemas/user.py's UserUpdate validator (kept as a
 # separate copy rather than a shared import -- a prompt builder importing
@@ -157,7 +155,12 @@ def _today_anchor() -> str:
         "Sunday right after it, and if that month has already passed this year, it means next year, not this "
         f"one. For example, the first weekend of {example_month_label} is "
         f"{example_first_saturday.isoformat()} (Saturday) to {example_first_sunday.isoformat()} (Sunday) "
-        "-- work out any other named month the same way. For any other relative date the guest gives, work it "
+        "-- work out any other named month the same way. If a specific date the guest names works out to BEFORE "
+        "today (e.g. a day earlier this month, \"last weekend\", \"yesterday\"), never silently move it forward "
+        "and never check or quote it -- ask once, naturally: \"That date has already gone by -- are you asking "
+        "about a previous or existing booking? If so, what name or number was the booking under?\" If yes, look "
+        "it up with lookup_booking; if they actually meant a future date, confirm the corrected date. "
+        "For any other relative date the guest gives, work it "
         "out carefully from today's date above, and always confirm the exact resolved date back to the guest "
         "before calling a tool with it. When speaking a date back to the guest, say it naturally (e.g. "
         "\"the 18th of July\") -- never read out the raw YYYY-MM-DD format."
@@ -191,6 +194,14 @@ GOLDEN_RULES = """Golden rules:
   guest had said anything at all. If you ask a question, your turn ends at that question mark -- do not
   continue past it with an invented answer, a guess at what they'll say, or the next question, no matter
   how confident you are. Wait for the actual guest audio.
+- Past dates come before everything else. The moment a date the guest gives works out to before today's
+  date (given below) -- including a bare day like "the 2nd" once the month is known -- STOP qualifying:
+  don't ask guests, nights, location, or budget for it, and don't treat it as a new booking. Your very
+  next reply asks: "That date has already gone by -- are you asking about a previous or existing
+  booking? If so, what name or number was it booked under?" Likewise, if the guest opens with wanting to
+  ask about "a booking" or "my booking" (e.g. "booking ke baare mein poochna tha"), first ask whether it's
+  a booking they've already made before treating it as a new enquiry. Saying today's date aloud and then
+  carrying on with a past date anyway is a critical error.
 - Never hallucinate information, never guess, never invent pricing/availability/amenities/policies.
 - This applies just as strictly to tool call ARGUMENTS as to what you say out loud. Never call
   check_calendar, get_pricing, or negotiate_rate using a check-in date, check-out date, guest count, or
@@ -265,6 +276,13 @@ GOLDEN_RULES = """Golden rules:
   transfer of this call; escalate_to_host only ever notifies the host for later. If
   request_host_transfer's own result says the host isn't reachable, relay that honestly and fall back
   to treating it as a normal escalation -- never claim a transfer is happening if it isn't.
+- If the guest asks about a booking they've already made (a current, upcoming, or past stay) that you
+  weren't already told about below, ask what name or phone number it was booked under,
+  then call lookup_booking (pass property_name too if they said which property they booked) and
+  answer from its result. If it finds nothing, tell the guest you couldn't find a booking under that
+  and call request_host_transfer so the host can help directly. If the transfer result says the host
+  isn't available, tell the guest the host isn't available at the moment and will follow up with them
+  shortly.
 - escalate_to_host's property_id argument is optional -- leave it unset if the guest asks to be
   escalated to the host before choosing a specific property (e.g. right at the start of a call, or a
   general question with no property discussed yet). Never delay or skip calling escalate_to_host just
@@ -813,9 +831,10 @@ def build_system_prompt(
     property_: Property,
     guest: GuestProfile | None,
     host: User,
-    active_booking: Lead | None = None,
+    active_booking: BookingMatch | None = None,
     caller_phone: str | None = None,
     verified_faq_entries: list | None = None,
+    repeat_guest_discount: bool = False,
 ) -> str:
     # Section order here is deliberate for Groq's prefix-based prompt cache
     # (see docs/agents.md's Groq section): everything up to and including the
@@ -870,7 +889,7 @@ def build_system_prompt(
     caller_phone_section = _caller_phone_section(caller_phone)
     if caller_phone_section:
         sections.append(caller_phone_section)
-    sections.append(_guest_memory_section(guest))
+    sections.append(_guest_memory_section(guest, repeat_guest_discount))
     booking_section = _active_booking_section(active_booking)
     if booking_section:
         sections.append(booking_section)
@@ -903,13 +922,19 @@ def _active_seasonal_notes(seasonal_notes: list, today: date | None = None) -> l
     return active
 
 
-def _guest_memory_section(guest: GuestProfile | None) -> str:
+def _guest_memory_section(guest: GuestProfile | None, repeat_guest_discount: bool = False) -> str:
     """Guest Memory (memory-architecture-plan.md section 1) -- kept to one
     short paragraph deliberately, since this competes with GOLDEN_RULES and
     property FAQs for context budget on every single turn. Never a
     transcript dump -- just enough to inform tone/loyalty tier, pulled from
     conversation_summaries (already-written, short Lead.conversation_summary
-    text, not raw dialogue -- see guest_memory_service.py)."""
+    text, not raw dialogue -- see guest_memory_service.py).
+
+    Past stays are never something to bring up with the guest -- what they
+    care about is their active booking (_active_booking_section). The stay
+    count is only handed over when the host's policy actually has a
+    repeat-guest discount (pricing_engine.has_repeat_guest_discount), the
+    one place it changes what Mira can offer."""
     # Every browser test call for a given host shares the same placeholder
     # phone number (BROWSER_TEST_CALLER_NUMBER), so get_or_create_guest_profile
     # returns the SAME GuestProfile row across every test call ever made --
@@ -928,7 +953,7 @@ def _guest_memory_section(guest: GuestProfile | None) -> str:
     if not guest.total_stays:
         return "\nThis caller is not in our guest records -- treat them as a new guest."
 
-    parts = [f"This caller is a returning guest: {guest.name or 'name unknown'}, {guest.total_stays} past stay(s)."]
+    parts = [f"This caller is a returning guest: {guest.name or 'name unknown'}."]
     if guest.name:
         # Confirmed live (2026-07-21): a returning guest whose booking/dates
         # were correctly recognized from history was still asked for their
@@ -944,7 +969,16 @@ def _guest_memory_section(guest: GuestProfile | None) -> str:
         parts.append(f"Last call ended: {guest.last_outcome}.")
     if guest.conversation_summaries:
         parts.append(f"Last time: {guest.conversation_summaries[-1].get('summary', '')}")
-    parts.append("Greet them personally and use this history to inform your tone (e.g. loyalty tier for negotiate_rate).")
+    parts.append(
+        "Greet them personally. Never bring up their past stays or previous calls yourself -- if they have a "
+        "current or upcoming booking (below), that's what matters to them."
+    )
+    if repeat_guest_discount:
+        parts.append(
+            f"They have {guest.total_stays} past stay(s) with this host, and the host offers a returning-guest "
+            "discount -- only if they ask for a discount or negotiate, pass guest_loyalty=\"returning\" to "
+            "negotiate_rate."
+        )
     return "\n" + " ".join(parts)
 
 
@@ -977,21 +1011,13 @@ def _caller_phone_section(caller_phone: str | None) -> str:
     )
 
 
-def _active_booking_section(booking: Lead | None) -> str:
-    """Surfaces a guest's own upcoming/current confirmed booking (property +
-    dates), when the host has marked their Lead status="booked" (see
-    lead_service.get_active_booking) -- distinct from _guest_memory_section
-    above, which only conveys general loyalty/tone context and never
-    reliably states a specific active booking. property name comes from
-    Lead.properties_discussed (free text, not a property_id FK -- see
-    Lead model) since that's the only property reference a Lead carries;
-    takes the last entry as the one most likely to be what was actually
-    booked. Returns "" (not appended) when there's no active booking --
-    this is purely additive, on top of whatever _guest_memory_section
-    already said."""
+def _active_booking_section(booking: BookingMatch | None) -> str:
+    """The guest's own current/upcoming confirmed booking, recognised from the
+    number they're calling from (guest_booking_service.find_active_booking --
+    a host-marked booked Lead, else an imported calendar Booking). Returns ""
+    when there is none; past stays never appear here."""
     if booking is None:
         return ""
-    property_name = booking.properties_discussed[-1] if booking.properties_discussed else "a property"
     dates = (
         f"{booking.check_in.isoformat()} to {booking.check_out.isoformat()}"
         if booking.check_in and booking.check_out
@@ -999,7 +1025,7 @@ def _active_booking_section(booking: Lead | None) -> str:
     )
     guest_name = booking.guest_name or "name not on file"
     return (
-        f"\nThis guest has a confirmed booking: {property_name}, {dates}, under {guest_name}. "
+        f"\nThis guest has a confirmed booking: {booking.property_name}, {dates}, under {guest_name}. "
         "Recognize them as already booked rather than qualifying them as a new lead -- greet them "
         "about their upcoming/current stay, don't re-ask for dates or which property they want unless "
         "they bring up something new."
@@ -1063,9 +1089,10 @@ Lead qualification workflow:
    values -- nights/window_start/window_end are real, guest-stated substitutes for an exact date,
    never a placeholder you make up yourself.
 
-   Set lead_temperature from what you now know: hot if the guest already gave exact, finalized
-   dates; warm if you only have a stay length or a vague window, or they're still comparing options;
-   cold if they're just browsing with no dates/length at all and no chosen property yet.
+   Set lead_temperature from what you now know: warm once they've given real booking details (dates or
+   a stay length, guest count, a specific property); hot once they're discussing availability, price or
+   a discount for a stay -- dates and guest count alone are NOT hot; cold if they're just browsing with
+   no real booking details yet.
 3. Recommend as soon as you have enough to search on -- do NOT gate the first recommendation on
    every field being filled. If you already know their preferred area/type of stay or purpose and
    have at least a stay length (nights) or exact dates, recommend now; ask budget afterward as a
@@ -1137,9 +1164,11 @@ Lead qualification workflow:
 6. Qualify the lead correctly and keep it updated. Call update_lead silently (never narrate it) the
    instant you learn ANY field -- name and phone especially (save each the moment it's given, don't
    batch them to the end), plus dates, num_guests, budget, preferred_location, and the specific
-   property in properties_discussed. Set lead_temperature honestly: hot = dates finalised AND
-   interested in a specific property; warm = flexible dates or still comparing a couple of options;
-   cold = just browsing with no dates and no chosen property. escalate_to_host only notifies the host,
+   property in properties_discussed. Set lead_temperature honestly: very_hot = the guest explicitly
+   says they want to go ahead with the booking (accepts a price and asks to book, asks how to pay/book);
+   hot = discussing availability, pricing or negotiating for a stay; warm = genuine interest with real
+   booking details (dates/stay length, guest count, a property) but no pricing/availability discussion
+   yet; cold = just browsing. Dates + guest count on their own are warm, never hot. escalate_to_host only notifies the host,
    it does NOT save guest details -- always call update_lead with everything collected before
    escalating. Near the end of the call, call update_lead once more with a conversation_summary and
    next_follow_up so the host knows exactly where to pick up. Write next_follow_up as a concrete next
@@ -1148,7 +1177,7 @@ Lead qualification workflow:
    "follow up with guest" that leaves the host to re-derive what's actually needed from the transcript.
 7. The moment a guest verbally accepts a price (standard or negotiated) and wants to proceed, that is
    a booking request requiring host approval -- there is no tool that finalizes a booking on your own.
-   Immediately call update_lead (lead_temperature=hot, conversation_summary noting the agreed price and
+   Immediately call update_lead (lead_temperature=very_hot, conversation_summary noting the agreed price and
    dates) and then escalate_to_host so the host actually sees it and can confirm. Never tell the guest
    "I'll lock this in" or "you're all set" without having just made both of those calls -- a verbal
    promise with no update_lead/escalate_to_host behind it means the host never finds out.
@@ -1162,8 +1191,9 @@ def build_lead_system_prompt(
     user: User,
     properties: list[Property],
     guest: GuestProfile | None = None,
-    active_booking: Lead | None = None,
+    active_booking: BookingMatch | None = None,
     caller_phone: str | None = None,
+    repeat_guest_discount: bool = False,
 ) -> str:
     # Same cache-ordering reasoning as build_system_prompt above: the property
     # portfolio listing below is byte-identical across every call to this
@@ -1201,7 +1231,7 @@ def build_lead_system_prompt(
     caller_phone_section = _caller_phone_section(caller_phone)
     if caller_phone_section:
         sections.append(caller_phone_section)
-    sections.append(_guest_memory_section(guest))
+    sections.append(_guest_memory_section(guest, repeat_guest_discount))
     booking_section = _active_booking_section(active_booking)
     if booking_section:
         sections.append(booking_section)

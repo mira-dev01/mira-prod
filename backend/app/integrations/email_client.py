@@ -29,6 +29,7 @@ API call still doesn't result in a delivered email.
 import httpx
 
 from app.config import settings
+from app.services import usage_meter
 
 _RESEND_URL = "https://api.resend.com/emails"
 _DEFAULT_TIMEOUT_SECONDS = 15.0
@@ -61,4 +62,5 @@ async def send_email(
         )
     if response.status_code >= 400:
         raise ResendError(f"send failed ({response.status_code}): {response.text}")
+    usage_meter.record_usage_detached("resend", "emails", 1)
     return {"status": "sent"}

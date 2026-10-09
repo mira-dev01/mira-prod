@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowRight, Phone, PhoneCall, AlertTriangle, Percent, Wallet, Users } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -14,18 +14,40 @@ import { CallsTable } from "@/components/calls-table";
 import { LeadDetailPanel } from "@/components/lead-detail-panel";
 import { LiveRequestsCard } from "@/components/live-requests-card";
 import { OpportunitiesCard } from "@/components/opportunities-card";
-import { StatCard } from "@/components/stat-card";
+import { NeedsAttentionCard } from "@/components/overview/needs-attention";
+import {
+  PortfolioSnapshot,
+  PortfolioSnapshotError,
+  PortfolioSnapshotSkeleton,
+} from "@/components/overview/portfolio-snapshot";
 import { DateRangePicker } from "@/components/date-range-picker";
 import { UnansweredQuestionsCard } from "@/components/unanswered-questions-card";
 import { cn, glassCardClassName } from "@/lib/utils";
 import type { LeadOut } from "@/lib/types";
 
+/** Quiet tier label -- groups cards without adding another card. */
+function SectionLabel({ id, children }: { id: string; children: React.ReactNode }) {
+  return (
+    <h2 id={id} className="px-1 text-sm font-medium text-muted-foreground">
+      {children}
+    </h2>
+  );
+}
+
 export default function OverviewPage() {
   const [includeTestCalls, setIncludeTestCalls] = useState(false);
   const { startDateISO, endDateISO } = useDateRange();
 
-  const { data: summary, loading: summaryLoading } = useAsync(
-    () => api.analytics.summary({ startDate: startDateISO, endDate: endDateISO, includeTestCalls }),
+  // One request for the snapshot + attention items. Reporting-period
+  // numbers follow the date picker; attention items are current-state (see
+  // backend analytics_service.overview).
+  const {
+    data: overview,
+    loading: overviewLoading,
+    error: overviewError,
+    refetch: refetchOverview,
+  } = useAsync(
+    () => api.analytics.overview({ startDate: startDateISO, endDate: endDateISO, includeTestCalls }),
     [startDateISO, endDateISO, includeTestCalls]
   );
   const { data: calls, loading: callsLoading } = useAsync(
@@ -114,115 +136,89 @@ export default function OverviewPage() {
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        <StatCard glass icon={Phone} label="Total calls" value={summary?.total_calls} loading={summaryLoading} />
-        <StatCard
-          glass
-          icon={PhoneCall}
-          iconColorVar="--status-live"
-          label="Completed"
-          value={summary?.completed_calls}
-          loading={summaryLoading}
-        />
-        <StatCard
-          glass
-          icon={AlertTriangle}
-          iconColorVar="--destructive"
-          label="Escalated"
-          value={summary?.escalated_calls}
-          loading={summaryLoading}
-        />
-        <StatCard
-          glass
-          icon={Percent}
-          label="Answer rate"
-          value={summary?.answer_rate != null ? `${Math.round(summary.answer_rate * 100)}%` : undefined}
-          loading={summaryLoading}
-        />
-        <StatCard
-          glass
-          icon={Wallet}
-          label="Pipeline value"
-          value={summary?.pipeline_value != null ? `₹${summary.pipeline_value.toLocaleString("en-IN")}` : undefined}
-          loading={summaryLoading}
-        />
-        <Link href="/dashboard/leads?tab=booking&status=open" className="block">
-          <StatCard
-            glass
-            icon={Users}
-            label="Open leads"
-            value={summary?.open_leads}
-            loading={summaryLoading}
-            interactive
-          />
-        </Link>
-      </div>
+      {overviewError && !overview ? (
+        <PortfolioSnapshotError onRetry={refetchOverview} />
+      ) : overviewLoading && !overview ? (
+        <PortfolioSnapshotSkeleton />
+      ) : overview ? (
+        <PortfolioSnapshot data={overview} />
+      ) : null}
 
-      {/* Action-needed cards first (Live requests, then Unanswered
-          questions), Recent calls last since it's passive/FYI -- same 3
-          grid items and span classes as before, so the existing wrap
-          tuning holds: two single-span cards pair up on row 1 at the lg
-          breakpoint (1366x768/1440x900 laptop widths), Unanswered
-          Questions' col-span-2 fills row 2 alone; all three sit in one row
-          at xl. Reordering which card is which changes only reading order,
-          not row count. */}
-      <div className="grid items-stretch gap-4 lg:grid-cols-2 xl:grid-cols-3">
-        {leadsLoading ? (
-          <Skeleton className="h-40 w-full" />
-        ) : (
-          <LiveRequestsCard
-            glass
-            leads={leads ?? []}
-            onRefetch={refetchLeads}
-            onCardClick={setEditingLead}
-            limit={2}
-          />
-        )}
-
-        <Card className={cn("h-full", glassCardClassName)}>
-          <CardHeader>
-            <CardTitle>Recent calls</CardTitle>
-          </CardHeader>
-          <CardContent className="flex-1">
-            {callsLoading ? (
-              <Skeleton className="h-40 w-full" />
-            ) : recentCalls.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No calls yet.</p>
-            ) : (
-              <CallsTable calls={recentCalls} compact />
-            )}
-          </CardContent>
-          <div className="border-t px-4 py-3">
-            <Link
-              href="/dashboard/calls"
-              className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-            >
-              View all calls
-              <ArrowRight className="size-3.5" />
-            </Link>
-          </div>
-        </Card>
-
-        <div className="flex lg:col-span-2 xl:col-span-1">
-          <UnansweredQuestionsCard glass limit={2} linkToFaqPage hideDescription />
-        </div>
-      </div>
-
-      {/* Own row, not folded into the 3-card row above -- keeps that row's
-          documented wrap-behavior tuning (1366x768/1440x900 laptop widths)
-          untouched. Reuses the same `leads` fetch/refetch/editingLead state
-          already on this page -- no separate data fetch for this card. */}
-      {leadsLoading ? (
-        <Skeleton className="h-40 w-full" />
+      {/* Hierarchy, top to bottom: snapshot (above) -> what needs the host
+          -> live operations -> supporting details. Each tier is visually
+          lighter than the one before; only the snapshot carries headline
+          numbers. */}
+      {overviewError && !overview ? (
+        <p className={cn("rounded-2xl px-5 py-3.5 text-sm text-muted-foreground", glassCardClassName)}>
+          <span className="font-medium text-foreground">Needs your attention</span> · Couldn&apos;t load this right
+          now.
+        </p>
       ) : (
-        <OpportunitiesCard
-          glass
-          leads={leads ?? []}
-          onRefetch={refetchLeads}
-          onCardClick={setEditingLead}
-          limit={3}
-        />
+        <NeedsAttentionCard data={overview} loading={overviewLoading && !overview} onChanged={refetchOverview} />
       )}
+
+      <section aria-labelledby="overview-live" className="space-y-3 pt-2">
+        <SectionLabel id="overview-live">Live operations</SectionLabel>
+        <div className="grid items-stretch gap-4 lg:grid-cols-2">
+          {leadsLoading ? (
+            <Skeleton className="h-40 w-full" />
+          ) : (
+            <LiveRequestsCard
+              glass
+              leads={leads ?? []}
+              onRefetch={refetchLeads}
+              onCardClick={setEditingLead}
+              limit={3}
+            />
+          )}
+          {leadsLoading ? (
+            <Skeleton className="h-40 w-full" />
+          ) : (
+            <OpportunitiesCard
+              glass
+              leads={leads ?? []}
+              onRefetch={refetchLeads}
+              onCardClick={setEditingLead}
+              limit={3}
+            />
+          )}
+        </div>
+      </section>
+
+      <section aria-labelledby="overview-details" className="space-y-3 pt-2">
+        <SectionLabel id="overview-details">Details</SectionLabel>
+        {/* Recent calls follow the selected period; unanswered questions are
+            current-state. */}
+        <div className="grid items-stretch gap-4 lg:grid-cols-2">
+          <Card className={cn("h-full", glassCardClassName)}>
+            <CardHeader>
+              <CardTitle>Recent calls</CardTitle>
+            </CardHeader>
+            <CardContent className="flex-1">
+              {callsLoading ? (
+                <Skeleton className="h-40 w-full" />
+              ) : recentCalls.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No calls in this period.</p>
+              ) : (
+                <CallsTable calls={recentCalls} compact />
+              )}
+            </CardContent>
+            <div className="border-t px-4 py-3">
+              <Link
+                href="/dashboard/calls"
+                className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+              >
+                View all calls
+                <ArrowRight className="size-3.5" />
+              </Link>
+            </div>
+          </Card>
+
+          <div className="flex min-w-0">
+            <UnansweredQuestionsCard glass limit={2} linkToFaqPage hideDescription />
+          </div>
+        </div>
+      </section>
 
       <LeadDetailPanel
         lead={editingLead}
