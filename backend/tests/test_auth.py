@@ -1,3 +1,28 @@
+from app.auth.dependencies import _is_internal_org
+
+
+def test_is_internal_org_true_for_every_profile_outside_production():
+    """Regression for the live bug fixed 2026-10-09: "Talk to Mira" was
+    invisible on every dev-environment host profile that wasn't a member of
+    CLERK_DEV_ORG_ID, defeating the point of a dev environment. Outside
+    production, every host profile is a test profile already -- no org
+    membership should be required, active org or not."""
+    assert _is_internal_org("dev", "org_internal_team", None) is True
+    assert _is_internal_org("dev", "org_internal_team", "org_some_other_org") is True
+    assert _is_internal_org("development", None, None) is True
+
+
+def test_is_internal_org_still_scoped_to_the_configured_org_in_production():
+    """The restriction this exists for in the first place must survive --
+    production hosts outside Mira's own internal Clerk org must not see
+    internal-team-only affordances."""
+    assert _is_internal_org("production", "org_internal_team", "org_internal_team") is True
+    assert _is_internal_org("production", "org_internal_team", "org_some_host") is False
+    assert _is_internal_org("production", "org_internal_team", None) is False
+    # CLERK_DEV_ORG_ID unset in production -- nobody should match a None.
+    assert _is_internal_org("production", None, None) is False
+
+
 async def test_me_requires_auth(client):
     resp = await client.get("/api/v1/auth/me")
     assert resp.status_code == 401
