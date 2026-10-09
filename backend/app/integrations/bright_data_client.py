@@ -13,12 +13,15 @@ on top of this (app/api/v1/properties.py) asks the host to paste each
 listing URL rather than one profile link.
 """
 
+import logging
 import re
 
 import httpx
 
 from app.config import settings
 from app.services import usage_meter
+
+logger = logging.getLogger(__name__)
 
 _BASE_URL = "https://api.brightdata.com/datasets/v3"
 _DATASET_ID = "gd_ld7ll037kqy322v05"
@@ -71,6 +74,10 @@ async def trigger_scrape(urls: list[str], timeout: float = 15.0) -> str:
             json=[{"url": url} for url in urls],
         )
         if response.status_code >= 400:
+            logger.warning(
+                "bright_data_trigger_failed status=%s inputs=%s body=%s",
+                response.status_code, urls, response.text[:500],
+            )
             raise BrightDataError(f"trigger failed ({response.status_code}): {response.text}")
         data = response.json()
         snapshot_id = data.get("snapshot_id")
