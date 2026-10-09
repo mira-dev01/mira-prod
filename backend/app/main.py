@@ -351,7 +351,7 @@ app.include_router(whatsapp.router, prefix=API_PREFIX)
 
 
 @app.get("/health")
-async def health() -> dict:
+async def health_check() -> dict:
     return {"status": "ok", "environment": settings.environment}
 
 
