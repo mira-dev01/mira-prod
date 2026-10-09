@@ -189,7 +189,7 @@ async def import_properties(
         listing_id = filename.rsplit(".", 1)[0]
         try:
             raw = json.loads(await upload.read())
-            parsed = parse_airbnb_listing(raw)
+            parsed = await parse_airbnb_listing(raw, photo_folder=f"mira/properties/{current_user.id}")
             results.append(await _upsert_property_from_parsed(current_user.id, listing_id, filename, parsed))
         except Exception as exc:  # noqa: BLE001 - one bad file shouldn't fail the whole batch
             results.append(PropertyImportResult(filename=filename, status="error", error=str(exc)))
