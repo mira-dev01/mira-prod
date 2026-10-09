@@ -68,7 +68,7 @@ async def send_call_summary_email(db: AsyncSession, call_session_id: uuid.UUID |
         summary = CallSummary.model_validate(session.ai_summary) if session.ai_summary else None
         conversation_summary = summary.conversation_summary if summary else "No summary available."
 
-        hot_prefix = "\U0001F525 Hot lead — " if lead_temperature == "hot" else ""
+        hot_prefix = "\U0001F525 Hot lead — " if lead_temperature in ("hot", "very_hot") else ""
         subject = f"{hot_prefix}Call summary: {property_name}"
 
         body = (

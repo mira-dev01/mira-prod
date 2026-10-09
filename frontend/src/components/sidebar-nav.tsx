@@ -9,6 +9,7 @@ import {
   Building2,
   BrainCircuit,
   Calendar,
+  ChartColumn,
   Phone,
   Users,
   UserRound,
@@ -33,6 +34,7 @@ import { useAuth } from "@/lib/auth-context";
 // serves those properties.
 const links: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/dashboard", label: "Overview", icon: Home },
+  { href: "/dashboard/analytics", label: "Analytics", icon: ChartColumn },
   { href: "/dashboard/properties", label: "Properties", icon: Building2 },
   { href: "/dashboard/properties/ai-training", label: "AI Training", icon: BrainCircuit },
   { href: "/dashboard/calendar", label: "Calendar", icon: Calendar },

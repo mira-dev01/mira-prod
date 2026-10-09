@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Literal
 
+from app.services.property.budget import BudgetConstraint
 from app.services.property.card import PropertyCard
 
 _NUMBER_WORDS = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six"}
@@ -62,7 +63,35 @@ class RecommendationResult:
     # unless a real availability check actually ran and found a partial
     # conflict.
     partially_available: list[PartiallyAvailableProperty] = field(default_factory=list)
+    # Explicit budget semantics (app/services/property/budget.py): the
+    # normalized budget this search actually applied (None = no budget), and
+    # properties within NEAR_BUDGET_STRETCH of it but NOT within it -- kept
+    # out of `options` so the guard/state never treat them as matches.
+    budget: BudgetConstraint | None = None
+    near_budget: list[PropertyCard] = field(default_factory=list)
+    # One better-but-pricier property (premium, or more of what the guest
+    # asked for) pitched after the options as "a bit steeper" -- see
+    # orchestrator._pick_upsell. Like near_budget, never part of `options`.
+    upsell: PropertyCard | None = None
+    upsell_reason: str = ""
+    # True only when the search itself errored (never for zero matches) --
+    # see recommendation_failed_result. An empty search and a backend failure
+    # must never render the same, or a crash becomes "nothing fits your
+    # budget" (confirmed live 2026-09-25).
+    failed: bool = False
 
+
+def recommendation_failed_result() -> RecommendationResult:
+    return RecommendationResult(options=[], failed=True)
+
+
+# Success vs failure itself is carried by app/voice/tool_contract.py's
+# result envelope ("success"/"status"); this text is the failure message.
+RECOMMENDATION_FAILED_TEXT = (
+    "The property search did not run (a system error, NOT an empty result). You have no property options "
+    "from this call: do not name, describe, or price any property, and do not say nothing matched. Tell the "
+    "guest you couldn't pull up the options just now and offer to have the host get back to them."
+)
 
 _NOT_FOUND_TEXT = "I couldn't find a property in our portfolio matching that -- let me connect you with the host directly."
 
@@ -99,6 +128,29 @@ def _join_natural(items: list[str]) -> str:
     if len(items) == 1:
         return items[0]
     return " and ".join(items)
+
+
+def _stay_price_clause(card: PropertyCard) -> str:
+    """The guest's actual stay total, pre-computed (the model never
+    multiplies), plus the host's automatic length-of-stay offer when one
+    applies -- stated as a concrete offer so it can be pitched with
+    conviction. Empty when the stay length isn't known."""
+    sp = card.stay_price
+    if sp is None or sp.total is None or not sp.nights:
+        return ""
+    nights = f"{sp.nights} night{'s' if sp.nights != 1 else ''}"
+    if sp.offer_percent:
+        clause = (
+            f" -- with the host's {sp.offer_min_nights}+ night offer ({sp.offer_percent:.0f}% off) your {nights} "
+            f"come to ₹{sp.total:,.0f} instead of ₹{sp.standard_total:,.0f}"
+        )
+    elif sp.nights > 1:
+        clause = f" (₹{sp.total:,.0f} for your {nights})"
+    else:
+        clause = ""
+    if sp.is_estimate:
+        clause += " -- an estimate until the exact dates are priced"
+    return clause
 
 
 def format_property_pitch_line(card: PropertyCard, index: int) -> str:
@@ -148,7 +200,7 @@ def format_property_pitch_line(card: PropertyCard, index: int) -> str:
 
     return (
         f"{index}. {card.spoken_name}, a {descriptor}{amenity_phrase} in {card.city or 'unlisted city'} "
-        f"for ₹{card.base_price:,.0f} a night, sleeps {card.max_guests}{reason_clause}. "
+        f"for ₹{card.nightly_rate:,.0f} a night{_stay_price_clause(card)}, sleeps {card.max_guests}{reason_clause}. "
         f"(property_id: {card.property_id})"
     )
 
@@ -170,8 +222,117 @@ def _format_partial_availability_line(entry: PartiallyAvailableProperty) -> str:
     )
 
 
+def _rupees(amount: float) -> str:
+    return f"₹{amount:,.0f}"
+
+
+def _budget_phrase(budget: BudgetConstraint) -> str:
+    """The applied budget in the guest's own basis, with the other basis
+    pre-computed alongside it -- the model relays these numbers, it never
+    derives one from the other itself."""
+    if budget.basis == "total_stay":
+        nightly = _rupees(budget.max_nightly_rate)
+        return f"{_rupees(budget.amount)} total for {budget.nights} nights (about {nightly} a night)"
+    phrase = f"{_rupees(budget.amount)} per night"
+    if budget.max_total_rate is not None and budget.nights and budget.nights > 1:
+        phrase += f" ({_rupees(budget.max_total_rate)} for {budget.nights} nights)"
+    if budget.basis_assumed:
+        phrase += " -- assumed per night since the guest didn't say; don't ask about it again"
+    return phrase
+
+
+def _clarification_text(budget: BudgetConstraint) -> str:
+    amount = _rupees(budget.amount)
+    if budget.clarification == "budget_basis":
+        question = f"is that {amount} per night, or {amount} for the entire stay?"
+    elif budget.clarification == "stay_length" and budget.basis == "total_stay":
+        question = f"how many nights is the {amount} total budget for?"
+    elif budget.clarification == "stay_length":
+        question = "how many nights they're planning to stay?"
+    else:
+        question = "what their budget is in rupees?"
+    return (
+        f"Not searched yet -- one detail is needed first. Ask the guest one short question: {question} "
+        "Then call recommend_properties again with their answer. Do not name or suggest any property until then."
+    )
+
+
+def _format_near_budget_line(card: PropertyCard, budget: BudgetConstraint) -> str:
+    sp = card.stay_price
+    total = sp.total if sp is not None else None
+    over = _rupees(budget.over_budget_by(card.applicable_nightly_rate, total))
+    if budget.basis == "total_stay" and total is not None:
+        price = f"{_rupees(total)} for {sp.nights} nights, {over} over their total budget"
+    else:
+        price = f"{_rupees(card.applicable_nightly_rate)} a night, {over} a night over their budget"
+    return (
+        f"Slightly ABOVE the guest's budget (only mention as a stretch option, never as within budget): "
+        f"{card.spoken_name} in {card.city or 'unlisted city'} at {price}, sleeps {card.max_guests}. "
+        f"(property_id: {card.property_id})"
+    )
+
+
+def _format_upsell_line(card: PropertyCard, reason: str, budget: BudgetConstraint) -> str:
+    """Per product direction (Mira as a sales agent): the better option is
+    pitched in the SAME turn as the in-budget ones, with its real price and
+    the host's offer stated up front -- the offer is the one discount for
+    it, never held back for a later negotiation."""
+    sp = card.stay_price
+    total = sp.total if sp is not None else None
+    over = _rupees(budget.over_budget_by(card.applicable_nightly_rate, total))
+    over_phrase = f"{over} over their total budget" if budget.basis == "total_stay" and total is not None else (
+        f"{over} a night over their budget"
+    )
+    offer = (
+        " Lead with the offer -- it's already the best price on it."
+        if sp is not None and sp.offer_percent
+        else ""
+    )
+    return (
+        "STEEPER OPTION (above budget -- after the options above and before your one closing question, tell the "
+        "guest you have another option that's a bit steeper, give its price, and say why it's worth it; never "
+        "present it as within budget):"
+        f"{offer}\n{card.spoken_name} in {card.city or 'unlisted city'} -- {reason} -- for "
+        f"₹{card.nightly_rate:,.0f} a night{_stay_price_clause(card)}, sleeps {card.max_guests}; {over_phrase}. "
+        f"(property_id: {card.property_id})"
+    )
+
+
+def _offer_line(result: RecommendationResult) -> str:
+    """Host-configured automatic length-of-stay offers on the recommended
+    options are a real selling point -- per product direction, pitch them
+    with conviction rather than holding them back like a negotiation
+    discount (get_pricing/negotiate_rate then quote from the offer price for
+    these properties, so the guest never hears a higher number later)."""
+    names = [c.spoken_name for c in result.options if c.stay_price is not None and c.stay_price.offer_percent]
+    if not names:
+        return ""
+    fits = " and that it brings the stay within their budget" if result.budget is not None else ""
+    return (
+        f"\nOFFER: {', '.join(names)} {'has' if len(names) == 1 else 'have'} an automatic longer-stay offer for "
+        f"this stay. Pitch it confidently as a real offer{fits}, and end with one question (e.g. would they like "
+        "the details)."
+    )
+
+
 def render_recommendation_text(result: RecommendationResult) -> str:
+    if result.failed:
+        return RECOMMENDATION_FAILED_TEXT
+    budget = result.budget
+    if budget is not None and budget.clarification is not None:
+        return _clarification_text(budget)
+    budget_line = f"\nBudget applied: {_budget_phrase(budget)}." if budget is not None else ""
+    near_lines = (
+        [_format_near_budget_line(card, budget) for card in result.near_budget] if budget is not None else []
+    )
+    if budget is not None and result.upsell is not None:
+        near_lines.append(_format_upsell_line(result.upsell, result.upsell_reason, budget))
     if result.not_found:
+        if budget is not None:
+            return (
+                f"No property matches these criteria within that budget.{budget_line}\nSay so plainly and offer "
+                "to widen the budget or other criteria; if they'd rather not, offer to connect them with the host."
+            )
         return _NOT_FOUND_TEXT
     if not result.options:
         # Availability-first recommendations, Implementation 3: zero clean
@@ -180,10 +341,16 @@ def render_recommendation_text(result: RecommendationResult) -> str:
         # the fixed not_found text ("let me connect you with the host
         # directly") would be misleading here. Speak the partial-availability
         # facts instead of the normal per-option pitch lines.
-        if result.partially_available:
-            lines = [_format_partial_availability_line(entry) for entry in result.partially_available]
-            return "\n".join(lines)
-        return _NOT_FOUND_TEXT
+        lines = [_format_partial_availability_line(entry) for entry in result.partially_available]
+        if not lines and not near_lines:
+            return _NOT_FOUND_TEXT
+        if near_lines:
+            lines = [
+                "Nothing is within the guest's budget -- say that first, then offer these as stretch options.",
+                *near_lines,
+                *lines,
+            ]
+        return "\n".join(lines) + budget_line
 
     # One property per line, newline-joined -- never " | "-joined. Real
     # property names routinely contain a literal "|" themselves (e.g.
@@ -203,7 +370,13 @@ def render_recommendation_text(result: RecommendationResult) -> str:
     # framing language differs.
     intro = CONFIDENCE_INTROS[result.recommendation_confidence]
     lines = [format_property_pitch_line(card, i) for i, card in enumerate(result.options, 1)]
+    # combo_note belongs to the options themselves ("book two of these
+    # together"), so it's appended right after them, never after a
+    # near-budget/steeper line.
     text = intro + "\n" + "\n".join(lines) + result.combo_note
+    if near_lines:
+        text += "\n" + "\n".join(near_lines)
+    text += budget_line + _offer_line(result)
     # Availability-first recommendations, Implementation 3: at least one full
     # match exists AND at least one partial one -- append the partial facts
     # after the main pitch rather than dropping them, so the agent still has

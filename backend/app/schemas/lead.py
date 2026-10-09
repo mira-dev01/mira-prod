@@ -4,7 +4,9 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-LeadTemperature = Literal["hot", "warm", "cold"]
+# very_hot = explicit booking intent -- see app/services/lead_temperature.py
+# for what each level means.
+LeadTemperature = Literal["very_hot", "hot", "warm", "cold"]
 LeadStatus = Literal["open", "contacted", "booked", "closed"]
 
 # Recovery/entry metadata -- see app/models/lead.py's own comment for the

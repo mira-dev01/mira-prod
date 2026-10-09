@@ -11,8 +11,13 @@ context builder) gets identical fallback behavior instead of reimplementing
 
 import uuid
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from app.services.amenity_taxonomy import canonicalize_amenity, rank_amenities_for_pitch
+
+if TYPE_CHECKING:
+    from app.services.pricing_engine import StayPrice
+    from app.services.property.budget import BudgetConstraint
 
 
 @dataclass(frozen=True)
@@ -62,6 +67,24 @@ class PropertyCard:
     # top_amenities, which is truncated) -- neither is available at
     # build_property_card's own per-property construction time.
     amenity_checklist: str
+    # The applicable price for the guest's stay (pricing_engine.
+    # evaluate_stay_prices) when it was evaluated -- None when the stay
+    # length is unknown and nothing beyond base_price is known.
+    stay_price: "StayPrice | None" = None
+
+    @property
+    def nightly_rate(self) -> float:
+        """The standard nightly rate for this stay (live/cached when known,
+        before any length-of-stay offer), else base_price."""
+        sp = self.stay_price
+        if sp is not None and sp.standard_total and sp.nights:
+            return round(sp.standard_total / sp.nights, 2)
+        return self.base_price
+
+    @property
+    def applicable_nightly_rate(self) -> float:
+        """What the guest would effectively pay per night, offer included."""
+        return self.stay_price.per_night if self.stay_price is not None else self.base_price
 
 
 def build_property_card(property_) -> PropertyCard:
@@ -112,7 +135,7 @@ def _purpose_phrase(purpose_of_stay: str) -> str | None:
     return None
 
 
-def match_reasons_for_card(card: PropertyCard, args) -> list[str]:
+def match_reasons_for_card(card: PropertyCard, args, budget: "BudgetConstraint | None" = None) -> list[str]:
     """Compares a card's own fields against whichever RecommendPropertiesArgs
     fields the guest's call actually supplied -- deterministic, never a
     fabricated reason for a criterion that wasn't given. `args` is typed
@@ -150,8 +173,12 @@ def match_reasons_for_card(card: PropertyCard, args) -> list[str]:
         if card.max_guests >= args.num_guests:
             reasons.append(f"fits your group of {args.num_guests}")
 
-    if len(reasons) < _MAX_MATCH_REASONS and args.budget:
-        if card.base_price <= args.budget * 0.9:
+    budget = budget if budget is not None else args.budget_constraint()
+    if len(reasons) < _MAX_MATCH_REASONS and budget is not None and budget.is_applicable:
+        # At least 10% under the guest's ceiling, in the guest's own basis,
+        # on the applicable price (offer included).
+        total = card.stay_price.total if card.stay_price is not None else None
+        if budget.fits(card.applicable_nightly_rate / 0.9, total / 0.9 if total is not None else None):
             reasons.append("comfortably within budget")
 
     return reasons[:_MAX_MATCH_REASONS]

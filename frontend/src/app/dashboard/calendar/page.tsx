@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { BookingReconciliationPanel } from "@/components/booking-reconciliation";
 import { GuestCombobox } from "@/components/guest-combobox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,8 +27,11 @@ const bookingSourceColor = {
   manual: "var(--chart-4)",
 } as const;
 
+// Local calendar day -- toISOString() is UTC, which in IST turns a local-
+// midnight cell date into the previous day (the block form was prefilled a
+// day early).
 function toISODate(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 function daysInMonth(year: number, month: number): number {
@@ -52,9 +56,13 @@ export default function CalendarPage() {
   const [blockCheckOut, setBlockCheckOut] = useState("");
   const [blockGuestName, setBlockGuestName] = useState("");
   const [blockGuestPhone, setBlockGuestPhone] = useState<string | null>(null);
+  const [blockPrice, setBlockPrice] = useState("");
+  const [blockKind, setBlockKind] = useState<"reservation" | "blocked">("reservation");
   const [submitting, setSubmitting] = useState(false);
 
-  const [unblockTarget, setUnblockTarget] = useState<{ booking: BookingOut; propertyName: string } | null>(null);
+  // Clicking a booked cell opens the booking's details (price, "Mira
+  // match?", unblock) -- see components/booking-reconciliation.tsx.
+  const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null);
   const [unblocking, setUnblocking] = useState(false);
 
   // Clicking a legend entry filters the grid down to just that source --
@@ -114,6 +122,8 @@ export default function CalendarPage() {
     }
     setBlockGuestName("");
     setBlockGuestPhone(null);
+    setBlockPrice("");
+    setBlockKind("reservation");
     setBlockOpen(true);
   }
 
@@ -129,6 +139,8 @@ export default function CalendarPage() {
         guest_name: blockGuestName || null,
         guest_phone: blockGuestPhone,
         platform: "manual",
+        kind: blockKind,
+        final_booking_price: blockKind === "reservation" && blockPrice ? Number(blockPrice) : null,
       });
       toast.success("Dates blocked");
       setBlockOpen(false);
@@ -141,12 +153,12 @@ export default function CalendarPage() {
   }
 
   async function handleUnblock() {
-    if (!unblockTarget) return;
+    if (!selectedBookingId) return;
     setUnblocking(true);
     try {
-      await api.bookings.cancel(unblockTarget.booking.id);
+      await api.bookings.cancel(selectedBookingId);
       toast.success("Dates unblocked");
-      setUnblockTarget(null);
+      setSelectedBookingId(null);
       refetch();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Failed to unblock dates");
@@ -156,6 +168,9 @@ export default function CalendarPage() {
   }
 
   const loading = loadingProperties || loadingBookings;
+  const needsConfirmationCount = (bookings ?? []).filter(
+    (b) => b.needs_price_confirmation || b.needs_attribution_review
+  ).length;
 
   return (
     <div className="space-y-6">
@@ -206,6 +221,15 @@ export default function CalendarPage() {
             <span className="inline-block h-3 w-3 rounded-sm" style={{ background: bookingSourceColor.manual }} />
             Manual block
           </button>
+          {needsConfirmationCount > 0 && (
+            <span
+              className="flex items-center gap-1"
+              title="Bookings with a missing final price or a possible Mira match -- click one to confirm"
+            >
+              <span className="inline-block size-1.5 rounded-full bg-(--status-pending)" />
+              {needsConfirmationCount} need{needsConfirmationCount === 1 ? "s" : ""} confirmation
+            </span>
+          )}
           {sourceFilter && (
             <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setSourceFilter(null)}>
               Clear filter
@@ -267,18 +291,26 @@ export default function CalendarPage() {
                         : bookingSourceColor.manual
                       : undefined;
                     const hiddenByFilter = !visibleBooking && !!actualBooking;
+                    // One small marker on the stay's first visible day, not
+                    // every night of it -- keeps the grid uncluttered.
+                    const mm = String(month + 1).padStart(2, "0");
+                    const cellIso = `${year}-${mm}-${String(day).padStart(2, "0")}`;
+                    const showMarker =
+                      !!visibleBooking &&
+                      (visibleBooking.needs_price_confirmation || visibleBooking.needs_attribution_review) &&
+                      (visibleBooking.check_in === cellIso || (day === 1 && visibleBooking.check_in < cellIso));
                     return (
                       <td
                         key={day}
                         title={
                           visibleBooking
-                            ? `${visibleBooking.platform} -- ${visibleBooking.guest_name ?? "no name"} (${visibleBooking.check_in} → ${visibleBooking.check_out}) -- click to unblock`
+                            ? `${visibleBooking.platform} -- ${visibleBooking.guest_name ?? "no name"} (${visibleBooking.check_in} → ${visibleBooking.check_out})${showMarker ? " -- needs confirmation" : ""} -- click for details`
                             : hiddenByFilter
                               ? "Booking hidden by the source filter above"
                               : "Available -- click to block"
                         }
                         onClick={() => {
-                          if (visibleBooking) setUnblockTarget({ booking: visibleBooking, propertyName: property.name });
+                          if (visibleBooking) setSelectedBookingId(visibleBooking.id);
                           else if (!hiddenByFilter) openBlockDialog(property.id, day);
                         }}
                         style={tone ? { background: `color-mix(in srgb, ${tone} 70%, transparent)` } : undefined}
@@ -289,11 +321,18 @@ export default function CalendarPage() {
                           if (tone) e.currentTarget.style.background = `color-mix(in srgb, ${tone} 70%, transparent)`;
                         }}
                         className={cn(
-                          "h-7 border-b border-l",
+                          "relative h-7 border-b border-l",
                           hiddenByFilter ? "cursor-not-allowed opacity-30" : "cursor-pointer",
                           !visibleBooking && !hiddenByFilter && "hover:bg-accent"
                         )}
-                      />
+                      >
+                        {showMarker && (
+                          <span
+                            aria-label="Needs confirmation"
+                            className="absolute top-1 right-1 size-1.5 rounded-full bg-(--status-pending) ring-1 ring-card"
+                          />
+                        )}
+                      </td>
                     );
                   })}
                 </tr>
@@ -368,38 +407,52 @@ export default function CalendarPage() {
               </p>
             )}
           </div>
+          <div className="space-y-2">
+            <Label>What are these dates for?</Label>
+            <Select value={blockKind} onValueChange={(v) => v && setBlockKind(v as "reservation" | "blocked")}>
+              <SelectTrigger className="w-full">
+                <SelectValue>
+                  {(value: string) => (value === "blocked" ? "Blocked — no guest (owner use, maintenance)" : "A guest booking")}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="reservation">A guest booking</SelectItem>
+                <SelectItem value="blocked">Blocked — no guest (owner use, maintenance)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {blockKind === "reservation" && (
+          <div className="space-y-2">
+            <Label htmlFor="block-price">Final booking price (optional, total stay ₹)</Label>
+            <Input
+              id="block-price"
+              type="number"
+              inputMode="numeric"
+              min={1}
+              value={blockPrice}
+              onChange={(e) => setBlockPrice(e.target.value)}
+              placeholder="Leave empty if not decided yet"
+            />
+          </div>
+          )}
         </form>
       </RightPanel>
 
-      <RightPanel
-        open={!!unblockTarget}
-        onOpenChange={(open) => !open && setUnblockTarget(null)}
-        title="Unblock dates"
+      <BookingReconciliationPanel
+        bookingId={selectedBookingId}
+        onOpenChange={(open) => !open && setSelectedBookingId(null)}
+        onChanged={refetch}
         footer={
           <RightPanelFooterButton variant="destructive" onClick={handleUnblock} disabled={unblocking}>
             {unblocking ? "Unblocking…" : "Unblock these dates"}
           </RightPanelFooterButton>
         }
       >
-        {unblockTarget && (
-          <div className="space-y-4">
-            <div className="space-y-1 rounded-md border p-3 text-sm">
-              <p className="font-medium">{unblockTarget.propertyName}</p>
-              <p className="text-muted-foreground">
-                {unblockTarget.booking.check_in} → {unblockTarget.booking.check_out}
-              </p>
-              <p className="text-muted-foreground capitalize">
-                {unblockTarget.booking.platform}
-                {unblockTarget.booking.guest_name ? ` · ${unblockTarget.booking.guest_name}` : ""}
-              </p>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Use this for a cancellation or if these dates were blocked by mistake. If this came from
-              Airbnb and is still active there, it will reappear on the next iCal sync.
-            </p>
-          </div>
-        )}
-      </RightPanel>
+        <p className="border-t pt-4 text-xs text-muted-foreground">
+          Unblock for a cancellation or dates blocked by mistake. If this came from Airbnb and is still active
+          there, it will reappear on the next iCal sync.
+        </p>
+      </BookingReconciliationPanel>
     </div>
   );
 }

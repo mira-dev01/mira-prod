@@ -10,7 +10,7 @@ from app.api.v1.common import get_owned_property
 from app.auth.dependencies import get_current_user
 from app.database import AsyncSessionLocal, get_db
 from app.integrations import bright_data_client, cloudinary_client
-from app.integrations.bright_data_client import BrightDataError
+from app.integrations.bright_data_client import BrightDataError, InvalidAirbnbUrlError
 from app.models.property import Property
 from app.models.user import User
 from app.schemas.property import (
@@ -189,7 +189,7 @@ async def import_properties(
         listing_id = filename.rsplit(".", 1)[0]
         try:
             raw = json.loads(await upload.read())
-            parsed = parse_airbnb_listing(raw)
+            parsed = await parse_airbnb_listing(raw, photo_folder=f"mira/properties/{current_user.id}")
             results.append(await _upsert_property_from_parsed(current_user.id, listing_id, filename, parsed))
         except Exception as exc:  # noqa: BLE001 - one bad file shouldn't fail the whole batch
             results.append(PropertyImportResult(filename=filename, status="error", error=str(exc)))
@@ -213,6 +213,8 @@ async def import_airbnb_urls_trigger(
     snapshot_id; poll GET /import-airbnb-urls/{snapshot_id} for completion."""
     try:
         snapshot_id = await bright_data_client.trigger_scrape(payload.urls)
+    except InvalidAirbnbUrlError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
     except BrightDataError as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
     return AirbnbUrlImportTriggered(snapshot_id=snapshot_id)

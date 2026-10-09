@@ -4,6 +4,7 @@ engine described in the spec is Tier 3 (weeks 13-20) and intentionally not
 built here — this gives the tool a real, useful response in the meantime.
 """
 
+import asyncio
 import logging
 import uuid
 from dataclasses import dataclass
@@ -86,6 +87,15 @@ async def _approved_negotiation_rules(db: AsyncSession, host_id: uuid.UUID | Non
         return []
 
 
+async def has_repeat_guest_discount(db: AsyncSession, host_id: uuid.UUID | None) -> bool:
+    """Whether this host's approved policy includes a discount_repeat_guest
+    rule -- the only way a returning guest ever gets a loyalty discount (see
+    negotiate_rate). The prompt uses this to decide whether a guest's past
+    stays are worth telling the model about at all."""
+    rules = await _approved_negotiation_rules(db, host_id)
+    return any(rule.rule_type == "discount_repeat_guest" for rule in rules)
+
+
 async def _approved_property_pricing_rules(
     db: AsyncSession, host_id: uuid.UUID | None, property_id: uuid.UUID
 ) -> list[NegotiationRule]:
@@ -124,6 +134,31 @@ def _condition_number(condition: dict, key: str) -> float | None:
     return float(value)
 
 
+def _best_length_of_stay_offer(
+    pricing_rules: list[PricingRule], property_negotiation_rules: list[NegotiationRule], nights: int
+) -> tuple[float, int | None]:
+    """The best automatic length-of-stay discount for a stay of `nights`,
+    as (percent, the winning rule's min_nights threshold). Pure -- shared by
+    calculate_price (one property) and evaluate_stay_prices (a batch), so
+    the discount rules live in exactly one place. pricing_rules are this
+    property's active PricingRule(rule_type="length_of_stay") rows;
+    property_negotiation_rules are the host's approved NegotiationRules that
+    name this property (see _approved_property_pricing_rules)."""
+    best, best_min_nights = 0.0, None
+    for rule in pricing_rules:
+        min_nights = rule.condition.get("min_nights") if isinstance(rule.condition, dict) else None
+        if min_nights is not None and nights >= min_nights and float(rule.discount_percent) > best:
+            best, best_min_nights = float(rule.discount_percent), int(min_nights)
+
+    for rule in property_negotiation_rules:
+        if rule.rule_type != "length_of_stay" or rule.discount_percent is None or not isinstance(rule.condition, dict):
+            continue
+        min_nights = _condition_number(rule.condition, "min_nights")
+        if min_nights is not None and nights >= min_nights and float(rule.discount_percent) > best:
+            best, best_min_nights = float(rule.discount_percent), int(min_nights)
+    return best, best_min_nights
+
+
 async def _length_of_stay_discount_percent(
     db: AsyncSession, property_id: uuid.UUID, nights: int, host_id: uuid.UUID | None = None
 ) -> float:
@@ -136,26 +171,21 @@ async def _length_of_stay_discount_percent(
             )
         )
     ).all()
+    percent, _ = _best_length_of_stay_offer(
+        list(rules), await _approved_property_pricing_rules(db, host_id, property_id), nights
+    )
+    return percent
 
-    best = 0.0
-    for rule in rules:
-        min_nights = rule.condition.get("min_nights") if isinstance(rule.condition, dict) else None
-        if min_nights is not None and nights >= min_nights:
-            best = max(best, float(rule.discount_percent))
 
-    # The host-authored, multi-property NegotiationRule is a SECOND source
-    # for this same rule_type (see that model's docstring for why it's a
-    # separate table from PricingRule, not a replacement) -- read alongside
-    # the existing per-property PricingRule rows above, same "take the
-    # best/max applicable discount" resolution, never double-counted or
-    # preferred over the other by ordering.
-    for rule in await _approved_property_pricing_rules(db, host_id, property_id):
-        if rule.rule_type != "length_of_stay" or rule.discount_percent is None or not isinstance(rule.condition, dict):
-            continue
-        min_nights = _condition_number(rule.condition, "min_nights")
-        if min_nights is not None and nights >= min_nights:
-            best = max(best, float(rule.discount_percent))
-    return best
+def _stay_totals(
+    base_price: float, nights: int, live_total: float | None, discount_percent: float
+) -> tuple[float, float, float]:
+    """(base_total, discount_amount, total) -- the one place a stay total is
+    computed: the live/cached total when there is one, else base_price *
+    nights, minus the automatic discount."""
+    base_total = round(live_total, 2) if live_total is not None else round(base_price * nights, 2)
+    discount_amount = round(base_total * discount_percent / 100, 2)
+    return base_total, discount_amount, round(base_total - discount_amount, 2)
 
 
 def _stay_includes_weekend_night(check_in: date, check_out: date) -> bool:
@@ -355,14 +385,10 @@ async def calculate_price(
 
     if live_total is not None:
         is_estimate = False
-    base_total = round(live_total, 2) if live_total is not None else round(base_price * resolved_nights, 2)
-
     discount_percent = 0.0
     if apply_discounts:
         discount_percent = await _length_of_stay_discount_percent(db, property_.id, resolved_nights, host_id=host_id)
-    discount_amount = round(base_total * discount_percent / 100, 2)
-
-    total = round(base_total - discount_amount, 2)
+    base_total, discount_amount, total = _stay_totals(base_price, resolved_nights, live_total, discount_percent)
 
     # Fees are looked up (fail-closed, defaults to 0.0 on any failure/no
     # rule) only when the guest actually asked -- tool_handlers.py never
@@ -387,6 +413,125 @@ async def calculate_price(
         per_night_avg=round(total / resolved_nights, 2) if resolved_nights else base_price,
         is_estimate=is_estimate,
     )
+
+
+@dataclass(frozen=True)
+class StayPrice:
+    """The applicable price of one property for the guest's stay, as used
+    for recommendation budget eligibility (evaluate_stay_prices).
+
+    per_night is the effective nightly rate (stay total / nights, after the
+    automatic length-of-stay offer); total is None when the stay length is
+    unknown. offer_percent/offer_min_nights describe that automatic offer
+    (0/None when none applies) -- host-configured, non-negotiated, so it's
+    pitched as an offer rather than held back like a negotiation discount.
+    is_estimate: an Airbnb-priced property with no cached live rate for
+    these nights -- base_price stands in, exactly as calculate_price's own
+    nights-only path does. per_night <= 0 means no usable price on file."""
+
+    nights: int | None
+    per_night: float
+    total: float | None
+    standard_total: float | None
+    offer_percent: float = 0.0
+    offer_min_nights: int | None = None
+    is_estimate: bool = False
+
+    @property
+    def has_price(self) -> bool:
+        return self.per_night > 0
+
+
+async def evaluate_stay_prices(
+    db: AsyncSession,
+    properties: list[Property],
+    host_id: uuid.UUID | None,
+    check_in: date | None = None,
+    check_out: date | None = None,
+    nights: int | None = None,
+    window_start: date | None = None,
+) -> dict[uuid.UUID, StayPrice]:
+    """Batch applicable-stay pricing for recommendation candidates -- the
+    same cases and arithmetic as calculate_price (shared via
+    _best_length_of_stay_offer/_stay_totals), with two deliberate
+    differences for a many-candidate, mid-call path:
+
+    - Never a live SearchApi fetch (a paid, free-tier-limited call that can
+      take seconds): exact dates use the daily-warmed nightly-rate cache,
+      nights-only uses calculate_price's own window_start cache probe, and
+      an Airbnb-priced property with no cached rate falls back to base_price
+      marked is_estimate. get_pricing still does the live fetch for the one
+      property the guest picks.
+    - Automatic length-of-stay offers always apply (they're what makes a
+      property fit a budget and get pitched as an offer); get_pricing/
+      negotiate_rate then quote from that same offer price for a property
+      whose offer was pitched (see app/voice/tools.py).
+
+    Two DB queries total regardless of candidate count (length-of-stay
+    PricingRules for all candidates, the host's approved NegotiationRules
+    once) plus cached-rate lookups for Airbnb-priced candidates only."""
+    if not properties:
+        return {}
+    exact_dates = check_in is not None and check_out is not None and check_out > check_in
+    resolved_nights = (check_out - check_in).days if exact_dates else (nights if nights and nights > 0 else None)
+    if resolved_nights is None:
+        return {
+            p.id: StayPrice(
+                nights=None,
+                per_night=float(p.base_price),
+                total=None,
+                standard_total=None,
+                is_estimate=bool(p.exact_airbnb_pricing),
+            )
+            for p in properties
+        }
+
+    los_rules = (
+        await db.scalars(
+            select(PricingRule).where(
+                PricingRule.property_id.in_([p.id for p in properties]),
+                PricingRule.rule_type == "length_of_stay",
+                PricingRule.active.is_(True),
+            )
+        )
+    ).all()
+    los_rules_by_property: dict[uuid.UUID, list[PricingRule]] = {}
+    for rule in los_rules:
+        los_rules_by_property.setdefault(rule.property_id, []).append(rule)
+    negotiation_rules = await _approved_negotiation_rules(db, host_id)
+
+    # Cached-rate lookups for Airbnb-priced candidates run concurrently --
+    # the only per-candidate I/O left, so a large pool costs one round of
+    # Redis latency rather than one per candidate.
+    cache_start = check_in if exact_dates else window_start
+    cache_end = check_out if exact_dates else (window_start + timedelta(days=resolved_nights) if window_start else None)
+
+    async def _cached_total(p: Property) -> float | None:
+        if not (p.exact_airbnb_pricing and p.airbnb_listing_id) or cache_start is None:
+            return None
+        return await _sum_cached_nightly_rates(p.airbnb_listing_id, cache_start, cache_end)
+
+    live_totals = await asyncio.gather(*(_cached_total(p) for p in properties))
+
+    prices: dict[uuid.UUID, StayPrice] = {}
+    for p, live_total in zip(properties, live_totals):
+        property_str = str(p.id)
+        offer_percent, offer_min_nights = _best_length_of_stay_offer(
+            los_rules_by_property.get(p.id, []),
+            [r for r in negotiation_rules if property_str in (r.property_ids or [])],
+            resolved_nights,
+        )
+        standard_total, _, total = _stay_totals(float(p.base_price), resolved_nights, live_total, offer_percent)
+        prices[p.id] = StayPrice(
+            nights=resolved_nights,
+            per_night=round(total / resolved_nights, 2),
+            total=total,
+            standard_total=standard_total,
+            offer_percent=offer_percent,
+            offer_min_nights=offer_min_nights,
+            is_estimate=bool(p.exact_airbnb_pricing) and live_total is None,
+        )
+    return prices
 
 
 @dataclass
@@ -523,6 +668,7 @@ async def negotiate_rate(
     prior_events: list["NegotiationEvent"] | None = None,
     nights: int | None = None,
     window_start: date | None = None,
+    apply_discounts: bool = False,
 ) -> NegotiationResult:
     """prior_events (Phase 4D, generalized negotiation state -- see
     documentation design docs "Phase 4C: Negotiation Semantics Contract"):
@@ -544,10 +690,40 @@ async def negotiate_rate(
     same as get_pricing. Per user decision: negotiation is never blocked
     just because dates aren't final yet -- the host's own discount policy
     still applies to the estimate."""
+    # apply_discounts: True only when this property's automatic length-of-
+    # stay offer was already pitched to the guest (app/voice/tools.py).
+    # Product decision: that offer is the discount for this stay, given once
+    # in the first pitch -- negotiation never stacks a second discount on
+    # top of it (and never quotes above it either), see below.
     breakdown = await calculate_price(
-        db, property_, check_in, check_out, apply_discounts=False, nights=nights, window_start=window_start
+        db,
+        property_,
+        check_in,
+        check_out,
+        apply_discounts=apply_discounts,
+        host_id=host_id if apply_discounts else None,
+        nights=nights,
+        window_start=window_start,
     )
     asking_price = breakdown.total
+
+    if apply_discounts and breakdown.discount_percent > 0:
+        accepted = guest_offer is not None and guest_offer >= asking_price
+        return NegotiationResult(
+            accepted=accepted,
+            counter_offer=guest_offer if accepted else asking_price,
+            asking_price=asking_price,
+            floor_price=asking_price,
+            refused=not accepted,
+            is_estimate=breakdown.is_estimate,
+            message=(
+                f"Great -- ₹{guest_offer:,.0f} total for {breakdown.nights} nights at {property_.name} works."
+                if accepted
+                else f"₹{asking_price:,.0f} for {breakdown.nights} nights already includes the "
+                f"{breakdown.discount_percent:.0f}% longer-stay offer on {property_.name} -- that's the best price "
+                "I can do. Happy to connect you with the host if you'd like to discuss it further."
+            ),
+        )
 
     policy = await _get_host_negotiation_policy(db, host_id)
 
@@ -634,8 +810,11 @@ async def negotiate_rate(
         discount_percent = trigger_decision.percent
         discount_percent_source = trigger_decision
     else:
-        loyalty_bonus_percent = {"new": 0.0, "returning": 5.0, "frequent": 10.0}.get(guest_loyalty, 0.0)
-        discount_percent = loyalty_bonus_percent + 10.0
+        # No approved rule resolved: the flat default only. A loyalty bonus
+        # is never added here -- returning guests get a loyalty discount if
+        # and only if the host's policy has a discount_repeat_guest rule
+        # (resolved above), never from the LLM's guest_loyalty alone.
+        discount_percent = 10.0
         discount_percent_source = None
 
     # A rule_type="custom" NegotiationRule is a host-authored, per-property

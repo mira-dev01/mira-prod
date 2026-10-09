@@ -192,6 +192,12 @@ class ConversationState:
     # not full ORM/dataclass objects, to keep this module free of a
     # dependency on the property/retrieval package.
     recommendations_shown: list[dict[str, Any]] = field(default_factory=list)
+    # Explicit budget semantics: True once recommend_properties has asked the
+    # guest "per night or for the entire stay?". It's asked at most once per
+    # call -- if the answer still didn't establish the basis, per night is
+    # assumed (app/services/property/budget.py's assume_per_night) rather
+    # than asking the guest again.
+    budget_basis_clarification_asked: bool = False
 
     # Set when a tool call implies the guest has settled on one of the
     # recommended properties (check_calendar/get_pricing/negotiate_rate

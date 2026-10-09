@@ -114,8 +114,12 @@ def build_base_filters(args: RecommendPropertiesArgs, host_user_id: uuid.UUID) -
     # unconditional clause.
     stmt = stmt.where(or_(Property.exact_airbnb_pricing.is_(True), Property.base_price > 0))
 
-    if args.budget is not None:
-        stmt = stmt.where(Property.base_price <= args.budget * 1.15)
+    # No budget/price clause here, deliberately: stored base_price is not
+    # the applicable price (a cached live Airbnb rate or the host's automatic
+    # length-of-stay offer can move a property either side of the guest's
+    # budget), so narrowing on it could wrongly drop an eligible property.
+    # Budget eligibility is decided after pricing, in
+    # orchestrator.recommend_properties (pricing_engine.evaluate_stay_prices).
 
     if args.preferred_location:
         # Match against city name OR neighborhood_info so state-level queries

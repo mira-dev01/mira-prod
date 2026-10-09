@@ -11,8 +11,8 @@ def _load_fixture() -> dict:
     return json.loads(FIXTURE_PATH.read_text())
 
 
-def test_parse_airbnb_listing_extracts_core_fields():
-    parsed = parse_airbnb_listing(_load_fixture())
+async def test_parse_airbnb_listing_extracts_core_fields():
+    parsed = await parse_airbnb_listing(_load_fixture())
     fields = parsed["fields"]
 
     assert "Glasshouse" in fields["name"]
@@ -24,8 +24,8 @@ def test_parse_airbnb_listing_extracts_core_fields():
     assert "Check-in after" in fields["house_rules"]
 
 
-def test_parse_airbnb_listing_extracts_canonical_name_fields():
-    parsed = parse_airbnb_listing(_load_fixture())
+async def test_parse_airbnb_listing_extracts_canonical_name_fields():
+    parsed = await parse_airbnb_listing(_load_fixture())
     fields = parsed["fields"]
 
     assert fields["raw_name"] == fields["name"]
@@ -33,8 +33,8 @@ def test_parse_airbnb_listing_extracts_canonical_name_fields():
     assert fields["property_type"] == "glasshouse"
 
 
-def test_parse_airbnb_listing_extracts_faq_entries():
-    parsed = parse_airbnb_listing(_load_fixture())
+async def test_parse_airbnb_listing_extracts_faq_entries():
+    parsed = await parse_airbnb_listing(_load_fixture())
     faq_by_category = {entry["category"]: entry for entry in parsed["faq_entries"]}
 
     assert "1 bedroom" in faq_by_category["layout"]["answer"]
@@ -45,9 +45,70 @@ def test_parse_airbnb_listing_extracts_faq_entries():
     assert "alarm" in faq_by_category["safety"]["answer"].lower()
 
 
-def test_parse_airbnb_listing_handles_empty_input():
-    parsed = parse_airbnb_listing({})
+async def test_parse_airbnb_listing_handles_empty_input():
+    parsed = await parse_airbnb_listing({})
     assert parsed == {"fields": {}, "faq_entries": []}
+
+
+async def test_parse_airbnb_listing_skips_photos_without_folder():
+    """Regression for the live bug fixed 2026-10-09: parse_airbnb_listing
+    never extracted photos at all, so every property imported via the
+    JSON-file path had an empty photos array regardless of how many real
+    photos the listing had. photo_folder omitted means fields["photos"]
+    stays unset entirely -- same "skip, don't fail" stance as
+    parse_bright_data_listing's own photo_folder parameter."""
+    parsed = await parse_airbnb_listing(_load_fixture())
+    assert "photos" not in parsed["fields"]
+
+
+async def test_parse_airbnb_listing_uploads_photos_from_photo_tour_section(monkeypatch):
+    from app.integrations import cloudinary_client
+
+    captured = {}
+
+    async def fake_upload_images_from_urls(urls, folder, max_images=10):
+        captured["urls"] = urls
+        captured["folder"] = folder
+        return [f"https://res.cloudinary.com/mira/{i}.jpg" for i in range(len(urls))]
+
+    monkeypatch.setattr(cloudinary_client, "upload_images_from_urls", fake_upload_images_from_urls)
+
+    parsed = await parse_airbnb_listing(_load_fixture(), photo_folder="mira/properties/test-host")
+
+    assert captured["folder"] == "mira/properties/test-host"
+    # Fixture's PHOTO_TOUR_SCROLLABLE_MODAL section carries the real gallery
+    # (58 photos) -- the single-image contextualizedMedia fallback must NOT
+    # also be merged in once the full gallery is found.
+    assert len(captured["urls"]) == 58
+    assert all(url.startswith("https://a0.muscache.com/") for url in captured["urls"])
+    assert parsed["fields"]["photos"][0] == "https://res.cloudinary.com/mira/0.jpg"
+
+
+async def test_parse_airbnb_listing_falls_back_to_cover_photo_without_photo_tour_section(monkeypatch):
+    """A listing whose raw JSON has no PHOTO_TOUR_SCROLLABLE_MODAL section
+    (e.g. a partial/older scrape) still gets its one cover photo from
+    node.contextualizedMedia rather than ending up with zero photos."""
+    from app.integrations import cloudinary_client
+
+    raw = _load_fixture()
+    sections = raw["presentation"]["stayProductDetailPage"]["sections"]["sections"]
+    raw["presentation"]["stayProductDetailPage"]["sections"]["sections"] = [
+        s for s in sections if s.get("sectionId") != "PHOTO_TOUR_SCROLLABLE_MODAL"
+    ]
+
+    captured = {}
+
+    async def fake_upload_images_from_urls(urls, folder, max_images=10):
+        captured["urls"] = urls
+        return []
+
+    monkeypatch.setattr(cloudinary_client, "upload_images_from_urls", fake_upload_images_from_urls)
+
+    await parse_airbnb_listing(raw, photo_folder="mira/properties/test-host")
+
+    assert captured["urls"] == [
+        "https://a0.muscache.com/im/pictures/miso/Hosting-737471759834870714/original/fa0d3d17-d1de-43a4-baa5-b3880357035a.jpeg"
+    ]
 
 
 async def test_import_creates_property_and_faq_entries(client, auth_headers):

@@ -312,9 +312,14 @@ export default function PropertiesPage() {
             className="hidden"
             onChange={handleImportFiles}
           />
-          <Button variant="outline" onClick={() => setAirbnbUrlDialogOpen(true)}>
+          {/* Hidden 2026-10-09 -- Bright Data's "Customer is not active" account
+              issue made this unreliable for hosts to hit live. Commented out,
+              not deleted: the dialog/polling flow below is untouched, so this
+              is a one-line revert once Bright Data's account status is
+              confirmed stable again. */}
+          {/* <Button variant="outline" onClick={() => setAirbnbUrlDialogOpen(true)}>
             Import from Airbnb
-          </Button>
+          </Button> */}
           <Button variant="ghost" disabled={importing} onClick={() => importInputRef.current?.click()}>
             {importing ? "Importing…" : "Import from file (advanced)"}
           </Button>

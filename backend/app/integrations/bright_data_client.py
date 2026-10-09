@@ -13,16 +13,43 @@ on top of this (app/api/v1/properties.py) asks the host to paste each
 listing URL rather than one profile link.
 """
 
+import logging
+import re
+
 import httpx
 
 from app.config import settings
+from app.services import usage_meter
+
+logger = logging.getLogger(__name__)
 
 _BASE_URL = "https://api.brightdata.com/datasets/v3"
 _DATASET_ID = "gd_ld7ll037kqy322v05"
+_ROOM_ID_RE = re.compile(r"/rooms/(?:plus/)?(\d+)")
 
 
 class BrightDataError(Exception):
     """Raised for any non-2xx response or unexpected shape from Bright Data."""
+
+
+class InvalidAirbnbUrlError(BrightDataError):
+    """A pasted URL isn't an Airbnb listing link -- caught before any
+    request so it surfaces as a clear client error, not a Bright Data 400."""
+
+
+def normalize_listing_url(raw: str) -> str:
+    """Rebuilds a pasted listing link as https://www.airbnb.com/rooms/<id>.
+    Bright Data's trigger rejects the whole batch with a 400 if any one input
+    fails its URL validation (missing scheme, stray text, etc.), so hosts'
+    real-world pastes -- "airbnb.co.in/rooms/123?check_in=...", app share
+    text -- are canonicalized here. Short share links (airbnb.com/l/...) and
+    host profile URLs carry no room id and are rejected."""
+    match = _ROOM_ID_RE.search(raw.strip())
+    if not match or "airbnb." not in raw.lower():
+        raise InvalidAirbnbUrlError(
+            f"Not an Airbnb listing URL (expected .../rooms/<id>): {raw.strip()[:200]}"
+        )
+    return f"https://www.airbnb.com/rooms/{match.group(1)}"
 
 
 def _headers() -> dict[str, str]:
@@ -37,7 +64,9 @@ def _headers() -> dict[str, str]:
 async def trigger_scrape(urls: list[str], timeout: float = 15.0) -> str:
     """Starts an async scrape job for the given Airbnb listing URLs.
     Returns a snapshot_id used to poll status and fetch results."""
+    urls = list(dict.fromkeys(normalize_listing_url(url) for url in urls))
     async with httpx.AsyncClient(timeout=timeout) as client:
+        usage_meter.record_usage_detached("brightdata", "scrapes", len(urls))
         response = await client.post(
             f"{_BASE_URL}/trigger",
             params={"dataset_id": _DATASET_ID, "format": "json"},
@@ -45,6 +74,10 @@ async def trigger_scrape(urls: list[str], timeout: float = 15.0) -> str:
             json=[{"url": url} for url in urls],
         )
         if response.status_code >= 400:
+            logger.warning(
+                "bright_data_trigger_failed status=%s inputs=%s body=%s",
+                response.status_code, urls, response.text[:500],
+            )
             raise BrightDataError(f"trigger failed ({response.status_code}): {response.text}")
         data = response.json()
         snapshot_id = data.get("snapshot_id")
@@ -82,4 +115,5 @@ async def get_snapshot_data(snapshot_id: str, timeout: float = 30.0) -> list[dic
         data = response.json()
         if not isinstance(data, list):
             raise BrightDataError(f"expected a list of records, got: {type(data)}")
+        usage_meter.record_usage_detached("brightdata", "records", len(data) if isinstance(data, list) else 0)
         return data

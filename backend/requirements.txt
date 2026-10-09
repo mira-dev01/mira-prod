@@ -14,7 +14,6 @@ apscheduler>=3.10,<4.0
 redis>=5.2,<6.0
 python-multipart>=0.0.12
 python-dotenv>=1.0
-aiosmtplib>=3.0,<4.0
 cloudinary>=1.41,<2.0
 pipecat-ai[websocket,webrtc,anthropic,groq,sarvam]>=1.5.0,<2.0
 # Pinned to a floor + capped major (was unbounded >=0.0.60) after Railway

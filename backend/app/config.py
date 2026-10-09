@@ -420,16 +420,21 @@ class Settings(BaseSettings):
 
     # Email escalation summaries -- interim stand-in for a WhatsApp Business
     # API host notification (that needs Meta business verification + Exotel
-    # KYC approval, no instant sandbox exists unlike Twilio's). Any SMTP
-    # provider works (Gmail app password, Zoho, Amazon SES SMTP, ...); unset
-    # = escalate_to_host still creates the in-app notification, just skips
+    # KYC approval, no instant sandbox exists unlike Twilio's). Sent via
+    # Resend's HTTP API (port 443), not SMTP -- confirmed live 2026-09-24
+    # via a from-inside-the-container connectivity test (see
+    # app/integrations/email_client.py's own module docstring) that Railway
+    # blocks outbound SMTP ports (587/465) at the network level on both
+    # `dev` and `production`, identically, while port 443 connects
+    # instantly -- no SMTP host/credential combination could ever have
+    # worked here, so this isn't a config choice, it's the only transport
+    # that actually reaches the network. Resend picked over SendGrid for its
+    # free tier (SendGrid's account already in place is a paid one -- no
+    # need for a second paid provider just for this). Unset = escalate_to_host/
+    # call summary emails still create their in-app notification, just skip
     # the email (see app/integrations/email_client.py).
-    smtp_host: str | None = None
-    smtp_port: int = 587
-    smtp_username: str | None = None
-    smtp_password: str | None = None
-    smtp_from_email: str | None = None
-    smtp_use_tls: bool = True
+    resend_api_key: str | None = None
+    resend_from_email: str | None = None
 
     ical_sync_interval_minutes: int = 15
 
@@ -444,6 +449,79 @@ class Settings(BaseSettings):
     # render.yaml or CLAUDE.md's env var table, since those are shared
     # production config.
     turn_detection_strategy: Literal["vad_fixed", "hybrid_experimental"] = "vad_fixed"
+
+    # Phase 1A audio-input telemetry (app/voice/audio_input_observer.py) --
+    # observation only, never changes what Mira hears or says. On by default
+    # so the shadow-week data actually accumulates; kill-switch exists only
+    # in case the per-frame level measurement ever shows up as CPU pressure
+    # (its own measured cost is persisted per call as observer_overhead_ms).
+    audio_input_telemetry_enabled: bool = True
+
+    # Usage metering for the internal /admin panel (app/services/
+    # usage_meter.py) -- every paid external call is recorded fail-open into
+    # service_usage_events. Kill-switch only; on by default.
+    usage_metering_enabled: bool = True
+
+    # Internal /admin panel (app/api/v1/admin_auth.py, app/api/v1/admin.py).
+    # Entirely separate from host (Clerk) auth: an emailed one-time code,
+    # then a short-lived HS256 JWT signed with admin_jwt_secret. Only the
+    # comma-separated admin_emails can request a code; the allowlist is
+    # re-checked on every request, so removing an address revokes access
+    # immediately. admin_jwt_secret has NO default on purpose -- unset means
+    # admin login is disabled (503), never "signed with a guessable key".
+    admin_emails: str = "abhayatrivedi2005@gmail.com,shagunverma.2004@gmail.com"
+    admin_jwt_secret: str | None = None
+    admin_session_hours: int = 12
+    admin_otp_ttl_minutes: int = 10
+
+    # Neon (Postgres) usage for the admin panel's Balances view -- an API key
+    # from Neon Console -> Account settings -> API keys, and the project id
+    # from Project settings. Both unset = the Neon card shows "not
+    # configured", nothing else is affected.
+    neon_api_key: str | None = None
+    neon_project_id: str | None = None
+
+    @property
+    def admin_email_set(self) -> frozenset[str]:
+        return frozenset(e.strip().lower() for e in self.admin_emails.split(",") if e.strip())
+
+    # Service health monitoring (app/observability/, app/services/
+    # health_monitor_service.py) -- live up/degraded/down status per
+    # external dependency on the /admin home page, plus email alerts.
+    # "auto" log format = one JSON object per line (Railway parses these into
+    # searchable attributes) everywhere except local development/tests.
+    log_format: Literal["auto", "json", "text"] = "auto"
+    # Who gets the urgent/resolved/daily-digest emails (via Resend, same
+    # sender as every other email).
+    alert_emails: str = "abhayatrivedi2005@gmail.com,shagunverma.2004@gmail.com"
+    # dev and production watch the same third-party accounts, so only one of
+    # them should email -- unset means "production only". Both environments
+    # still show live status on their own /admin page and record incidents.
+    health_alerts_enabled: bool | None = None
+    # Degraded (not down) has to persist this long before it emails; down
+    # always emails immediately.
+    health_degraded_alert_minutes: int = 10
+    # While still down AND still failing, re-send at most this often.
+    health_alert_reminder_minutes: int = 120
+    # 03:30 UTC = 09:00 IST.
+    health_digest_hour_utc: int = 3
+    health_digest_minute_utc: int = 30
+
+    @property
+    def alert_email_list(self) -> list[str]:
+        return [e.strip() for e in self.alert_emails.split(",") if e.strip()]
+
+    @property
+    def health_alerts_active(self) -> bool:
+        if self.health_alerts_enabled is not None:
+            return self.health_alerts_enabled
+        return self.is_production
+
+    @property
+    def log_as_json(self) -> bool:
+        if self.log_format != "auto":
+            return self.log_format == "json"
+        return self.environment.lower() not in {"development", "local", "test"}
 
     # Kill-switch for recommend_properties' semantic search layer
     # (app/services/property/retrieval/semantic_search.py) -- the one place

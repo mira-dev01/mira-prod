@@ -18,6 +18,26 @@ logger = logging.getLogger(__name__)
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
+def _is_internal_org(environment: str, clerk_dev_org_id: str | None, active_org_id: str | None) -> bool:
+    """Whether to grant the handful of internal-team-only affordances
+    (currently just the "Talk to Mira" sidebar button). Pulled out of
+    get_current_user as a pure function so it's unit-testable directly --
+    get_current_user's own test coverage (tests/test_auth.py) deliberately
+    overrides the dependency entirely rather than exercising a real JWT, so
+    this logic would otherwise have no test path at all.
+
+    Outside production, every host profile IS a test profile already -- the
+    org-scoping only earns its keep in production, where it keeps the live
+    voice-test feature restricted to Mira's own internal Clerk org rather
+    than every real host. Confirmed live 2026-10-09: the previous
+    unconditional version of this check hid "Talk to Mira" from every
+    dev-environment host profile that wasn't a member of CLERK_DEV_ORG_ID,
+    which defeated the point of a dev environment being free to test in."""
+    if environment.lower() == "production":
+        return bool(clerk_dev_org_id) and active_org_id == clerk_dev_org_id
+    return True
+
+
 def _clerk_jwks_url() -> str:
     # Clerk's publishable key is base64("<frontend-api-domain>$") -- decoding
     # it gives this Clerk instance's JWKS endpoint without a separately
@@ -108,6 +128,6 @@ async def get_current_user(
     # format introduced to shrink token size) -- check both, since which
     # shape a given instance issues isn't something this app controls.
     active_org_id = payload.get("org_id") or (payload.get("o") or {}).get("id")
-    user.is_internal_org = bool(settings.clerk_dev_org_id) and active_org_id == settings.clerk_dev_org_id
+    user.is_internal_org = _is_internal_org(settings.environment, settings.clerk_dev_org_id, active_org_id)
 
     return user
