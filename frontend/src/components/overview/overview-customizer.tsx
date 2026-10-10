@@ -150,29 +150,13 @@ export function OverviewCustomizer({
               renderItem={(widget) => (
                 <div className="flex flex-wrap items-center gap-2 py-1 pr-1">
                   <span className="min-w-0 flex-1 truncate text-sm">{widget.name}</span>
-                  {widget.sizes.length > 1 ? (
-                    <div role="radiogroup" aria-label={`${widget.name} size`} className="flex rounded-md border p-0.5">
-                      {widget.sizes.map((size) => (
-                        <button
-                          key={size}
-                          type="button"
-                          role="radio"
-                          aria-checked={widget.size === size}
-                          onClick={() => setSize(widget.id, size)}
-                          className={cn(
-                            "rounded px-2 py-0.5 text-xs transition-colors",
-                            widget.size === size
-                              ? "bg-accent font-medium text-accent-foreground"
-                              : "text-muted-foreground hover:text-foreground"
-                          )}
-                        >
-                          {SIZE_LABEL[size]}
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">{SIZE_LABEL[widget.sizes[0]]} width</span>
-                  )}
+                  <SizeChoice
+                    label={`${widget.name} size`}
+                    sizes={widget.sizes}
+                    value={widget.size}
+                    labels={SIZE_LABEL}
+                    onChange={(size) => setSize(widget.id, size)}
+                  />
                   {widget.hideable && (
                     <button
                       type="button"
@@ -238,5 +222,45 @@ export function OverviewCustomizer({
         )}
       </div>
     </section>
+  );
+}
+
+/** A small segmented control over a widget's predefined sizes (never a
+ * free-form width) -- shared by the Overview and Analytics customizers. A
+ * single size renders as plain text. */
+export function SizeChoice<T extends string>({
+  label,
+  sizes,
+  value,
+  labels,
+  onChange,
+}: {
+  label: string;
+  sizes: readonly T[];
+  value: T;
+  labels: Record<T, string>;
+  onChange: (size: T) => void;
+}) {
+  if (sizes.length <= 1) {
+    return <span className="text-xs text-muted-foreground">{labels[sizes[0]]} width</span>;
+  }
+  return (
+    <div role="radiogroup" aria-label={label} className="flex rounded-md border p-0.5">
+      {sizes.map((size) => (
+        <button
+          key={size}
+          type="button"
+          role="radio"
+          aria-checked={value === size}
+          onClick={() => onChange(size)}
+          className={cn(
+            "rounded px-2 py-0.5 text-xs transition-colors",
+            value === size ? "bg-accent font-medium text-accent-foreground" : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          {labels[size]}
+        </button>
+      ))}
+    </div>
   );
 }

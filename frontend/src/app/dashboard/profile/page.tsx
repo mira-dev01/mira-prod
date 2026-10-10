@@ -1,14 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { useRef, useState } from "react";
 import { Camera, Link2, MessageCircle, Pencil, Phone, Send } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RightPanel, RightPanelFooterButton } from "@/components/ui/right-panel";
-import { Switch } from "@/components/ui/switch";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 
@@ -37,7 +36,6 @@ export default function ProfilePage() {
   const [notificationEmail, setNotificationEmail] = useState(user?.notification_email ?? "");
   const [savingNotificationEmail, setSavingNotificationEmail] = useState(false);
 
-  const [savingWhatsapp, setSavingWhatsapp] = useState(false);
 
   if (loading || !user) {
     return <div className="text-sm text-muted-foreground">Loading…</div>;
@@ -49,7 +47,7 @@ export default function ProfilePage() {
     !!user.business_name,
     !!user.lead_exophone,
     !!user.notification_email,
-    user.whatsapp_assist_enabled,
+    !!user.phone,
   ];
   const doneCount = steps.filter(Boolean).length;
 
@@ -127,18 +125,6 @@ export default function ProfilePage() {
       toast.error(err instanceof ApiError ? err.message : "Failed to save");
     } finally {
       setSavingNotificationEmail(false);
-    }
-  }
-
-  async function handleToggleWhatsapp(checked: boolean) {
-    setSavingWhatsapp(true);
-    try {
-      await api.auth.updateMe({ whatsapp_assist_enabled: checked });
-      await refreshUser();
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to save");
-    } finally {
-      setSavingWhatsapp(false);
     }
   }
 
@@ -238,7 +224,7 @@ export default function ProfilePage() {
               <span className="flex size-9 items-center justify-center rounded-full bg-accent-warm-bg text-[var(--accent-warm)]">
                 <Phone className="size-4" />
               </span>
-              <span className="text-sm font-medium">Guest Call Number</span>
+              <span className="text-sm font-medium">Call intake number</span>
               <span className="text-xs text-muted-foreground">{user.lead_exophone || "Not set"}</span>
             </button>
 
@@ -256,22 +242,18 @@ export default function ProfilePage() {
               </span>
             </button>
 
-            <div className="flex flex-col items-start gap-2 rounded-xl border p-4">
-              <div className="flex w-full items-center justify-between">
-                <span className="flex size-9 items-center justify-center rounded-full bg-accent-warm-bg text-[var(--accent-warm)]">
-                  <MessageCircle className="size-4" />
-                </span>
-                <Switch
-                  checked={user.whatsapp_assist_enabled}
-                  disabled={savingWhatsapp}
-                  onCheckedChange={handleToggleWhatsapp}
-                />
-              </div>
-              <span className="text-sm font-medium">WhatsApp Assist</span>
-              <span className="text-xs text-muted-foreground">
-                {user.whatsapp_assist_enabled ? "Enabled" : "Early access"}
+            <Link
+              href="/dashboard/settings#notifications"
+              className="flex flex-col items-start gap-2 rounded-xl border p-4 text-left transition-colors hover:bg-accent"
+            >
+              <span className="flex size-9 items-center justify-center rounded-full bg-accent-warm-bg text-[var(--accent-warm)]">
+                <MessageCircle className="size-4" />
               </span>
-            </div>
+              <span className="text-sm font-medium">Notifications &amp; escalations</span>
+              <span className="text-xs text-muted-foreground">
+                {user.phone ? `WhatsApp alerts to ${user.phone}` : "Add a transfer number for WhatsApp alerts"}
+              </span>
+            </Link>
           </div>
         </div>
       </div>

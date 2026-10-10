@@ -12,7 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CapabilityStateChip } from "@/components/capability-state-chip";
+import { CapabilityActions, CapabilityStateChip } from "@/components/capability-state-chip";
+import { InfoTip } from "@/components/ui/info-tip";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -394,9 +395,13 @@ function CapabilitiesStep({
                         onCheckedChange={(v) => toggle(cap, v === true)}
                       />
                       <span className="min-w-0 space-y-1">
-                        <span className="block text-sm font-medium">{cap.name}</span>
-                        <span className="block text-xs text-muted-foreground">{cap.description}</span>
-                        <span className="block text-xs text-foreground/80">{cap.benefit}</span>
+                        <span className="flex items-center gap-1 text-sm font-medium">
+                          {cap.name}
+                          <InfoTip label={`About ${cap.name}`}>
+                            <p className="text-foreground">{cap.description}</p>
+                            <p className="text-muted-foreground">{cap.benefit}</p>
+                          </InfoTip>
+                        </span>
                         {unavailable && cap.enable_blocked_reason ? (
                           <span className="block text-xs text-muted-foreground">{cap.enable_blocked_reason}</span>
                         ) : (
@@ -571,7 +576,7 @@ function SetupStep({
       </SetupSection>
 
       {wantsLeadAgent && (
-        <SetupSection title="Guest Call Number">
+        <SetupSection title="Call intake number">
           <div className="space-y-2">
             <Label htmlFor="ob-lead-number">Number guests call for booking enquiries</Label>
             <Input
@@ -744,20 +749,15 @@ function ReviewList({ title, items, empty }: { title: string; items: CapabilityS
       {items.length === 0 && empty && <p className="text-sm text-muted-foreground">{empty}</p>}
       {items.length > 0 && (
       <ul className="divide-y rounded-lg border bg-card">
-        {items.map((cap) => {
-          const missing = cap.requirements.filter((r) => r.hard && !r.met);
-          return (
-            <li key={cap.id} className="flex items-start justify-between gap-3 px-3 py-2.5">
-              <div className="min-w-0">
-                <p className="text-sm">{cap.name}</p>
-                {missing.length > 0 && (
-                  <p className="text-xs text-muted-foreground">To do: {missing.map((r) => r.label).join("; ")}</p>
-                )}
-              </div>
+        {items.map((cap) => (
+          <li key={cap.id} className="space-y-1.5 px-3 py-2.5">
+            <div className="flex items-start justify-between gap-3">
+              <p className="min-w-0 text-sm">{cap.name}</p>
               <CapabilityStateChip state={cap.state} />
-            </li>
-          );
-        })}
+            </div>
+            <CapabilityActions requirements={cap.requirements.filter((r) => r.hard)} linkActions={false} />
+          </li>
+        ))}
       </ul>
       )}
     </section>

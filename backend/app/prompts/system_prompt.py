@@ -23,6 +23,7 @@ from datetime import date, datetime, timedelta
 
 from app.models.guest_profile import GuestProfile
 from app.services.call_service import BROWSER_TEST_CALLER_NUMBER
+from app.services import notification_preferences_service
 from app.services.guest_booking_service import BookingMatch
 from app.models.property import Property
 from app.models.user import User
@@ -805,6 +806,22 @@ def _persona_and_escalation_sections(host: User) -> list[str]:
             "\nThis host does not offer discounts. If a guest asks for a lower price or compares to another "
             "platform, still call negotiate_rate (it will tell you there's no discount to offer) rather than "
             "refusing yourself -- never invent a discount or say you can't help with pricing."
+        )
+    # Host's own handoff choices (Settings > Notifications). Defaults add no
+    # line, so the prompt is byte-identical for a host who never changed
+    # them. request_host_transfer enforces the "no live transfers" case on
+    # its own; these lines keep Mira from promising the wrong outcome.
+    handoff = notification_preferences_service.get(host)
+    if handoff.connect_request_handling == "whatsapp":
+        sections.append(
+            "\nThis host takes \"can I speak to the host\" requests on WhatsApp, not live transfers. Don't offer "
+            "to connect the call -- tell the guest the host will reach out on WhatsApp, then call escalate_to_host."
+        )
+    if handoff.stay_request_handling == "live_transfer":
+        sections.append(
+            "\nThis host prefers to resolve in-stay problems and questions you can't answer on a live call. For "
+            "those, offer to connect the guest to the host now and call request_host_transfer instead of "
+            "escalate_to_host."
         )
     # Phase 3.3 (documentation/agent-conversation-improvement.md): a baseline
     # the per-call adaptive behavior still layers on top of, not a

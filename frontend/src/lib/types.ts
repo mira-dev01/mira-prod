@@ -19,6 +19,8 @@ export type UserOut = {
   tier: string;
   status: string;
   lead_exophone: string | null;
+  // Twilio equivalent of lead_exophone (call intake number).
+  twilio_lead_number: string | null;
   business_name: string | null;
   airbnb_host_status: AirbnbHostStatus | null;
   property_count_estimate: number | null;
@@ -45,10 +47,10 @@ export type UserOut = {
   max_discount_percent_override: number | null;
   allow_pets: boolean | null;
   allow_early_checkin: boolean | null;
-  follow_up_channel_preference: string | null;
   photo_url: string | null;
   banner_url: string | null;
-  whatsapp_assist_enabled: boolean;
+  // Resolved with defaults (backend app/schemas/notification_preferences.py).
+  notification_preferences: NotificationPreferences;
   // Whether the request's active Clerk org matches the configured dev org --
   // gates dev-only features (currently just "Talk to Mira").
   is_internal_org: boolean;
@@ -77,8 +79,6 @@ export type UserUpdate = {
   max_discount_percent_override?: number | null;
   allow_pets?: boolean | null;
   allow_early_checkin?: boolean | null;
-  follow_up_channel_preference?: string | null;
-  whatsapp_assist_enabled?: boolean | null;
 };
 
 // GET /auth/me/call-hours-status -- the account's live routing decision
@@ -213,6 +213,9 @@ export type PropertyOut = {
   smart_price_updated_at: string | null;
   exact_airbnb_pricing: boolean;
   is_premium: boolean;
+  // Live transfers/alerts for this property go here when the host uses a
+  // number per group of properties; null = the account number.
+  host_transfer_phone: string | null;
   call_handling_mode: CallHandlingMode;
   call_handling_schedule_start: string | null;
   call_handling_schedule_end: string | null;
@@ -685,6 +688,8 @@ export type FaqGapOut = {
 export type FaqGapAnswer = {
   answer: string;
   apply_to_property?: boolean;
+  // The host's wording for the question; omitted = the guest's.
+  question?: string;
 };
 
 export type FaqGapAnalytics = {
@@ -975,4 +980,70 @@ export type OverviewLayout = {
 export type OverviewLayoutUpdate = {
   widgets: { id: string; size: WidgetSize; hidden: boolean }[];
   expected_revision: number;
+};
+
+// ── Notifications & escalations (backend app/schemas/notification_preferences.py) ──
+// The dashboard's four lead tiers. "hot" also covers the internal very_hot
+// level; "not_qualified" is a lead with no temperature yet.
+export type LeadBucket = "hot" | "warm" | "cold" | "not_qualified";
+export type LeadLabels = Record<LeadBucket, string>;
+
+export type NotificationPreferences = {
+  transfer_number_mode: "single" | "per_property";
+  call_summary_email: boolean;
+  escalation_email: boolean;
+  call_summary_subject: string | null;
+  call_summary_body: string | null;
+  stay_request_handling: "whatsapp" | "live_transfer";
+  connect_request_handling: "live_transfer" | "whatsapp";
+  busy_call_alert: boolean;
+  guest_calling_alert: boolean;
+  guest_reply_alert: boolean;
+  lead_labels: LeadLabels;
+};
+
+export type NotificationSettings = {
+  preferences: NotificationPreferences;
+  placeholders: string[];
+  default_subject: string;
+  default_body: string;
+};
+
+export type NotificationPreferencesUpdate = Partial<NotificationPreferences>;
+
+export type TransferNumberGroup = { phone: string; property_ids: string[] };
+
+// ── Analytics layout (backend app/schemas/ui_preferences.py) ──
+export type AnalyticsSize = "sm" | "md" | "half" | "full";
+
+export type AnalyticsEntry = {
+  type: "metric" | "heading";
+  id: string;
+  title: string | null;
+  subtitle: string | null;
+  label: string | null;
+  description: string | null;
+  formula: string | null;
+  kind: "tile" | "panel" | null;
+  sizes: AnalyticsSize[];
+  size: AnalyticsSize | null;
+  hidden: boolean;
+  available: boolean;
+  unavailable_reason: string | null;
+};
+
+export type AnalyticsLayout = {
+  entries: AnalyticsEntry[];
+  revision: number;
+  is_default: boolean;
+  updated_at: string | null;
+};
+
+export type AnalyticsEntryInput = {
+  type: "metric" | "heading";
+  id: string;
+  size?: AnalyticsSize | null;
+  hidden?: boolean;
+  title?: string | null;
+  subtitle?: string | null;
 };

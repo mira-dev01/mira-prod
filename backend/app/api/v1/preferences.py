@@ -5,6 +5,8 @@ from app.auth.dependencies import get_current_user
 from app.database import get_db
 from app.models.user import User
 from app.schemas.ui_preferences import (
+    AnalyticsLayoutOut,
+    AnalyticsLayoutUpdate,
     NavigationPreferencesOut,
     NavigationPreferencesUpdate,
     OverviewLayoutOut,
@@ -78,3 +80,29 @@ async def reset_overview_layout(
     current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ) -> OverviewLayoutOut:
     return await prefs.reset_overview_layout(db, current_user)
+
+
+@router.get("/analytics-widgets", response_model=AnalyticsLayoutOut)
+async def get_analytics_layout(
+    current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+) -> AnalyticsLayoutOut:
+    return await prefs.get_analytics_layout(db, current_user)
+
+
+@router.put("/analytics-widgets", response_model=AnalyticsLayoutOut)
+async def save_analytics_layout(
+    payload: AnalyticsLayoutUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> AnalyticsLayoutOut:
+    try:
+        return await prefs.save_analytics_layout(db, current_user, payload)
+    except _HANDLED as exc:
+        raise _http_error(exc)
+
+
+@router.delete("/analytics-widgets", response_model=AnalyticsLayoutOut)
+async def reset_analytics_layout(
+    current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+) -> AnalyticsLayoutOut:
+    return await prefs.reset_analytics_layout(db, current_user)

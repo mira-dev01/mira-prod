@@ -16,6 +16,8 @@ import { FeaturesSection } from "@/components/settings/features-section";
 import { DashboardSection } from "@/components/settings/dashboard-section";
 import { CapabilityNotice } from "@/components/capability-notice";
 import { HostCallHoursCard } from "@/components/settings/host-call-hours-card";
+import { NotificationsCard } from "@/components/settings/notifications-card";
+import { TransferNumbersCard } from "@/components/settings/transfer-numbers-card";
 import { API_BASE_URL, ApiError, api, getToken } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 
@@ -58,11 +60,6 @@ function SettingsPageContent() {
   const [leadExophone, setLeadExophone] = useState(user?.lead_exophone ?? "");
   const [submitting, setSubmitting] = useState(false);
 
-  const [phone, setPhone] = useState(user?.phone ?? "");
-  const [savingPhone, setSavingPhone] = useState(false);
-
-  const [notificationEmail, setNotificationEmail] = useState(user?.notification_email ?? "");
-  const [savingNotificationEmail, setSavingNotificationEmail] = useState(false);
 
   async function handleSaveLeadExophone(e: React.FormEvent) {
     e.preventDefault();
@@ -70,39 +67,11 @@ function SettingsPageContent() {
     try {
       await api.auth.updateMe({ lead_exophone: leadExophone || null });
       await refreshUser();
-      toast.success("Lead intake number saved");
+      toast.success("Call intake number saved");
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to save lead intake number");
+      toast.error(err instanceof ApiError ? err.message : "Failed to save call intake number");
     } finally {
       setSubmitting(false);
-    }
-  }
-
-  async function handleSavePhone(e: React.FormEvent) {
-    e.preventDefault();
-    setSavingPhone(true);
-    try {
-      await api.auth.updateMe({ phone: phone || null });
-      await refreshUser();
-      toast.success("Phone number saved");
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to save phone number");
-    } finally {
-      setSavingPhone(false);
-    }
-  }
-
-  async function handleSaveNotificationEmail(e: React.FormEvent) {
-    e.preventDefault();
-    setSavingNotificationEmail(true);
-    try {
-      await api.auth.updateMe({ notification_email: notificationEmail || null });
-      await refreshUser();
-      toast.success("Notification email saved");
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to save notification email");
-    } finally {
-      setSavingNotificationEmail(false);
     }
   }
 
@@ -183,68 +152,23 @@ function SettingsPageContent() {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Host transfer number</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="mb-3 text-sm text-muted-foreground">
-                  This is the number Mira uses when a guest needs to speak with you — guest escalations,
-                  scheduled call ownership, and live call takeover. After saving, text &quot;join
-                  &lt;code&gt;&quot; to the Twilio Sandbox number from this phone — the sandbox only
-                  delivers WhatsApp messages to numbers that have opted in.
-                </p>
-                <form onSubmit={handleSavePhone} className="flex gap-2">
-                  <Input
-                    placeholder="+9198XXXXXXXX"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                  />
-                  <Button type="submit" disabled={savingPhone}>
-                    Save
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
+            <TransferNumbersCard />
 
             <HostCallHoursCard />
 
             <Card>
               <CardHeader>
-                <CardTitle>Email Summaries</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="mb-3 text-sm text-muted-foreground">
-                  Where escalation summaries are emailed. Leave blank to use your login email above — set
-                  this if you&apos;d rather they go to a shared inbox (e.g. a front-desk address) instead.
-                </p>
-                <form onSubmit={handleSaveNotificationEmail} className="flex gap-2">
-                  <Input
-                    type="email"
-                    placeholder={user?.email ?? "you@example.com"}
-                    value={notificationEmail}
-                    onChange={(e) => setNotificationEmail(e.target.value)}
-                  />
-                  <Button type="submit" disabled={savingNotificationEmail}>
-                    Save
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Guest Call Number</CardTitle>
+                <CardTitle>Call intake number</CardTitle>
               </CardHeader>
               <CardContent>
                 <CapabilityNotice
                   capabilityId="lead_agent"
                   className="mb-3"
-                  whenOff="The Portfolio Lead Agent is off in your features. Saving a number here turns it back on -- Mira answers whenever a Guest Call Number is saved."
+                  whenOff="The Portfolio Lead Agent is off in your features. Saving a number here turns it back on -- Mira answers whenever a call intake number is saved."
                 />
                 <p className="mb-3 text-sm text-muted-foreground">
-                  Calls to this number run the Lead Agent across your full property portfolio instead of one
-                  property — for booking enquiries, not existing-guest support. This is also your general
+                  The number guests call to reach Mira. Calls to it run the Lead Agent across your whole
+                  portfolio — for booking enquiries, not existing-guest support. This is also your general
                   testing link: it asks the caller which property they mean instead of testing just one.
                 </p>
                 <form onSubmit={handleSaveLeadExophone} className="flex gap-2">
@@ -262,6 +186,8 @@ function SettingsPageContent() {
                 </Button>
               </CardContent>
             </Card>
+
+            <NotificationsCard />
           </div>
         </TabsContent>
 

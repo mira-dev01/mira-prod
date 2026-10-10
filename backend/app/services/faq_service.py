@@ -464,24 +464,26 @@ async def answer_faq_gap(
     answer: str,
     apply_to_property: bool,
     verified_by: str,
+    question: str | None = None,
 ) -> FaqEntry:
     """Converts an unanswered-question group into a real, verified FaqEntry,
     and marks every pending row sharing the same normalized_question (i.e.
     the whole group, not just the one `gap` row used to look it up) as
-    answered -- so the group actually disappears from list_faq_gaps."""
+    answered -- so the group actually disappears from list_faq_gaps.
+    `question` lets the host reword the guest's question; blank keeps it."""
+    question = (question or "").strip() or gap.question
     entry = FaqEntry(
         user_id=gap.user_id,
         property_id=gap.property_id if apply_to_property else None,
-        question=gap.question,
+        question=question,
         answer=answer,
         category="host_answered",
         status="verified",
         verified_by=verified_by,
-        # Reuse the gap's own embedding (identical question text) instead of
-        # a fresh API call, if one was already computed -- see
-        # embedding_service.py. None here just means the fire-and-forget
-        # backfill below will compute it.
-        question_embedding=gap.question_embedding,
+        # Reuse the gap's own embedding instead of a fresh API call when the
+        # question text is unchanged -- see embedding_service.py. A reworded
+        # question (or none computed yet) gets the background backfill below.
+        question_embedding=gap.question_embedding if question == gap.question else None,
     )
     db.add(entry)
     await db.flush()  # need entry.id before the bulk-update below

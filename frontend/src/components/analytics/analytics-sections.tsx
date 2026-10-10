@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarList, MetricTile } from "@/components/analytics/metric-tile";
 import { StatusChip } from "@/components/status-chip";
+import { InfoTip } from "@/components/ui/info-tip";
 import { formatINR, formatINRCompact, formatPercent, formatStayDates } from "@/lib/format";
 import type {
   AnalyticsDashboard,
@@ -62,82 +63,6 @@ function sampledValue(metric: SampledMetric, format: (v: number) => string): str
   return metric.value === null ? "—" : format(metric.value);
 }
 
-// --- A. Portfolio performance ---------------------------------------------
-
-export function PortfolioPerformanceSection({
-  data,
-  onConfirmPrices,
-}: {
-  data: AnalyticsDashboard;
-  onConfirmPrices: () => void;
-}) {
-  const p = data.portfolio;
-  const change = p.comparison?.change;
-  const vsLabel = "vs previous period";
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Portfolio performance</CardTitle>
-        <CardDescription>
-          {p.booked_nights} of {p.available_nights} available nights booked
-          {p.blocked_nights ? ` · ${p.blocked_nights} blocked night${p.blocked_nights === 1 ? "" : "s"} excluded` : ""}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-          <MetricTile
-            icon={BedDouble}
-            label="Occupancy"
-            value={formatPercent(p.occupancy)}
-            muted={p.occupancy === null}
-            change={change?.occupancy}
-            changeLabel={vsLabel}
-          />
-          <MetricTile
-            icon={IndianRupee}
-            label="Revenue"
-            value={formatINRCompact(p.revenue)}
-            muted={p.revenue === null}
-            change={change?.revenue}
-            changeLabel={vsLabel}
-            hint={p.revenue === null && p.completeness.bookings_total > 0 ? "No confirmed prices yet" : undefined}
-          />
-          <MetricTile
-            icon={Tag}
-            label="ADR"
-            value={formatINR(p.adr)}
-            muted={p.adr === null}
-            change={change?.adr}
-            changeLabel={vsLabel}
-            hint="Average daily rate"
-          />
-          <MetricTile
-            icon={TrendingUp}
-            label="RevPAR"
-            value={formatINR(p.revpar)}
-            muted={p.revpar === null}
-            change={change?.revpar}
-            changeLabel={vsLabel}
-            hint="Revenue per available night"
-          />
-          <MetricTile
-            icon={CalendarCheck}
-            label="Upcoming revenue"
-            value={formatINRCompact(p.upcoming_revenue)}
-            muted={p.upcoming_revenue === null}
-            hint={
-              p.upcoming_completeness.is_complete
-                ? "Confirmed future stays"
-                : `${p.upcoming_completeness.bookings_priced} of ${p.upcoming_completeness.bookings_total} future stays priced`
-            }
-          />
-        </div>
-        <CompletenessNote completeness={p.completeness} subject="Revenue" onConfirm={onConfirmPrices} />
-      </CardContent>
-    </Card>
-  );
-}
-
 // --- B. Booking funnel -----------------------------------------------------
 
 export function BookingFunnelSection({ data }: { data: AnalyticsDashboard }) {
@@ -162,81 +87,6 @@ export function BookingFunnelSection({ data }: { data: AnalyticsDashboard }) {
               detail: s.rate_from_previous !== null ? `${formatPercent(s.rate_from_previous)} of previous` : undefined,
             }))}
           />
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-// --- C. Mira impact --------------------------------------------------------
-
-export function MiraImpactSection({
-  data,
-  onReviewMatches,
-  propertySelected,
-}: {
-  data: AnalyticsDashboard;
-  onReviewMatches: () => void;
-  propertySelected?: boolean;
-}) {
-  const i = data.impact;
-  const afterHours = i.after_hours_opportunities;
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Mira impact</CardTitle>
-        <CardDescription>Only bookings you&apos;ve confirmed as Mira bookings count here.</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
-          <MetricTile icon={BadgeCheck} label="Mira-attributed bookings" value={String(i.attributed_bookings)} />
-          <MetricTile
-            icon={Wallet}
-            label="Mira-attributed revenue"
-            value={formatINRCompact(i.attributed_revenue)}
-            muted={i.attributed_revenue === null}
-            hint={
-              i.attributed_completeness.is_complete
-                ? undefined
-                : `${i.attributed_completeness.bookings_priced} of ${i.attributed_completeness.bookings_total} priced`
-            }
-          />
-          <MetricTile
-            icon={Moon}
-            label="After-hours booking enquiries"
-            value={afterHours.configured ? String(afterHours.value ?? 0) : "—"}
-            muted={!afterHours.configured}
-            hint={
-              afterHours.configured
-                ? `${formatPercent(afterHours.share)} of booking conversations`
-                : "Set your call hours in Settings to see this"
-            }
-          />
-          <MetricTile
-            icon={IndianRupee}
-            label="Revenue recovered"
-            value={formatINRCompact(i.revenue_recovered)}
-            muted={i.revenue_recovered === null}
-            hint={`${i.recovery.busy_calls} busy-line call${i.recovery.busy_calls === 1 ? "" : "s"} · ${i.recovery.recovered} guest${i.recovery.recovered === 1 ? "" : "s"} re-engaged${propertySelected ? " (all properties)" : ""}`}
-          />
-          <MetricTile
-            icon={MessageSquare}
-            label="Resolved by Mira"
-            value={String(i.resolved_by_mira)}
-            hint={i.conversations ? `${formatPercent(i.resolved_by_mira_rate)} of conversations` : undefined}
-          />
-          <MetricTile icon={PhoneForwarded} label="Host escalations" value={String(i.host_escalations)} />
-        </div>
-        {i.awaiting_confirmation > 0 && (
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/50 px-3 py-2 text-sm">
-            <p className="text-muted-foreground">
-              {i.awaiting_confirmation} possible Mira booking{i.awaiting_confirmation === 1 ? "" : "s"} waiting for
-              your confirmation — not counted above.
-            </p>
-            <Button size="sm" variant="outline" onClick={onReviewMatches}>
-              Review
-            </Button>
-          </div>
         )}
       </CardContent>
     </Card>
@@ -272,55 +122,6 @@ export function GuestIntentSection({ data }: { data: AnalyticsDashboard }) {
               }))}
           />
         )}
-      </CardContent>
-    </Card>
-  );
-}
-
-// --- E. Pricing & negotiation ----------------------------------------------
-
-export function PricingSection({ data }: { data: AnalyticsDashboard }) {
-  const pr = data.pricing;
-  const tiles = [
-    { icon: Tag, label: "Initial quote / night", metric: pr.avg_initial_quote_per_night, format: formatINR },
-    { icon: Tag, label: "Negotiated price / night", metric: pr.avg_negotiated_price_per_night, format: formatINR },
-    { icon: IndianRupee, label: "Final booking price / night", metric: pr.avg_final_price_per_night, format: formatINR },
-    {
-      icon: Percent,
-      label: "Negotiation → booking",
-      metric: pr.negotiation_conversion,
-      format: (v: number) => formatPercent(v),
-    },
-    { icon: Percent, label: "Average discount", metric: pr.avg_discount, format: (v: number) => formatPercent(v, 1) },
-    {
-      icon: CircleAlert,
-      label: "Price objections",
-      metric: pr.price_objection_rate,
-      format: (v: number) => formatPercent(v),
-    },
-  ];
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Pricing &amp; negotiation</CardTitle>
-        <CardDescription>
-          {pr.negotiations} negotiation{pr.negotiations === 1 ? "" : "s"} · {pr.price_objections} price objection
-          {pr.price_objections === 1 ? "" : "s"} in this period. Prices compared per night.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
-          {tiles.map((t) => (
-            <MetricTile
-              key={t.label}
-              icon={t.icon}
-              label={t.label}
-              value={sampledValue(t.metric, t.format)}
-              muted={t.metric.value === null}
-              hint={sampledHint(t.metric)}
-            />
-          ))}
-        </div>
       </CardContent>
     </Card>
   );
@@ -380,4 +181,212 @@ export function NeedsConfirmationSection({
       </CardContent>
     </Card>
   );
+}
+
+// --- Per-metric renderers (the customizable Analytics layout) -------------
+
+/** Everything the page already loaded, shared by every renderer. */
+export type AnalyticsWidgetContext = {
+  data: AnalyticsDashboard;
+  queue: ReconciliationQueue | null;
+  propertyId: string | null;
+  queueExpanded: boolean;
+  onToggleQueue: () => void;
+  onOpenBooking: (bookingId: string) => void;
+  onConfirmPrices: () => void;
+  onReviewMatches: () => void;
+};
+
+/** The ⓘ content for a metric: what it means, then how it's calculated. */
+export function MetricInfo({ description, formula }: { description: string | null; formula: string | null }) {
+  return (
+    <>
+      {description && <p className="text-foreground">{description}</p>}
+      {formula && (
+        <p className="text-muted-foreground">
+          <span className="font-medium text-foreground">Formula: </span>
+          {formula}
+        </p>
+      )}
+    </>
+  );
+}
+
+type TileSpec = Omit<React.ComponentProps<typeof MetricTile>, "info" | "label">;
+
+const VS_PREVIOUS = "vs previous period";
+
+/** Each tile id from backend app/services/analytics_widget_registry.py ->
+ * its MetricTile props, read from the one /analytics/dashboard response. */
+const TILES: Record<string, (c: AnalyticsWidgetContext) => TileSpec> = {
+  occupancy: ({ data }) => {
+    const p = data.portfolio;
+    return {
+      icon: BedDouble,
+      value: formatPercent(p.occupancy),
+      muted: p.occupancy === null,
+      change: p.comparison?.change?.occupancy,
+      changeLabel: VS_PREVIOUS,
+      hint: `${p.booked_nights} of ${p.available_nights} nights booked${
+        p.blocked_nights ? ` · ${p.blocked_nights} blocked excluded` : ""
+      }`,
+    };
+  },
+  revenue: ({ data, onConfirmPrices }) => {
+    const p = data.portfolio;
+    return {
+      icon: IndianRupee,
+      value: formatINRCompact(p.revenue),
+      muted: p.revenue === null,
+      change: p.comparison?.change?.revenue,
+      changeLabel: VS_PREVIOUS,
+      hint: p.revenue === null && p.completeness.bookings_total > 0 ? "No confirmed prices yet" : undefined,
+      footer: <CompletenessNote completeness={p.completeness} subject="Revenue" onConfirm={onConfirmPrices} />,
+    };
+  },
+  adr: ({ data }) => ({
+    icon: Tag,
+    value: formatINR(data.portfolio.adr),
+    muted: data.portfolio.adr === null,
+    change: data.portfolio.comparison?.change?.adr,
+    changeLabel: VS_PREVIOUS,
+  }),
+  revpar: ({ data }) => ({
+    icon: TrendingUp,
+    value: formatINR(data.portfolio.revpar),
+    muted: data.portfolio.revpar === null,
+    change: data.portfolio.comparison?.change?.revpar,
+    changeLabel: VS_PREVIOUS,
+  }),
+  upcoming_revenue: ({ data }) => {
+    const p = data.portfolio;
+    return {
+      icon: CalendarCheck,
+      value: formatINRCompact(p.upcoming_revenue),
+      muted: p.upcoming_revenue === null,
+      hint: p.upcoming_completeness.is_complete
+        ? "Confirmed future stays"
+        : `${p.upcoming_completeness.bookings_priced} of ${p.upcoming_completeness.bookings_total} future stays priced`,
+    };
+  },
+  attributed_bookings: ({ data, onReviewMatches }) => {
+    const i = data.impact;
+    return {
+      icon: BadgeCheck,
+      value: String(i.attributed_bookings),
+      footer:
+        i.awaiting_confirmation > 0 ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/50 px-3 py-2 text-xs">
+            <p className="text-muted-foreground">
+              {i.awaiting_confirmation} possible Mira booking{i.awaiting_confirmation === 1 ? "" : "s"} waiting for
+              your confirmation — not counted.
+            </p>
+            <Button size="sm" variant="outline" onClick={onReviewMatches}>
+              Review
+            </Button>
+          </div>
+        ) : undefined,
+    };
+  },
+  attributed_revenue: ({ data }) => {
+    const i = data.impact;
+    return {
+      icon: Wallet,
+      value: formatINRCompact(i.attributed_revenue),
+      muted: i.attributed_revenue === null,
+      hint: i.attributed_completeness.is_complete
+        ? undefined
+        : `${i.attributed_completeness.bookings_priced} of ${i.attributed_completeness.bookings_total} priced`,
+    };
+  },
+  after_hours_enquiries: ({ data }) => {
+    const afterHours = data.impact.after_hours_opportunities;
+    return {
+      icon: Moon,
+      value: afterHours.configured ? String(afterHours.value ?? 0) : "—",
+      muted: !afterHours.configured,
+      hint: afterHours.configured
+        ? `${formatPercent(afterHours.share)} of booking conversations`
+        : "Set your call hours in Settings to see this",
+    };
+  },
+  revenue_recovered: ({ data, propertyId }) => {
+    const i = data.impact;
+    return {
+      icon: IndianRupee,
+      value: formatINRCompact(i.revenue_recovered),
+      muted: i.revenue_recovered === null,
+      hint: `${i.recovery.busy_calls} busy-line call${i.recovery.busy_calls === 1 ? "" : "s"} · ${
+        i.recovery.recovered
+      } guest${i.recovery.recovered === 1 ? "" : "s"} re-engaged${propertyId ? " (all properties)" : ""}`,
+    };
+  },
+  resolved_by_mira: ({ data }) => ({
+    icon: MessageSquare,
+    value: String(data.impact.resolved_by_mira),
+    hint: data.impact.conversations ? `${formatPercent(data.impact.resolved_by_mira_rate)} of conversations` : undefined,
+  }),
+  host_escalations: ({ data }) => ({ icon: PhoneForwarded, value: String(data.impact.host_escalations) }),
+  initial_quote: ({ data }) => sampledTile(Tag, data.pricing.avg_initial_quote_per_night, formatINR),
+  negotiated_price: ({ data }) => sampledTile(Tag, data.pricing.avg_negotiated_price_per_night, formatINR),
+  final_price: ({ data }) => sampledTile(IndianRupee, data.pricing.avg_final_price_per_night, formatINR),
+  negotiation_conversion: ({ data }) =>
+    sampledTile(Percent, data.pricing.negotiation_conversion, (v) => formatPercent(v)),
+  avg_discount: ({ data }) => sampledTile(Percent, data.pricing.avg_discount, (v) => formatPercent(v, 1)),
+  price_objections: ({ data }) =>
+    sampledTile(CircleAlert, data.pricing.price_objection_rate, (v) => formatPercent(v)),
+};
+
+function sampledTile(icon: TileSpec["icon"], metric: SampledMetric, format: (v: number) => string): TileSpec {
+  return { icon, value: sampledValue(metric, format), muted: metric.value === null, hint: sampledHint(metric) };
+}
+
+/** A panel with its ⓘ in the top-right corner. */
+function WithInfo({ info, children }: { info: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div className="relative h-full">
+      {children}
+      <div className="absolute top-4 right-4">{info}</div>
+    </div>
+  );
+}
+
+/**
+ * Renders one layout entry's metric, or null when it has nothing to show
+ * (e.g. no bookings need confirmation) so the page skips its slot. An id
+ * with no renderer is skipped too -- never rendered broken.
+ */
+export function renderAnalyticsMetric(
+  entry: { id: string; label: string | null; description: string | null; formula: string | null },
+  c: AnalyticsWidgetContext
+): React.ReactNode {
+  const info = <MetricInfo description={entry.description} formula={entry.formula} />;
+  const tile = TILES[entry.id];
+  if (tile) {
+    return (
+      <div className="h-full rounded-xl border bg-card">
+        <MetricTile label={entry.label ?? entry.id} info={info} {...tile(c)} />
+      </div>
+    );
+  }
+  const infoTip = <InfoTip label={`About ${entry.label ?? entry.id}`}>{info}</InfoTip>;
+  switch (entry.id) {
+    case "booking_funnel":
+      return <WithInfo info={infoTip}><BookingFunnelSection data={c.data} /></WithInfo>;
+    case "guest_intent":
+      return <WithInfo info={infoTip}><GuestIntentSection data={c.data} /></WithInfo>;
+    case "needs_confirmation":
+      if (!c.queue) return null;
+      return (
+        <NeedsConfirmationSection
+          queue={c.queue}
+          propertyId={c.propertyId}
+          onOpen={c.onOpenBooking}
+          expanded={c.queueExpanded}
+          onToggleExpanded={c.onToggleQueue}
+        />
+      );
+    default:
+      return null;
+  }
 }

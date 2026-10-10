@@ -39,7 +39,7 @@ from app.models.guest_profile import GuestProfile
 from app.models.lead import Lead
 from app.models.property import Property
 from app.models.user import User
-from app.services import faq_service, notification_service
+from app.services import faq_service, notification_preferences_service, notification_service
 from app.services.lead_service import _REUSABLE_LEAD_STATUSES
 
 logger = logging.getLogger(__name__)
@@ -343,7 +343,9 @@ async def _notify_host_of_reply(
     await db.commit()
 
     host = await db.get(User, lead.user_id)
-    if host is not None and host.phone:
-        await twilio_client.send_whatsapp_best_effort(
-            host.phone, f"\U0001F7E0 *GUEST REPLIED*\n{message}\n\n{settings.frontend_base_url}/dashboard/leads"
-        )
+    if host is not None and notification_preferences_service.get(host).guest_reply_alert:
+        host_phone = notification_preferences_service.host_transfer_phone(host, property_)
+        if host_phone:
+            await twilio_client.send_whatsapp_best_effort(
+                host_phone, f"\U0001F7E0 *GUEST REPLIED*\n{message}\n\n{settings.frontend_base_url}/dashboard/leads"
+            )

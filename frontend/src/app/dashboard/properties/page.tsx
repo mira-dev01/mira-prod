@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { MoreHorizontal, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -89,7 +90,8 @@ function propertyToForm(property: PropertyOut): PropertyCreate {
 }
 
 export default function PropertiesPage() {
-  const { isInternalOrg } = useAuth();
+  const { isInternalOrg, user } = useAuth();
+  const perPropertyTransfer = user?.notification_preferences.transfer_number_mode === "per_property";
   const { data: properties, loading, refetch } = useAsync(() => api.properties.list(), []);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<PropertyCreate>(emptyForm);
@@ -422,20 +424,16 @@ export default function PropertiesPage() {
         </div>
       </div>
 
-      {!loading && properties && properties.some((p) => !p.exophone) && !phoneBannerDismissed && (
+      {/* Only about the call intake number -- the one number guests dial to
+          reach Mira. Gone as soon as one is saved (Exotel or Twilio). */}
+      {user && !user.lead_exophone && !user.twilio_lead_number && !phoneBannerDismissed && (
         <div className="flex items-center justify-between gap-3 rounded-[var(--radius)] border bg-muted px-4 py-3 text-sm">
           <p>
-            No phone numbers connected yet for these properties —{" "}
-            <button
-              type="button"
-              className="font-medium underline underline-offset-2"
-              onClick={() => {
-                const firstMissing = properties.find((p) => !p.exophone);
-                if (firstMissing) openEdit(firstMissing);
-              }}
-            >
-              Connect ExoPhone
-            </button>
+            Your call intake number isn&apos;t set — guests can&apos;t reach Mira until it is. Set it in{" "}
+            <Link href="/dashboard/settings" className="font-medium underline underline-offset-2">
+              Settings › Your account
+            </Link>
+            .
           </p>
           <button
             type="button"
@@ -489,6 +487,14 @@ export default function PropertiesPage() {
                 <p className="text-muted-foreground">{property.city ?? "No city set"}</p>
                 <p>₹{property.base_price.toLocaleString("en-IN")} / night · {property.max_guests} guests</p>
                 {property.exophone && <p className="text-muted-foreground">{property.exophone}</p>}
+                {perPropertyTransfer && !property.host_transfer_phone && (
+                  <p className="text-xs text-(--status-pending-strong)" onClick={(e) => e.stopPropagation()}>
+                    No transfer number — transfers go to your main number.{" "}
+                    <Link href="/dashboard/settings#transfer-numbers" className="font-medium underline underline-offset-2">
+                      Set one
+                    </Link>
+                  </p>
+                )}
                 <div className="flex items-center gap-2 pt-2" onClick={(e) => e.stopPropagation()}>
                   <Button
                     size="sm"

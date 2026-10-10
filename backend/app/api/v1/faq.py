@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
@@ -10,7 +11,7 @@ from app.models.faq_entry import FaqEntry
 from app.models.user import User
 from app.schemas.faq_entry import FaqEntryCreate, FaqEntryOut, FaqEntryUpdate
 from app.schemas.faq_gap import FaqGapAnalyticsOut, FaqGapAnswerIn, FaqGapOut
-from app.services import faq_service
+from app.services import embedding_service, faq_service
 
 router = APIRouter(prefix="/faq", tags=["faq"])
 
@@ -50,11 +51,20 @@ async def update_faq_entry(
     if payload.property_id is not None:
         await get_owned_property(db, payload.property_id, current_user)
 
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True)
+    question_changed = "question" in changes and changes["question"] != entry.question
+    for field, value in changes.items():
         setattr(entry, field, value)
+    if question_changed:
+        # The stored embedding describes the old wording -- clear it so
+        # semantic gap matching never uses it, and recompute in the
+        # background (same helper new entries use).
+        entry.question_embedding = None
 
     await db.commit()
     await db.refresh(entry)
+    if question_changed:
+        asyncio.create_task(embedding_service.backfill_faq_entry_embedding(entry.id, entry.question))
     return entry
 
 
@@ -116,13 +126,16 @@ async def answer_faq_gap(
     gap = await faq_service.get_owned_unanswered_question(db, gap_id, current_user.id)
     if gap is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Unanswered question not found")
-    return await faq_service.answer_faq_gap(db, gap, payload.answer, payload.apply_to_property, "host_gap_answer")
+    return await faq_service.answer_faq_gap(
+        db, gap, payload.answer, payload.apply_to_property, "host_gap_answer", question=payload.question
+    )
 
 
 @router.post("/gaps/{gap_id}/answer-voice", response_model=FaqEntryOut, status_code=status.HTTP_201_CREATED)
 async def answer_faq_gap_voice(
     gap_id: uuid.UUID,
     apply_to_property: bool = False,
+    question: str | None = Query(default=None, max_length=500),
     audio: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -135,4 +148,6 @@ async def answer_faq_gap_voice(
     if not answer_text:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Could not transcribe audio -- please try again or type the answer")
 
-    return await faq_service.answer_faq_gap(db, gap, answer_text, apply_to_property, "host_gap_answer_voice")
+    return await faq_service.answer_faq_gap(
+        db, gap, answer_text, apply_to_property, "host_gap_answer_voice", question=question
+    )

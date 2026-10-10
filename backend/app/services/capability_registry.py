@@ -126,7 +126,7 @@ _PROPERTY_PHONE = Requirement(
     "property_phone", "A guest phone number assigned to a property", True, "Assign a number", "/dashboard/properties"
 )
 _HOST_PHONE_SOFT = Requirement(
-    "host_phone", "Your phone number saved for alerts and transfers", False, "Add your number", "/dashboard/settings"
+    "host_phone", "A transfer number for alerts and live transfers", False, "Set it up", "/dashboard/settings"
 )
 
 CAPABILITIES: tuple[Capability, ...] = (
@@ -134,7 +134,7 @@ CAPABILITIES: tuple[Capability, ...] = (
     Capability(
         id="guest_support_agent",
         name="Guest Support voice agent",
-        description="Mira answers calls to a property's number: availability, prices, house rules and FAQs.",
+        description="Answers calls to each property's number: availability, prices, rules and FAQs.",
         benefit="Every guest call to a listing gets answered, day or night.",
         group="guest_calls",
         activation="core",
@@ -151,24 +151,24 @@ CAPABILITIES: tuple[Capability, ...] = (
     Capability(
         id="lead_agent",
         name="Portfolio Lead Agent",
-        description="One Guest Call Number that recommends the right property across your whole portfolio.",
+        description="One number for your whole portfolio. Mira finds the right property for each caller.",
         benefit="Turn general booking enquiries into leads for whichever property fits.",
         group="guest_calls",
         activation="preference",
         enforcement="advisory",
         default_enabled=True,
-        on_effect="Calls to your Guest Call Number run the Lead Agent across all your properties.",
-        off_effect="Removed from your setup checklist. The Lead Agent only answers while a Guest Call Number is saved.",
+        on_effect="Calls to your call intake number run the Lead Agent across all your properties.",
+        off_effect="Removed from your setup checklist. The Lead Agent only answers while a call intake number is saved.",
         hard_dependencies=("property_management",),
         requirements=(
-            Requirement("lead_number", "Guest Call Number saved", True, "Add the number", "/dashboard/settings"),
+            Requirement("lead_number", "Call intake number saved", True, "Add the number", "/dashboard/settings"),
             _HAS_PROPERTY,
         ),
         routes=("/dashboard/settings", "/dashboard/leads"),
         voice_tools=("recommend_properties", "update_lead"),
         live_requirement="lead_number",
         live_block_reason=(
-            "Mira is still answering calls on your Guest Call Number. Clear that number in Settings first -- "
+            "Mira is still answering calls on your call intake number. Clear that number in Settings first -- "
             "turning this off here alone would not stop those calls."
         ),
         onboarding_setup="lead_number",
@@ -176,7 +176,7 @@ CAPABILITIES: tuple[Capability, ...] = (
     Capability(
         id="busy_call_recovery",
         name="Busy-call recovery",
-        description="If a guest calls while Mira is already on a call for you, they get a WhatsApp follow-up and you get a lead.",
+        description="If Mira is already on a call, new callers get a WhatsApp follow-up and become a lead.",
         benefit="No guest is lost to a busy line.",
         group="guest_calls",
         activation="core",
@@ -192,13 +192,13 @@ CAPABILITIES: tuple[Capability, ...] = (
     Capability(
         id="host_handoff",
         name="Host handoff & call transfer",
-        description="Mira escalates to you, or transfers a live call to your phone when a guest needs you.",
+        description="Mira escalates to you, or transfers the call, when a guest needs you.",
         benefit="Guests reach you when it matters, without you answering every call.",
         group="guest_calls",
         activation="core",
         enforcement="always_on",
         default_enabled=True,
-        on_effect="Escalations reach you in-app and by email; live transfers dial your saved phone.",
+        on_effect="Escalations reach you in-app, by email and WhatsApp; live transfers dial your transfer number.",
         off_effect="",
         requirements=(_HOST_PHONE_SOFT,),
         integrations=(IntegrationRef("twilio_whatsapp", required=False), IntegrationRef("email", required=False)),
@@ -209,7 +209,7 @@ CAPABILITIES: tuple[Capability, ...] = (
     Capability(
         id="pricing_quotes",
         name="Price quotes",
-        description="Mira quotes nightly prices, length-of-stay discounts and totals from your pricing setup.",
+        description="Quotes nightly rates, discounts and totals from your pricing.",
         benefit="Guests get an accurate quote on the call.",
         group="bookings_pricing",
         activation="core",
@@ -233,7 +233,7 @@ CAPABILITIES: tuple[Capability, ...] = (
     Capability(
         id="negotiation",
         name="Discount negotiation",
-        description="Mira can negotiate within the discount limits and rules you set in AI Training.",
+        description="Mira can offer discounts within the limits you set in AI Training.",
         benefit="Close price-sensitive guests without giving away more than you allow.",
         group="bookings_pricing",
         activation="bound",
@@ -259,7 +259,7 @@ CAPABILITIES: tuple[Capability, ...] = (
     Capability(
         id="live_airbnb_pricing",
         name="Live Airbnb pricing",
-        description="Quote a property's current Airbnb price instead of a fixed base price.",
+        description="Quotes a property's current Airbnb price instead of its base price.",
         benefit="Quotes always match what guests see on Airbnb.",
         group="bookings_pricing",
         activation="preference",
@@ -289,7 +289,7 @@ CAPABILITIES: tuple[Capability, ...] = (
     Capability(
         id="calendar_sync",
         name="Calendar sync",
-        description="Import bookings from your Airbnb/iCal calendars every 15 minutes.",
+        description="Syncs bookings from your iCal links so Mira never offers booked dates.",
         benefit="Mira never offers dates that are already booked elsewhere.",
         group="bookings_pricing",
         activation="preference",
@@ -316,7 +316,7 @@ CAPABILITIES: tuple[Capability, ...] = (
     Capability(
         id="technician_dispatch",
         name="Technician dispatch",
-        description="Mira matches in-stay issues (plumbing, AC, Wi-Fi…) to the right technician on file and alerts you.",
+        description="Routes maintenance issues to the right technician and alerts you.",
         benefit="Maintenance issues get routed without you triaging every call.",
         group="guest_support",
         activation="preference",
@@ -341,7 +341,7 @@ CAPABILITIES: tuple[Capability, ...] = (
     Capability(
         id="guest_messaging",
         name="Photos & WhatsApp follow-ups",
-        description="Mira sends guests property photos and details on WhatsApp during a call.",
+        description="Sends guests photos and details on WhatsApp during the call.",
         benefit="Guests see the place while they're still on the phone.",
         group="guest_support",
         activation="core",
@@ -359,7 +359,7 @@ CAPABILITIES: tuple[Capability, ...] = (
     Capability(
         id="lead_capture",
         name="Live requests & lead capture",
-        description="Every genuine enquiry becomes a lead you can follow up, even if the call drops.",
+        description="Turns every genuine enquiry into a lead you can follow up.",
         benefit="No booking enquiry silently disappears.",
         group="leads_crm",
         activation="core",
@@ -373,7 +373,7 @@ CAPABILITIES: tuple[Capability, ...] = (
     Capability(
         id="guest_memory",
         name="Guest memory",
-        description="Mira remembers returning callers -- past stays, preferences and what was discussed.",
+        description="Recognises returning callers and remembers past stays.",
         benefit="Repeat guests get a personal welcome and repeat-guest pricing.",
         group="leads_crm",
         activation="core",
@@ -389,7 +389,7 @@ CAPABILITIES: tuple[Capability, ...] = (
     Capability(
         id="property_management",
         name="Properties",
-        description="Your listings: details, photos, prices and house rules that every other feature reads.",
+        description="Your listings: the details every other feature relies on.",
         benefit="One place to keep listing details accurate.",
         group="properties_knowledge",
         activation="core",
@@ -404,7 +404,7 @@ CAPABILITIES: tuple[Capability, ...] = (
     Capability(
         id="airbnb_import",
         name="Airbnb import",
-        description="Create properties from Airbnb listing links -- details, photos and FAQs included.",
+        description="Creates properties from Airbnb links, with photos and FAQs.",
         benefit="Set up a property in a minute instead of typing it in.",
         group="properties_knowledge",
         activation="core",
@@ -419,7 +419,7 @@ CAPABILITIES: tuple[Capability, ...] = (
     Capability(
         id="knowledge_faq",
         name="Knowledge & FAQ answers",
-        description="Mira answers guest questions from your verified FAQs and listing details, and logs what it couldn't answer.",
+        description="Answers from your verified FAQs and logs what Mira couldn't answer.",
         benefit="Fewer repeat questions reach you; gaps are easy to fill.",
         group="properties_knowledge",
         activation="core",
@@ -439,7 +439,7 @@ CAPABILITIES: tuple[Capability, ...] = (
     Capability(
         id="analytics_reporting",
         name="Analytics & call history",
-        description="Call outcomes, conversion and revenue reporting, with full call transcripts.",
+        description="Call outcomes, conversions and revenue, with transcripts.",
         benefit="See what Mira is doing for your business.",
         group="analytics",
         activation="core",
@@ -452,7 +452,7 @@ CAPABILITIES: tuple[Capability, ...] = (
     Capability(
         id="booking_reconciliation",
         name="Booking attribution",
-        description="Match synced bookings to the calls that produced them and confirm final prices.",
+        description="Links bookings to the calls that won them and confirms final prices.",
         benefit="Know which bookings Mira actually won you.",
         group="analytics",
         activation="core",

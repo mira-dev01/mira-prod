@@ -44,7 +44,7 @@ from app.integrations import twilio_client
 from app.models.notification import Notification
 from app.models.property import Property
 from app.models.user import User
-from app.services import call_ownership, notification_service
+from app.services import call_ownership, notification_preferences_service, notification_service
 from app.services.take_call_token import issue_take_call_token
 
 logger = logging.getLogger(__name__)
@@ -155,10 +155,14 @@ async def _maybe_notify_guest_calling(
     # WhatsApp covers a host who isn't. Best-effort only, fired detached so
     # a slow/misconfigured Twilio API call never adds latency to -- or is
     # even on the same call stack as -- the still-live guest call this
-    # notification is about. host.phone is User.phone, the one canonical
-    # host contact number this codebase already has (see Phase 5's own
-    # report) -- reused as-is, not duplicated onto Property.
-    if not host.phone:
+    # notification is about. Goes to the host's transfer number for this
+    # property (notification_preferences_service.host_transfer_phone), and
+    # only if the host hasn't turned this alert off.
+    if not notification_preferences_service.get(host).guest_calling_alert:
+        logger.info("guest_calling: host %s turned off guest-calling WhatsApp alerts -- skipping", host.id)
+        return
+    host_phone = notification_preferences_service.host_transfer_phone(host, property_)
+    if not host_phone:
         logger.info("guest_calling: host %s has no phone set -- skipping WhatsApp send", host.id)
         return
 
@@ -174,13 +178,13 @@ async def _maybe_notify_guest_calling(
 
     if settings.twilio_guest_calling_template_sid:
         await twilio_client.send_whatsapp_template_best_effort(
-            host.phone,
+            host_phone,
             settings.twilio_guest_calling_template_sid,
             {"1": property_name, "2": guest_label, "3": take_call_url},
         )
     else:
         await twilio_client.send_whatsapp_best_effort(
-            host.phone,
+            host_phone,
             f"📞 Guest is calling Mira\nProperty: {property_name}\nGuest: {guest_label}\n\n"
             f"Mira is currently handling the call.\n\nTake the call yourself: {take_call_url}",
         )

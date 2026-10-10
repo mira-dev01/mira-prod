@@ -42,6 +42,7 @@ from app.schemas.tool import (
 from app.services import (
     calendar_service,
     capability_service,
+    notification_preferences_service,
     embedding_service,
     faq_service,
     guest_booking_service,
@@ -714,41 +715,43 @@ async def handle_escalate_to_host(
             if call_session_id
             else f"{settings.frontend_base_url}/dashboard/leads"
         )
-        # lead.lead_temperature is the LLM's own qualification judgment (set
-        # via update_lead earlier in the same call, if it was called) -- may
-        # be None if update_lead was never invoked. Only "hot" gets a badge;
-        # "warm"/"cold"/None all render identically (no badge) so a routine
-        # escalation doesn't get visual noise.
-        # notification_email (Settings -> Notifications) lets a host route
-        # escalations to a different inbox -- a shared front-desk address,
-        # say -- without changing their login email. Unset = login email.
-        hot_prefix = "\U0001F525 HOT — " if lead.lead_temperature in ("hot", "very_hot") else ""
-        asyncio.create_task(
-            _send_escalation_email(
-                host_user.notification_email or host_user.email,
-                subject=f"{hot_prefix}{args.urgency.title()} escalation — {subject_line}",
-                body=f"{message}\n\nView in dashboard: {call_page_url}",
-                html_body=build_escalation_email_html(
-                    property_name=subject_line,
-                    urgency=args.urgency,
-                    reason=args.reason,
-                    call_summary=args.call_summary,
-                    guest_phone=args.guest_phone,
-                    call_session_id=call_session_id,
-                    lead_temperature=lead.lead_temperature,
-                ),
+        # The host's own lead labels (Settings > Notifications) name the
+        # tier in the subject and badge; lead_temperature may be None if
+        # update_lead was never called (shown as their "not qualified"
+        # label). Escalation emails go to notification_email (a shared
+        # front-desk inbox, say) or the login email, unless the host turned
+        # them off -- the in-app notification above always stays.
+        prefs = notification_preferences_service.get(host_user)
+        lead_label = notification_preferences_service.lead_label(prefs, lead.lead_temperature)
+        if prefs.escalation_email:
+            asyncio.create_task(
+                _send_escalation_email(
+                    host_user.notification_email or host_user.email,
+                    subject=f"[{lead_label}] {args.urgency.title()} escalation — {subject_line}",
+                    body=f"{message}\n\nView in dashboard: {call_page_url}",
+                    html_body=build_escalation_email_html(
+                        property_name=subject_line,
+                        urgency=args.urgency,
+                        reason=args.reason,
+                        call_summary=args.call_summary,
+                        guest_phone=args.guest_phone,
+                        call_session_id=call_session_id,
+                        lead_temperature=lead.lead_temperature,
+                        lead_label=lead_label,
+                    ),
+                )
             )
-        )
-        # WhatsApp via Twilio (see twilio_client.py) -- only attempted when
-        # Twilio is enabled (config.py's twilio_enabled); unset phone or
-        # unconfigured/disabled Twilio all no-op silently in
-        # _send_escalation_whatsapp, same as the email above, which is why
-        # the guest-facing return string below no longer promises "on
-        # WhatsApp" specifically -- the email always goes out regardless.
-        if host_user.phone and settings.twilio_enabled:
+        # WhatsApp via Twilio (see twilio_client.py) to the host's transfer
+        # number for this property (one account number, or the property
+        # group's own -- notification_preferences_service
+        # .host_transfer_phone). Unset phone or unconfigured/disabled Twilio
+        # no-op silently in _send_escalation_whatsapp, which is why the
+        # guest-facing return string below never promises "on WhatsApp".
+        host_phone = notification_preferences_service.host_transfer_phone(host_user, property_)
+        if host_phone and settings.twilio_enabled:
             asyncio.create_task(
                 _send_escalation_whatsapp(
-                    host_user.phone,
+                    host_phone,
                     urgency=args.urgency,
                     property_name=subject_line,
                     reason=args.reason,
@@ -776,6 +779,12 @@ def _has_usable_host_phone(phone: str | None) -> bool:
     return len(digits) >= 10
 
 
+# When the host prefers WhatsApp over live transfers -- matches
+# escalation_phrase_guard's own wording, which speaks next.
+_WHATSAPP_FOLLOW_UP_REPLY = (
+    "I've passed your details to the host, and they'll reach out to you on WhatsApp shortly."
+)
+
 # What the guest hears when a transfer can't be attempted -- the escalation
 # behind it has already notified the host (in-app, email, WhatsApp).
 _HOST_UNAVAILABLE_REPLY = (
@@ -791,6 +800,7 @@ async def handle_request_host_transfer(
     property_id: uuid.UUID | None,
     host_user_id: uuid.UUID,
     guest_profile_id: uuid.UUID | None = None,
+    context_property_id: uuid.UUID | None = None,
 ) -> str:
     """Guest explicitly asked to be transferred/connected to the host or a
     human, right now -- distinct from escalate_to_host's general "notify the
@@ -810,27 +820,43 @@ async def handle_request_host_transfer(
     comment. property_id is deliberately NOT a gate here anymore: it's only
     ever used below to enrich the escalation fallback's args when present.
     """
+    escalate_args = EscalateToHostArgs(
+        property_id=str(property_id) if property_id is not None else None,
+        reason=args.reason or "Guest asked to be transferred to the host",
+        urgency="high",
+    )
     host_user = await db.get(User, host_user_id)
-    if host_user is None or not _has_usable_host_phone(host_user.phone):
-        # No transfer destination Exotel could actually dial -- fall back
-        # to a plain escalation, so the guest still reaches the host, just
-        # via notification instead of a live connect.
-        escalate_args = EscalateToHostArgs(
-            property_id=str(property_id) if property_id is not None else None,
-            reason=args.reason or "Guest asked to be transferred to the host",
-            urgency="high",
-        )
+    prefs = notification_preferences_service.get(host_user) if host_user is not None else None
+    if (
+        prefs is not None
+        and prefs.connect_request_handling == "whatsapp"
+        and prefs.stay_request_handling == "whatsapp"
+    ):
+        # The host wants no live transfers at all (Settings > Notifications)
+        # -- the prompt already steers Mira away from offering one; this is
+        # the enforcement if the tool is called anyway. When only one of
+        # the two choices is "live transfer", this tool serves that one and
+        # the prompt decides which requests use it (it can't tell them
+        # apart here).
         await handle_escalate_to_host(db, escalate_args, call_session_id, host_user_id, guest_profile_id)
-        return _HOST_UNAVAILABLE_REPLY
+        return _WHATSAPP_FOLLOW_UP_REPLY
 
-    if call_session_id is None:
-        # Nothing to claim a handoff against (e.g. a browser test call with
-        # no real CallSession id threaded through) -- same fallback.
-        escalate_args = EscalateToHostArgs(
-            property_id=str(property_id) if property_id is not None else None,
-            reason=args.reason or "Guest asked to be transferred to the host",
-            urgency="high",
-        )
+    # The property in scope picks the transfer number when the host uses a
+    # number per group of properties: the call's own property, else the
+    # one the guest settled on during a Lead Agent call.
+    transfer_property_id = property_id or context_property_id
+    transfer_property = await db.get(Property, transfer_property_id) if transfer_property_id else None
+    destination_phone = (
+        notification_preferences_service.host_transfer_phone(host_user, transfer_property)
+        if host_user is not None
+        else None
+    )
+    if not _has_usable_host_phone(destination_phone) or call_session_id is None:
+        # No transfer destination Exotel could actually dial, or nothing to
+        # claim a handoff against (e.g. a browser test call with no real
+        # CallSession id) -- fall back to a plain escalation, so the guest
+        # still reaches the host, just via notification instead of a live
+        # connect.
         await handle_escalate_to_host(db, escalate_args, call_session_id, host_user_id, guest_profile_id)
         return _HOST_UNAVAILABLE_REPLY
 
@@ -846,7 +872,7 @@ async def handle_request_host_transfer(
             CallSession.handoff_status.is_(None),
             CallSession.status.in_(_ACTIVE_CALL_STATUSES),
         )
-        .values(handoff_status="requested")
+        .values(handoff_status="requested", handoff_destination_phone=destination_phone)
         # "fetch" (not False) so any CallSession instance already loaded
         # into this session's identity map (e.g. by earlier code in the
         # same request/task) gets its in-memory handoff_status corrected

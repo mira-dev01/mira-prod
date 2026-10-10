@@ -34,6 +34,7 @@ from app.schemas.capability import (
     RequirementDefOut,
     RequirementOut,
 )
+from app.services import notification_preferences_service
 from app.services.capability_registry import (
     CAPABILITIES,
     GROUPS,
@@ -68,6 +69,7 @@ class HostSnapshot:
     has_live_pricing_property: bool = False
     has_property_photos: bool = False
     has_legacy_property_faq: bool = False
+    properties_without_transfer_phone: int = 0
     technician_count: int = 0
     verified_faq_count: int = 0
     approved_rule_count: int = 0
@@ -81,11 +83,21 @@ def _has_usable_phone(phone: str | None) -> bool:
     return bool(phone) and sum(ch.isdigit() for ch in phone) >= 10
 
 
+def _has_transfer_destination(snap: HostSnapshot) -> bool:
+    """Somewhere to send live transfers and alerts: the account number, or
+    -- with a number per group of properties -- a number on every property
+    (properties without one fall back to the account number)."""
+    if _has_usable_phone(snap.user.phone):
+        return True
+    per_property = notification_preferences_service.get(snap.user).transfer_number_mode == "per_property"
+    return per_property and snap.property_count > 0 and snap.properties_without_transfer_phone == 0
+
+
 _REQUIREMENT_CHECKS: dict[str, Callable[[HostSnapshot], bool]] = {
     "has_property": lambda s: s.property_count > 0,
     "property_phone": lambda s: s.has_property_phone,
     "lead_number": lambda s: bool(s.user.lead_exophone or s.user.twilio_lead_number),
-    "host_phone": lambda s: _has_usable_phone(s.user.phone),
+    "host_phone": _has_transfer_destination,
     # Mirrors recommend_properties' own "priceable" filter
     # (property/retrieval/filter_builder.py) and the ₹0 quote guards.
     "priceable_property": lambda s: s.has_priceable_property,
@@ -165,6 +177,7 @@ async def load_snapshot(db: AsyncSession, user: User) -> HostSnapshot:
                 Property.ical_url,
                 Property.photos,
                 Property.faq,
+                Property.host_transfer_phone,
             ).where(Property.user_id == user.id)
         )
     ).all()
@@ -176,6 +189,7 @@ async def load_snapshot(db: AsyncSession, user: User) -> HostSnapshot:
         snap.has_live_pricing_property |= bool(p.exact_airbnb_pricing and p.airbnb_listing_id)
         snap.has_property_photos |= bool(p.photos)
         snap.has_legacy_property_faq |= bool(p.faq)
+        snap.properties_without_transfer_phone += 0 if _has_usable_phone(p.host_transfer_phone) else 1
 
     snap.technician_count = await db.scalar(
         select(func.count())

@@ -31,6 +31,7 @@ export function WhatsAppButton({
 
   return (
     <Button
+      nativeButton={false}
       variant="outline"
       size={size}
       aria-label="Message on WhatsApp"

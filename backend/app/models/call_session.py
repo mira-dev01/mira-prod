@@ -92,6 +92,11 @@ class CallSession(UUIDPkMixin, TimestampMixin, Base):
     # Nothing writes a non-NULL value here yet; that begins in the phase
     # that implements the Take Call endpoint's atomic claim.
     handoff_status: Mapped[str | None] = mapped_column(String(16))
+    # The number a live transfer will dial, resolved when the transfer is
+    # requested (request_host_transfer), because only then is the
+    # property in scope known -- a Lead Agent call has no property_id.
+    # The Exotel connect-routing webhook dials this; None = resolve then.
+    handoff_destination_phone: Mapped[str | None] = mapped_column(String(32))
 
     property: Mapped["Property"] = relationship(back_populates="call_sessions")
     guest_profile: Mapped["GuestProfile"] = relationship(back_populates="call_sessions")

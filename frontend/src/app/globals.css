@@ -108,6 +108,9 @@
   --status-live-bg: rgba(117, 136, 95, 0.12);
   --status-pending: #d9a441;
   --status-pending-bg: rgba(217, 164, 65, 0.12);
+  /* Same amber, dark enough to read as text on the cream card (~4.9:1) --
+     for setup actions, where --status-pending alone is too faint. */
+  --status-pending-strong: #8a6512;
   --status-progress: #5f7a99;
   --status-progress-bg: rgba(95, 122, 153, 0.12);
   --status-purple: #8d6f96;

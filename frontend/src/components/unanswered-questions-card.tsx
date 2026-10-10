@@ -7,6 +7,7 @@ import { ArrowRight, ChevronDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ListRow } from "@/components/ui/list-row";
 import { RightPanel, RightPanelFooterButton } from "@/components/ui/right-panel";
@@ -55,6 +56,8 @@ export function UnansweredQuestionsCard({
 
   const [answeringGap, setAnsweringGap] = useState<FaqGapOut | null>(null);
   const [gapAnswerText, setGapAnswerText] = useState("");
+  // The host can reword the guest's question before it becomes an FAQ.
+  const [gapQuestionText, setGapQuestionText] = useState("");
   const [applyToProperty, setApplyToProperty] = useState(false);
   const [answeringSubmitting, setAnsweringSubmitting] = useState(false);
 
@@ -66,6 +69,7 @@ export function UnansweredQuestionsCard({
 
   function openAnswerDialog(gap: FaqGapOut) {
     setAnsweringGap(gap);
+    setGapQuestionText(gap.question);
     // Pre-fill from Knowledge Memory's semantic match, if one was found
     // (memory-architecture-plan.md section 3.2) -- the host can edit or
     // clear it before saving, same "AI suggests, host approves" pattern as
@@ -108,10 +112,15 @@ export function UnansweredQuestionsCard({
     if (!answeringGap) return;
     setAnsweringSubmitting(true);
     try {
+      const question = gapQuestionText.trim() || undefined;
       if (recordedBlob) {
-        await api.faqGaps.answerVoice(answeringGap.sample_id, recordedBlob, applyToProperty);
+        await api.faqGaps.answerVoice(answeringGap.sample_id, recordedBlob, applyToProperty, question);
       } else {
-        await api.faqGaps.answer(answeringGap.sample_id, { answer: gapAnswerText, apply_to_property: applyToProperty });
+        await api.faqGaps.answer(answeringGap.sample_id, {
+          answer: gapAnswerText,
+          apply_to_property: applyToProperty,
+          question,
+        });
       }
       toast.success("Saved — Mira will use this answer next time a guest asks");
       setAnsweringGap(null);
@@ -215,7 +224,7 @@ export function UnansweredQuestionsCard({
         onOpenChange={(open) => {
           if (!open) setAnsweringGap(null);
         }}
-        title={<>Answer — {answeringGap?.question}</>}
+        title="Answer this question"
         footer={
           <RightPanelFooterButton
             type="submit"
@@ -233,6 +242,17 @@ export function UnansweredQuestionsCard({
               doesn&apos;t fit.
             </p>
           )}
+          <div className="space-y-2">
+            <Label htmlFor="gap-question">Question</Label>
+            <Input
+              id="gap-question"
+              required
+              maxLength={500}
+              value={gapQuestionText}
+              onChange={(e) => setGapQuestionText(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">As the guest asked it — reword it if you like.</p>
+          </div>
           <div className="space-y-2">
             <Label htmlFor="gap-answer">Type an answer</Label>
             <Textarea

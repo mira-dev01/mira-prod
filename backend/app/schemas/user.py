@@ -4,7 +4,9 @@ from datetime import datetime
 from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+from pydantic import BaseModel, EmailStr, Field, ValidationError, field_validator, model_validator
+
+from app.schemas.notification_preferences import NotificationPreferences
 
 # Same pattern app/voice/escalation_phrase_guard.py originally detected
 # (before that guard moved to unconditional replacement, see its module
@@ -100,8 +102,6 @@ class UserUpdate(BaseModel):
     max_discount_percent_override: float | None = Field(default=None, ge=0, le=100)
     allow_pets: bool | None = None
     allow_early_checkin: bool | None = None
-    follow_up_channel_preference: str | None = None
-    whatsapp_assist_enabled: bool | None = None
 
     @field_validator("agent_escalation_phrase", "agent_handoff_phrase")
     @classmethod
@@ -209,12 +209,23 @@ class UserOut(BaseModel):
     max_discount_percent_override: float | None
     allow_pets: bool | None
     allow_early_checkin: bool | None
-    follow_up_channel_preference: str | None
     photo_url: str | None
     banner_url: str | None
-    whatsapp_assist_enabled: bool
+    # Resolved with defaults, so the dashboard always gets every field
+    # (lead labels in particular are read on many screens).
+    notification_preferences: NotificationPreferences
 
     model_config = {"from_attributes": True}
+
+    @field_validator("notification_preferences", mode="before")
+    @classmethod
+    def _resolve_preferences(cls, value: object) -> NotificationPreferences:
+        if isinstance(value, NotificationPreferences):
+            return value
+        try:
+            return NotificationPreferences.model_validate(value or {})
+        except ValidationError:
+            return NotificationPreferences()
 
 
 class CallHoursStatus(BaseModel):

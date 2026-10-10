@@ -44,6 +44,24 @@ _TEMPERATURE_COLORS = {
 }
 
 
+def _lead_badge(lead_temperature: str | None, lead_label: str | None, *, style: str) -> str:
+    """The host's own label for this lead's tier (Settings > Notifications),
+    coloured by tier. Without a label (older callers), only hot leads get
+    the original "Hot Lead" badge."""
+    if lead_label is None:
+        if lead_temperature not in ("hot", "very_hot"):
+            return ""
+        text, color = "\U0001F525 Hot Lead", _TEMPERATURE_COLORS["hot"]
+    else:
+        bucket = "hot" if lead_temperature == "very_hot" else lead_temperature
+        text, color = lead_label, _TEMPERATURE_COLORS.get(bucket or "", _MUTED)
+    return (
+        f'<span style="display:inline-block;background:{color};color:#ffffff;font-size:12px;font-weight:700;'
+        f'text-transform:uppercase;letter-spacing:0.04em;padding:4px 10px;border-radius:999px;{style}">'
+        f"{_esc(text)}</span>"
+    )
+
+
 def build_escalation_email_html(
     *,
     property_name: str,
@@ -53,6 +71,7 @@ def build_escalation_email_html(
     guest_phone: str | None,
     call_session_id: object | None = None,
     lead_temperature: str | None = None,
+    lead_label: str | None = None,
 ) -> str:
     urgency_color = _URGENCY_COLORS.get(urgency, "#6b7280")
     # Deep-links to the specific call's transcript + AI summary when known,
@@ -69,12 +88,9 @@ def build_escalation_email_html(
         f'<span style="display:inline-block;background:{urgency_color};color:#ffffff;font-size:12px;font-weight:700;'
         f'text-transform:uppercase;letter-spacing:0.04em;padding:4px 10px;border-radius:999px;">{urgency}</span>'
     ]
-    if lead_temperature in ("hot", "very_hot"):
-        badges.append(
-            f'<span style="display:inline-block;background:{_TEMPERATURE_COLORS["hot"]};color:#ffffff;font-size:12px;'
-            f'font-weight:700;text-transform:uppercase;letter-spacing:0.04em;padding:4px 10px;border-radius:999px;'
-            f'margin-left:6px;">\U0001F525 Hot Lead</span>'
-        )
+    lead_badge = _lead_badge(lead_temperature, lead_label, style="margin-left:6px;")
+    if lead_badge:
+        badges.append(lead_badge)
     badges_html = "\n".join(badges)
 
     rows = [f'<tr><td style="padding:4px 0;color:{_MUTED};font-size:14px;">Property</td>'
@@ -205,14 +221,13 @@ def build_call_summary_email_html(
     duration_minutes: float | None,
     lead_temperature: str | None,
     call_page_url: str,
+    lead_label: str | None = None,
+    custom_body: str | None = None,
 ) -> str:
-    badges_html = ""
-    if lead_temperature in ("hot", "very_hot"):
-        badges_html = (
-            f'<span style="display:inline-block;background:{_TEMPERATURE_COLORS["hot"]};color:#ffffff;font-size:12px;'
-            f'font-weight:700;text-transform:uppercase;letter-spacing:0.04em;padding:4px 10px;border-radius:999px;'
-            f'margin-bottom:10px;">\U0001F525 Hot Lead</span>'
-        )
+    """custom_body: the host's own rendered body text (Settings >
+    Notifications), escaped and shown in place of the built-in details
+    table and summary; the header, badge and buttons stay the same."""
+    badges_html = _lead_badge(lead_temperature, lead_label, style="margin-bottom:10px;")
 
     whatsapp_url = _whatsapp_link(guest_phone) if guest_phone else None
 
@@ -238,6 +253,19 @@ def build_call_summary_email_html(
             f'<td style="padding:4px 0;color:{_FOREGROUND};font-size:14px;">{duration_minutes} min</td></tr>'
         )
     rows_html = "\n".join(rows)
+    if custom_body is not None:
+        paragraphs = "".join(
+            f'<p style="font-size:14px;color:{_FOREGROUND};margin:0 0 12px 0;line-height:1.5;">'
+            f"{_esc(block).replace(chr(10), '<br>')}</p>"
+            for block in custom_body.split("\n\n")
+            if block.strip()
+        )
+        details_html = paragraphs
+    else:
+        details_html = (
+            f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0">\n{rows_html}\n</table>\n'
+            f'<p style="font-size:14px;color:{_FOREGROUND};margin:18px 0 0 0;line-height:1.5;">{conversation_summary}</p>'
+        )
 
     buttons = [
         f'<a href="{call_page_url}" style="display:inline-block;background:{_PRIMARY};color:#ffffff;'
@@ -265,10 +293,7 @@ def build_call_summary_email_html(
 <tr><td style="padding:24px 28px 8px 28px;">
 {badges_html}
 <h1 style="font-size:20px;margin:14px 0 18px 0;color:{_FOREGROUND};">Call summary</h1>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-{rows_html}
-</table>
-<p style="font-size:14px;color:{_FOREGROUND};margin:18px 0 0 0;line-height:1.5;">{conversation_summary}</p>
+{details_html}
 </td></tr>
 <tr><td style="padding:8px 28px 28px 28px;">
 {buttons_html}

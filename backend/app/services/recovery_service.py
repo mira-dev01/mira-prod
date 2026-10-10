@@ -56,7 +56,13 @@ from app.models.lead import Lead
 from app.models.property import Property
 from app.models.user import User
 from app.schemas.lead import RecoveryReason
-from app.services import call_service, guest_memory_service, lead_service, notification_service
+from app.services import (
+    call_service,
+    guest_memory_service,
+    lead_service,
+    notification_preferences_service,
+    notification_service,
+)
 from app.services.lead_service import _REUSABLE_LEAD_STATUSES
 from app.services.whatsapp_reply_service import MENU_DISPLAY_TEXT
 
@@ -182,10 +188,17 @@ async def _handle_busy_recovery(
     # to risk an implicit lazy-reload outside a valid greenlet context (see
     # app/voice/pipeline.py's busy_recovery_property_id, which hit exactly
     # this against a different object/session in the same call chain).
-    host_phone = host.phone
-
     property_ = await db.get(Property, property_id) if property_id is not None else None
     property_name = (property_.display_name or property_.name) if property_ is not None else None
+    # Still before any commit (see above). The busy-call WhatsApp alert to
+    # the host is optional (Settings > Notifications) and goes to the
+    # host's transfer number for this property; the guest's own WhatsApp
+    # and the lead below are never optional.
+    host_phone = (
+        notification_preferences_service.host_transfer_phone(host, property_)
+        if notification_preferences_service.get(host).busy_call_alert
+        else None
+    )
 
     # Same lookup-or-create GuestProfile call every voice-pipeline entry
     # point already uses (see call_service.get_or_create_guest_profile) --

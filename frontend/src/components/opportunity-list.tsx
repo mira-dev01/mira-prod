@@ -6,8 +6,7 @@ import {
   formatLeadTimestamp,
   leadGuestLabel,
   leadPhoneLabel,
-  leadTemperatureLabel,
-  leadTemperatureTone,
+  useLeadLabels,
 } from "@/lib/leads";
 import { opportunityType } from "@/lib/opportunities";
 import type { LeadOut } from "@/lib/types";
@@ -32,6 +31,7 @@ export function OpportunityList({
   leads: LeadOut[];
   onCardClick: (lead: LeadOut) => void;
 }) {
+  const leadLabels = useLeadLabels();
   if (leads.length === 0) {
     return <p className="text-sm text-muted-foreground">No opportunities right now — you&rsquo;re all caught up.</p>;
   }
@@ -45,12 +45,7 @@ export function OpportunityList({
             <ListRowHeader>
               <div className="flex min-w-0 flex-wrap items-center gap-2">
                 {type && <StatusChip status={type.label} tone="orange" />}
-                {lead.lead_temperature && (
-                  <StatusChip
-                    status={leadTemperatureLabel(lead.lead_temperature)}
-                    tone={leadTemperatureTone[lead.lead_temperature] ?? "neutral"}
-                  />
-                )}
+                <StatusChip status={leadLabels.label(lead.lead_temperature)} tone={leadLabels.tone(lead.lead_temperature)} className="normal-case" />
                 <span className="text-sm font-medium">{leadGuestLabel(lead)}</span>
                 <span className="text-xs text-muted-foreground">{leadPhoneLabel(lead)}</span>
               </div>

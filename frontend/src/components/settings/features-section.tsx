@@ -9,8 +9,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import { CapabilityStateChip } from "@/components/capability-state-chip";
-import { ApiError } from "@/lib/api";
+import { CapabilityActions, CapabilityStateChip } from "@/components/capability-state-chip";
+import { InfoTip } from "@/components/ui/info-tip";
+import { ApiError, api } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
+import { cn } from "@/lib/utils";
 import { useCapabilities } from "@/lib/capabilities-context";
 import type { CapabilityStatus } from "@/lib/types";
 
@@ -122,19 +125,19 @@ function CapabilityRow({
   disabled: boolean;
   onToggle: (enabled: boolean) => void;
 }) {
-  const missing = cap.enabled ? cap.requirements.filter((r) => !r.met) : [];
   const toggleAllowed = cap.enabled ? cap.can_disable : cap.can_enable;
   const blockedReason = cap.enabled ? cap.disable_blocked_reason : cap.enable_blocked_reason;
 
   return (
-    <div className="space-y-2 px-6 py-4">
+    <div className="space-y-2.5 px-6 py-4">
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 space-y-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-medium">{cap.name}</span>
-            <CapabilityStateChip state={cap.state} />
-          </div>
-          <p className="text-xs text-muted-foreground">{cap.description}</p>
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          <span className="text-sm font-medium">{cap.name}</span>
+          <InfoTip label={`About ${cap.name}`}>
+            <p className="text-foreground">{cap.description}</p>
+            {cap.effect && <p className="text-muted-foreground">{cap.effect}</p>}
+          </InfoTip>
+          <CapabilityStateChip state={cap.state} />
         </div>
         {cap.selectable ? (
           <Switch
@@ -151,30 +154,12 @@ function CapabilityRow({
         )}
       </div>
 
-      {cap.effect && <p className="text-xs text-foreground/80">{cap.effect}</p>}
+      {cap.id === "host_handoff" && <TransferModeChoice />}
 
-      {cap.selectable && !toggleAllowed && blockedReason && (
-        <p className="text-xs text-muted-foreground">{blockedReason}</p>
-      )}
-
-      {missing.length > 0 && (
-        <ul className="space-y-1">
-          {missing.map((r) => (
-            <li key={r.id} className="flex items-center justify-between gap-2 text-xs">
-              <span className="text-muted-foreground">
-                {r.hard ? "Needed" : "Recommended"}: {r.label}
-              </span>
-              <Link
-                href={r.action_route}
-                className="flex shrink-0 items-center gap-1 font-medium text-primary hover:underline"
-              >
-                {r.action_label}
-                <ArrowRight className="size-3" />
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
+      <CapabilityActions
+        requirements={cap.enabled ? cap.requirements : []}
+        blockedReason={cap.selectable && !toggleAllowed ? blockedReason : null}
+      />
 
       {cap.integrations.some((i) => !i.connected) && (
         <p className="text-xs text-muted-foreground">
@@ -184,6 +169,68 @@ function CapabilityRow({
             .join(" · ")}
         </p>
       )}
+    </div>
+  );
+}
+
+const TRANSFER_MODES = [
+  { value: "single", label: "One number for all properties" },
+  { value: "per_property", label: "A number per group of properties" },
+] as const;
+
+/** Where live transfers and host alerts go. Stored with the host's
+ * notification preferences; the numbers themselves are managed in
+ * Settings > Your account > Host transfer number. */
+function TransferModeChoice() {
+  const { user, setUserData } = useAuth();
+  const { refetch } = useCapabilities();
+  const [saving, setSaving] = useState(false);
+  const mode = user?.notification_preferences.transfer_number_mode ?? "single";
+
+  async function choose(next: (typeof TRANSFER_MODES)[number]["value"]) {
+    if (next === mode || !user) return;
+    setSaving(true);
+    try {
+      const saved = await api.notificationSettings.update({ transfer_number_mode: next });
+      setUserData({ ...user, notification_preferences: saved.preferences });
+      void refetch();
+      toast.success(next === "single" ? "Using one transfer number" : "Using a number per group of properties");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Couldn't change how transfers are routed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <div role="radiogroup" aria-label="Transfer number" className="flex flex-wrap gap-1 rounded-lg border p-1">
+        {TRANSFER_MODES.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={mode === option.value}
+            disabled={saving}
+            onClick={() => void choose(option.value)}
+            className={cn(
+              "min-w-0 flex-1 rounded-md px-2.5 py-1.5 text-xs transition-colors disabled:opacity-60",
+              mode === option.value
+                ? "bg-accent font-medium text-accent-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+      <Link
+        href="/dashboard/settings#transfer-numbers"
+        className="inline-flex items-center gap-1 text-xs font-medium text-(--status-pending-strong) hover:underline"
+      >
+        Manage transfer numbers
+        <ArrowRight className="size-3" />
+      </Link>
     </div>
   );
 }

@@ -22,6 +22,7 @@ from app.schemas.property import (
     PropertyImportResult,
     PropertyOut,
     PropertyUpdate,
+    TransferNumbersUpdate,
 )
 from app.services import faq_service
 from app.services.airbnb_import import parse_airbnb_listing, parse_bright_data_listing
@@ -165,6 +166,36 @@ async def _upsert_property_from_parsed(
         return PropertyImportResult(
             filename=label, status="created", property=property_, faq_entries_created=faq_count
         )
+
+
+@router.put("/transfer-numbers", response_model=list[PropertyOut])
+async def set_transfer_numbers(
+    payload: TransferNumbersUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[Property]:
+    """Host transfer numbers per group of properties (Settings > Your
+    account), used when the host chose "a number per group of properties".
+    Replaces every assignment in one transaction. Only changes where live
+    transfers and host alerts go -- never which number guests dial."""
+    properties = {
+        p.id: p for p in (await db.scalars(select(Property).where(Property.user_id == current_user.id))).all()
+    }
+    assigned: dict[uuid.UUID, str] = {}
+    for group in payload.groups:
+        for property_id in group.property_ids:
+            if property_id not in properties:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "Property not found")
+            if property_id in assigned:
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    f"{properties[property_id].name} is in more than one group -- pick one number for it.",
+                )
+            assigned[property_id] = group.phone
+    for property_id, property_ in properties.items():
+        property_.host_transfer_phone = assigned.get(property_id)
+    await db.commit()
+    return sorted(properties.values(), key=lambda p: p.created_at)
 
 
 @router.post("/import", response_model=list[PropertyImportResult])

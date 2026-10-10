@@ -393,3 +393,117 @@ async def test_usable_capabilities_exclude_unavailable_integrations(db_session, 
     usable = await capability_service.usable_capability_ids(db_session, test_user)
     assert "airbnb_import" not in usable
     assert "guest_support_agent" in usable
+
+
+# ── Analytics layout ────────────────────────────────────────────────────
+
+from app.services.analytics_widget_registry import ANALYTICS_METRICS, DEFAULT_LAYOUT, METRICS_BY_ID  # noqa: E402
+
+ANALYTICS = "/api/v1/preferences/analytics-widgets"
+
+
+def _analytics_input(body: dict) -> list[dict]:
+    """The layout as the customizer sends it back (available entries)."""
+    out = []
+    for e in body["entries"]:
+        if e["type"] == "heading":
+            out.append({"type": "heading", "id": e["id"], "title": e["title"], "subtitle": e["subtitle"]})
+        elif e["available"]:
+            out.append({"type": "metric", "id": e["id"], "size": e["size"], "hidden": e["hidden"]})
+    return out
+
+
+def test_every_analytics_metric_has_definition_and_frontend_renderer():
+    source = (FRONTEND / "components" / "analytics" / "analytics-sections.tsx").read_text()
+    for metric in ANALYTICS_METRICS:
+        assert metric.description and metric.formula, metric.id
+        assert metric.default_size in metric.sizes
+        for cap in metric.capabilities:
+            assert cap in capability_registry.CAPABILITIES_BY_ID, f"{metric.id} -> {cap}"
+        has_tile = re.search(rf"^\s+{metric.id}: \(", source, re.M)
+        has_panel = f'case "{metric.id}":' in source
+        assert has_tile or has_panel, f"no frontend renderer for {metric.id}"
+    assert {e["id"] for e in DEFAULT_LAYOUT if e["type"] == "metric"} == set(METRICS_BY_ID)
+
+
+async def test_default_analytics_layout_reproduces_original_page(client, auth_headers):
+    body = (await client.get(ANALYTICS, headers=auth_headers)).json()
+    headings = [e["title"] for e in body["entries"] if e["type"] == "heading"]
+    assert headings == ["Portfolio performance", "Mira impact", "Pricing & negotiation"]
+    occupancy = next(e for e in body["entries"] if e["id"] == "occupancy")
+    assert occupancy["formula"].startswith("Booked nights ÷ available nights")
+    assert body["is_default"] is True
+
+
+async def test_analytics_reorder_resize_hide_and_edit_headings(client, auth_headers):
+    entries = _analytics_input((await client.get(ANALYTICS, headers=auth_headers)).json())
+    by_id = {e["id"]: e for e in entries}
+    by_id["revpar"]["size"] = "md"
+    by_id["avg_discount"]["hidden"] = True
+    by_id["portfolio"]["title"] = "How we're doing"
+    by_id["portfolio"]["subtitle"] = None
+    entries = [e for e in entries if e["id"] != "pricing"]  # delete a heading
+    entries.insert(0, {"type": "heading", "id": "h-mine", "title": "Money first", "subtitle": "My view"})
+    entries.remove(by_id["revenue"])
+    entries.insert(1, by_id["revenue"])
+
+    resp = await client.put(ANALYTICS, json={"entries": entries, "expected_revision": 0}, headers=auth_headers)
+    assert resp.status_code == 200, resp.text
+    saved = (await client.get(ANALYTICS, headers=auth_headers)).json()["entries"]
+    ids = [e["id"] for e in saved]
+    assert ids[:2] == ["h-mine", "revenue"]
+    assert "pricing" not in ids  # a deleted heading stays deleted
+    saved_by_id = {e["id"]: e for e in saved}
+    assert saved_by_id["revpar"]["size"] == "md"
+    assert saved_by_id["avg_discount"]["hidden"] is True
+    assert saved_by_id["portfolio"]["title"] == "How we're doing"
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"type": "metric", "id": "occupancy", "size": "full"},  # tiles are sm/md only
+        {"type": "metric", "id": "booking_funnel", "size": "sm"},  # panels are half/full only
+        {"type": "metric", "id": "made_up", "size": "sm"},
+        {"type": "heading", "id": "h-x", "title": "   "},
+        {"type": "heading", "id": "occupancy", "title": "Clash"},
+        {"type": "heading", "id": "Bad Id!", "title": "x"},
+    ],
+)
+async def test_invalid_analytics_entries_rejected(client, auth_headers, bad):
+    resp = await client.put(ANALYTICS, json={"entries": [bad], "expected_revision": 0}, headers=auth_headers)
+    assert resp.status_code == 422
+
+
+async def test_heading_limit(client, auth_headers):
+    headings = [{"type": "heading", "id": f"h-{i}", "title": f"H{i}"} for i in range(21)]
+    resp = await client.put(ANALYTICS, json={"entries": headings, "expected_revision": 0}, headers=auth_headers)
+    assert resp.status_code == 422
+
+
+async def test_negotiation_off_hides_negotiation_metrics_and_restores_them(client, auth_headers):
+    entries = _analytics_input((await client.get(ANALYTICS, headers=auth_headers)).json())
+    neg = next(e for e in entries if e["id"] == "avg_discount")
+    neg["size"] = "md"
+    entries = [neg, *[e for e in entries if e["id"] != "avg_discount"]]
+    await client.put(ANALYTICS, json={"entries": entries, "expected_revision": 0}, headers=auth_headers)
+
+    await client.patch("/api/v1/capabilities/negotiation", json={"enabled": False}, headers=auth_headers)
+    body = (await client.get(ANALYTICS, headers=auth_headers)).json()
+    unavailable = {e["id"] for e in body["entries"] if e["type"] == "metric" and not e["available"]}
+    assert unavailable == {"negotiated_price", "negotiation_conversion", "avg_discount"}
+    # Saving other edits meanwhile keeps their place and size.
+    resp = await client.put(ANALYTICS, json={"entries": _analytics_input(body), "expected_revision": 1}, headers=auth_headers)
+    assert resp.status_code == 200
+
+    await client.patch("/api/v1/capabilities/negotiation", json={"enabled": True}, headers=auth_headers)
+    body = (await client.get(ANALYTICS, headers=auth_headers)).json()
+    assert body["entries"][0]["id"] == "avg_discount" and body["entries"][0]["size"] == "md"
+
+
+async def test_analytics_layout_conflict_and_reset(client, auth_headers):
+    entries = _analytics_input((await client.get(ANALYTICS, headers=auth_headers)).json())
+    assert (await client.put(ANALYTICS, json={"entries": entries, "expected_revision": 0}, headers=auth_headers)).status_code == 200
+    assert (await client.put(ANALYTICS, json={"entries": entries, "expected_revision": 0}, headers=auth_headers)).status_code == 409
+    body = (await client.delete(ANALYTICS, headers=auth_headers)).json()
+    assert body["is_default"] is True

@@ -69,6 +69,13 @@ class Property(UUIDPkMixin, TimestampMixin, Base):
     twilio_number: Mapped[str | None] = mapped_column(String(32), unique=True, index=True)
     base_price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
     ical_url: Mapped[str | None] = mapped_column(String(1024))
+    # Host transfer number for this property's group, used only when the
+    # host chose "a number per group of properties"
+    # (User.notification_preferences.transfer_number_mode == "per_property").
+    # Live transfers and host alerts about this property go here, falling
+    # back to User.phone -- see notification_preferences_service
+    # .host_transfer_phone. Not an inbound number: guests never dial it.
+    host_transfer_phone: Mapped[str | None] = mapped_column(String(32))
 
     # One-line distinguishing description, e.g. "Glass house, 1BHK with a
     # private jacuzzi" -- the system prompt leads with this whenever a guest

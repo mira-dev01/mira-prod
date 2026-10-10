@@ -13,7 +13,7 @@ import { StatusChip } from "@/components/status-chip";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError } from "@/lib/api";
 import { formatINR, formatStayDates, nightsBetween } from "@/lib/format";
-import { leadTemperatureLabel, leadTemperatureTone } from "@/lib/leads";
+import { useLeadLabels } from "@/lib/leads";
 import { cn } from "@/lib/utils";
 import type { BookingReconciliation, PriceChoice } from "@/lib/types";
 
@@ -73,6 +73,7 @@ export function BookingSummary({ item }: { item: BookingReconciliation }) {
 }
 
 function ConversationCard({ item }: { item: BookingReconciliation }) {
+  const leadLabels = useLeadLabels();
   const { conversation, booking } = item;
   if (!conversation) return null;
   const signals = booking.mira_attribution_signals.filter((s) => SIGNAL_LABELS[s]);
@@ -81,12 +82,10 @@ function ConversationCard({ item }: { item: BookingReconciliation }) {
       <div className="flex flex-wrap items-center gap-2">
         <MessageSquare className="size-4 text-muted-foreground" />
         <span className="font-medium">{conversation.guest_name ?? conversation.guest_phone ?? "Guest"}</span>
-        {conversation.lead_temperature && (
-          <StatusChip
-            status={leadTemperatureLabel(conversation.lead_temperature)}
-            tone={leadTemperatureTone[conversation.lead_temperature] ?? "neutral"}
-          />
-        )}
+        <StatusChip
+          status={leadLabels.label(conversation.lead_temperature)}
+          tone={leadLabels.tone(conversation.lead_temperature)} className="normal-case"
+        />
         {conversation.conversation_at && (
           <span className="text-xs text-muted-foreground">
             {new Date(conversation.conversation_at).toLocaleString("en-IN", {

@@ -161,6 +161,17 @@ def _basis_from_guest_words(params: FunctionCallParams, established: str | None)
     return None
 
 
+def _uuid_or_none(value: str | None) -> uuid.UUID | None:
+    """ConversationState stores ids as strings; a malformed one is treated
+    as "no property known" rather than failing the tool call."""
+    if not value:
+        return None
+    try:
+        return uuid.UUID(value)
+    except ValueError:
+        return None
+
+
 def build_voice_tools(
     call_session_id: uuid.UUID | None,
     property_id: uuid.UUID | None,
@@ -530,7 +541,13 @@ def build_voice_tools(
             try:
                 args = RequestHostTransferArgs(reason=reason)
                 result = await tool_handlers.handle_request_host_transfer(
-                    db, args, call_session_id, property_id, host_user_id, guest_profile_id=guest_profile_id
+                    db,
+                    args,
+                    call_session_id,
+                    property_id,
+                    host_user_id,
+                    guest_profile_id=guest_profile_id,
+                    context_property_id=_uuid_or_none(state.selected_property_id),
                 )
                 state.mark_escalated()
             except ValidationError as exc:
@@ -1281,12 +1298,7 @@ def build_voice_tools(
             # The state-based fallback exists so correct scoping doesn't
             # depend on the LLM remembering to pass faq_property_id every
             # single time once a property has been named.
-            default_property_id = property_id
-            if state.selected_property_id:
-                try:
-                    default_property_id = uuid.UUID(state.selected_property_id)
-                except ValueError:
-                    default_property_id = property_id
+            default_property_id = _uuid_or_none(state.selected_property_id) or property_id
 
             # Phase 4b.3 (documentation/agent-conversation-improvement.md):
             # feeds the real, on-file amenity list to

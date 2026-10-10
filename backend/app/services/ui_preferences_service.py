@@ -25,6 +25,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.user import User
 from app.models.user_ui_preference import UserUiPreference
 from app.schemas.ui_preferences import (
+    AnalyticsEntryOut,
+    AnalyticsLayoutOut,
+    AnalyticsLayoutUpdate,
     NavigationPreferencesOut,
     NavigationPreferencesUpdate,
     NavItemOut,
@@ -33,6 +36,7 @@ from app.schemas.ui_preferences import (
     WidgetOut,
 )
 from app.services import capability_service
+from app.services.analytics_widget_registry import DEFAULT_LAYOUT, MAX_HEADINGS, METRICS_BY_ID, AnalyticsMetric
 from app.services.capability_registry import get_capability
 from app.services.navigation_registry import NAV_BY_ID, NAV_DESTINATIONS, NavDestination
 from app.services.overview_widget_registry import OVERVIEW_WIDGETS, WIDGETS_BY_ID, OverviewWidget
@@ -41,6 +45,7 @@ logger = logging.getLogger(__name__)
 
 NAV_KEY = "navigation"
 WIDGETS_KEY = "overview_widgets"
+ANALYTICS_KEY = "analytics_widgets"
 SCHEMA_VERSION = 1
 
 
@@ -336,3 +341,127 @@ async def save_overview_layout(db: AsyncSession, user: User, payload: OverviewLa
 async def reset_overview_layout(db: AsyncSession, user: User) -> OverviewLayoutOut:
     await _reset(db, user, WIDGETS_KEY)
     return await get_overview_layout(db, user)
+
+
+# ── Analytics page ───────────────────────────────────────────────────────
+# Same reconciliation rules as the Overview, plus host-written headings:
+# headings are the host's own content, so one they delete stays deleted
+# (only missing *metrics* are ever filled back in).
+
+_ANALYTICS_DEFAULT_IDS = [e["id"] for e in DEFAULT_LAYOUT]
+
+
+def _metric_available(metric: AnalyticsMetric, usable: set[str]) -> bool:
+    return any(c in usable for c in metric.capabilities)
+
+
+def _clean_heading(entry: dict) -> dict | None:
+    title = str(entry.get("title") or "").strip()[:80]
+    if not title:
+        return None
+    subtitle = str(entry.get("subtitle") or "").strip()[:160] or None
+    return {"type": "heading", "id": str(entry["id"])[:40], "title": title, "subtitle": subtitle}
+
+
+def _stored_analytics(row: UserUiPreference | None) -> list[dict]:
+    """Ordered, sanitized entries; new registry metrics appear at their
+    default position."""
+    raw = (row.data if row is not None else None) or {}
+    stored = raw.get("entries") if row is not None else [dict(e) for e in DEFAULT_LAYOUT]
+    entries: dict[str, dict] = {}
+    for entry in stored or []:
+        if not isinstance(entry, dict) or not entry.get("id") or entry["id"] in entries:
+            continue
+        if entry.get("type") == "heading":
+            heading = _clean_heading(entry)
+            if heading is not None:
+                entries[heading["id"]] = heading
+            continue
+        metric = METRICS_BY_ID.get(entry["id"])
+        if metric is None:
+            continue
+        size = entry.get("size") if entry.get("size") in metric.sizes else metric.default_size
+        entries[metric.id] = {"type": "metric", "id": metric.id, "size": size, "hidden": bool(entry.get("hidden"))}
+    order = fill_missing(list(entries), _ANALYTICS_DEFAULT_IDS, only=set(METRICS_BY_ID))
+    defaults = {e["id"]: e for e in DEFAULT_LAYOUT}
+    return [entries.get(eid) or dict(defaults[eid]) for eid in order]
+
+
+def _resolve_analytics(row: UserUiPreference | None, usable: set[str]) -> AnalyticsLayoutOut:
+    out: list[AnalyticsEntryOut] = []
+    for entry in _stored_analytics(row):
+        if entry["type"] == "heading":
+            out.append(AnalyticsEntryOut(type="heading", id=entry["id"], title=entry["title"], subtitle=entry["subtitle"]))
+            continue
+        metric = METRICS_BY_ID[entry["id"]]
+        available = _metric_available(metric, usable)
+        out.append(
+            AnalyticsEntryOut(
+                type="metric",
+                id=metric.id,
+                label=metric.label,
+                description=metric.description,
+                formula=metric.formula,
+                kind=metric.kind,
+                sizes=list(metric.sizes),
+                size=entry["size"],
+                hidden=entry["hidden"],
+                available=available,
+                unavailable_reason=None if available else _unavailable_reason(metric.capabilities),
+            )
+        )
+    return AnalyticsLayoutOut(
+        entries=out,
+        revision=row.revision if row is not None else 0,
+        is_default=row is None,
+        updated_at=row.updated_at if row is not None else None,
+    )
+
+
+async def get_analytics_layout(db: AsyncSession, user: User) -> AnalyticsLayoutOut:
+    usable = await capability_service.usable_capability_ids(db, user)
+    return _resolve_analytics(await _get_row(db, user, ANALYTICS_KEY), usable)
+
+
+async def save_analytics_layout(db: AsyncSession, user: User, payload: AnalyticsLayoutUpdate) -> AnalyticsLayoutOut:
+    _reject_duplicates([e.id for e in payload.entries], "layout entries")
+    usable = await capability_service.usable_capability_ids(db, user)
+
+    submitted: dict[str, dict] = {}
+    headings = 0
+    for entry in payload.entries:
+        if entry.type == "heading":
+            if entry.id in METRICS_BY_ID:
+                raise PreferenceValidationError(f"{entry.id} is a metric id, not a heading id.")
+            heading = _clean_heading(entry.model_dump())
+            if heading is None:
+                raise PreferenceValidationError("Every heading needs a title.")
+            headings += 1
+            submitted[entry.id] = heading
+            continue
+        metric = METRICS_BY_ID.get(entry.id)
+        if metric is None:
+            raise PreferenceValidationError(f"Unknown metric: {entry.id}")
+        if not _metric_available(metric, usable):
+            raise PreferenceValidationError(f"{metric.label} isn't available on your account.")
+        if entry.size not in metric.sizes:
+            raise PreferenceValidationError(f"{metric.label} supports these sizes only: {', '.join(metric.sizes)}.")
+        submitted[entry.id] = {"type": "metric", "id": metric.id, "size": entry.size, "hidden": entry.hidden}
+    if headings > MAX_HEADINGS:
+        raise PreferenceValidationError(f"Up to {MAX_HEADINGS} headings.")
+
+    row = await _get_row(db, user, ANALYTICS_KEY, for_update=True)
+    previous = {e["id"]: e for e in _stored_analytics(row)}
+    # Metrics not in this request (unavailable ones, or ones the client
+    # left out) keep their previous position and settings; headings the
+    # host removed stay removed.
+    order = fill_missing(list(submitted), list(previous), only=set(METRICS_BY_ID))
+    data = {"entries": [submitted.get(eid) or previous[eid] for eid in order]}
+
+    row = await _write(db, user, ANALYTICS_KEY, row, payload.expected_revision, data)
+    return _resolve_analytics(row, usable)
+
+
+async def reset_analytics_layout(db: AsyncSession, user: User) -> AnalyticsLayoutOut:
+    await _reset(db, user, ANALYTICS_KEY)
+    return await get_analytics_layout(db, user)

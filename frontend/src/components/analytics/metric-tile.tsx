@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import { TrendingDown, TrendingUp } from "lucide-react";
+import { InfoTip } from "@/components/ui/info-tip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
@@ -17,6 +18,8 @@ export function MetricTile({
   changeLabel,
   loading,
   muted,
+  info,
+  footer,
 }: {
   icon: LucideIcon;
   label: string;
@@ -29,6 +32,10 @@ export function MetricTile({
   loading?: boolean;
   /** Value is a placeholder ("—" / "Not enough data yet"), render it quieter. */
   muted?: boolean;
+  /** What the metric means and how it's calculated, behind an ⓘ. */
+  info?: React.ReactNode;
+  /** A note or action under the tile (e.g. "Confirm 3 booking prices"). */
+  footer?: React.ReactNode;
 }) {
   return (
     <div className="space-y-1.5 rounded-lg p-3">
@@ -40,6 +47,7 @@ export function MetricTile({
           <Icon className="size-3.5" style={{ color: "var(--accent-warm)" }} />
         </span>
         <p className="text-sm text-muted-foreground">{label}</p>
+        {info && <InfoTip label={`About ${label}`}>{info}</InfoTip>}
       </div>
       {loading ? (
         <Skeleton className="h-7 w-20" />
@@ -56,6 +64,7 @@ export function MetricTile({
         </p>
       )}
       {!loading && hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+      {!loading && footer}
     </div>
   );
 }

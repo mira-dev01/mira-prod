@@ -192,7 +192,7 @@ async def test_lead_agent_cannot_be_disabled_while_number_live(client, auth_head
 
     resp = await client.patch("/api/v1/capabilities/lead_agent", json={"enabled": False}, headers=auth_headers)
     assert resp.status_code == 409
-    assert "Guest Call Number" in resp.json()["detail"]
+    assert "call intake number" in resp.json()["detail"]
 
     # A stored "off" preference never hides a number that's still live.
     db_session.add(HostCapability(user_id=test_user.id, capability_id="lead_agent", enabled=False))

@@ -10,17 +10,26 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { DateRangePicker } from "@/components/date-range-picker";
 import { BookingReconciliationPanel } from "@/components/booking-reconciliation";
+import { LayoutGrid } from "lucide-react";
+import { renderAnalyticsMetric, type AnalyticsWidgetContext } from "@/components/analytics/analytics-sections";
 import {
-  BookingFunnelSection,
-  GuestIntentSection,
-  MiraImpactSection,
-  NeedsConfirmationSection,
-  PortfolioPerformanceSection,
-  PricingSection,
-} from "@/components/analytics/analytics-sections";
+  AnalyticsCustomizer,
+  analyticsDraftFrom,
+  type AnalyticsDraft,
+} from "@/components/analytics/analytics-customizer";
 import { useAsync } from "@/hooks/use-async";
 import { useDateRange } from "@/hooks/use-date-range";
 import { api } from "@/lib/api";
+import { cn } from "@/lib/utils";
+import type { AnalyticsEntry } from "@/lib/types";
+
+// Predefined sizes only, on a 12-column grid (full width on phones).
+const SIZE_CLASS: Record<string, string> = {
+  sm: "col-span-12 sm:col-span-6 lg:col-span-3",
+  md: "col-span-12 lg:col-span-6",
+  half: "col-span-12 lg:col-span-6",
+  full: "col-span-12",
+};
 
 const ALL_PROPERTIES = "all";
 
@@ -29,7 +38,9 @@ const ALL_PROPERTIES = "all";
  * the "needs confirmation" list comes from the booking reconciliation queue
  * and opens the same panel the Calendar uses. Every number is computed
  * server-side from persisted data (backend/app/services/analytics_service.py)
- * -- nothing here derives or estimates a value.
+ * -- nothing here derives or estimates a value. Which metrics show, in what
+ * order and size, and the headings between them are the host's own layout
+ * (GET /preferences/analytics-widgets); the layout never changes a number.
  */
 export default function AnalyticsPage() {
   const { startDateISO, endDateISO } = useDateRange();
@@ -56,6 +67,15 @@ export default function AnalyticsPage() {
     [startDateISO, endDateISO, selectedProperty, includeTestCalls]
   );
   const { data: queue, refetch: refetchQueue } = useAsync(() => api.bookings.reconciliationQueue(), []);
+  const {
+    data: layout,
+    error: layoutError,
+    refetch: refetchLayout,
+    setData: setLayout,
+  } = useAsync(() => api.preferences.analyticsWidgets(), []);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<AnalyticsDraft | null>(null);
+  const activeDraft = editing && layout ? (draft ?? analyticsDraftFrom(layout)) : null;
 
   function openFirstQueued(predicate: (needsPrice: boolean, needsMatch: boolean) => boolean) {
     const item = queue?.items.find(
@@ -106,8 +126,35 @@ export default function AnalyticsPage() {
               Include browser test calls
             </Label>
           </div>
+          {layout && !activeDraft && (
+            <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+              <LayoutGrid className="size-3.5" />
+              Customize
+            </Button>
+          )}
         </div>
       </div>
+
+      {activeDraft && layout && (
+        <AnalyticsCustomizer
+          layout={layout}
+          draft={activeDraft}
+          onDraftChange={setDraft}
+          onSaved={(saved) => {
+            setLayout(saved);
+            setEditing(false);
+            setDraft(null);
+          }}
+          onCancel={() => {
+            setEditing(false);
+            setDraft(null);
+          }}
+          onReload={() => {
+            setDraft(null);
+            refetchLayout();
+          }}
+        />
+      )}
 
       {noProperties ? (
         <Card>
@@ -141,28 +188,28 @@ export default function AnalyticsPage() {
           <Skeleton className="h-56 w-full" />
         </div>
       ) : (
-        <>
-          {queue && (
-            <NeedsConfirmationSection
-              queue={queue}
-              propertyId={selectedProperty ?? null}
-              onOpen={setOpenBookingId}
-              expanded={queueExpanded}
-              onToggleExpanded={() => setQueueExpanded((v) => !v)}
-            />
-          )}
-          <PortfolioPerformanceSection data={data} onConfirmPrices={() => openFirstQueued((needsPrice) => needsPrice)} />
-          <div className="grid items-stretch gap-4 lg:grid-cols-2">
-            <BookingFunnelSection data={data} />
-            <GuestIntentSection data={data} />
-          </div>
-          <MiraImpactSection
-            data={data}
-            propertySelected={!!selectedProperty}
-            onReviewMatches={() => openFirstQueued((_, needsMatch) => needsMatch)}
-          />
-          <PricingSection data={data} />
-        </>
+        <AnalyticsGrid
+          entries={
+            activeDraft
+              ? activeDraft.shown
+              : layout
+                ? layout.entries.filter((e) => e.type === "heading" || (e.available && !e.hidden))
+                : layoutError
+                  ? null
+                  : []
+          }
+          context={{
+            data,
+            queue: queue ?? null,
+            propertyId: selectedProperty ?? null,
+            queueExpanded,
+            onToggleQueue: () => setQueueExpanded((v) => !v),
+            onOpenBooking: setOpenBookingId,
+            onConfirmPrices: () => openFirstQueued((needsPrice) => needsPrice),
+            onReviewMatches: () => openFirstQueued((_, needsMatch) => needsMatch),
+          }}
+          onRetryLayout={refetchLayout}
+        />
       )}
 
       <BookingReconciliationPanel
@@ -180,6 +227,58 @@ export default function AnalyticsPage() {
           Open the Calendar
         </Link>
       </BookingReconciliationPanel>
+    </div>
+  );
+}
+
+/**
+ * The host's layout, in order: headings span the full width; metrics take
+ * their chosen predefined size. Headings with nothing under them are kept --
+ * they're the host's own content.
+ */
+function AnalyticsGrid({
+  entries,
+  context,
+  onRetryLayout,
+}: {
+  entries: AnalyticsEntry[] | null;
+  context: AnalyticsWidgetContext;
+  onRetryLayout: () => void;
+}) {
+  if (entries === null) {
+    return (
+      <Card>
+        <CardContent className="space-y-3 py-6 text-sm">
+          <p className="text-muted-foreground">Couldn&apos;t load your Analytics layout.</p>
+          <Button size="sm" variant="outline" onClick={onRetryLayout}>
+            Retry
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+  if (entries.length === 0) {
+    return <p className="text-sm text-muted-foreground">Nothing on your Analytics page yet — use Customize to add metrics.</p>;
+  }
+  return (
+    <div className="grid grid-cols-12 items-stretch gap-4">
+      {entries.map((entry) => {
+        if (entry.type === "heading") {
+          return (
+            <div key={entry.id} className="col-span-12 pt-2">
+              <h2 className="font-heading text-base font-medium">{entry.title}</h2>
+              {entry.subtitle && <p className="text-sm text-muted-foreground">{entry.subtitle}</p>}
+            </div>
+          );
+        }
+        const content = renderAnalyticsMetric(entry, context);
+        if (content === null) return null;
+        return (
+          <div key={entry.id} className={cn("min-w-0", SIZE_CLASS[entry.size ?? "full"])}>
+            {content}
+          </div>
+        );
+      })}
     </div>
   );
 }

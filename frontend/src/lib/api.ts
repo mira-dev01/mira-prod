@@ -1,5 +1,7 @@
 import type {
   AirbnbUrlImportStatus,
+  AnalyticsEntryInput,
+  AnalyticsLayout,
   AnalyticsDashboard,
   AnalyticsSummary,
   AnalyticsTimeseries,
@@ -31,6 +33,8 @@ import type {
   NegotiationPolicyParseResponse,
   NegotiationRuleOut,
   NegotiationRuleUpdate,
+  NotificationPreferencesUpdate,
+  NotificationSettings,
   NotificationOut,
   OverviewData,
   OverviewLayout,
@@ -51,6 +55,7 @@ import type {
   RecoveryAnalytics,
   TechnicianCreate,
   TechnicianOut,
+  TransferNumberGroup,
   UserOut,
   UserUpdate,
 } from "@/lib/types";
@@ -213,6 +218,21 @@ export const api = {
     saveOverviewWidgets: (data: OverviewLayoutUpdate) =>
       request<OverviewLayout>("/preferences/overview-widgets", { method: "PUT", body: JSON.stringify(data) }),
     resetOverviewWidgets: () => request<OverviewLayout>("/preferences/overview-widgets", { method: "DELETE" }),
+    analyticsWidgets: () => request<AnalyticsLayout>("/preferences/analytics-widgets"),
+    saveAnalyticsWidgets: (data: { entries: AnalyticsEntryInput[]; expected_revision: number }) =>
+      request<AnalyticsLayout>("/preferences/analytics-widgets", { method: "PUT", body: JSON.stringify(data) }),
+    resetAnalyticsWidgets: () => request<AnalyticsLayout>("/preferences/analytics-widgets", { method: "DELETE" }),
+  },
+  // Settings > Your account > Notifications & escalations.
+  notificationSettings: {
+    get: () => request<NotificationSettings>("/notification-settings"),
+    update: (data: NotificationPreferencesUpdate) =>
+      request<NotificationSettings>("/notification-settings", { method: "PATCH", body: JSON.stringify(data) }),
+    preview: (data: { subject?: string | null; body?: string | null }) =>
+      request<{ subject: string; html: string }>("/notification-settings/preview", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
   },
   properties: {
     list: () => request<PropertyOut[]>("/properties"),
@@ -230,6 +250,10 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ urls }),
       }),
+    // Host transfer numbers per group of properties (replaces every
+    // assignment); properties left out use the account number.
+    setTransferNumbers: (groups: TransferNumberGroup[]) =>
+      request<PropertyOut[]>("/properties/transfer-numbers", { method: "PUT", body: JSON.stringify({ groups }) }),
     importAirbnbUrlsStatus: (snapshotId: string) =>
       request<AirbnbUrlImportStatus>(`/properties/import-airbnb-urls/${snapshotId}`),
   },
@@ -414,9 +438,9 @@ export const api = {
       request<FaqGapAnalytics>(`/faq/gaps/analytics${buildQuery({ bucket })}`),
     answer: (gapId: string, data: FaqGapAnswer) =>
       request<FaqEntryOut>(`/faq/gaps/${gapId}/answer`, { method: "POST", body: JSON.stringify(data) }),
-    answerVoice: (gapId: string, audio: Blob, applyToProperty: boolean = false) =>
+    answerVoice: (gapId: string, audio: Blob, applyToProperty: boolean = false, question?: string) =>
       uploadAudio<FaqEntryOut>(
-        `/faq/gaps/${gapId}/answer-voice${buildQuery({ apply_to_property: applyToProperty })}`,
+        `/faq/gaps/${gapId}/answer-voice${buildQuery({ apply_to_property: applyToProperty, question })}`,
         audio,
         "answer.webm"
       ),

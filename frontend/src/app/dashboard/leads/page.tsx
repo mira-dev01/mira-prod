@@ -22,7 +22,7 @@ import { WhatsAppButton } from "@/components/whatsapp-button";
 import { useAsync } from "@/hooks/use-async";
 import { useDateRange } from "@/hooks/use-date-range";
 import { api, ApiError } from "@/lib/api";
-import { leadGuestLabel, leadPhoneLabel, leadTemperatureLabel, leadTemperatureTone } from "@/lib/leads";
+import { leadGuestLabel, leadPhoneLabel, useLeadLabels } from "@/lib/leads";
 import { cn, isBrowserTestIdentity, matchesSearch } from "@/lib/utils";
 import type { LeadOut, LeadStatus } from "@/lib/types";
 
@@ -85,6 +85,7 @@ function LeadsTable({
   onRowClick: (lead: LeadOut) => void;
   muted?: boolean;
 }) {
+  const leadLabels = useLeadLabels();
   return (
     <div className={cn("overflow-x-auto", muted && "opacity-60")}>
       <Table>
@@ -112,11 +113,7 @@ function LeadsTable({
               <TableCell>{leadDatesLabel(lead)}</TableCell>
               <TableCell>{lead.num_guests ?? "—"}</TableCell>
               <TableCell>
-                {lead.lead_temperature ? (
-                  <StatusChip status={leadTemperatureLabel(lead.lead_temperature)} tone={leadTemperatureTone[lead.lead_temperature]} />
-                ) : (
-                  "—"
-                )}
+                <StatusChip status={leadLabels.label(lead.lead_temperature)} tone={leadLabels.tone(lead.lead_temperature)} className="normal-case" />
               </TableCell>
               <TableCell>
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -176,6 +173,7 @@ function LeadCard({
   onDragStart: (e: React.DragEvent) => void;
   onMarkHot?: (lead: LeadOut) => void;
 }) {
+  const leadLabels = useLeadLabels();
   const closed = lead.status === "closed";
   return (
     <Card
@@ -189,9 +187,7 @@ function LeadCard({
           <span className="min-w-0 truncate font-medium">{leadGuestLabel(lead)}</span>
           <div className="flex shrink-0 items-center gap-1.5">
             <WhatsAppButton phone={lead.phone} size="icon-sm" stopPropagation />
-            {lead.lead_temperature && (
-              <StatusChip status={leadTemperatureLabel(lead.lead_temperature)} tone={leadTemperatureTone[lead.lead_temperature]} />
-            )}
+            <StatusChip status={leadLabels.label(lead.lead_temperature)} tone={leadLabels.tone(lead.lead_temperature)} className="normal-case" />
           </div>
         </div>
         <p className="text-xs text-muted-foreground">
@@ -218,7 +214,7 @@ function LeadCard({
               onMarkHot(lead);
             }}
           >
-            Mark as Hot Lead
+            Mark as {leadLabels.labels.hot} lead
           </Button>
         )}
       </CardContent>
@@ -343,6 +339,7 @@ function ServiceRequestsTabContent() {
 }
 
 function BookingRequestsTabContent() {
+  const leadLabels = useLeadLabels();
   const searchParams = useSearchParams();
   const initialStatus = searchParams.get("status") ?? "all";
 
@@ -438,7 +435,7 @@ function BookingRequestsTabContent() {
   async function handleMarkHot(lead: LeadOut) {
     try {
       await api.leads.update(lead.id, { status: "booked" });
-      toast.success("Marked as Hot Lead");
+      toast.success(`Marked as ${leadLabels.labels.hot} lead`);
       refetch();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Failed to update lead");
@@ -505,7 +502,7 @@ function BookingRequestsTabContent() {
       ) : view === "board" ? (
         (leads ?? []).length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No leads yet — they appear here once your portfolio&rsquo;s lead intake number starts receiving calls.
+            No leads yet — they appear here once your portfolio&rsquo;s call intake number starts receiving calls.
           </p>
         ) : searchFilteredLeads.length === 0 ? (
           <p className="text-sm text-muted-foreground">No leads match your search.</p>
@@ -521,7 +518,7 @@ function BookingRequestsTabContent() {
         <p className="text-sm text-muted-foreground">
           {leads && leads.length > 0
             ? "No leads match this status filter."
-            : "No leads yet — they appear here once your portfolio's lead intake number starts receiving calls."}
+            : "No leads yet — they appear here once your portfolio's call intake number starts receiving calls."}
         </p>
       ) : searchFilteredLeads.length === 0 ? (
         <p className="text-sm text-muted-foreground">No leads match your search.</p>

@@ -16,8 +16,8 @@ import { WhatsAppButton } from "@/components/whatsapp-button";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError } from "@/lib/api";
 import { cn, isBrowserTestIdentity } from "@/lib/utils";
-import { LEAD_TEMPERATURES, leadTemperatureLabel } from "@/lib/leads";
-import type { LeadOut, LeadStatus, LeadTemperature } from "@/lib/types";
+import { LEAD_BUCKETS, leadBucket, temperatureForBucket, useLeadLabels } from "@/lib/leads";
+import type { LeadBucket, LeadOut, LeadStatus } from "@/lib/types";
 
 export const LEAD_STATUSES: LeadStatus[] = ["open", "contacted", "booked", "closed"];
 
@@ -75,7 +75,8 @@ export function LeadDetailPanel({
   onSaved: () => void;
 }) {
   const router = useRouter();
-  const [temperature, setTemperature] = useState<string>("warm");
+  const leadLabels = useLeadLabels();
+  const [temperature, setTemperature] = useState<LeadBucket>("not_qualified");
   const [status, setStatus] = useState<LeadStatus>("open");
   const [nextFollowUp, setNextFollowUp] = useState("");
   const [summary, setSummary] = useState("");
@@ -94,7 +95,7 @@ export function LeadDetailPanel({
   // profile page's edit form -- avoids stomping on in-progress edits if
   // `lead` identity changes for an unrelated reason while open.
   if (lead && loadedFor !== lead.id) {
-    setTemperature(lead.lead_temperature ?? "warm");
+    setTemperature(leadBucket(lead.lead_temperature));
     setStatus((lead.status as LeadStatus) ?? "open");
     setNextFollowUp(lead.next_follow_up ?? "");
     setSummary(lead.conversation_summary ?? "");
@@ -126,7 +127,7 @@ export function LeadDetailPanel({
     setSubmitting(true);
     try {
       await api.leads.update(lead.id, {
-        lead_temperature: temperature as LeadTemperature,
+        lead_temperature: temperatureForBucket(temperature, lead.lead_temperature),
         status,
         next_follow_up: nextFollowUp,
         conversation_summary: summary,
@@ -193,14 +194,14 @@ export function LeadDetailPanel({
       <form id="edit-lead-form" onSubmit={handleSave} className="space-y-4">
         <div className="space-y-2">
           <Label>Temperature</Label>
-          <Select value={temperature} onValueChange={(v) => v && setTemperature(v)}>
+          <Select value={temperature} onValueChange={(v) => v && setTemperature(v as LeadBucket)}>
             <SelectTrigger className="w-full">
-              <SelectValue>{(value: string) => leadTemperatureLabel(value)}</SelectValue>
+              <SelectValue>{(value: LeadBucket) => leadLabels.labels[value]}</SelectValue>
             </SelectTrigger>
             <SelectContent>
-              {LEAD_TEMPERATURES.map((t) => (
-                <SelectItem key={t} value={t}>
-                  {leadTemperatureLabel(t)}
+              {LEAD_BUCKETS.map((bucket) => (
+                <SelectItem key={bucket} value={bucket}>
+                  {leadLabels.labels[bucket]}
                 </SelectItem>
               ))}
             </SelectContent>
