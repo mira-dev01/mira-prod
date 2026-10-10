@@ -45,11 +45,15 @@ async def test_parse_airbnb_listing_extracts_faq_entries():
     assert "alarm" in faq_by_category["safety"]["answer"].lower()
 
 
-<<<<<<< Updated upstream
-async def test_parse_airbnb_listing_handles_empty_input():
-    parsed = await parse_airbnb_listing({})
-=======
-def test_parse_airbnb_listing_reads_top_level_photos():
+async def test_parse_airbnb_listing_reads_top_level_photos(monkeypatch):
+    # Hand-written import files may carry already-hosted (Cloudinary) photo
+    # URLs -- used as-is, and the Airbnb gallery is then never re-uploaded.
+    from app.integrations import cloudinary_client
+
+    async def fail_if_called(urls, folder, max_images=10):
+        raise AssertionError("hosted photos must not be re-uploaded")
+
+    monkeypatch.setattr(cloudinary_client, "upload_images_from_urls", fail_if_called)
     raw = _load_fixture()
     raw["photos"] = [
         "https://res.cloudinary.com/demo/image/upload/v1/mira/a.jpg",
@@ -57,14 +61,13 @@ def test_parse_airbnb_listing_reads_top_level_photos():
         "http://insecure.example.com/b.jpg",
         123,
     ]
-    parsed = parse_airbnb_listing(raw)
+    parsed = await parse_airbnb_listing(raw, photo_folder="mira/properties/test-host")
     assert parsed["fields"]["photos"] == ["https://res.cloudinary.com/demo/image/upload/v1/mira/a.jpg"]
-    assert "photos" not in parse_airbnb_listing(_load_fixture())["fields"]
+    assert "photos" not in (await parse_airbnb_listing(_load_fixture()))["fields"]
 
 
-def test_parse_airbnb_listing_handles_empty_input():
-    parsed = parse_airbnb_listing({})
->>>>>>> Stashed changes
+async def test_parse_airbnb_listing_handles_empty_input():
+    parsed = await parse_airbnb_listing({})
     assert parsed == {"fields": {}, "faq_entries": []}
 
 

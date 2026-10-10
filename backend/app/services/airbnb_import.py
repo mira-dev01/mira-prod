@@ -302,21 +302,24 @@ async def parse_airbnb_listing(raw: dict[str, Any], *, photo_folder: str | None 
     if check_out_time:
         fields["check_out_time"] = check_out_time
 
-<<<<<<< Updated upstream
-    photo_urls = _extract_photo_urls(node, sections)
-    if photo_urls and photo_folder:
-        uploaded = await cloudinary_client.upload_images_from_urls(photo_urls, folder=photo_folder)
-        if uploaded:
-            fields["photos"] = uploaded
-=======
-    # Not part of Airbnb's own scrape -- an optional top-level list of
-    # already-hosted image URLs (typically Cloudinary secure_urls) a host can
-    # add to a hand-written import file. Stored as-is, never re-uploaded,
-    # unlike parse_bright_data_listing's muscache URLs below.
-    photos = [p.strip() for p in raw.get("photos") or [] if isinstance(p, str) and p.strip().startswith("https://")]
-    if photos:
-        fields["photos"] = photos
->>>>>>> Stashed changes
+    # Two photo sources, both ending up on Cloudinary:
+    # 1. An optional top-level list of already-hosted image URLs (typically
+    #    Cloudinary secure_urls) a host can add to a hand-written import file
+    #    -- stored as-is, never re-uploaded.
+    # 2. Otherwise the listing's real Airbnb gallery (muscache URLs),
+    #    re-hosted to Cloudinary when photo_folder is given, exactly like
+    #    parse_bright_data_listing.
+    hosted_photos = [
+        p.strip() for p in raw.get("photos") or [] if isinstance(p, str) and p.strip().startswith("https://")
+    ]
+    if hosted_photos:
+        fields["photos"] = hosted_photos
+    else:
+        photo_urls = _extract_photo_urls(node, sections)
+        if photo_urls and photo_folder:
+            uploaded = await cloudinary_client.upload_images_from_urls(photo_urls, folder=photo_folder)
+            if uploaded:
+                fields["photos"] = uploaded
 
     faq_entries = [
         entry
