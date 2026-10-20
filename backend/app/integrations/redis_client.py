@@ -26,6 +26,10 @@ from typing import Any
 from redis.asyncio import Redis
 
 from app.config import settings
+<<<<<<< HEAD
+=======
+from app.observability import health
+>>>>>>> 368377a (20th October)
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +80,12 @@ async def cache_get_json(key: str) -> Any | None:
         return None
     try:
         raw = await client.get(key)
+<<<<<<< HEAD
     except Exception:
+=======
+    except Exception as exc:
+        health.record("redis", "error", error=exc, kind="cache_op_failed", op="GET")
+>>>>>>> 368377a (20th October)
         logger.warning("Redis GET failed for key=%s -- falling through to a live fetch", key)
         return None
     if raw is None:
@@ -93,5 +102,10 @@ async def cache_set_json(key: str, value: Any, ttl_seconds: int) -> None:
         return
     try:
         await client.set(key, json.dumps(value), ex=ttl_seconds)
+<<<<<<< HEAD
     except Exception:
+=======
+    except Exception as exc:
+        health.record("redis", "error", error=exc, kind="cache_op_failed", op="SET")
+>>>>>>> 368377a (20th October)
         logger.warning("Redis SET failed for key=%s -- proceeding without caching this response", key)

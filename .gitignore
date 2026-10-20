@@ -15,3 +15,5 @@ __pycache__/
 .railway/
 .vercel
 .env*
+.airbnb_imports_tmp/
+venv312/

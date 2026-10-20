@@ -1,12 +1,27 @@
 "use client";
 
 import { useEffect } from "react";
+<<<<<<< HEAD
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
+=======
+import { usePathname, useRouter } from "next/navigation";
+import { useAuth } from "@/lib/auth-context";
+import { OnboardingProvider, useOnboarding } from "@/lib/onboarding-context";
+import { CapabilitiesProvider } from "@/lib/capabilities-context";
+import { NavigationProvider } from "@/lib/navigation-context";
+>>>>>>> 368377a (20th October)
 import { SidebarNav } from "@/components/sidebar-nav";
 import { DateRangeProvider } from "@/components/date-range-context";
 import { PendingImportBanner } from "@/components/pending-import-banner";
 
+<<<<<<< HEAD
+=======
+function FullScreenLoading() {
+  return <div className="fixed inset-0 flex items-center justify-center text-sm text-muted-foreground">Loading…</div>;
+}
+
+>>>>>>> 368377a (20th October)
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -15,6 +30,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     if (!loading && !user) router.replace("/login");
   }, [loading, user, router]);
 
+<<<<<<< HEAD
   if (loading || !user) {
     return (
       <div className="fixed inset-0 flex items-center justify-center text-sm text-muted-foreground">Loading…</div>
@@ -22,6 +38,50 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   return (
+=======
+  if (loading || !user) return <FullScreenLoading />;
+
+  return (
+    <OnboardingProvider>
+      <OnboardingGate>{children}</OnboardingGate>
+    </OnboardingProvider>
+  );
+}
+
+// Hosts who haven't finished onboarding are sent to it (server-persisted --
+// see backend app/services/onboarding_service.py; every pre-existing host
+// was marked onboarded by migration, so this never re-onboards them). Waits
+// for the onboarding state before rendering anything, so the dashboard
+// never flashes for a host who's about to be redirected. If the state
+// can't be loaded at all, fails open to the normal dashboard rather than
+// locking an existing host out.
+function OnboardingGate({ children }: { children: React.ReactNode }) {
+  const { state, loading } = useOnboarding();
+  const pathname = usePathname();
+  const router = useRouter();
+  const onOnboardingRoute = pathname.startsWith("/dashboard/onboarding");
+  const needsOnboarding = state !== null && state.status !== "completed";
+
+  useEffect(() => {
+    if (needsOnboarding && !onOnboardingRoute) router.replace("/dashboard/onboarding");
+  }, [needsOnboarding, onOnboardingRoute, router]);
+
+  if (loading && state === null) return <FullScreenLoading />;
+
+  // The wizard is a focused, full-screen flow -- no sidebar to wander off
+  // into pages that would just redirect back here.
+  if (onOnboardingRoute) {
+    return <div className="fixed inset-0 overflow-y-auto bg-background">{children}</div>;
+  }
+
+  if (needsOnboarding) return <FullScreenLoading />;
+
+  // Capability state and the user's layout preferences are loaded once here
+  // and shared by the sidebar, Overview and Settings (one source of truth).
+  return (
+    <CapabilitiesProvider>
+    <NavigationProvider>
+>>>>>>> 368377a (20th October)
     <DateRangeProvider>
       {/* fixed inset-0 (not h-screen + flex-1) -- this div is a flex item of
           body (app/layout.tsx's `body` is `flex flex-col min-h-full`, not a
@@ -42,5 +102,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </main>
       </div>
     </DateRangeProvider>
+<<<<<<< HEAD
+=======
+    </NavigationProvider>
+    </CapabilitiesProvider>
+>>>>>>> 368377a (20th October)
   );
 }

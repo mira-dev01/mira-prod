@@ -18,12 +18,21 @@ import { useAsync } from "@/hooks/use-async";
 import { api, ApiError } from "@/lib/api";
 import { matchesSearch } from "@/lib/utils";
 import { UnansweredQuestionsCard } from "@/components/unanswered-questions-card";
+<<<<<<< HEAD
+=======
+import type { FaqEntryOut } from "@/lib/types";
+>>>>>>> 368377a (20th October)
 
 export default function FaqPage() {
   const { data: properties } = useAsync(() => api.properties.list(), []);
   const { data: entries, loading, refetch } = useAsync(() => api.faq.list(), []);
 
   const [addOpen, setAddOpen] = useState(false);
+<<<<<<< HEAD
+=======
+  // The same panel adds a new entry or edits an existing one.
+  const [editingId, setEditingId] = useState<string | null>(null);
+>>>>>>> 368377a (20th October)
   const [propertyId, setPropertyId] = useState<string>("all");
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
@@ -38,6 +47,7 @@ export default function FaqPage() {
     matchesSearch(search, [entry.question, entry.answer, propertyName(entry.property_id), entry.category, entry.status])
   );
 
+<<<<<<< HEAD
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
@@ -59,6 +69,53 @@ export default function FaqPage() {
       refetch();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Failed to add FAQ entry");
+=======
+  function resetForm() {
+    setQuestion("");
+    setAnswer("");
+    setCategory("");
+    setPropertyId("all");
+    setEditingId(null);
+  }
+
+  function openAdd() {
+    resetForm();
+    setAddOpen(true);
+  }
+
+  function openEdit(entry: FaqEntryOut) {
+    setEditingId(entry.id);
+    setQuestion(entry.question);
+    setAnswer(entry.answer);
+    setCategory(entry.category ?? "");
+    setPropertyId(entry.property_id ?? "all");
+    setAddOpen(true);
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSubmitting(true);
+    const fields = {
+      property_id: propertyId === "all" ? null : propertyId,
+      question,
+      answer,
+      category: category || null,
+    };
+    try {
+      if (editingId) {
+        // Editing keeps the entry's status (verified stays verified).
+        await api.faq.update(editingId, fields);
+        toast.success("FAQ entry updated");
+      } else {
+        await api.faq.create({ ...fields, status: "verified", verified_by: "host" });
+        toast.success("FAQ entry added");
+      }
+      resetForm();
+      setAddOpen(false);
+      refetch();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : editingId ? "Failed to update FAQ entry" : "Failed to add FAQ entry");
+>>>>>>> 368377a (20th October)
     } finally {
       setSubmitting(false);
     }
@@ -111,7 +168,11 @@ export default function FaqPage() {
                 className="w-56"
               />
             )}
+<<<<<<< HEAD
             <Button size="sm" className="shrink-0" onClick={() => setAddOpen(true)}>
+=======
+            <Button size="sm" className="shrink-0" onClick={openAdd}>
+>>>>>>> 368377a (20th October)
               <Plus className="size-4" />
               Add new
             </Button>
@@ -134,7 +195,11 @@ export default function FaqPage() {
                     <TableHead>Applies to</TableHead>
                     <TableHead>Category</TableHead>
                     <TableHead>Status</TableHead>
+<<<<<<< HEAD
                     <TableHead className="w-40" />
+=======
+                    <TableHead className="w-48" />
+>>>>>>> 368377a (20th October)
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -153,6 +218,12 @@ export default function FaqPage() {
                       </TableCell>
                       <TableCell className="py-3">
                         <div className="flex flex-wrap gap-2">
+<<<<<<< HEAD
+=======
+                          <Button variant="outline" size="sm" onClick={() => openEdit(entry)}>
+                            Edit
+                          </Button>
+>>>>>>> 368377a (20th October)
                           <Button variant="outline" size="sm" onClick={() => handleToggleVerified(entry.id, entry.status)}>
                             {entry.status === "verified" ? "Unverify" : "Verify"}
                           </Button>
@@ -172,6 +243,7 @@ export default function FaqPage() {
 
       <RightPanel
         open={addOpen}
+<<<<<<< HEAD
         onOpenChange={setAddOpen}
         title="Add FAQ entry"
         footer={
@@ -181,6 +253,20 @@ export default function FaqPage() {
         }
       >
         <form id="add-faq-form" onSubmit={handleCreate} className="space-y-4">
+=======
+        onOpenChange={(open) => {
+          setAddOpen(open);
+          if (!open) resetForm();
+        }}
+        title={editingId ? "Edit FAQ entry" : "Add FAQ entry"}
+        footer={
+          <RightPanelFooterButton type="submit" form="add-faq-form" disabled={submitting}>
+            {submitting ? "Saving…" : editingId ? "Save changes" : "Add (verified)"}
+          </RightPanelFooterButton>
+        }
+      >
+        <form id="add-faq-form" onSubmit={handleSubmit} className="space-y-4">
+>>>>>>> 368377a (20th October)
           <div className="min-w-0 space-y-2">
             <Label>Applies to</Label>
             <Select value={propertyId} onValueChange={(v) => v && setPropertyId(v)}>

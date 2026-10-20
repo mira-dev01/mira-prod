@@ -1,12 +1,20 @@
 import uuid
 from dataclasses import dataclass
+<<<<<<< HEAD
 from datetime import date, datetime, time, timedelta, timezone
+=======
+from datetime import date, datetime, time, timedelta
+>>>>>>> 368377a (20th October)
 
 from fastapi import HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.property import Property
+<<<<<<< HEAD
+=======
+from app.utils.dates import IST
+>>>>>>> 368377a (20th October)
 from app.models.user import User
 
 
@@ -24,7 +32,16 @@ async def owned_property_ids(db: AsyncSession, user: User) -> list[uuid.UUID]:
 
 @dataclass
 class DateRange:
+<<<<<<< HEAD
     """Optional start/end date filter, interpreted as UTC calendar days.
+=======
+    """Optional start/end date filter, interpreted as IST calendar days --
+    the same business day as app/utils/dates.today_ist and the day the
+    dashboard's date picker means (it sends the host's local dates). These
+    were UTC days until the Overview redesign; with local dates coming in,
+    UTC days shifted every timestamp filter by 5.5 hours (a single picked
+    day covered 05:30 IST to 05:30 IST the next day).
+>>>>>>> 368377a (20th October)
 
     `end_date` is an inclusive whole calendar day -- filtering must use
     `created_at < until`, not `<= end_date`, since a naive `<=` would exclude
@@ -38,13 +55,21 @@ class DateRange:
     def since(self) -> datetime | None:
         if self.start_date is None:
             return None
+<<<<<<< HEAD
         return datetime.combine(self.start_date, time.min, tzinfo=timezone.utc)
+=======
+        return datetime.combine(self.start_date, time.min, tzinfo=IST)
+>>>>>>> 368377a (20th October)
 
     @property
     def until(self) -> datetime | None:
         if self.end_date is None:
             return None
+<<<<<<< HEAD
         return datetime.combine(self.end_date, time.min, tzinfo=timezone.utc) + timedelta(days=1)
+=======
+        return datetime.combine(self.end_date + timedelta(days=1), time.min, tzinfo=IST)
+>>>>>>> 368377a (20th October)
 
 
 def date_range_query(

@@ -464,24 +464,45 @@ async def answer_faq_gap(
     answer: str,
     apply_to_property: bool,
     verified_by: str,
+<<<<<<< HEAD
+=======
+    question: str | None = None,
+>>>>>>> 368377a (20th October)
 ) -> FaqEntry:
     """Converts an unanswered-question group into a real, verified FaqEntry,
     and marks every pending row sharing the same normalized_question (i.e.
     the whole group, not just the one `gap` row used to look it up) as
+<<<<<<< HEAD
     answered -- so the group actually disappears from list_faq_gaps."""
     entry = FaqEntry(
         user_id=gap.user_id,
         property_id=gap.property_id if apply_to_property else None,
         question=gap.question,
+=======
+    answered -- so the group actually disappears from list_faq_gaps.
+    `question` lets the host reword the guest's question; blank keeps it."""
+    question = (question or "").strip() or gap.question
+    entry = FaqEntry(
+        user_id=gap.user_id,
+        property_id=gap.property_id if apply_to_property else None,
+        question=question,
+>>>>>>> 368377a (20th October)
         answer=answer,
         category="host_answered",
         status="verified",
         verified_by=verified_by,
+<<<<<<< HEAD
         # Reuse the gap's own embedding (identical question text) instead of
         # a fresh API call, if one was already computed -- see
         # embedding_service.py. None here just means the fire-and-forget
         # backfill below will compute it.
         question_embedding=gap.question_embedding,
+=======
+        # Reuse the gap's own embedding instead of a fresh API call when the
+        # question text is unchanged -- see embedding_service.py. A reworded
+        # question (or none computed yet) gets the background backfill below.
+        question_embedding=gap.question_embedding if question == gap.question else None,
+>>>>>>> 368377a (20th October)
     )
     db.add(entry)
     await db.flush()  # need entry.id before the bulk-update below

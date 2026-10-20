@@ -7,6 +7,19 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.database import Base
 from app.models.mixins import TimestampMixin, UUIDPkMixin
 
+<<<<<<< HEAD
+=======
+# Internal, operator-facing telemetry rows (one per call -- see
+# app/voice/audio_input_observer.py) that share this table and its write
+# path but are NOT guard/validator firings. Excluded from the host-facing
+# quality-event analytics so a per-call telemetry row can't dominate a
+# host's "most frequent" breakdown or inflate its trend counts.
+AUDIO_INPUT_TELEMETRY_RULE = "audio_input_telemetry"
+# Per-call usage/performance summary (app/voice/call_metrics.py).
+CALL_METRICS_RULE = "call_metrics"
+INTERNAL_TELEMETRY_RULES = frozenset({AUDIO_INPUT_TELEMETRY_RULE, CALL_METRICS_RULE})
+
+>>>>>>> 368377a (20th October)
 
 class CallQualityEvent(UUIDPkMixin, TimestampMixin, Base):
     """Persisted copy of one ValidationResult (app/voice/conversation_quality.py)

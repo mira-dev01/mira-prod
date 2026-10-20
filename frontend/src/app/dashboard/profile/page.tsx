@@ -1,14 +1,24 @@
 "use client";
 
+<<<<<<< HEAD
+=======
+import Link from "next/link";
+>>>>>>> 368377a (20th October)
 import { useRef, useState } from "react";
 import { Camera, Link2, MessageCircle, Pencil, Phone, Send } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+<<<<<<< HEAD
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RightPanel, RightPanelFooterButton } from "@/components/ui/right-panel";
 import { Switch } from "@/components/ui/switch";
+=======
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { RightPanel, RightPanelFooterButton } from "@/components/ui/right-panel";
+>>>>>>> 368377a (20th October)
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 
@@ -37,7 +47,10 @@ export default function ProfilePage() {
   const [notificationEmail, setNotificationEmail] = useState(user?.notification_email ?? "");
   const [savingNotificationEmail, setSavingNotificationEmail] = useState(false);
 
+<<<<<<< HEAD
   const [savingWhatsapp, setSavingWhatsapp] = useState(false);
+=======
+>>>>>>> 368377a (20th October)
 
   if (loading || !user) {
     return <div className="text-sm text-muted-foreground">Loading…</div>;
@@ -49,7 +62,11 @@ export default function ProfilePage() {
     !!user.business_name,
     !!user.lead_exophone,
     !!user.notification_email,
+<<<<<<< HEAD
     user.whatsapp_assist_enabled,
+=======
+    !!user.phone,
+>>>>>>> 368377a (20th October)
   ];
   const doneCount = steps.filter(Boolean).length;
 
@@ -130,6 +147,7 @@ export default function ProfilePage() {
     }
   }
 
+<<<<<<< HEAD
   async function handleToggleWhatsapp(checked: boolean) {
     setSavingWhatsapp(true);
     try {
@@ -142,6 +160,8 @@ export default function ProfilePage() {
     }
   }
 
+=======
+>>>>>>> 368377a (20th October)
   const displayName = user.business_name || user.name || user.email;
 
   return (
@@ -238,7 +258,11 @@ export default function ProfilePage() {
               <span className="flex size-9 items-center justify-center rounded-full bg-accent-warm-bg text-[var(--accent-warm)]">
                 <Phone className="size-4" />
               </span>
+<<<<<<< HEAD
               <span className="text-sm font-medium">Guest Call Number</span>
+=======
+              <span className="text-sm font-medium">Call intake number</span>
+>>>>>>> 368377a (20th October)
               <span className="text-xs text-muted-foreground">{user.lead_exophone || "Not set"}</span>
             </button>
 
@@ -256,6 +280,7 @@ export default function ProfilePage() {
               </span>
             </button>
 
+<<<<<<< HEAD
             <div className="flex flex-col items-start gap-2 rounded-xl border p-4">
               <div className="flex w-full items-center justify-between">
                 <span className="flex size-9 items-center justify-center rounded-full bg-accent-warm-bg text-[var(--accent-warm)]">
@@ -272,6 +297,20 @@ export default function ProfilePage() {
                 {user.whatsapp_assist_enabled ? "Enabled" : "Early access"}
               </span>
             </div>
+=======
+            <Link
+              href="/dashboard/settings#notifications"
+              className="flex flex-col items-start gap-2 rounded-xl border p-4 text-left transition-colors hover:bg-accent"
+            >
+              <span className="flex size-9 items-center justify-center rounded-full bg-accent-warm-bg text-[var(--accent-warm)]">
+                <MessageCircle className="size-4" />
+              </span>
+              <span className="text-sm font-medium">Notifications &amp; escalations</span>
+              <span className="text-xs text-muted-foreground">
+                {user.phone ? `WhatsApp alerts to ${user.phone}` : "Add a transfer number for WhatsApp alerts"}
+              </span>
+            </Link>
+>>>>>>> 368377a (20th October)
           </div>
         </div>
       </div>

@@ -1,7 +1,11 @@
 import uuid
 from datetime import datetime
 
+<<<<<<< HEAD
 from pydantic import BaseModel
+=======
+from pydantic import BaseModel, Field
+>>>>>>> 368377a (20th October)
 
 
 class FaqGapOut(BaseModel):
@@ -18,6 +22,11 @@ class FaqGapOut(BaseModel):
 class FaqGapAnswerIn(BaseModel):
     answer: str
     apply_to_property: bool = False
+<<<<<<< HEAD
+=======
+    # The host's own wording for the question (defaults to the guest's).
+    question: str | None = Field(default=None, max_length=500)
+>>>>>>> 368377a (20th October)
 
 
 class FaqGapAnalyticsOut(BaseModel):

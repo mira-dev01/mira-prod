@@ -1,15 +1,23 @@
 "use client";
 
+<<<<<<< HEAD
 import { useState } from "react";
 import { ArrowRight, Phone, PhoneCall, AlertTriangle, Percent, Wallet, Users } from "lucide-react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+=======
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { LayoutGrid } from "lucide-react";
+import { Button } from "@/components/ui/button";
+>>>>>>> 368377a (20th October)
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { useAsync } from "@/hooks/use-async";
 import { useDateRange } from "@/hooks/use-date-range";
 import { api } from "@/lib/api";
+<<<<<<< HEAD
 import { CallsTable } from "@/components/calls-table";
 import { LeadDetailPanel } from "@/components/lead-detail-panel";
 import { LiveRequestsCard } from "@/components/live-requests-card";
@@ -26,6 +34,44 @@ export default function OverviewPage() {
 
   const { data: summary, loading: summaryLoading } = useAsync(
     () => api.analytics.summary({ startDate: startDateISO, endDate: endDateISO, includeTestCalls }),
+=======
+import { LeadDetailPanel } from "@/components/lead-detail-panel";
+import { DateRangePicker } from "@/components/date-range-picker";
+import {
+  OverviewCustomizer,
+  draftFromLayout,
+  type OverviewDraft,
+} from "@/components/overview/overview-customizer";
+import { FALLBACK_WIDGETS, OverviewWidgetGrid, type OverviewWidgetData } from "@/components/overview/widgets";
+import { cn, glassCardClassName } from "@/lib/utils";
+import type { LeadOut, OverviewWidget } from "@/lib/types";
+
+export default function OverviewPage() {
+  // useSearchParams (?customize=1 from Settings) needs a Suspense boundary.
+  return (
+    <Suspense fallback={<Skeleton className="h-64 w-full" />}>
+      <OverviewPageContent />
+    </Suspense>
+  );
+}
+
+function OverviewPageContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [includeTestCalls, setIncludeTestCalls] = useState(false);
+  const { startDateISO, endDateISO } = useDateRange();
+
+  // One request for the snapshot + attention items. Reporting-period
+  // numbers follow the date picker; attention items are current-state (see
+  // backend analytics_service.overview).
+  const {
+    data: overview,
+    loading: overviewLoading,
+    error: overviewError,
+    refetch: refetchOverview,
+  } = useAsync(
+    () => api.analytics.overview({ startDate: startDateISO, endDate: endDateISO, includeTestCalls }),
+>>>>>>> 368377a (20th October)
     [startDateISO, endDateISO, includeTestCalls]
   );
   const { data: calls, loading: callsLoading } = useAsync(
@@ -38,7 +84,50 @@ export default function OverviewPage() {
   const { data: leads, loading: leadsLoading, refetch: refetchLeads } = useAsync(() => api.leads.list({}), []);
   const [editingLead, setEditingLead] = useState<LeadOut | null>(null);
 
+<<<<<<< HEAD
   const recentCalls = calls ?? [];
+=======
+  // Saved widget layout (GET /preferences/overview-widgets), already
+  // reconciled server-side against the host's capabilities. If it can't
+  // load, the recommended layout renders -- the Overview never goes blank.
+  const {
+    data: layout,
+    loading: layoutLoading,
+    error: layoutError,
+    refetch: refetchLayout,
+    setData: setLayout,
+  } = useAsync(() => api.preferences.overviewWidgets(), []);
+  const [editing, setEditing] = useState(() => searchParams.get("customize") === "1");
+  const [draft, setDraft] = useState<OverviewDraft | null>(null);
+  const activeDraft = editing && layout ? (draft ?? draftFromLayout(layout)) : null;
+
+  function closeEditor() {
+    setEditing(false);
+    setDraft(null);
+    if (searchParams.get("customize")) router.replace("/dashboard", { scroll: false });
+  }
+
+  const widgets: OverviewWidget[] | null = activeDraft
+    ? activeDraft.shown
+    : layout
+      ? layout.widgets.filter((w) => w.available && !w.hidden)
+      : layoutError
+        ? FALLBACK_WIDGETS.filter((w) => !w.hidden)
+        : null;
+
+  const widgetData: OverviewWidgetData = {
+    overview,
+    overviewLoading,
+    overviewError,
+    refetchOverview,
+    calls,
+    callsLoading,
+    leads,
+    leadsLoading,
+    refetchLeads,
+    onLeadClick: setEditingLead,
+  };
+>>>>>>> 368377a (20th October)
 
   return (
     // One unified glass panel, not a decorative background layer plus
@@ -111,6 +200,7 @@ export default function OverviewPage() {
               Include browser test calls
             </Label>
           </div>
+<<<<<<< HEAD
         </div>
       </div>
 
@@ -222,6 +312,47 @@ export default function OverviewPage() {
           onCardClick={setEditingLead}
           limit={3}
         />
+=======
+          {layout && !activeDraft && (
+            <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+              <LayoutGrid className="size-3.5" />
+              Customize
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {activeDraft && layout && (
+        <OverviewCustomizer
+          layout={layout}
+          draft={activeDraft}
+          onDraftChange={setDraft}
+          onSaved={(saved) => {
+            setLayout(saved);
+            closeEditor();
+          }}
+          onCancel={closeEditor}
+          onReload={() => {
+            setDraft(null);
+            refetchLayout();
+          }}
+        />
+      )}
+
+      {widgets === null || (layoutLoading && !layout && !layoutError) ? (
+        <Skeleton className="h-40 w-full" />
+      ) : widgets.length === 0 ? (
+        <div className={cn("rounded-2xl px-5 py-8 text-center text-sm text-muted-foreground", glassCardClassName)}>
+          Your Overview is empty.{" "}
+          {!activeDraft && layout && (
+            <button type="button" className="font-medium text-primary hover:underline" onClick={() => setEditing(true)}>
+              Add widgets
+            </button>
+          )}
+        </div>
+      ) : (
+        <OverviewWidgetGrid widgets={widgets} data={widgetData} />
+>>>>>>> 368377a (20th October)
       )}
 
       <LeadDetailPanel

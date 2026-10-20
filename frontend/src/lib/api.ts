@@ -1,13 +1,29 @@
 import type {
   AirbnbUrlImportStatus,
+<<<<<<< HEAD
+=======
+  AnalyticsEntryInput,
+  AnalyticsLayout,
+  AnalyticsDashboard,
+>>>>>>> 368377a (20th October)
   AnalyticsSummary,
   AnalyticsTimeseries,
   AnalyticsTimeseriesMetric,
   BookingCreate,
+<<<<<<< HEAD
   BookingOut,
   CallHoursStatus,
   CallSessionDetailOut,
   CallSessionOut,
+=======
+  BookingKind,
+  BookingOut,
+  BookingReconciliation,
+  CallHoursStatus,
+  CallSessionDetailOut,
+  CallSessionOut,
+  CapabilityUpdate,
+>>>>>>> 368377a (20th October)
   FaqEntryCreate,
   FaqEntryOut,
   FaqEntryUpdate,
@@ -17,10 +33,15 @@ import type {
   GuestProfileDetailOut,
   GuestProfileOut,
   GuestProfileUpdate,
+<<<<<<< HEAD
+=======
+  HostCapabilities,
+>>>>>>> 368377a (20th October)
   HostOnboarding,
   HostOnboardingResponse,
   LeadOut,
   LeadUpdate,
+<<<<<<< HEAD
   NegotiationPolicyParseResponse,
   NegotiationRuleOut,
   NegotiationRuleUpdate,
@@ -28,15 +49,42 @@ import type {
   ObjectionInsights,
   ServiceRequestOut,
   PriceBreakdown,
+=======
+  NavigationPreferences,
+  NavigationPreferencesUpdate,
+  NegotiationPolicyParseResponse,
+  NegotiationRuleOut,
+  NegotiationRuleUpdate,
+  NotificationPreferencesUpdate,
+  NotificationSettings,
+  NotificationOut,
+  OverviewData,
+  OverviewLayout,
+  OverviewLayoutUpdate,
+  ObjectionInsights,
+  OnboardingProgressUpdate,
+  OnboardingState,
+  ServiceRequestOut,
+  PriceBreakdown,
+  PriceChoice,
+>>>>>>> 368377a (20th October)
   PricingRuleCreate,
   PricingRuleOut,
   PropertyCreate,
   PropertyImportResult,
   PropertyOut,
   PropertyUpdate,
+<<<<<<< HEAD
   RecoveryAnalytics,
   TechnicianCreate,
   TechnicianOut,
+=======
+  ReconciliationQueue,
+  RecoveryAnalytics,
+  TechnicianCreate,
+  TechnicianOut,
+  TransferNumberGroup,
+>>>>>>> 368377a (20th October)
   UserOut,
   UserUpdate,
 } from "@/lib/types";
@@ -170,6 +218,54 @@ export const api = {
     // CallHoursStatus in backend/app/schemas/user.py.
     callHoursStatus: () => request<CallHoursStatus>("/auth/me/call-hours-status"),
   },
+<<<<<<< HEAD
+=======
+  // Capability management -- always scoped server-side to the signed-in
+  // host (backend app/api/v1/capabilities.py).
+  capabilities: {
+    list: () => request<HostCapabilities>("/capabilities"),
+    update: (id: string, data: CapabilityUpdate) =>
+      request<HostCapabilities>(`/capabilities/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  },
+  // Server-persisted onboarding progress (backend app/api/v1/onboarding.py).
+  // Business-profile fields go through auth.updateMe, not here.
+  onboarding: {
+    get: () => request<OnboardingState>("/onboarding"),
+    save: (data: OnboardingProgressUpdate) =>
+      request<OnboardingState>("/onboarding", { method: "PUT", body: JSON.stringify(data) }),
+    startFirstPropertyImport: (data: { airbnb_url: string; ical_url?: string | null; live_pricing?: boolean }) =>
+      request<OnboardingState>("/onboarding/first-property", { method: "POST", body: JSON.stringify(data) }),
+    complete: () => request<OnboardingState>("/onboarding/complete", { method: "POST" }),
+  },
+  // Dashboard layout (backend app/api/v1/preferences.py) -- the signed-in
+  // user's own navigation order/visibility and Overview widget layout.
+  // Stored separately from capability activation above.
+  preferences: {
+    navigation: () => request<NavigationPreferences>("/preferences/navigation"),
+    saveNavigation: (data: NavigationPreferencesUpdate) =>
+      request<NavigationPreferences>("/preferences/navigation", { method: "PUT", body: JSON.stringify(data) }),
+    resetNavigation: () => request<NavigationPreferences>("/preferences/navigation", { method: "DELETE" }),
+    overviewWidgets: () => request<OverviewLayout>("/preferences/overview-widgets"),
+    saveOverviewWidgets: (data: OverviewLayoutUpdate) =>
+      request<OverviewLayout>("/preferences/overview-widgets", { method: "PUT", body: JSON.stringify(data) }),
+    resetOverviewWidgets: () => request<OverviewLayout>("/preferences/overview-widgets", { method: "DELETE" }),
+    analyticsWidgets: () => request<AnalyticsLayout>("/preferences/analytics-widgets"),
+    saveAnalyticsWidgets: (data: { entries: AnalyticsEntryInput[]; expected_revision: number }) =>
+      request<AnalyticsLayout>("/preferences/analytics-widgets", { method: "PUT", body: JSON.stringify(data) }),
+    resetAnalyticsWidgets: () => request<AnalyticsLayout>("/preferences/analytics-widgets", { method: "DELETE" }),
+  },
+  // Settings > Your account > Notifications & escalations.
+  notificationSettings: {
+    get: () => request<NotificationSettings>("/notification-settings"),
+    update: (data: NotificationPreferencesUpdate) =>
+      request<NotificationSettings>("/notification-settings", { method: "PATCH", body: JSON.stringify(data) }),
+    preview: (data: { subject?: string | null; body?: string | null }) =>
+      request<{ subject: string; html: string }>("/notification-settings/preview", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+  },
+>>>>>>> 368377a (20th October)
   properties: {
     list: () => request<PropertyOut[]>("/properties"),
     get: (id: string) => request<PropertyOut>(`/properties/${id}`),
@@ -186,6 +282,13 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ urls }),
       }),
+<<<<<<< HEAD
+=======
+    // Host transfer numbers per group of properties (replaces every
+    // assignment); properties left out use the account number.
+    setTransferNumbers: (groups: TransferNumberGroup[]) =>
+      request<PropertyOut[]>("/properties/transfer-numbers", { method: "PUT", body: JSON.stringify({ groups }) }),
+>>>>>>> 368377a (20th October)
     importAirbnbUrlsStatus: (snapshotId: string) =>
       request<AirbnbUrlImportStatus>(`/properties/import-airbnb-urls/${snapshotId}`),
   },
@@ -232,6 +335,21 @@ export const api = {
         body: JSON.stringify(data),
       }),
     cancel: (id: string) => request<void>(`/bookings/${id}`, { method: "DELETE" }),
+<<<<<<< HEAD
+=======
+    reconciliationQueue: (kind?: "price" | "attribution") =>
+      request<ReconciliationQueue>(`/bookings/reconciliation${buildQuery({ kind })}`),
+    reconciliation: (id: string) => request<BookingReconciliation>(`/bookings/${id}/reconciliation`),
+    confirmPrice: (id: string, data: { choice: PriceChoice; final_booking_price?: number | null }) =>
+      request<BookingReconciliation>(`/bookings/${id}/price`, { method: "PATCH", body: JSON.stringify(data) }),
+    decideAttribution: (id: string, isMiraMatch: boolean) =>
+      request<BookingReconciliation>(`/bookings/${id}/attribution`, {
+        method: "PATCH",
+        body: JSON.stringify({ is_mira_match: isMiraMatch }),
+      }),
+    updateKind: (id: string, kind: BookingKind) =>
+      request<BookingReconciliation>(`/bookings/${id}/kind`, { method: "PATCH", body: JSON.stringify({ kind }) }),
+>>>>>>> 368377a (20th October)
   },
   pricing: {
     rules: (params?: { startDate?: string; endDate?: string }) =>
@@ -297,6 +415,26 @@ export const api = {
           end_date: params?.endDate,
         })}`
       ),
+<<<<<<< HEAD
+=======
+    overview: (params: { startDate?: string; endDate?: string; includeTestCalls?: boolean }) =>
+      request<OverviewData>(
+        `/analytics/overview${buildQuery({
+          start_date: params.startDate,
+          end_date: params.endDate,
+          include_test_calls: params.includeTestCalls ?? false,
+        })}`
+      ),
+    dashboard: (params: { startDate?: string; endDate?: string; propertyId?: string; includeTestCalls?: boolean }) =>
+      request<AnalyticsDashboard>(
+        `/analytics/dashboard${buildQuery({
+          start_date: params.startDate,
+          end_date: params.endDate,
+          property_id: params.propertyId,
+          include_test_calls: params.includeTestCalls ?? false,
+        })}`
+      ),
+>>>>>>> 368377a (20th October)
     objectionInsights: (params?: { startDate?: string; endDate?: string }) =>
       request<ObjectionInsights>(
         `/analytics/objection-insights${buildQuery({
@@ -341,9 +479,15 @@ export const api = {
       request<FaqGapAnalytics>(`/faq/gaps/analytics${buildQuery({ bucket })}`),
     answer: (gapId: string, data: FaqGapAnswer) =>
       request<FaqEntryOut>(`/faq/gaps/${gapId}/answer`, { method: "POST", body: JSON.stringify(data) }),
+<<<<<<< HEAD
     answerVoice: (gapId: string, audio: Blob, applyToProperty: boolean = false) =>
       uploadAudio<FaqEntryOut>(
         `/faq/gaps/${gapId}/answer-voice${buildQuery({ apply_to_property: applyToProperty })}`,
+=======
+    answerVoice: (gapId: string, audio: Blob, applyToProperty: boolean = false, question?: string) =>
+      uploadAudio<FaqEntryOut>(
+        `/faq/gaps/${gapId}/answer-voice${buildQuery({ apply_to_property: applyToProperty, question })}`,
+>>>>>>> 368377a (20th October)
         audio,
         "answer.webm"
       ),

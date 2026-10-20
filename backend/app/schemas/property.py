@@ -258,6 +258,10 @@ class PropertyOut(BaseModel):
     smart_price_updated_at: datetime | None
     exact_airbnb_pricing: bool
     is_premium: bool
+<<<<<<< HEAD
+=======
+    host_transfer_phone: str | None
+>>>>>>> 368377a (20th October)
     call_handling_mode: str
     call_handling_schedule_start: str | None
     call_handling_schedule_end: str | None
@@ -275,6 +279,33 @@ class PropertyImportResult(BaseModel):
     error: str | None = None
 
 
+<<<<<<< HEAD
+=======
+class TransferNumberGroup(BaseModel):
+    """One host transfer number and the properties it covers."""
+
+    phone: str = Field(min_length=1, max_length=32)
+    property_ids: list[uuid.UUID] = Field(min_length=1)
+
+    @field_validator("phone")
+    @classmethod
+    def _dialable(cls, value: str) -> str:
+        value = value.strip()
+        # Same >= 10-digit rule the live transfer itself applies
+        # (tool_handlers._has_usable_host_phone).
+        if sum(ch.isdigit() for ch in value) < 10:
+            raise ValueError("enter a full phone number, e.g. +919812345678")
+        return value
+
+
+class TransferNumbersUpdate(BaseModel):
+    """The complete set of groups: properties not listed get no number of
+    their own (they use the account number)."""
+
+    groups: list[TransferNumberGroup] = Field(max_length=100)
+
+
+>>>>>>> 368377a (20th October)
 class AirbnbUrlImportRequest(BaseModel):
     urls: list[str] = Field(min_length=1, max_length=50)
 

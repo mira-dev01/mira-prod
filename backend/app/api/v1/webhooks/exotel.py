@@ -51,7 +51,11 @@ from app.integrations.exotel_client import verify_webhook_token
 from app.models.call_session import CallSession
 from app.models.property import Property
 from app.models.user import User
+<<<<<<< HEAD
 from app.services import call_ownership, call_service
+=======
+from app.services import call_ownership, call_service, notification_preferences_service
+>>>>>>> 368377a (20th October)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/webhooks/exotel", tags=["webhooks"])
@@ -394,7 +398,18 @@ async def exotel_connect_routing(
                 )
                 return _empty_destination_response()
             host = await db.get(User, session.user_id)
+<<<<<<< HEAD
             return await _resolve_and_respond(db, host, call_sid, source="handoff")
+=======
+            # Resolved when the transfer was requested (the property in
+            # scope is only known then); older rows fall back to resolving
+            # from the call's own property now.
+            phone = session.handoff_destination_phone
+            if phone is None and host is not None:
+                call_property = await db.get(Property, session.property_id) if session.property_id else None
+                phone = notification_preferences_service.host_transfer_phone(host, call_property)
+            return await _resolve_and_respond(db, host, phone, call_sid, source="handoff")
+>>>>>>> 368377a (20th October)
 
         # No CallSession, or one exists but isn't in the one routable
         # handoff state -- resolve as an initial HOST-owned call, the exact
@@ -422,7 +437,12 @@ async def exotel_connect_routing(
             )
             return _empty_destination_response()
 
+<<<<<<< HEAD
         return await _resolve_and_respond(db, host, call_sid, source="initial-host")
+=======
+        phone = notification_preferences_service.host_transfer_phone(host, property_)
+        return await _resolve_and_respond(db, host, phone, call_sid, source="initial-host")
+>>>>>>> 368377a (20th October)
     except call_ownership.InvalidCallOwnershipConfigError:
         logger.exception(
             "Connect-routing: invalid call-ownership configuration for call_sid=%s -- refusing to route",
@@ -434,6 +454,7 @@ async def exotel_connect_routing(
         return _empty_destination_response()
 
 
+<<<<<<< HEAD
 async def _resolve_and_respond(db: AsyncSession, host: User | None, call_sid: str, *, source: str) -> Response:
     """Shared tail for both connect-routing paths above once a host has
     been authorized: host User -> User.phone, or refuse. Takes the host
@@ -443,11 +464,26 @@ async def _resolve_and_respond(db: AsyncSession, host: User | None, call_sid: st
     Lead Agent number (no single property in scope). Kept as one function
     so both callers apply the exact same phone validation rather than two
     near-identical inline copies drifting apart."""
+=======
+async def _resolve_and_respond(
+    db: AsyncSession, host: User | None, phone: str | None, call_sid: str, *, source: str
+) -> Response:
+    """Shared tail for both connect-routing paths above once a host has
+    been authorized: the resolved transfer number (the account number, or
+    the property group's own -- notification_preferences_service
+    .host_transfer_phone) or refuse. Kept as one function so both callers
+    apply the exact same phone validation rather than two near-identical
+    inline copies drifting apart."""
+>>>>>>> 368377a (20th October)
     if host is None:
         logger.warning("Connect-routing: call_sid=%s host lookup failed -- refusing to route", call_sid)
         return _empty_destination_response()
 
+<<<<<<< HEAD
     destination_number = _normalize_destination_phone(host.phone)
+=======
+    destination_number = _normalize_destination_phone(phone)
+>>>>>>> 368377a (20th October)
     if destination_number is None:
         logger.warning(
             "Connect-routing: call_sid=%s host_id=%s has no usable phone -- refusing to route",

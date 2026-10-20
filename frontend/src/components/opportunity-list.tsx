@@ -2,17 +2,29 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { ListRow, ListRowFooter, ListRowHeader } from "@/components/ui/list-row";
 import { StatusChip } from "@/components/status-chip";
+<<<<<<< HEAD
 import { formatLeadTimestamp, leadGuestLabel, leadPhoneLabel } from "@/lib/leads";
+=======
+import {
+  formatLeadTimestamp,
+  leadGuestLabel,
+  leadPhoneLabel,
+  useLeadLabels,
+} from "@/lib/leads";
+>>>>>>> 368377a (20th October)
 import { opportunityType } from "@/lib/opportunities";
 import type { LeadOut } from "@/lib/types";
 
 // hot/warm/cold reused verbatim -- same tone vocabulary lead-detail-panel.tsx
 // already established, not a new opportunity-specific palette.
+<<<<<<< HEAD
 const temperatureTone: Record<string, "destructive" | "pending" | "neutral"> = {
   hot: "destructive",
   warm: "pending",
   cold: "neutral",
 };
+=======
+>>>>>>> 368377a (20th October)
 
 /**
  * Shared row list for any opportunity type (see lib/opportunities.ts) --
@@ -31,6 +43,10 @@ export function OpportunityList({
   leads: LeadOut[];
   onCardClick: (lead: LeadOut) => void;
 }) {
+<<<<<<< HEAD
+=======
+  const leadLabels = useLeadLabels();
+>>>>>>> 368377a (20th October)
   if (leads.length === 0) {
     return <p className="text-sm text-muted-foreground">No opportunities right now — you&rsquo;re all caught up.</p>;
   }
@@ -44,9 +60,13 @@ export function OpportunityList({
             <ListRowHeader>
               <div className="flex min-w-0 flex-wrap items-center gap-2">
                 {type && <StatusChip status={type.label} tone="orange" />}
+<<<<<<< HEAD
                 {lead.lead_temperature && (
                   <StatusChip status={lead.lead_temperature} tone={temperatureTone[lead.lead_temperature] ?? "neutral"} />
                 )}
+=======
+                <StatusChip status={leadLabels.label(lead.lead_temperature)} tone={leadLabels.tone(lead.lead_temperature)} className="normal-case" />
+>>>>>>> 368377a (20th October)
                 <span className="text-sm font-medium">{leadGuestLabel(lead)}</span>
                 <span className="text-xs text-muted-foreground">{leadPhoneLabel(lead)}</span>
               </div>

@@ -7,6 +7,10 @@ from app.models.lead import Lead
 from app.models.property import Property
 from app.models.user import User
 from app.prompts import system_prompt
+<<<<<<< HEAD
+=======
+from app.services.guest_booking_service import BookingMatch
+>>>>>>> 368377a (20th October)
 from app.prompts.system_prompt import (
     DEFAULT_ESCALATION_PHRASE,
     DEFAULT_HOST_HANDOFF_PHRASE,
@@ -56,7 +60,11 @@ def _guest(**overrides) -> GuestProfile:
     return GuestProfile(**defaults)
 
 
+<<<<<<< HEAD
 def _booking(**overrides) -> Lead:
+=======
+def _booking(**overrides) -> BookingMatch:
+>>>>>>> 368377a (20th October)
     defaults = dict(
         id=uuid.uuid4(),
         user_id=uuid.uuid4(),
@@ -67,7 +75,11 @@ def _booking(**overrides) -> Lead:
         check_out=date(2026, 8, 3),
     )
     defaults.update(overrides)
+<<<<<<< HEAD
     return Lead(**defaults)
+=======
+    return BookingMatch.from_lead(Lead(**defaults))
+>>>>>>> 368377a (20th October)
 
 
 def test_first_message_default_has_no_placeholders_left_unresolved():
@@ -271,10 +283,27 @@ def test_guest_profile_with_zero_stays_is_treated_as_new():
     assert "returning guest" not in prompt
 
 
+<<<<<<< HEAD
 def test_returning_guest_included_with_name_and_stay_count():
     guest = _guest(name="Priya", total_stays=3)
     prompt = build_system_prompt(_property(), guest, _user())
     assert "returning guest: Priya, 3 past stay(s)" in prompt
+=======
+def test_returning_guest_included_with_name_but_no_stay_count_without_loyalty_policy():
+    guest = _guest(name="Priya", total_stays=3)
+    prompt = build_system_prompt(_property(), guest, _user())
+    assert "returning guest: Priya." in prompt
+    assert "past stay(s)" not in prompt
+    assert "guest_loyalty" not in prompt.split("returning guest: Priya.")[1]
+    assert "Never bring up their past stays" in prompt
+
+
+def test_returning_guest_stay_count_and_loyalty_hint_only_with_repeat_guest_discount():
+    guest = _guest(name="Priya", total_stays=3)
+    prompt = build_system_prompt(_property(), guest, _user(), repeat_guest_discount=True)
+    assert "They have 3 past stay(s) with this host" in prompt
+    assert 'pass guest_loyalty="returning" to negotiate_rate' in prompt
+>>>>>>> 368377a (20th October)
 
 
 def test_returning_guest_includes_preferred_language_and_last_outcome():
@@ -299,7 +328,11 @@ def test_returning_guest_includes_last_conversation_summary():
 def test_lead_agent_prompt_also_gets_guest_memory_section():
     guest = _guest(name="Priya", total_stays=1)
     prompt = build_lead_system_prompt(_user(), [], guest)
+<<<<<<< HEAD
     assert "returning guest: Priya, 1 past stay(s)" in prompt
+=======
+    assert "returning guest: Priya." in prompt
+>>>>>>> 368377a (20th October)
 
 
 def test_lead_agent_prompt_defaults_to_new_guest_when_omitted():
@@ -1032,6 +1065,28 @@ def test_lead_agent_instructed_to_re_check_exact_dates_before_finalizing():
     assert 'This applies even if the earlier result said "full" for this property.' in prompt
 
 
+<<<<<<< HEAD
+=======
+def test_vague_timeline_pricing_only_chases_exact_dates_when_a_caveat_came_back():
+    """A get_pricing/negotiate_rate result with no estimate caveat is already
+    the real, exact rate (true for any non-smart-pricing property, and for a
+    smart-pricing property whose vague window happened to land inside the
+    7-day live-rate cache) -- the prompt must not send the model chasing
+    exact dates just because the guest asked for "the exact price" in that
+    case. Only a genuinely caveated (ballpark) quote is worth resolving down
+    to real dates for, and even then only on one of two specific guest
+    reactions (a price pushback, or an explicit ask for the precise figure
+    itself) -- confirms both halves of this conditional actually landed in
+    the prompt, not just the caveated-quote branch."""
+    prompt = build_lead_system_prompt(_user(), [_property()])
+    assert "No caveat came back: this is already the real, exact rate" in prompt
+    assert "Do NOT ask for exact dates just because the" in prompt
+    assert "A caveat came back: the number you just gave is a ballpark" in prompt
+    assert "The guest pushes back on PRICE" in prompt
+    assert "The guest asks for the EXACT/PRECISE/CONFIRMED figure itself" in prompt
+
+
+>>>>>>> 368377a (20th October)
 def test_lead_agent_workflow_recommends_before_asking_every_field():
     """Availability-first recommendations, Implementation 4: confirms the
     rewritten step 3 preserves Phase 2.3's original spirit (recommend once

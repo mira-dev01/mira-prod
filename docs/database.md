@@ -62,7 +62,9 @@ c22483e0853a -> 054ea268d326   add index on notification property_id
 8f1c4b9e2a67 -> 9fd5d655d830   add call handling schedule to properties + handoff_status to call_sessions
 9fd5d655d830 -> c4153fd289d2   add stages to negotiation_rules
 c4153fd289d2 -> f041738fce4c   add call_quality_events
-f041738fce4c -> a3f1c9d24e08   add host call hours (host_call_hours_*) + agent_handoff_phrase to users (HEAD)
+f041738fce4c -> a3f1c9d24e08   add host call hours (host_call_hours_*) + agent_handoff_phrase to users
+a3f1c9d24e08 -> c7e2a91d4f10   add admin monitoring tables
+c7e2a91d4f10 -> e5b8d2f1a9c3   add booking pricing/attribution fields + price_events (HEAD)
 ```
 
 If a session ever fails with demo-login 500s or a missing-column error, check `alembic heads` against the running DB first — a DB left behind on an old revision is a common cause (see `project_state.md` at the repo root for the 2026-07-15 incident).
@@ -125,7 +127,7 @@ Relationships: `owner` (User), `bookings`, `call_sessions`, `technicians`, `pric
 
 ### `bookings` (`Booking`, `app/models/booking.py`)
 
-Unique on `(property_id, source_uid)`. iCal-synced calendar data — **no price field**; not a payment/booking-confirmation record.
+Unique on `(property_id, source_uid)`. iCal-synced or host-entered calendar data. Since `e5b8d2f1a9c3` it also carries the booking's canonical price and Mira attribution (see `app/services/booking_reconciliation_service.py`).
 
 | Column | Type | Notes |
 |---|---|---|
@@ -135,6 +137,23 @@ Unique on `(property_id, source_uid)`. iCal-synced calendar data — **no price 
 | `platform` | String(32), default `airbnb` | |
 | `source_uid` | String(255), nullable | dedup key from the iCal feed |
 | `status` | String(32), default `confirmed` | |
+| `kind` | String(16), default `reservation` | `reservation` or `blocked` (no-guest iCal block such as "Airbnb (Not available)"). Both block availability; only analytics distinguishes them |
+| `guest_phone_last4` | String(4), nullable | From Airbnb's iCal DESCRIPTION, an attribution identity signal |
+| `initial_price`, `negotiated_price` | Numeric(12,2), nullable | Stay totals from the matched Mira conversation. Informational only |
+| `final_booking_price` | Numeric(12,2), nullable | **The only price financial analytics read.** NULL = incomplete financial data, never "0" |
+| `currency` | String(3), default `INR` | |
+| `price_source` | String(32), default `unknown` | `mira_conversation` / `host_confirmed` / `host_entered` / `external_pms` / `unknown` |
+| `price_status` | String(32), default `unknown` | `confirmed` / `pending_confirmation` / `unknown` (pre-feature rows) |
+| `price_confirmed_at`, `price_confirmed_by` | DateTime / String(16) | actor: `host` or `mira` |
+| `price_reviewed_at` | DateTime, nullable | Host answered the price question (including "not yet"), so the queue stops asking |
+| `mira_attribution_status` | String(16), default `unknown` | `confirmed` (host) / `probable` / `not_attributed` / `unknown`. Only `confirmed` counts as Mira impact |
+| `mira_attribution_call_session_id`, `mira_attribution_lead_id` | UUID FK, SET NULL | The matched conversation |
+| `mira_attribution_signals` | JSONB list | Why it matched, shown to the host |
+| `mira_attribution_reviewed_at` | DateTime, nullable | Host's Yes/No time |
+
+### `price_events` (`PriceEvent`, `app/models/price_event.py`)
+
+Append-only price history: `initial_quote` (get_pricing), `counter_offer` / `accepted_offer` (negotiate_rate), `final_price` (a booking's final price was set). Written detached and fail-open from the live call path (`app/services/price_event_service.py`). Columns: `user_id`, `property_id`, `call_session_id`, `booking_id` (linked by reconciliation), `price_type`, `source`, `price` / `list_price` / `guest_offer` (stay totals), `currency`, `nights`, `check_in`/`check_out` (NULL for a nights-only quote). No history before `e5b8d2f1a9c3`.
 
 ### `call_sessions` (`CallSession`, `app/models/call_session.py`)
 
@@ -185,7 +204,7 @@ Computed properties (not columns): `duration_minutes`, `guest_name` (prefers `Le
 | `budget` | Numeric(10,2), nullable | guest-stated nightly budget — the basis for the `pipeline_value` analytics metric |
 | `preferred_location` | String(255), nullable | |
 | `properties_discussed`, `questions_asked`, `support_requests` | JSONB list, default `[]` | `properties_discussed` stores human-readable **names**, never raw property IDs (resolved server-side in `tool_handlers._resolve_property_names` if the model echoes a UUID) |
-| `lead_temperature` | String(16), nullable | `hot`/`warm`/`cold` — **qualification**, set by the voice agent only |
+| `lead_temperature` | String(16), nullable | `very_hot`/`hot`/`warm`/`cold` — **intent/qualification**, set by the voice agent (raise-only), with deterministic floors from get_pricing/negotiate_rate/check_calendar; the host can override from the dashboard. Definitions: `app/services/lead_temperature.py` |
 | `lead_source` | String(64), default `voice_call` | which subsystem/flow created the row (voice call, manual entry, import, ...) |
 | `entry_channel` | String(32), default `phone_call` | how the guest reached Mira — every lead today is `phone_call`, the field exists for future non-voice entry points (WhatsApp-inbound, web widget) |
 | `recovery_reason` | String(32), nullable | why this lead needed system-driven recovery instead of coming from a normal completed conversation — `NULL` for the common case. Values (Pydantic-validated, not DB-constrained — see `schemas/lead.py`'s `RecoveryReason`): `BUSY_CALL` (set by `recovery_service.py` when `CallCoordinator` rejects a call as busy), `AFTER_HOURS`, `HOST_CALLBACK`, `GUEST_CALLBACK` (reserved, no producer yet). Deliberately separate from `lead_source`/`status` — see the model's own comment for the full three-field split |

@@ -13,6 +13,11 @@ from app.api.v1.common import DateRange
 from app.models.call_session import CallSession
 from app.models.lead import Lead
 from app.models.notification import Notification
+<<<<<<< HEAD
+=======
+from app.services import lead_temperature as temperature
+from app.utils.dates import today_ist
+>>>>>>> 368377a (20th October)
 
 # A returning guest's follow-up call reuses their existing Lead only while
 # it's still an unresolved, in-progress inquiry. Once the host marks it
@@ -110,8 +115,21 @@ async def upsert_lead(
     user_id: uuid.UUID,
     call_session_id: uuid.UUID | None,
     guest_profile_id: uuid.UUID | None = None,
+<<<<<<< HEAD
     **fields,
 ) -> Lead:
+=======
+    stay_length_known: bool = False,
+    **fields,
+) -> Lead:
+    """stay_length_known: the guest gave a stay length (nights) this turn
+    with no Lead column to hold it (see handle_update_lead). Counts as a
+    qualification signal for the warm floor; never persisted.
+
+    lead_temperature is merged raise-only (lead_temperature.merge_temperature),
+    then floored at warm once >= 2 qualification signals are on the lead --
+    see app/services/lead_temperature.py for the definitions."""
+>>>>>>> 368377a (20th October)
     lead = await _get_or_create_lead_for_call(
         db, user_id, call_session_id, guest_profile_id, guest_name_hint=fields.get("guest_name")
     )
@@ -146,10 +164,27 @@ async def upsert_lead(
     if guest_profile_id is not None:
         lead.guest_profile_id = guest_profile_id
 
+<<<<<<< HEAD
+=======
+    incoming_temperature = fields.pop("lead_temperature", None)
+>>>>>>> 368377a (20th October)
     for key, value in fields.items():
         if value is not None:
             setattr(lead, key, value)
 
+<<<<<<< HEAD
+=======
+    lead.lead_temperature = temperature.merge_temperature(lead.lead_temperature, incoming_temperature)
+    lead.lead_temperature = temperature.merge_temperature(
+        lead.lead_temperature,
+        temperature.qualification_floor(
+            has_dates_or_stay_length=bool(lead.check_in) or stay_length_known,
+            num_guests=lead.num_guests,
+            properties_discussed=lead.properties_discussed,
+        ),
+    )
+
+>>>>>>> 368377a (20th October)
     await db.commit()
     await db.refresh(lead)
     return lead
@@ -164,6 +199,10 @@ async def backfill_lead_from_engagement(
     check_out: date | None,
     num_guests: int | None,
     guest_profile_id: uuid.UUID | None = None,
+<<<<<<< HEAD
+=======
+    engagement: str | None = None,
+>>>>>>> 368377a (20th October)
 ) -> None:
     """System-level safety net: creates/backfills a Lead the moment a guest
     engages meaningfully with a specific property + dates (get_pricing,
@@ -178,8 +217,20 @@ async def backfill_lead_from_engagement(
     Deliberately narrow to only what these three tool calls always carry
     (property, dates, guest count) -- never overwrites a field the guest/LLM
     already set via update_lead (same blank-only semantics as backfill_lead
+<<<<<<< HEAD
     above), and never sets guest_name/phone/email/lead_temperature, which
     only mean something if actually given by the guest.
+=======
+    above), and never sets guest_name/phone/email, which only mean something
+    if actually given by the guest.
+
+    engagement names what the guest just did ("availability_checked",
+    "availability_confirmed", "pricing_requested", "negotiation_initiated")
+    and raises lead_temperature to that event's floor -- raise-only, see
+    app/services/lead_temperature.py. Asking for a price or negotiating IS
+    the intent signal the definitions call hot, observed directly here, so
+    it no longer depends on the LLM remembering to say so via update_lead.
+>>>>>>> 368377a (20th October)
 
     check_in/check_out are None for a vague-timeline get_pricing/
     negotiate_rate call (nights-only, no exact dates yet -- see
@@ -208,6 +259,13 @@ async def backfill_lead_from_engagement(
     if num_guests and not lead.num_guests:
         lead.num_guests = num_guests
         changed = True
+<<<<<<< HEAD
+=======
+    if engagement is not None:
+        lead.lead_temperature = temperature.merge_temperature(
+            lead.lead_temperature, temperature.engagement_floor(engagement)
+        )
+>>>>>>> 368377a (20th October)
 
     # Commit unconditionally, not just `if changed` -- _get_or_create_lead_for_call
     # may have just created a new lead or linked this call_session.lead_id for
@@ -375,7 +433,11 @@ async def get_active_booking(db: AsyncSession, guest_profile_id: uuid.UUID | Non
         .order_by(Lead.updated_at.desc())
     )
     leads = (await db.scalars(stmt)).all()
+<<<<<<< HEAD
     today = date.today()
+=======
+    today = today_ist()
+>>>>>>> 368377a (20th October)
     for lead in leads:
         if lead.check_out is None or lead.check_out >= today:
             return lead

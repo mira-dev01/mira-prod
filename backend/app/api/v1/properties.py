@@ -10,7 +10,11 @@ from app.api.v1.common import get_owned_property
 from app.auth.dependencies import get_current_user
 from app.database import AsyncSessionLocal, get_db
 from app.integrations import bright_data_client, cloudinary_client
+<<<<<<< HEAD
 from app.integrations.bright_data_client import BrightDataError
+=======
+from app.integrations.bright_data_client import BrightDataError, InvalidAirbnbUrlError
+>>>>>>> 368377a (20th October)
 from app.models.property import Property
 from app.models.user import User
 from app.schemas.property import (
@@ -22,6 +26,10 @@ from app.schemas.property import (
     PropertyImportResult,
     PropertyOut,
     PropertyUpdate,
+<<<<<<< HEAD
+=======
+    TransferNumbersUpdate,
+>>>>>>> 368377a (20th October)
 )
 from app.services import faq_service
 from app.services.airbnb_import import parse_airbnb_listing, parse_bright_data_listing
@@ -167,6 +175,39 @@ async def _upsert_property_from_parsed(
         )
 
 
+<<<<<<< HEAD
+=======
+@router.put("/transfer-numbers", response_model=list[PropertyOut])
+async def set_transfer_numbers(
+    payload: TransferNumbersUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[Property]:
+    """Host transfer numbers per group of properties (Settings > Your
+    account), used when the host chose "a number per group of properties".
+    Replaces every assignment in one transaction. Only changes where live
+    transfers and host alerts go -- never which number guests dial."""
+    properties = {
+        p.id: p for p in (await db.scalars(select(Property).where(Property.user_id == current_user.id))).all()
+    }
+    assigned: dict[uuid.UUID, str] = {}
+    for group in payload.groups:
+        for property_id in group.property_ids:
+            if property_id not in properties:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "Property not found")
+            if property_id in assigned:
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    f"{properties[property_id].name} is in more than one group -- pick one number for it.",
+                )
+            assigned[property_id] = group.phone
+    for property_id, property_ in properties.items():
+        property_.host_transfer_phone = assigned.get(property_id)
+    await db.commit()
+    return sorted(properties.values(), key=lambda p: p.created_at)
+
+
+>>>>>>> 368377a (20th October)
 @router.post("/import", response_model=list[PropertyImportResult])
 async def import_properties(
     files: list[UploadFile] = File(...),
@@ -189,7 +230,11 @@ async def import_properties(
         listing_id = filename.rsplit(".", 1)[0]
         try:
             raw = json.loads(await upload.read())
+<<<<<<< HEAD
             parsed = parse_airbnb_listing(raw)
+=======
+            parsed = await parse_airbnb_listing(raw, photo_folder=f"mira/properties/{current_user.id}")
+>>>>>>> 368377a (20th October)
             results.append(await _upsert_property_from_parsed(current_user.id, listing_id, filename, parsed))
         except Exception as exc:  # noqa: BLE001 - one bad file shouldn't fail the whole batch
             results.append(PropertyImportResult(filename=filename, status="error", error=str(exc)))
@@ -213,6 +258,11 @@ async def import_airbnb_urls_trigger(
     snapshot_id; poll GET /import-airbnb-urls/{snapshot_id} for completion."""
     try:
         snapshot_id = await bright_data_client.trigger_scrape(payload.urls)
+<<<<<<< HEAD
+=======
+    except InvalidAirbnbUrlError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+>>>>>>> 368377a (20th October)
     except BrightDataError as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
     return AirbnbUrlImportTriggered(snapshot_id=snapshot_id)
@@ -241,18 +291,39 @@ async def import_airbnb_urls_status(
     except BrightDataError as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
 
+<<<<<<< HEAD
+=======
+    results = await import_snapshot_records(current_user.id, records)
+    return AirbnbUrlImportStatus(status="ready", results=results)
+
+
+async def import_snapshot_records(user_id: uuid.UUID, records: list[dict]) -> list[PropertyImportResult]:
+    """Parses and upserts every record of a ready Bright Data snapshot.
+    Shared by the poll endpoint above and the server-side onboarding import
+    (app/services/onboarding_service.py), so both create properties the
+    exact same way -- same parser, Cloudinary folder, FAQ sync and
+    airbnb_listing_id dedupe."""
+>>>>>>> 368377a (20th October)
     results: list[PropertyImportResult] = []
     for record in records:
         url = record.get("url") or record.get("final_url") or ""
         listing_id = str(record.get("property_id") or _listing_id_from_url(url))
         label = record.get("listing_title") or record.get("name") or url or listing_id
         try:
+<<<<<<< HEAD
             parsed = await parse_bright_data_listing(record, photo_folder=f"mira/properties/{current_user.id}")
             results.append(await _upsert_property_from_parsed(current_user.id, listing_id, label, parsed))
         except Exception as exc:  # noqa: BLE001 - one bad record shouldn't fail the whole batch
             results.append(PropertyImportResult(filename=label, status="error", error=str(exc)))
 
     return AirbnbUrlImportStatus(status="ready", results=results)
+=======
+            parsed = await parse_bright_data_listing(record, photo_folder=f"mira/properties/{user_id}")
+            results.append(await _upsert_property_from_parsed(user_id, listing_id, label, parsed))
+        except Exception as exc:  # noqa: BLE001 - one bad record shouldn't fail the whole batch
+            results.append(PropertyImportResult(filename=label, status="error", error=str(exc)))
+    return results
+>>>>>>> 368377a (20th October)
 
 
 @router.post("", response_model=PropertyOut, status_code=status.HTTP_201_CREATED)

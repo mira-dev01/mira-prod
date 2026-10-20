@@ -216,6 +216,31 @@ def _extract_description_faq(node: dict) -> dict | None:
     return {"question": "Tell me about this property", "answer": text, "category": "description"}
 
 
+<<<<<<< HEAD
+=======
+def _extract_photo_urls(node: dict, sections: list[dict]) -> list[str]:
+    """Real photo gallery URLs (a0.muscache.com), highest-resolution source
+    first. PHOTO_TOUR_SCROLLABLE_MODAL's `mediaItems` is the full gallery
+    (dozens of photos on a typical listing); node.contextualizedMedia only
+    ever carries a single cover photo, so it's a fallback for the rare
+    listing that doesn't render a photo-tour section at all, not a second
+    source to merge in.
+
+    Confirmed missing live 2026-10-09: parse_airbnb_listing never extracted
+    photos at all (only parse_bright_data_listing did), so every property
+    imported via the JSON-file path had an empty photos array regardless of
+    how many real photos the listing had."""
+    tour_section = _find_section(sections, "PHOTO_TOUR_SCROLLABLE_MODAL")
+    media_items = tour_section.get("mediaItems") or []
+    urls = [item["baseUrl"] for item in media_items if item.get("baseUrl")]
+    if urls:
+        return urls
+
+    edges = ((node.get("contextualizedMedia") or {}).get("edges")) or []
+    return [edge["node"]["uri"] for edge in edges if (edge.get("node") or {}).get("uri")]
+
+
+>>>>>>> 368377a (20th October)
 def _extract_safety_faq(policies: dict) -> dict | None:
     items = [item.get("title", "") for item in policies.get("previewSafetyAndProperties") or [] if item.get("title")]
     if not items:
@@ -227,11 +252,25 @@ def _extract_safety_faq(policies: dict) -> dict | None:
     }
 
 
+<<<<<<< HEAD
 def parse_airbnb_listing(raw: dict[str, Any]) -> dict[str, Any]:
     """Returns {"fields": {...Property fields...}, "faq_entries": [...]}.
     Only includes Property fields it found data for -- callers should merge
     that dict over sane defaults rather than treating it as a complete
     PropertyCreate."""
+=======
+async def parse_airbnb_listing(raw: dict[str, Any], *, photo_folder: str | None = None) -> dict[str, Any]:
+    """Returns {"fields": {...Property fields...}, "faq_entries": [...]}.
+    Only includes Property fields it found data for -- callers should merge
+    that dict over sane defaults rather than treating it as a complete
+    PropertyCreate.
+
+    Async (previously sync) purely for the photo re-hosting step --
+    photo_folder works exactly like parse_bright_data_listing's own
+    parameter of the same name: omitted (None) just means fields["photos"]
+    stays unset, same "skip, don't fail the import" stance as an
+    unconfigured Cloudinary account."""
+>>>>>>> 368377a (20th October)
     node = raw.get("node") or {}
     pdp = node.get("pdpPresentation") or {}
     sections = ((raw.get("presentation") or {}).get("stayProductDetailPage") or {}).get("sections", {}).get(
@@ -274,6 +313,28 @@ def parse_airbnb_listing(raw: dict[str, Any]) -> dict[str, Any]:
     if check_out_time:
         fields["check_out_time"] = check_out_time
 
+<<<<<<< HEAD
+=======
+    # Two photo sources, both ending up on Cloudinary:
+    # 1. An optional top-level list of already-hosted image URLs (typically
+    #    Cloudinary secure_urls) a host can add to a hand-written import file
+    #    -- stored as-is, never re-uploaded.
+    # 2. Otherwise the listing's real Airbnb gallery (muscache URLs),
+    #    re-hosted to Cloudinary when photo_folder is given, exactly like
+    #    parse_bright_data_listing.
+    hosted_photos = [
+        p.strip() for p in raw.get("photos") or [] if isinstance(p, str) and p.strip().startswith("https://")
+    ]
+    if hosted_photos:
+        fields["photos"] = hosted_photos
+    else:
+        photo_urls = _extract_photo_urls(node, sections)
+        if photo_urls and photo_folder:
+            uploaded = await cloudinary_client.upload_images_from_urls(photo_urls, folder=photo_folder)
+            if uploaded:
+                fields["photos"] = uploaded
+
+>>>>>>> 368377a (20th October)
     faq_entries = [
         entry
         for entry in (
