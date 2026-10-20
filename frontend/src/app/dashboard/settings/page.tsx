@@ -1,0 +1,228 @@
+"use client";
+
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CreditCard, KeyRound, Users } from "lucide-react";
+import { DefinitionRow } from "@/components/ui/definition-row";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { TechniciansSection } from "@/components/settings/technicians-section";
+import { FeaturesSection } from "@/components/settings/features-section";
+import { DashboardSection } from "@/components/settings/dashboard-section";
+import { CapabilityNotice } from "@/components/capability-notice";
+import { HostCallHoursCard } from "@/components/settings/host-call-hours-card";
+import { NotificationsCard } from "@/components/settings/notifications-card";
+import { TransferNumbersCard } from "@/components/settings/transfer-numbers-card";
+import { API_BASE_URL, ApiError, api, getToken } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
+
+const VALID_TABS = ["your account", "features", "dashboard", "technicians", "billing", "api", "team"] as const;
+type SettingsTab = (typeof VALID_TABS)[number];
+
+function ComingSoonTab({ icon: Icon, label }: { icon: React.ComponentType<{ className?: string }>; label: string }) {
+  return (
+    <Card className="max-w-md">
+      <CardContent className="flex flex-col items-center gap-3 py-8 text-center">
+        <span className="flex size-10 items-center justify-center rounded-full bg-muted">
+          <Icon className="size-5 text-muted-foreground" />
+        </span>
+        <div className="space-y-1">
+          <p className="text-sm font-medium">{label}</p>
+          <p className="text-xs text-muted-foreground">Coming soon.</p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SettingsPageContent() {
+  const { user, loading, refreshUser } = useAuth();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  // Derived from the URL rather than held in state, so in-page links (e.g.
+  // Features & modules' "Add a technician" -> ?tab=technicians) switch tabs
+  // too, not just the initial deep link.
+  const tabParam = searchParams.get("tab");
+  const tab: SettingsTab = VALID_TABS.includes(tabParam as SettingsTab) ? (tabParam as SettingsTab) : "your account";
+
+  function handleTabChange(value: unknown) {
+    if (typeof value !== "string" || !VALID_TABS.includes(value as SettingsTab)) return;
+    // Keeps the URL deep-linkable without adding a history entry for every
+    // tab click.
+    router.replace(`/dashboard/settings?tab=${value}`, { scroll: false });
+  }
+
+  const [leadExophone, setLeadExophone] = useState(user?.lead_exophone ?? "");
+  const [submitting, setSubmitting] = useState(false);
+
+
+  async function handleSaveLeadExophone(e: React.FormEvent) {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      await api.auth.updateMe({ lead_exophone: leadExophone || null });
+      await refreshUser();
+      toast.success("Call intake number saved");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Failed to save call intake number");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleTestLeadAgent() {
+    const token = await getToken();
+    if (!token) {
+      toast.error("Not logged in");
+      return;
+    }
+    const backendOrigin = API_BASE_URL.replace(/\/api\/v1\/?$/, "");
+    const url = `${backendOrigin}/api/v1/voice/test?token=${encodeURIComponent(token)}`;
+    window.open(url, "_blank");
+  }
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="page-title">Settings</h1>
+          <p className="text-sm text-muted-foreground">Account details</p>
+        </div>
+        {[5, 3, 4, 6].map((rows, i) => (
+          <Card key={i} className="max-w-md">
+            <CardHeader>
+              <Skeleton variant="text" className="w-1/2" />
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {Array.from({ length: rows }, (_, j) => (
+                <Skeleton key={j} variant="text" />
+              ))}
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="page-title">Settings</h1>
+        <p className="text-sm text-muted-foreground">Account details</p>
+      </div>
+
+      <Tabs value={tab} onValueChange={handleTabChange}>
+        <TabsList>
+          <TabsTrigger value="your account">Your account</TabsTrigger>
+          <TabsTrigger value="features">Features &amp; modules</TabsTrigger>
+          <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
+          <TabsTrigger value="technicians">Technicians</TabsTrigger>
+          <TabsTrigger value="billing">Billing</TabsTrigger>
+          <TabsTrigger value="api">API</TabsTrigger>
+          <TabsTrigger value="team">Team</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="your account" className="pt-4">
+          <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
+            <Card>
+              <CardHeader>
+                <CardTitle>Your profile</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <DefinitionRow label="Name" value={user?.name ?? "—"} />
+                <DefinitionRow label="Email" value={user?.email ?? "—"} />
+                <DefinitionRow label="Phone" value={user?.phone ?? "—"} />
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Plan tier</span>
+                  <Badge variant="secondary" className="capitalize">
+                    {user?.tier ?? "—"}
+                  </Badge>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Status</span>
+                  <Badge variant="outline" className="capitalize">
+                    {user?.status ?? "—"}
+                  </Badge>
+                </div>
+              </CardContent>
+            </Card>
+
+            <TransferNumbersCard />
+
+            <HostCallHoursCard />
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Call intake number</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <CapabilityNotice
+                  capabilityId="lead_agent"
+                  className="mb-3"
+                  whenOff="The Portfolio Lead Agent is off in your features. Saving a number here turns it back on -- Mira answers whenever a call intake number is saved."
+                />
+                <p className="mb-3 text-sm text-muted-foreground">
+                  The number guests call to reach Mira. Calls to it run the Lead Agent across your whole
+                  portfolio — for booking enquiries, not existing-guest support. This is also your general
+                  testing link: it asks the caller which property they mean instead of testing just one.
+                </p>
+                <form onSubmit={handleSaveLeadExophone} className="flex gap-2">
+                  <Input
+                    placeholder="+9180XXXXXXXX"
+                    value={leadExophone}
+                    onChange={(e) => setLeadExophone(e.target.value)}
+                  />
+                  <Button type="submit" disabled={submitting}>
+                    Save
+                  </Button>
+                </form>
+                <Button variant="secondary" size="sm" className="mt-3" onClick={handleTestLeadAgent}>
+                  Test Lead Agent in browser
+                </Button>
+              </CardContent>
+            </Card>
+
+            <NotificationsCard />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="features" className="pt-4">
+          <FeaturesSection />
+        </TabsContent>
+
+        <TabsContent value="dashboard" className="pt-4">
+          <DashboardSection />
+        </TabsContent>
+
+        <TabsContent value="technicians" className="pt-4">
+          <TechniciansSection />
+        </TabsContent>
+
+        <TabsContent value="billing" className="pt-4">
+          <ComingSoonTab icon={CreditCard} label="Billing" />
+        </TabsContent>
+        <TabsContent value="api" className="pt-4">
+          <ComingSoonTab icon={KeyRound} label="API access" />
+        </TabsContent>
+        <TabsContent value="team" className="pt-4">
+          <ComingSoonTab icon={Users} label="Team members" />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+export default function SettingsPage() {
+  // useSearchParams requires a Suspense boundary -- see Next.js docs (this
+  // matches the pattern already used on the Leads/Pricing pages).
+  return (
+    <Suspense fallback={<Skeleton className="h-64 w-full" />}>
+      <SettingsPageContent />
+    </Suspense>
+  );
+}

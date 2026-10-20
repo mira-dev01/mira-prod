@@ -1,0 +1,897 @@
+Analyze these files and produce GraphNode and GraphEdge objects.
+Project root: `/Users/shagunverma/Desktop/mira /mira-prod`
+Project: mira-prod
+Languages: python, typescript, markdown, yaml, dockerfile, sql
+Batch: 2/26
+Skill directory (for bundled scripts): /Users/shagunverma/.claude/plugins/cache/understand-anything/understand-anything/2.9.4/skills/understand
+Output: write to /Users/shagunverma/Desktop/mira /mira-prod/.ua/intermediate/batch-2.json
+
+Pre-resolved import data for this batch (use directly — do NOT re-resolve imports from source):
+```json
+{
+  "backend/app/schemas/faq_gap.py": [],
+  "backend/app/schemas/lead.py": [],
+  "backend/app/schemas/negotiation_rule.py": [],
+  "backend/app/schemas/notification.py": [],
+  "backend/app/schemas/pricing_rule.py": [],
+  "backend/app/schemas/property.py": [],
+  "backend/app/schemas/service_request.py": [],
+  "backend/app/schemas/technician.py": [],
+  "backend/app/schemas/user.py": [],
+  "backend/app/services/airbnb_import.py": [
+    "backend/app/integrations/__init__.py",
+    "backend/app/integrations/cloudinary_client.py",
+    "backend/app/services/amenity_taxonomy.py",
+    "backend/app/services/property_normalizer.py"
+  ],
+  "backend/app/services/amenity_taxonomy.py": [],
+  "backend/app/services/calendar_service.py": [
+    "backend/app/integrations/ical_client.py",
+    "backend/app/models/booking.py",
+    "backend/app/models/property.py"
+  ],
+  "backend/app/services/property/chunking.py": [],
+  "backend/app/services/property_normalizer.py": [
+    "backend/app/config.py"
+  ],
+  "backend/app/services/request_feed_service.py": [
+    "backend/app/models/call_session.py",
+    "backend/app/models/notification.py",
+    "backend/app/schemas/service_request.py"
+  ],
+  "backend/scripts/seed_demo_data.py": [
+    "backend/app/database.py",
+    "backend/app/models/booking.py",
+    "backend/app/models/notification.py",
+    "backend/app/models/property.py",
+    "backend/app/models/technician.py",
+    "backend/app/models/user.py"
+  ],
+  "backend/tests/conftest.py": [
+    "backend/app/auth/dependencies.py",
+    "backend/app/database.py",
+    "backend/app/integrations/__init__.py",
+    "backend/app/integrations/redis_client.py",
+    "backend/app/main.py",
+    "backend/app/models/call_session.py",
+    "backend/app/models/property.py",
+    "backend/app/models/user.py"
+  ],
+  "backend/tests/test_airbnb_import.py": [
+    "backend/app/integrations/__init__.py",
+    "backend/app/integrations/bright_data_client.py",
+    "backend/app/services/airbnb_import.py"
+  ],
+  "backend/tests/test_amenity_taxonomy.py": [
+    "backend/app/services/amenity_taxonomy.py"
+  ],
+  "backend/tests/test_bookings_api.py": [
+    "backend/app/models/booking.py"
+  ],
+  "backend/tests/test_calendar_service.py": [
+    "backend/app/models/booking.py",
+    "backend/app/services/calendar_service.py"
+  ],
+  "backend/tests/test_ical_sync.py": [
+    "backend/app/integrations/ical_client.py",
+    "backend/app/models/booking.py",
+    "backend/app/services/calendar_service.py"
+  ],
+  "backend/tests/test_main.py": [
+    "backend/app/main.py"
+  ],
+  "backend/tests/test_property_chunking.py": [
+    "backend/app/models/property.py",
+    "backend/app/services/property/chunking.py"
+  ],
+  "backend/tests/test_property_normalizer.py": [
+    "backend/app/services/property_normalizer.py"
+  ],
+  "backend/tests/test_service_requests_api.py": [
+    "backend/app/models/call_session.py",
+    "backend/app/models/notification.py"
+  ],
+  "backend/tests/test_user_schemas.py": [
+    "backend/app/schemas/user.py"
+  ],
+  "backend/tests/test_voice_ice_servers.py": [
+    "backend/app/api/v1/__init__.py",
+    "backend/app/api/v1/voice.py"
+  ]
+}
+```
+
+Cross-batch neighbors with their exported symbols (confidence boost for cross-batch edges):
+```json
+{
+  "backend/app/schemas/faq_gap.py": [
+    {
+      "path": "backend/app/api/v1/faq.py",
+      "batchIndex": 1,
+      "symbols": [
+        "list_faq_entries",
+        "create_faq_entry",
+        "update_faq_entry",
+        "delete_faq_entry",
+        "list_faq_gaps",
+        "faq_gaps_analytics",
+        "answer_faq_gap",
+        "answer_faq_gap_voice"
+      ]
+    }
+  ],
+  "backend/app/schemas/lead.py": [
+    {
+      "path": "backend/app/api/v1/leads.py",
+      "batchIndex": 1,
+      "symbols": [
+        "BulkDismissRequest",
+        "BulkDismissResponse",
+        "_with_urgency",
+        "list_leads",
+        "list_service_requests",
+        "dismiss_service_requests",
+        "get_lead",
+        "update_lead"
+      ]
+    },
+    {
+      "path": "backend/app/services/recovery_service.py",
+      "batchIndex": 7,
+      "symbols": [
+        "_guest_recovery_whatsapp_text",
+        "RecoveryMetadata",
+        "handle_busy_recovery",
+        "_handle_busy_recovery",
+        "_send_guest_recovery_whatsapp",
+        "_send_host_recovery_whatsapp",
+        "process_availability_recovery",
+        "_process_availability_recovery",
+        "_claim_lead",
+        "_notify_availability"
+      ]
+    }
+  ],
+  "backend/app/schemas/negotiation_rule.py": [
+    {
+      "path": "backend/app/api/v1/negotiation_rules.py",
+      "batchIndex": 1,
+      "symbols": [
+        "_get_owned_rule",
+        "list_negotiation_rules",
+        "parse_negotiation_policy",
+        "update_negotiation_rule",
+        "delete_negotiation_rule"
+      ]
+    }
+  ],
+  "backend/app/schemas/notification.py": [
+    {
+      "path": "backend/app/api/v1/calls.py",
+      "batchIndex": 1,
+      "symbols": [
+        "list_calls",
+        "get_call"
+      ]
+    },
+    {
+      "path": "backend/app/api/v1/notifications.py",
+      "batchIndex": 1,
+      "symbols": [
+        "get_notifications",
+        "read_notification",
+        "stream_notifications"
+      ]
+    },
+    {
+      "path": "backend/app/schemas/call_session.py",
+      "batchIndex": 1,
+      "symbols": [
+        "CallSessionOut",
+        "CallSessionDetailOut"
+      ]
+    }
+  ],
+  "backend/app/schemas/pricing_rule.py": [
+    {
+      "path": "backend/app/api/v1/pricing.py",
+      "batchIndex": 1,
+      "symbols": [
+        "list_pricing_rules",
+        "create_pricing_rule",
+        "delete_pricing_rule",
+        "quote_price"
+      ]
+    }
+  ],
+  "backend/app/schemas/property.py": [
+    {
+      "path": "backend/app/api/v1/properties.py",
+      "batchIndex": 1,
+      "symbols": [
+        "_brand_candidate",
+        "_resolve_brand",
+        "list_properties",
+        "_upsert_property_from_parsed",
+        "import_properties",
+        "_listing_id_from_url",
+        "import_airbnb_urls_trigger",
+        "import_airbnb_urls_status",
+        "create_property",
+        "get_property",
+        "get_property_gallery",
+        "update_property",
+        "_renormalize_one",
+        "renormalize_property_name",
+        "renormalize_all_property_names",
+        "backfill_missing_display_names",
+        "add_property_photo",
+        "delete_property",
+        "sync_ical"
+      ]
+    }
+  ],
+  "backend/app/schemas/service_request.py": [
+    {
+      "path": "backend/app/api/v1/leads.py",
+      "batchIndex": 1,
+      "symbols": [
+        "BulkDismissRequest",
+        "BulkDismissResponse",
+        "_with_urgency",
+        "list_leads",
+        "list_service_requests",
+        "dismiss_service_requests",
+        "get_lead",
+        "update_lead"
+      ]
+    }
+  ],
+  "backend/app/schemas/technician.py": [
+    {
+      "path": "backend/app/api/v1/technicians.py",
+      "batchIndex": 1,
+      "symbols": [
+        "list_technicians",
+        "create_technician",
+        "delete_technician"
+      ]
+    }
+  ],
+  "backend/app/schemas/user.py": [
+    {
+      "path": "backend/app/api/v1/auth.py",
+      "batchIndex": 1,
+      "symbols": [
+        "transcribe_registration_intro",
+        "onboard_host",
+        "me",
+        "_upload_host_image",
+        "upload_my_photo",
+        "upload_my_banner",
+        "update_me"
+      ]
+    }
+  ],
+  "backend/app/services/airbnb_import.py": [
+    {
+      "path": "backend/app/integrations/__init__.py",
+      "batchIndex": 10,
+      "symbols": []
+    },
+    {
+      "path": "backend/app/integrations/cloudinary_client.py",
+      "batchIndex": 1,
+      "symbols": [
+        "_ensure_configured",
+        "upload_image_from_url",
+        "upload_images_from_urls",
+        "upload_image_bytes"
+      ]
+    },
+    {
+      "path": "backend/app/api/v1/properties.py",
+      "batchIndex": 1,
+      "symbols": [
+        "_brand_candidate",
+        "_resolve_brand",
+        "list_properties",
+        "_upsert_property_from_parsed",
+        "import_properties",
+        "_listing_id_from_url",
+        "import_airbnb_urls_trigger",
+        "import_airbnb_urls_status",
+        "create_property",
+        "get_property",
+        "get_property_gallery",
+        "update_property",
+        "_renormalize_one",
+        "renormalize_property_name",
+        "renormalize_all_property_names",
+        "backfill_missing_display_names",
+        "add_property_photo",
+        "delete_property",
+        "sync_ical"
+      ]
+    },
+    {
+      "path": "backend/app/services/faq_service.py",
+      "batchIndex": 10,
+      "symbols": [
+        "search_faq_entries",
+        "search_legacy_property_faq",
+        "full_property_context",
+        "list_verified_property_faq",
+        "list_faq_entries",
+        "get_owned_faq_entry",
+        "sync_imported_faq_entries",
+        "FaqGap",
+        "list_faq_gaps",
+        "_merge_semantically_similar_gaps",
+        "_attach_suggested_answers",
+        "faq_gap_analytics",
+        "transcribe_gap_answer_audio",
+        "get_owned_unanswered_question",
+        "answer_faq_gap"
+      ]
+    }
+  ],
+  "backend/app/services/amenity_taxonomy.py": [
+    {
+      "path": "backend/app/api/v1/properties.py",
+      "batchIndex": 1,
+      "symbols": [
+        "_brand_candidate",
+        "_resolve_brand",
+        "list_properties",
+        "_upsert_property_from_parsed",
+        "import_properties",
+        "_listing_id_from_url",
+        "import_airbnb_urls_trigger",
+        "import_airbnb_urls_status",
+        "create_property",
+        "get_property",
+        "get_property_gallery",
+        "update_property",
+        "_renormalize_one",
+        "renormalize_property_name",
+        "renormalize_all_property_names",
+        "backfill_missing_display_names",
+        "add_property_photo",
+        "delete_property",
+        "sync_ical"
+      ]
+    },
+    {
+      "path": "backend/app/services/property/card.py",
+      "batchIndex": 12,
+      "symbols": [
+        "PropertyCard",
+        "build_property_card",
+        "_purpose_phrase",
+        "match_reasons_for_card",
+        "amenity_checklist_note",
+        "comparison_notes"
+      ]
+    },
+    {
+      "path": "backend/app/services/property/retrieval/filter_builder.py",
+      "batchIndex": 12,
+      "symbols": [
+        "_goa_region_localities",
+        "build_base_filters",
+        "apply_guest_count_filter",
+        "matches_landmark",
+        "apply_landmark_boost",
+        "apply_amenity_boost",
+        "apply_premium_boost"
+      ]
+    },
+    {
+      "path": "backend/app/voice/property_recommendation_guard.py",
+      "batchIndex": 12,
+      "symbols": [
+        "_extract_amounts",
+        "_amount_present",
+        "strip_property_ids",
+        "_fallback_recommendation_text",
+        "_fallback_price_text",
+        "_fallback_availability_text",
+        "PropertyRecommendationGuardProcessor"
+      ]
+    },
+    {
+      "path": "backend/app/voice/tools.py",
+      "batchIndex": 3,
+      "symbols": [
+        "_parse_iso_date",
+        "build_voice_tools"
+      ]
+    }
+  ],
+  "backend/app/services/calendar_service.py": [
+    {
+      "path": "backend/app/integrations/ical_client.py",
+      "batchIndex": 1,
+      "symbols": [
+        "ICalEvent",
+        "parse_ical",
+        "_to_date",
+        "fetch_ical"
+      ]
+    },
+    {
+      "path": "backend/app/models/booking.py",
+      "batchIndex": 1,
+      "symbols": [
+        "Booking"
+      ]
+    },
+    {
+      "path": "backend/app/models/property.py",
+      "batchIndex": 7,
+      "symbols": [
+        "Property"
+      ]
+    },
+    {
+      "path": "backend/app/api/v1/bookings.py",
+      "batchIndex": 1,
+      "symbols": [
+        "list_bookings",
+        "create_booking",
+        "cancel_booking",
+        "check_availability"
+      ]
+    },
+    {
+      "path": "backend/app/api/v1/properties.py",
+      "batchIndex": 1,
+      "symbols": [
+        "_brand_candidate",
+        "_resolve_brand",
+        "list_properties",
+        "_upsert_property_from_parsed",
+        "import_properties",
+        "_listing_id_from_url",
+        "import_airbnb_urls_trigger",
+        "import_airbnb_urls_status",
+        "create_property",
+        "get_property",
+        "get_property_gallery",
+        "update_property",
+        "_renormalize_one",
+        "renormalize_property_name",
+        "renormalize_all_property_names",
+        "backfill_missing_display_names",
+        "add_property_photo",
+        "delete_property",
+        "sync_ical"
+      ]
+    },
+    {
+      "path": "backend/app/main.py",
+      "batchIndex": 1,
+      "symbols": [
+        "_PropagateToStdlib",
+        "_scheduled_ical_sync",
+        "_backfill_property_display_names",
+        "_scheduled_smart_pricing_refresh",
+        "_scheduled_live_pricing_cache_refresh",
+        "_check_db_health",
+        "_check_llm_health",
+        "lifespan",
+        "health",
+        "llm_health_status"
+      ]
+    },
+    {
+      "path": "backend/app/services/property/retrieval/orchestrator.py",
+      "batchIndex": 12,
+      "symbols": [
+        "recommend_properties"
+      ]
+    },
+    {
+      "path": "backend/app/services/tool_handlers.py",
+      "batchIndex": 11,
+      "symbols": [
+        "_phone_confirmation_warning",
+        "_build_escalation_whatsapp_text",
+        "_send_escalation_email",
+        "_send_escalation_whatsapp",
+        "_get_property",
+        "handle_check_calendar",
+        "handle_get_pricing",
+        "handle_dispatch_technician",
+        "handle_send_whatsapp",
+        "handle_send_photos",
+        "handle_escalate_to_host",
+        "handle_negotiate_rate",
+        "handle_recommend_properties",
+        "_resolve_property_names",
+        "handle_update_lead",
+        "handle_search_faq"
+      ]
+    }
+  ],
+  "backend/app/services/property/chunking.py": [
+    {
+      "path": "backend/app/api/v1/properties.py",
+      "batchIndex": 1,
+      "symbols": [
+        "_brand_candidate",
+        "_resolve_brand",
+        "list_properties",
+        "_upsert_property_from_parsed",
+        "import_properties",
+        "_listing_id_from_url",
+        "import_airbnb_urls_trigger",
+        "import_airbnb_urls_status",
+        "create_property",
+        "get_property",
+        "get_property_gallery",
+        "update_property",
+        "_renormalize_one",
+        "renormalize_property_name",
+        "renormalize_all_property_names",
+        "backfill_missing_display_names",
+        "add_property_photo",
+        "delete_property",
+        "sync_ical"
+      ]
+    }
+  ],
+  "backend/app/services/property_normalizer.py": [
+    {
+      "path": "backend/app/config.py",
+      "batchIndex": 10,
+      "symbols": [
+        "Settings",
+        "get_settings"
+      ]
+    },
+    {
+      "path": "backend/app/api/v1/properties.py",
+      "batchIndex": 1,
+      "symbols": [
+        "_brand_candidate",
+        "_resolve_brand",
+        "list_properties",
+        "_upsert_property_from_parsed",
+        "import_properties",
+        "_listing_id_from_url",
+        "import_airbnb_urls_trigger",
+        "import_airbnb_urls_status",
+        "create_property",
+        "get_property",
+        "get_property_gallery",
+        "update_property",
+        "_renormalize_one",
+        "renormalize_property_name",
+        "renormalize_all_property_names",
+        "backfill_missing_display_names",
+        "add_property_photo",
+        "delete_property",
+        "sync_ical"
+      ]
+    }
+  ],
+  "backend/app/services/request_feed_service.py": [
+    {
+      "path": "backend/app/models/call_session.py",
+      "batchIndex": 7,
+      "symbols": [
+        "CallSession"
+      ]
+    },
+    {
+      "path": "backend/app/models/notification.py",
+      "batchIndex": 1,
+      "symbols": [
+        "Notification"
+      ]
+    },
+    {
+      "path": "backend/app/api/v1/leads.py",
+      "batchIndex": 1,
+      "symbols": [
+        "BulkDismissRequest",
+        "BulkDismissResponse",
+        "_with_urgency",
+        "list_leads",
+        "list_service_requests",
+        "dismiss_service_requests",
+        "get_lead",
+        "update_lead"
+      ]
+    }
+  ],
+  "backend/scripts/seed_demo_data.py": [
+    {
+      "path": "backend/app/database.py",
+      "batchIndex": 1,
+      "symbols": [
+        "Base",
+        "get_db"
+      ]
+    },
+    {
+      "path": "backend/app/models/booking.py",
+      "batchIndex": 1,
+      "symbols": [
+        "Booking"
+      ]
+    },
+    {
+      "path": "backend/app/models/notification.py",
+      "batchIndex": 1,
+      "symbols": [
+        "Notification"
+      ]
+    },
+    {
+      "path": "backend/app/models/property.py",
+      "batchIndex": 7,
+      "symbols": [
+        "Property"
+      ]
+    },
+    {
+      "path": "backend/app/models/technician.py",
+      "batchIndex": 1,
+      "symbols": [
+        "Technician"
+      ]
+    },
+    {
+      "path": "backend/app/models/user.py",
+      "batchIndex": 1,
+      "symbols": [
+        "User"
+      ]
+    }
+  ],
+  "backend/tests/conftest.py": [
+    {
+      "path": "backend/app/auth/dependencies.py",
+      "batchIndex": 1,
+      "symbols": [
+        "_clerk_jwks_url",
+        "_jwk_client",
+        "_resolve_local_user",
+        "get_current_user"
+      ]
+    },
+    {
+      "path": "backend/app/database.py",
+      "batchIndex": 1,
+      "symbols": [
+        "Base",
+        "get_db"
+      ]
+    },
+    {
+      "path": "backend/app/integrations/__init__.py",
+      "batchIndex": 10,
+      "symbols": []
+    },
+    {
+      "path": "backend/app/integrations/redis_client.py",
+      "batchIndex": 10,
+      "symbols": [
+        "get_client",
+        "cache_get_json",
+        "cache_set_json"
+      ]
+    },
+    {
+      "path": "backend/app/main.py",
+      "batchIndex": 1,
+      "symbols": [
+        "_PropagateToStdlib",
+        "_scheduled_ical_sync",
+        "_backfill_property_display_names",
+        "_scheduled_smart_pricing_refresh",
+        "_scheduled_live_pricing_cache_refresh",
+        "_check_db_health",
+        "_check_llm_health",
+        "lifespan",
+        "health",
+        "llm_health_status"
+      ]
+    },
+    {
+      "path": "backend/app/models/call_session.py",
+      "batchIndex": 7,
+      "symbols": [
+        "CallSession"
+      ]
+    },
+    {
+      "path": "backend/app/models/property.py",
+      "batchIndex": 7,
+      "symbols": [
+        "Property"
+      ]
+    },
+    {
+      "path": "backend/app/models/user.py",
+      "batchIndex": 1,
+      "symbols": [
+        "User"
+      ]
+    },
+    {
+      "path": "backend/tests/test_leads_api.py",
+      "batchIndex": 8,
+      "symbols": [
+        "test_list_leads_scoped_to_current_user",
+        "test_update_lead_temperature",
+        "test_lead_requires_auth",
+        "test_new_lead_defaults_to_open_status_via_api",
+        "test_update_lead_status",
+        "test_normal_lead_has_no_recovery_reason_via_api",
+        "test_busy_recovery_lead_exposes_recovery_reason_via_api"
+      ]
+    }
+  ],
+  "backend/tests/test_airbnb_import.py": [
+    {
+      "path": "backend/app/integrations/__init__.py",
+      "batchIndex": 10,
+      "symbols": []
+    },
+    {
+      "path": "backend/app/integrations/bright_data_client.py",
+      "batchIndex": 1,
+      "symbols": [
+        "BrightDataError",
+        "_headers",
+        "trigger_scrape",
+        "get_snapshot_status",
+        "get_snapshot_data"
+      ]
+    }
+  ],
+  "backend/tests/test_bookings_api.py": [
+    {
+      "path": "backend/app/models/booking.py",
+      "batchIndex": 1,
+      "symbols": [
+        "Booking"
+      ]
+    }
+  ],
+  "backend/tests/test_calendar_service.py": [
+    {
+      "path": "backend/app/models/booking.py",
+      "batchIndex": 1,
+      "symbols": [
+        "Booking"
+      ]
+    }
+  ],
+  "backend/tests/test_ical_sync.py": [
+    {
+      "path": "backend/app/integrations/ical_client.py",
+      "batchIndex": 1,
+      "symbols": [
+        "ICalEvent",
+        "parse_ical",
+        "_to_date",
+        "fetch_ical"
+      ]
+    },
+    {
+      "path": "backend/app/models/booking.py",
+      "batchIndex": 1,
+      "symbols": [
+        "Booking"
+      ]
+    }
+  ],
+  "backend/tests/test_main.py": [
+    {
+      "path": "backend/app/main.py",
+      "batchIndex": 1,
+      "symbols": [
+        "_PropagateToStdlib",
+        "_scheduled_ical_sync",
+        "_backfill_property_display_names",
+        "_scheduled_smart_pricing_refresh",
+        "_scheduled_live_pricing_cache_refresh",
+        "_check_db_health",
+        "_check_llm_health",
+        "lifespan",
+        "health",
+        "llm_health_status"
+      ]
+    }
+  ],
+  "backend/tests/test_property_chunking.py": [
+    {
+      "path": "backend/app/models/property.py",
+      "batchIndex": 7,
+      "symbols": [
+        "Property"
+      ]
+    }
+  ],
+  "backend/tests/test_service_requests_api.py": [
+    {
+      "path": "backend/app/models/call_session.py",
+      "batchIndex": 7,
+      "symbols": [
+        "CallSession"
+      ]
+    },
+    {
+      "path": "backend/app/models/notification.py",
+      "batchIndex": 1,
+      "symbols": [
+        "Notification"
+      ]
+    }
+  ],
+  "backend/tests/test_voice_ice_servers.py": [
+    {
+      "path": "backend/app/api/v1/__init__.py",
+      "batchIndex": 1,
+      "symbols": []
+    },
+    {
+      "path": "backend/app/api/v1/voice.py",
+      "batchIndex": 1,
+      "symbols": [
+        "transcribe_dictation",
+        "_ice_servers",
+        "exotel_voice_ws",
+        "twilio_voice_incoming",
+        "twilio_voice_ws",
+        "BrowserOfferRequest",
+        "BrowserOfferResponse",
+        "browser_test_offer",
+        "browser_test_page"
+      ]
+    }
+  ]
+}
+```
+
+Files to analyze in this batch (every entry MUST be passed through to batchFiles with all four fields — path, language, sizeLines, fileCategory):
+1. `backend/app/schemas/faq_gap.py` (26 lines, language: `python`, fileCategory: `code`)
+2. `backend/app/schemas/lead.py` (65 lines, language: `python`, fileCategory: `code`)
+3. `backend/app/schemas/negotiation_rule.py` (62 lines, language: `python`, fileCategory: `code`)
+4. `backend/app/schemas/notification.py` (18 lines, language: `python`, fileCategory: `code`)
+5. `backend/app/schemas/pricing_rule.py` (24 lines, language: `python`, fileCategory: `code`)
+6. `backend/app/schemas/property.py` (289 lines, language: `python`, fileCategory: `code`)
+7. `backend/app/schemas/service_request.py` (27 lines, language: `python`, fileCategory: `code`)
+8. `backend/app/schemas/technician.py` (27 lines, language: `python`, fileCategory: `code`)
+9. `backend/app/schemas/user.py` (146 lines, language: `python`, fileCategory: `code`)
+10. `backend/app/services/airbnb_import.py` (405 lines, language: `python`, fileCategory: `code`)
+11. `backend/app/services/amenity_taxonomy.py` (83 lines, language: `python`, fileCategory: `code`)
+12. `backend/app/services/calendar_service.py` (132 lines, language: `python`, fileCategory: `code`)
+13. `backend/app/services/property/chunking.py` (113 lines, language: `python`, fileCategory: `code`)
+14. `backend/app/services/property_normalizer.py` (380 lines, language: `python`, fileCategory: `code`)
+15. `backend/app/services/request_feed_service.py` (127 lines, language: `python`, fileCategory: `code`)
+16. `backend/scripts/seed_demo_data.py` (174 lines, language: `python`, fileCategory: `code`)
+17. `backend/tests/conftest.py` (163 lines, language: `python`, fileCategory: `code`)
+18. `backend/tests/test_airbnb_import.py` (354 lines, language: `python`, fileCategory: `code`)
+19. `backend/tests/test_amenity_taxonomy.py` (49 lines, language: `python`, fileCategory: `code`)
+20. `backend/tests/test_bookings_api.py` (65 lines, language: `python`, fileCategory: `code`)
+21. `backend/tests/test_calendar_service.py` (109 lines, language: `python`, fileCategory: `code`)
+22. `backend/tests/test_ical_sync.py` (77 lines, language: `python`, fileCategory: `code`)
+23. `backend/tests/test_main.py` (33 lines, language: `python`, fileCategory: `code`)
+24. `backend/tests/test_property_chunking.py` (70 lines, language: `python`, fileCategory: `code`)
+25. `backend/tests/test_property_normalizer.py` (91 lines, language: `python`, fileCategory: `code`)
+26. `backend/tests/test_service_requests_api.py` (151 lines, language: `python`, fileCategory: `code`)
+27. `backend/tests/test_user_schemas.py` (45 lines, language: `python`, fileCategory: `code`)
+28. `backend/tests/test_voice_ice_servers.py` (28 lines, language: `python`, fileCategory: `code`)
+
+**Additional context from main session:**
+
+Project: mira-prod — AI-powered property-management assistant for short-term rental hosts in India. Handles guest calls via Exotel telephony, lead qualification across a host's portfolio, booking/calendar management, rule-based pricing & negotiation, and a real-time "talk to Mira" voice-test UI. Backend: FastAPI + Python 3.12, pipecat-ai voice pipeline. Frontend: Next.js + TypeScript + Tailwind + shadcn/ui.
+Languages: python, typescript, markdown, yaml, dockerfile
+
+**Language directive**: Generate all textual content (summaries, descriptions, tags, titles, languageNotes, languageLesson) in **English**. Maintain technical accuracy while using natural, native-level phrasing. Keep technical terms in English.

@@ -1,0 +1,249 @@
+"use client";
+
+import { useState } from "react";
+import { toast } from "sonner";
+import { Plus, Search } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { DictationTextarea } from "@/components/ui/dictation-textarea";
+import { ExpandableText } from "@/components/expandable-text";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { RightPanel, RightPanelFooterButton } from "@/components/ui/right-panel";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { StatusChip } from "@/components/status-chip";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useAsync } from "@/hooks/use-async";
+import { api, ApiError } from "@/lib/api";
+import { matchesSearch } from "@/lib/utils";
+import { UnansweredQuestionsCard } from "@/components/unanswered-questions-card";
+import type { FaqEntryOut } from "@/lib/types";
+
+export default function FaqPage() {
+  const { data: properties } = useAsync(() => api.properties.list(), []);
+  const { data: entries, loading, refetch } = useAsync(() => api.faq.list(), []);
+
+  const [addOpen, setAddOpen] = useState(false);
+  // The same panel adds a new entry or edits an existing one.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [propertyId, setPropertyId] = useState<string>("all");
+  const [question, setQuestion] = useState("");
+  const [answer, setAnswer] = useState("");
+  const [category, setCategory] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const propertyName = (id: string | null) =>
+    id ? properties?.find((p) => p.id === id)?.name ?? id : "All properties";
+
+  const filteredEntries = (entries ?? []).filter((entry) =>
+    matchesSearch(search, [entry.question, entry.answer, propertyName(entry.property_id), entry.category, entry.status])
+  );
+
+  function resetForm() {
+    setQuestion("");
+    setAnswer("");
+    setCategory("");
+    setPropertyId("all");
+    setEditingId(null);
+  }
+
+  function openAdd() {
+    resetForm();
+    setAddOpen(true);
+  }
+
+  function openEdit(entry: FaqEntryOut) {
+    setEditingId(entry.id);
+    setQuestion(entry.question);
+    setAnswer(entry.answer);
+    setCategory(entry.category ?? "");
+    setPropertyId(entry.property_id ?? "all");
+    setAddOpen(true);
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSubmitting(true);
+    const fields = {
+      property_id: propertyId === "all" ? null : propertyId,
+      question,
+      answer,
+      category: category || null,
+    };
+    try {
+      if (editingId) {
+        // Editing keeps the entry's status (verified stays verified).
+        await api.faq.update(editingId, fields);
+        toast.success("FAQ entry updated");
+      } else {
+        await api.faq.create({ ...fields, status: "verified", verified_by: "host" });
+        toast.success("FAQ entry added");
+      }
+      resetForm();
+      setAddOpen(false);
+      refetch();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : editingId ? "Failed to update FAQ entry" : "Failed to add FAQ entry");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleToggleVerified(id: string, currentStatus: string) {
+    try {
+      await api.faq.update(id, { status: currentStatus === "verified" ? "pending" : "verified", verified_by: "host" });
+      refetch();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Failed to update FAQ entry");
+    }
+  }
+
+  async function handleDelete(id: string) {
+    try {
+      await api.faq.remove(id);
+      toast.success("FAQ entry removed");
+      refetch();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Failed to remove FAQ entry");
+    }
+  }
+
+  return (
+    <div className="min-w-0 space-y-6">
+      <div>
+        <h1 className="page-title">FAQ knowledge base</h1>
+        <p className="text-sm text-muted-foreground">
+          Verified answers the voice agent&apos;s search_faq tool can use — anything not verified here gets
+          escalated to you instead of guessed.
+        </p>
+      </div>
+
+      <UnansweredQuestionsCard collapsible />
+
+      <Card className="min-w-0">
+        <CardHeader className="flex flex-wrap items-center justify-between gap-3 space-y-0">
+          <div className="min-w-0">
+            <CardTitle>Verified FAQ entries</CardTitle>
+            <CardDescription>Answers already in the knowledge base, added by you or resolved from a gap.</CardDescription>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            {entries && entries.length > 0 && (
+              <Input
+                placeholder="Search FAQ…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                leadingIcon={<Search />}
+                className="w-56"
+              />
+            )}
+            <Button size="sm" className="shrink-0" onClick={openAdd}>
+              <Plus className="size-4" />
+              Add new
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="min-w-0">
+          {loading ? (
+            <Skeleton className="h-64 w-full" />
+          ) : !entries || entries.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No FAQ entries yet.</p>
+          ) : filteredEntries.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No FAQ entries match your search.</p>
+          ) : (
+            <div className="min-w-0 max-h-[32rem] overflow-y-auto overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Question</TableHead>
+                    <TableHead>Answer</TableHead>
+                    <TableHead>Applies to</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="w-48" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredEntries.map((entry) => (
+                    <TableRow key={entry.id} className="align-top">
+                      <TableCell className="w-[180px] max-w-[180px] py-3">
+                        <ExpandableText text={entry.question} maxLength={60} />
+                      </TableCell>
+                      <TableCell className="w-[220px] max-w-[220px] py-3 text-muted-foreground">
+                        <ExpandableText text={entry.answer} maxLength={90} />
+                      </TableCell>
+                      <TableCell className="whitespace-normal break-words py-3">{propertyName(entry.property_id)}</TableCell>
+                      <TableCell className="py-3 capitalize">{entry.category ?? "—"}</TableCell>
+                      <TableCell className="py-3">
+                        <StatusChip status={entry.status} tone={entry.status === "verified" ? "live" : "pending"} />
+                      </TableCell>
+                      <TableCell className="py-3">
+                        <div className="flex flex-wrap gap-2">
+                          <Button variant="outline" size="sm" onClick={() => openEdit(entry)}>
+                            Edit
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => handleToggleVerified(entry.id, entry.status)}>
+                            {entry.status === "verified" ? "Unverify" : "Verify"}
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => handleDelete(entry.id)}>
+                            Remove
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <RightPanel
+        open={addOpen}
+        onOpenChange={(open) => {
+          setAddOpen(open);
+          if (!open) resetForm();
+        }}
+        title={editingId ? "Edit FAQ entry" : "Add FAQ entry"}
+        footer={
+          <RightPanelFooterButton type="submit" form="add-faq-form" disabled={submitting}>
+            {submitting ? "Saving…" : editingId ? "Save changes" : "Add (verified)"}
+          </RightPanelFooterButton>
+        }
+      >
+        <form id="add-faq-form" onSubmit={handleSubmit} className="space-y-4">
+          <div className="min-w-0 space-y-2">
+            <Label>Applies to</Label>
+            <Select value={propertyId} onValueChange={(v) => v && setPropertyId(v)}>
+              <SelectTrigger className="w-full">
+                <SelectValue>{(value: string) => propertyName(value === "all" ? null : value)}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All properties</SelectItem>
+                {properties?.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="min-w-0 space-y-2">
+            <Label htmlFor="category">Category</Label>
+            <Input id="category" placeholder="e.g. wifi, parking" value={category} onChange={(e) => setCategory(e.target.value)} />
+          </div>
+          <div className="min-w-0 space-y-2">
+            <Label htmlFor="question">Question</Label>
+            <Input id="question" required value={question} onChange={(e) => setQuestion(e.target.value)} />
+          </div>
+          <div className="min-w-0 space-y-2">
+            <Label htmlFor="answer">Answer</Label>
+            <DictationTextarea id="answer" required value={answer} onValueChange={setAnswer} />
+          </div>
+        </form>
+      </RightPanel>
+    </div>
+  );
+}

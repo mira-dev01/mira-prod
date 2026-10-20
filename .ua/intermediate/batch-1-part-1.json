@@ -1,0 +1,1206 @@
+{
+  "nodes": [
+    {
+      "id": "file:backend/app/api/v1/__init__.py",
+      "type": "file",
+      "name": "__init__.py",
+      "filePath": "backend/app/api/v1/__init__.py",
+      "summary": "Empty package initializer for the v1 API module; its presence marks the directory as a Python package.",
+      "tags": ["entry-point", "barrel", "api-handler"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:backend/app/api/v1/analytics.py",
+      "type": "file",
+      "name": "analytics.py",
+      "filePath": "backend/app/api/v1/analytics.py",
+      "summary": "Provides three FastAPI route handlers for dashboard analytics: a summary endpoint aggregating call, lead, and notification KPIs, a time-series endpoint for charting metrics over time, and a Busy Call Recovery analytics endpoint tracking whatsapp recovery funnels.",
+      "tags": ["api-handler", "analytics", "data-model"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:backend/app/api/v1/analytics.py:analytics_summary",
+      "type": "function",
+      "name": "analytics_summary",
+      "filePath": "backend/app/api/v1/analytics.py",
+      "lineRange": [26, 142],
+      "summary": "Aggregates call counts, lead pipeline metrics, escalation notifications, and open-lead counts into a single summary dict for the dashboard KPI cards.",
+      "tags": ["api-handler", "analytics", "service"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:backend/app/api/v1/analytics.py:analytics_timeseries",
+      "type": "function",
+      "name": "analytics_timeseries",
+      "filePath": "backend/app/api/v1/analytics.py",
+      "lineRange": [146, 265],
+      "summary": "Returns date-bucketed time-series data for a chosen metric (calls, leads, revenue, etc.) used to render sparklines and trend charts in the dashboard.",
+      "tags": ["api-handler", "analytics", "service"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:backend/app/api/v1/analytics.py:analytics_recovery",
+      "type": "function",
+      "name": "analytics_recovery",
+      "filePath": "backend/app/api/v1/analytics.py",
+      "lineRange": [269, 432],
+      "summary": "Computes Busy Call Recovery funnel metrics including total recoveries, guest engagement rate, average response times, and lead conversion from recovered calls.",
+      "tags": ["api-handler", "analytics", "service"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:backend/app/api/v1/auth.py",
+      "type": "file",
+      "name": "auth.py",
+      "filePath": "backend/app/api/v1/auth.py",
+      "summary": "Handles host account management endpoints: onboarding (Airbnb profile scrape trigger), profile photo/banner upload via Cloudinary, profile update, and a registration audio transcription helper.",
+      "tags": ["api-handler", "service", "middleware"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:backend/app/api/v1/auth.py:onboard_host",
+      "type": "function",
+      "name": "onboard_host",
+      "filePath": "backend/app/api/v1/auth.py",
+      "lineRange": [35, 78],
+      "summary": "Stores host onboarding data (business name, phone, Airbnb URL) and triggers a Bright Data scrape of the host's Airbnb profile to populate property details.",
+      "tags": ["api-handler", "service", "entry-point"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:backend/app/api/v1/bookings.py",
+      "type": "file",
+      "name": "bookings.py",
+      "filePath": "backend/app/api/v1/bookings.py",
+      "summary": "Exposes CRUD endpoints for host bookings: list (with optional property filter), create, cancel, and availability check using the calendar service.",
+      "tags": ["api-handler", "data-model", "service"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:backend/app/api/v1/calls.py",
+      "type": "file",
+      "name": "calls.py",
+      "filePath": "backend/app/api/v1/calls.py",
+      "summary": "Provides list and detail endpoints for call sessions, supporting filtering by status, urgency, call type, date range, and test-call inclusion.",
+      "tags": ["api-handler", "data-model", "service"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:backend/app/api/v1/common.py",
+      "type": "file",
+      "name": "common.py",
+      "filePath": "backend/app/api/v1/common.py",
+      "summary": "Shared utility helpers used across all v1 API endpoints: property ownership guards, a list of owned property IDs, a DateRange class with ISO-to-datetime conversion, and a FastAPI date-range query dependency.",
+      "tags": ["utility", "middleware", "api-handler"],
+      "complexity": "simple",
+      "languageNotes": "DateRange is a plain dataclass with `since`/`until` helpers that return aware datetimes from ISO date strings; shared by multiple endpoints via FastAPI Depends."
+    },
+    {
+      "id": "class:backend/app/api/v1/common.py:DateRange",
+      "type": "class",
+      "name": "DateRange",
+      "filePath": "backend/app/api/v1/common.py",
+      "lineRange": [26, 47],
+      "summary": "Holds a start and end date pair with helper methods to convert to aware datetime boundaries (midnight start, midnight-next-day end) for SQL range filtering.",
+      "tags": ["utility", "data-model"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:backend/app/api/v1/faq.py",
+      "type": "file",
+      "name": "faq.py",
+      "filePath": "backend/app/api/v1/faq.py",
+      "summary": "Manages host FAQ entries and AI-detected knowledge gaps: CRUD for FAQ entries, listing and analytics for gaps, and answering gaps via text or uploaded voice recording.",
+      "tags": ["api-handler", "service", "data-model"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:backend/app/api/v1/guests.py",
+      "type": "file",
+      "name": "guests.py",
+      "filePath": "backend/app/api/v1/guests.py",
+      "summary": "Exposes guest profile endpoints: list guests who called the host, retrieve a guest summary, retrieve detailed guest history with revenue attribution and recent calls, and update guest profile fields.",
+      "tags": ["api-handler", "data-model", "service"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:backend/app/api/v1/guests.py:get_guest_detail",
+      "type": "function",
+      "name": "get_guest_detail",
+      "filePath": "backend/app/api/v1/guests.py",
+      "lineRange": [69, 111],
+      "summary": "Fetches enriched guest detail including total revenue attributed across all calls, the 20 most recent call sessions with property names, and guest profile fields.",
+      "tags": ["api-handler", "data-model", "analytics"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:backend/app/api/v1/leads.py",
+      "type": "file",
+      "name": "leads.py",
+      "filePath": "backend/app/api/v1/leads.py",
+      "summary": "Manages lead qualification data: listing leads with urgency annotation, CRUD for service requests with bulk dismiss, and per-lead get/update with urgency injection.",
+      "tags": ["api-handler", "data-model", "service"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:backend/app/api/v1/leads.py:_with_urgency",
+      "type": "function",
+      "name": "_with_urgency",
+      "filePath": "backend/app/api/v1/leads.py",
+      "lineRange": [29, 56],
+      "summary": "Fetches urgency and notification data for a batch of leads' call sessions and injects the urgency value into each LeadOut response object.",
+      "tags": ["utility", "data-model", "service"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:backend/app/api/v1/negotiation_rules.py",
+      "type": "file",
+      "name": "negotiation_rules.py",
+      "filePath": "backend/app/api/v1/negotiation_rules.py",
+      "summary": "Manages host negotiation rules: list, parse a free-text policy into structured rules via LLM, update individual rules (with property scope validation), and delete.",
+      "tags": ["api-handler", "service", "data-model"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:backend/app/api/v1/negotiation_rules.py:parse_negotiation_policy",
+      "type": "function",
+      "name": "parse_negotiation_policy",
+      "filePath": "backend/app/api/v1/negotiation_rules.py",
+      "lineRange": [42, 71],
+      "summary": "Accepts a free-text negotiation policy, calls the negotiation policy service to parse it into structured rules via LLM, validates the result, and persists new NegotiationRule objects to the database.",
+      "tags": ["api-handler", "service", "validation"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:backend/app/api/v1/notifications.py",
+      "type": "file",
+      "name": "notifications.py",
+      "filePath": "backend/app/api/v1/notifications.py",
+      "summary": "Provides notification endpoints: fetch unread notifications for the host's properties, mark individual notifications as read, and an SSE streaming endpoint that polls for new notifications every 5 seconds.",
+      "tags": ["api-handler", "service", "event-handler"],
+      "complexity": "moderate",
+      "languageNotes": "Uses Server-Sent Events (StreamingResponse) for real-time notification push; polls with asyncio.sleep(5) inside an async generator."
+    },
+    {
+      "id": "file:backend/app/api/v1/pricing.py",
+      "type": "file",
+      "name": "pricing.py",
+      "filePath": "backend/app/api/v1/pricing.py",
+      "summary": "Exposes pricing rule CRUD (list with date-range filter, create, delete) and a quote-price endpoint that runs the pricing engine on a property/date range to return a price breakdown.",
+      "tags": ["api-handler", "service", "data-model"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:backend/app/api/v1/properties.py",
+      "type": "file",
+      "name": "properties.py",
+      "filePath": "backend/app/api/v1/properties.py",
+      "summary": "The most feature-rich REST resource: full CRUD for properties plus Airbnb import from JSON files or URLs (via Bright Data), property name normalization, photo upload, iCal sync, and brand-deduplication logic.",
+      "tags": ["api-handler", "service", "data-model"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:backend/app/api/v1/properties.py:_upsert_property_from_parsed",
+      "type": "function",
+      "name": "_upsert_property_from_parsed",
+      "filePath": "backend/app/api/v1/properties.py",
+      "lineRange": [101, 167],
+      "summary": "Core import helper that inserts or updates a Property record from parsed Airbnb listing data, syncs FAQ entries, and triggers property chunk indexing for the AI search layer.",
+      "tags": ["service", "data-model", "utility"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:backend/app/api/v1/properties.py:import_airbnb_urls_status",
+      "type": "function",
+      "name": "import_airbnb_urls_status",
+      "filePath": "backend/app/api/v1/properties.py",
+      "lineRange": [222, 255],
+      "summary": "Polls a Bright Data snapshot for completion, then downloads the scraped listing records and upserts each property, returning per-URL import results.",
+      "tags": ["api-handler", "service", "integration"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:backend/app/api/v1/properties.py:_renormalize_one",
+      "type": "function",
+      "name": "_renormalize_one",
+      "filePath": "backend/app/api/v1/properties.py",
+      "lineRange": [318, 371],
+      "summary": "Re-runs property name normalization (rule-based first, LLM fallback) and brand resolution on a single property, updating display_name and brand fields in place.",
+      "tags": ["service", "utility", "data-model"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:backend/app/api/v1/properties.py:add_property_photo",
+      "type": "function",
+      "name": "add_property_photo",
+      "filePath": "backend/app/api/v1/properties.py",
+      "lineRange": [447, 474],
+      "summary": "Validates and uploads a host-submitted property photo to Cloudinary, then updates the property's photo_urls list in the database.",
+      "tags": ["api-handler", "service", "integration"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:backend/app/api/v1/technicians.py",
+      "type": "file",
+      "name": "technicians.py",
+      "filePath": "backend/app/api/v1/technicians.py",
+      "summary": "Simple CRUD endpoints for host-managed technician contacts: list all for a host's properties, create, and delete by ID with ownership verification.",
+      "tags": ["api-handler", "data-model", "service"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:backend/app/api/v1/voice.py",
+      "type": "file",
+      "name": "voice.py",
+      "filePath": "backend/app/api/v1/voice.py",
+      "summary": "Telephony and voice-test gateway endpoints: Exotel WebSocket handler, Twilio TwiML + WebSocket handlers, browser WebRTC offer/answer for the dashboard voice-test UI, ICE server configuration, and a dictation transcription endpoint.",
+      "tags": ["api-handler", "service", "middleware"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:backend/app/api/v1/voice.py:_ice_servers",
+      "type": "function",
+      "name": "_ice_servers",
+      "filePath": "backend/app/api/v1/voice.py",
+      "lineRange": [89, 126],
+      "summary": "Builds the ICE server list for WebRTC by reading TURN_URL and TURN_URL_TLS settings, validating they start with turn:/turns: schemes, and returning both STUN and TURN IceServer objects.",
+      "tags": ["utility", "service", "middleware"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:backend/app/api/v1/voice.py:exotel_voice_ws",
+      "type": "function",
+      "name": "exotel_voice_ws",
+      "filePath": "backend/app/api/v1/voice.py",
+      "lineRange": [130, 138],
+      "summary": "WebSocket endpoint for Exotel telephony: verifies the webhook token, accepts the connection, parses telephony metadata, and hands off to the pipecat voice pipeline.",
+      "tags": ["api-handler", "service", "event-handler"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:backend/app/api/v1/voice.py:browser_test_offer",
+      "type": "function",
+      "name": "browser_test_offer",
+      "filePath": "backend/app/api/v1/voice.py",
+      "lineRange": [190, 213],
+      "summary": "Handles the WebRTC offer from the dashboard voice-test UI: negotiates the SDP answer, then spawns background tasks for the browser voice pipeline and lead pipeline.",
+      "tags": ["api-handler", "service", "event-handler"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:backend/app/auth/dependencies.py",
+      "type": "file",
+      "name": "dependencies.py",
+      "filePath": "backend/app/auth/dependencies.py",
+      "summary": "FastAPI auth dependencies: Clerk JWT verification via JWKS, local user resolution/creation on first login, and the `get_current_user` dependency consumed by all authenticated endpoints.",
+      "tags": ["middleware", "service", "singleton"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:backend/app/auth/dependencies.py:get_current_user",
+      "type": "function",
+      "name": "get_current_user",
+      "filePath": "backend/app/auth/dependencies.py",
+      "lineRange": [80, 113],
+      "summary": "FastAPI dependency that extracts and validates a Clerk JWT, resolves or auto-creates the corresponding local User record, and returns it for injection into route handlers.",
+      "tags": ["middleware", "service", "singleton"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:backend/app/auth/dependencies.py:_resolve_local_user",
+      "type": "function",
+      "name": "_resolve_local_user",
+      "filePath": "backend/app/auth/dependencies.py",
+      "lineRange": [41, 77],
+      "summary": "Looks up a local User by Clerk user ID, falling back to email lookup, then auto-creates a new User row on first login and fetches email from the Clerk API if not cached.",
+      "tags": ["service", "data-model", "middleware"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:backend/app/database.py",
+      "type": "file",
+      "name": "database.py",
+      "filePath": "backend/app/database.py",
+      "summary": "Configures the SQLAlchemy async engine and session factory, defines the declarative Base for all ORM models, and exposes a `get_db` FastAPI dependency that yields an async session.",
+      "tags": ["singleton", "data-model", "configuration"],
+      "complexity": "simple"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:backend/app/api/v1/analytics.py",
+      "target": "function:backend/app/api/v1/analytics.py:analytics_summary",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/api/v1/analytics.py",
+      "target": "function:backend/app/api/v1/analytics.py:analytics_timeseries",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/api/v1/analytics.py",
+      "target": "function:backend/app/api/v1/analytics.py:analytics_recovery",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/api/v1/analytics.py",
+      "target": "function:backend/app/api/v1/analytics.py:analytics_summary",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/api/v1/analytics.py",
+      "target": "function:backend/app/api/v1/analytics.py:analytics_timeseries",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/api/v1/analytics.py",
+      "target": "function:backend/app/api/v1/analytics.py:analytics_recovery",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/api/v1/analytics.py",
+      "target": "file:backend/app/api/v1/common.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/analytics.py",
+      "target": "file:backend/app/auth/dependencies.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/analytics.py",
+      "target": "file:backend/app/database.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/analytics.py",
+      "target": "file:backend/app/models/call_session.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/analytics.py",
+      "target": "file:backend/app/models/lead.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/analytics.py",
+      "target": "file:backend/app/models/notification.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/analytics.py",
+      "target": "file:backend/app/models/user.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/analytics.py",
+      "target": "file:backend/app/schemas/call_classification.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/analytics.py",
+      "target": "file:backend/app/services/call_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/analytics.py",
+      "target": "file:backend/app/services/recovery_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/analytics.py",
+      "target": "file:backend/app/services/whatsapp_reply_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/auth.py",
+      "target": "function:backend/app/api/v1/auth.py:onboard_host",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/api/v1/auth.py",
+      "target": "function:backend/app/api/v1/auth.py:onboard_host",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/api/v1/auth.py",
+      "target": "file:backend/app/auth/dependencies.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/auth.py",
+      "target": "file:backend/app/database.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/auth.py",
+      "target": "file:backend/app/models/user.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/auth.py",
+      "target": "file:backend/app/schemas/user.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/auth.py",
+      "target": "file:backend/app/services/faq_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/bookings.py",
+      "target": "file:backend/app/api/v1/common.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/bookings.py",
+      "target": "file:backend/app/auth/dependencies.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/bookings.py",
+      "target": "file:backend/app/database.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/bookings.py",
+      "target": "file:backend/app/models/booking.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/bookings.py",
+      "target": "file:backend/app/models/user.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/bookings.py",
+      "target": "file:backend/app/schemas/booking.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/bookings.py",
+      "target": "file:backend/app/services/calendar_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/calls.py",
+      "target": "file:backend/app/api/v1/common.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/calls.py",
+      "target": "file:backend/app/auth/dependencies.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/calls.py",
+      "target": "file:backend/app/database.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/calls.py",
+      "target": "file:backend/app/models/call_session.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/calls.py",
+      "target": "file:backend/app/models/lead.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/calls.py",
+      "target": "file:backend/app/models/user.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/common.py",
+      "target": "class:backend/app/api/v1/common.py:DateRange",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/api/v1/common.py",
+      "target": "class:backend/app/api/v1/common.py:DateRange",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/api/v1/faq.py",
+      "target": "file:backend/app/api/v1/common.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/faq.py",
+      "target": "file:backend/app/auth/dependencies.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/faq.py",
+      "target": "file:backend/app/database.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/faq.py",
+      "target": "file:backend/app/models/user.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/faq.py",
+      "target": "file:backend/app/schemas/faq_entry.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/faq.py",
+      "target": "file:backend/app/schemas/faq_gap.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/faq.py",
+      "target": "file:backend/app/services/faq_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/guests.py",
+      "target": "function:backend/app/api/v1/guests.py:get_guest_detail",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/api/v1/guests.py",
+      "target": "function:backend/app/api/v1/guests.py:get_guest_detail",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/api/v1/guests.py",
+      "target": "file:backend/app/api/v1/common.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/guests.py",
+      "target": "file:backend/app/auth/dependencies.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/guests.py",
+      "target": "file:backend/app/database.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/guests.py",
+      "target": "file:backend/app/models/call_session.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/guests.py",
+      "target": "file:backend/app/models/lead.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/guests.py",
+      "target": "file:backend/app/models/user.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/leads.py",
+      "target": "function:backend/app/api/v1/leads.py:_with_urgency",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/api/v1/leads.py",
+      "target": "function:backend/app/api/v1/leads.py:_with_urgency",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/api/v1/leads.py",
+      "target": "file:backend/app/api/v1/common.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/leads.py",
+      "target": "file:backend/app/auth/dependencies.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/leads.py",
+      "target": "file:backend/app/database.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/leads.py",
+      "target": "file:backend/app/models/lead.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/leads.py",
+      "target": "file:backend/app/models/user.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/leads.py",
+      "target": "file:backend/app/schemas/lead.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/leads.py",
+      "target": "file:backend/app/schemas/service_request.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/leads.py",
+      "target": "file:backend/app/services/lead_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/negotiation_rules.py",
+      "target": "function:backend/app/api/v1/negotiation_rules.py:parse_negotiation_policy",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/api/v1/negotiation_rules.py",
+      "target": "function:backend/app/api/v1/negotiation_rules.py:parse_negotiation_policy",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/api/v1/negotiation_rules.py",
+      "target": "file:backend/app/api/v1/common.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/negotiation_rules.py",
+      "target": "file:backend/app/auth/dependencies.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/negotiation_rules.py",
+      "target": "file:backend/app/database.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/negotiation_rules.py",
+      "target": "file:backend/app/models/user.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/negotiation_rules.py",
+      "target": "file:backend/app/schemas/negotiation_rule.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/notifications.py",
+      "target": "file:backend/app/api/v1/common.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/notifications.py",
+      "target": "file:backend/app/auth/dependencies.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/notifications.py",
+      "target": "file:backend/app/database.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/notifications.py",
+      "target": "file:backend/app/models/notification.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/notifications.py",
+      "target": "file:backend/app/models/user.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/notifications.py",
+      "target": "file:backend/app/schemas/notification.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/pricing.py",
+      "target": "file:backend/app/api/v1/common.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/pricing.py",
+      "target": "file:backend/app/auth/dependencies.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/pricing.py",
+      "target": "file:backend/app/database.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/pricing.py",
+      "target": "file:backend/app/models/user.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/pricing.py",
+      "target": "file:backend/app/schemas/pricing_rule.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/pricing.py",
+      "target": "file:backend/app/services/pricing_engine.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/properties.py",
+      "target": "function:backend/app/api/v1/properties.py:_upsert_property_from_parsed",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/api/v1/properties.py",
+      "target": "function:backend/app/api/v1/properties.py:import_airbnb_urls_status",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/api/v1/properties.py",
+      "target": "function:backend/app/api/v1/properties.py:_renormalize_one",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/api/v1/properties.py",
+      "target": "function:backend/app/api/v1/properties.py:add_property_photo",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/api/v1/properties.py",
+      "target": "function:backend/app/api/v1/properties.py:_upsert_property_from_parsed",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/api/v1/properties.py",
+      "target": "function:backend/app/api/v1/properties.py:import_airbnb_urls_status",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/api/v1/properties.py",
+      "target": "function:backend/app/api/v1/properties.py:_renormalize_one",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/api/v1/properties.py",
+      "target": "function:backend/app/api/v1/properties.py:add_property_photo",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/api/v1/properties.py",
+      "target": "file:backend/app/api/v1/common.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/properties.py",
+      "target": "file:backend/app/auth/dependencies.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/properties.py",
+      "target": "file:backend/app/database.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/properties.py",
+      "target": "file:backend/app/models/property.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/properties.py",
+      "target": "file:backend/app/models/user.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/properties.py",
+      "target": "file:backend/app/schemas/property.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/properties.py",
+      "target": "file:backend/app/services/airbnb_import.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/properties.py",
+      "target": "file:backend/app/services/amenity_taxonomy.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/properties.py",
+      "target": "file:backend/app/services/calendar_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/properties.py",
+      "target": "file:backend/app/services/property_normalizer.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/technicians.py",
+      "target": "file:backend/app/api/v1/common.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/technicians.py",
+      "target": "file:backend/app/auth/dependencies.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/technicians.py",
+      "target": "file:backend/app/database.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/technicians.py",
+      "target": "file:backend/app/models/technician.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/technicians.py",
+      "target": "file:backend/app/models/user.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/technicians.py",
+      "target": "file:backend/app/schemas/technician.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/voice.py",
+      "target": "function:backend/app/api/v1/voice.py:_ice_servers",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/api/v1/voice.py",
+      "target": "function:backend/app/api/v1/voice.py:exotel_voice_ws",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/api/v1/voice.py",
+      "target": "function:backend/app/api/v1/voice.py:browser_test_offer",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/api/v1/voice.py",
+      "target": "function:backend/app/api/v1/voice.py:_ice_servers",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/api/v1/voice.py",
+      "target": "function:backend/app/api/v1/voice.py:exotel_voice_ws",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/api/v1/voice.py",
+      "target": "function:backend/app/api/v1/voice.py:browser_test_offer",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/api/v1/voice.py",
+      "target": "file:backend/app/api/v1/common.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/voice.py",
+      "target": "file:backend/app/auth/dependencies.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/voice.py",
+      "target": "file:backend/app/config.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/voice.py",
+      "target": "file:backend/app/database.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/voice.py",
+      "target": "file:backend/app/models/user.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/api/v1/voice.py",
+      "target": "file:backend/app/voice/pipeline.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/auth/dependencies.py",
+      "target": "function:backend/app/auth/dependencies.py:get_current_user",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/auth/dependencies.py",
+      "target": "function:backend/app/auth/dependencies.py:_resolve_local_user",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/auth/dependencies.py",
+      "target": "function:backend/app/auth/dependencies.py:get_current_user",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/auth/dependencies.py",
+      "target": "function:backend/app/auth/dependencies.py:_resolve_local_user",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/auth/dependencies.py",
+      "target": "file:backend/app/database.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/auth/dependencies.py",
+      "target": "file:backend/app/models/user.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    }
+  ]
+}

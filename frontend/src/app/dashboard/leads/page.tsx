@@ -1,0 +1,608 @@
+"use client";
+
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ChevronRight, LayoutGrid, Search, Table2 } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { StatusChip, type StatusTone } from "@/components/status-chip";
+import { CloseLeadDialog } from "@/components/close-lead-dialog";
+import { DateRangePicker } from "@/components/date-range-picker";
+import { LeadDetailPanel, LEAD_STATUSES, leadUrgencyTone } from "@/components/lead-detail-panel";
+import { ServiceRequestsTable } from "@/components/service-requests-table";
+import { WhatsAppButton } from "@/components/whatsapp-button";
+import { useAsync } from "@/hooks/use-async";
+import { useDateRange } from "@/hooks/use-date-range";
+import { api, ApiError } from "@/lib/api";
+import { leadGuestLabel, leadPhoneLabel, useLeadLabels } from "@/lib/leads";
+import { cn, isBrowserTestIdentity, matchesSearch } from "@/lib/utils";
+import type { LeadOut, LeadStatus } from "@/lib/types";
+
+const VALID_TABS = ["service", "booking"] as const;
+type RequestsTab = (typeof VALID_TABS)[number];
+
+const STATUSES = LEAD_STATUSES;
+const urgencyTone = leadUrgencyTone;
+
+// hot/warm/cold is a literal temperature metaphor -- red (urgent/act-now),
+// amber (warming up), neutral gray (not yet) -- reusing the same tones the
+// Calls/Overview pages use for status, so "what does this color mean"
+// stays answerable from one system instead of a lead-specific palette.
+
+// status is the host's own follow-up lifecycle, separate from temperature
+// (see CLAUDE.md) -- open needs attention (pending/amber), contacted is in
+// motion (progress/blue), booked is the successful end state (live/green),
+// closed is done either way (neutral/gray).
+const statusTone: Record<string, StatusTone> = {
+  open: "pending",
+  contacted: "progress",
+  booked: "live",
+  closed: "neutral",
+};
+
+// A lead the voice agent never got anywhere with -- no name, no phone, no
+// summary. These are real rows (every escalated/qualifying call creates
+// one) but carry nothing a host can act on, so they shouldn't compete with
+// hot/warm leads for attention at the top of the list.
+function isEmptyLead(lead: LeadOut): boolean {
+  const hasIdentity = Boolean(lead.guest_name) || (Boolean(lead.phone) && !isBrowserTestIdentity(lead.phone));
+  const hasContent = Boolean(
+    lead.purpose_of_stay || lead.conversation_summary || lead.occasion || lead.properties_discussed.length > 0
+  );
+  return !hasIdentity && !hasContent;
+}
+
+function leadDatesLabel(lead: LeadOut): string {
+  return lead.check_in && lead.check_out ? `${lead.check_in} → ${lead.check_out}` : "—";
+}
+
+// created_at, not updated_at -- this is specifically "when did this lead
+// come in," same field the Kanban/table sort intentionally avoids (see
+// leadsForColumn's comment) because updated_at drifts on every edit.
+function leadReceivedLabel(lead: LeadOut): string {
+  return new Date(lead.created_at).toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function LeadsTable({
+  leads,
+  onRowClick,
+  muted,
+}: {
+  leads: LeadOut[];
+  onRowClick: (lead: LeadOut) => void;
+  muted?: boolean;
+}) {
+  const leadLabels = useLeadLabels();
+  return (
+    <div className={cn("overflow-x-auto", muted && "opacity-60")}>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Guest</TableHead>
+            <TableHead>Property</TableHead>
+            <TableHead>Dates</TableHead>
+            <TableHead>Guests</TableHead>
+            <TableHead>Temperature</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Phone</TableHead>
+            <TableHead>Received</TableHead>
+            <TableHead className="w-8" />
+            <TableHead />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {leads.map((lead) => (
+            <TableRow key={lead.id} className="cursor-pointer" onClick={() => onRowClick(lead)}>
+              <TableCell className="font-medium">{leadGuestLabel(lead)}</TableCell>
+              <TableCell>
+                {lead.properties_discussed.length > 0 ? lead.properties_discussed.join(", ") : "—"}
+              </TableCell>
+              <TableCell>{leadDatesLabel(lead)}</TableCell>
+              <TableCell>{lead.num_guests ?? "—"}</TableCell>
+              <TableCell>
+                <StatusChip status={leadLabels.label(lead.lead_temperature)} tone={leadLabels.tone(lead.lead_temperature)} className="normal-case" />
+              </TableCell>
+              <TableCell>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <StatusChip status={lead.status} tone={statusTone[lead.status] ?? "neutral"} />
+                  {lead.urgency ? (
+                    <StatusChip status={lead.urgency} tone={urgencyTone[lead.urgency] ?? "neutral"} />
+                  ) : (
+                    lead.escalated && <StatusChip status="escalated" tone="destructive" />
+                  )}
+                </div>
+              </TableCell>
+              <TableCell>{leadPhoneLabel(lead)}</TableCell>
+              <TableCell className="whitespace-nowrap text-muted-foreground">{leadReceivedLabel(lead)}</TableCell>
+              <TableCell>
+                <WhatsAppButton phone={lead.phone} stopPropagation />
+              </TableCell>
+              <TableCell>
+                <ChevronRight className="size-4 text-muted-foreground" />
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+const KANBAN_COLUMNS: { status: LeadStatus; label: string }[] = [
+  { status: "open", label: "Open Leads" },
+  { status: "contacted", label: "Contacted" },
+  // Underlying status stays "booked" (see CLAUDE.md/lead-detail-panel.tsx --
+  // no enum/DB rename, this is a display-only relabel) so nothing else that
+  // filters/reads status="booked" needs to change.
+  { status: "booked", label: "Hot Lead" },
+  { status: "closed", label: "Closed Leads" },
+];
+
+// A lead is ready to promote to Hot Lead once it has real dates and at
+// least one discussed property -- the same three fields CloseLeadDialog
+// later needs to create the calendar block. There's no separate "guest
+// verbally confirmed" signal captured today (only lead_temperature, which
+// is the agent's own qualification judgment, not a yes/no on booking) --
+// see CLAUDE.md-adjacent discussion; host reads conversation_summary to
+// judge that themselves before clicking.
+function isReadyForHotLead(lead: LeadOut): boolean {
+  return Boolean(lead.check_in && lead.check_out && lead.properties_discussed.length > 0);
+}
+
+function LeadCard({
+  lead,
+  onClick,
+  onDragStart,
+  onMarkHot,
+}: {
+  lead: LeadOut;
+  onClick: () => void;
+  onDragStart: (e: React.DragEvent) => void;
+  onMarkHot?: (lead: LeadOut) => void;
+}) {
+  const leadLabels = useLeadLabels();
+  const closed = lead.status === "closed";
+  return (
+    <Card
+      draggable
+      onDragStart={onDragStart}
+      onClick={onClick}
+      className={cn("surface-interactive cursor-grab active:cursor-grabbing", closed && "opacity-60")}
+    >
+      <CardContent className={cn("space-y-2 text-sm", closed && "line-through decoration-muted-foreground")}>
+        <div className="flex items-center justify-between gap-2">
+          <span className="min-w-0 truncate font-medium">{leadGuestLabel(lead)}</span>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <WhatsAppButton phone={lead.phone} size="icon-sm" stopPropagation />
+            <StatusChip status={leadLabels.label(lead.lead_temperature)} tone={leadLabels.tone(lead.lead_temperature)} className="normal-case" />
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {lead.properties_discussed.length > 0 ? lead.properties_discussed.join(", ") : "No property discussed"}
+        </p>
+        <p className="text-xs text-muted-foreground">{leadDatesLabel(lead)}</p>
+        <div className="flex items-center justify-between gap-2">
+          {lead.urgency ? (
+            <StatusChip status={lead.urgency} tone={urgencyTone[lead.urgency] ?? "neutral"} />
+          ) : lead.escalated ? (
+            <StatusChip status="escalated" tone="destructive" />
+          ) : (
+            <span />
+          )}
+          <span className="whitespace-nowrap text-xs text-muted-foreground">{leadReceivedLabel(lead)}</span>
+        </div>
+        {onMarkHot && isReadyForHotLead(lead) && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full"
+            onClick={(e) => {
+              e.stopPropagation();
+              onMarkHot(lead);
+            }}
+          >
+            Mark as {leadLabels.labels.hot} lead
+          </Button>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function LeadsKanban({
+  leads,
+  onCardClick,
+  onDropStatus,
+  onMarkHot,
+}: {
+  leads: LeadOut[];
+  onCardClick: (lead: LeadOut) => void;
+  onDropStatus: (leadId: string, status: LeadStatus) => void;
+  onMarkHot: (lead: LeadOut) => void;
+}) {
+  const [dragOverColumn, setDragOverColumn] = useState<LeadStatus | null>(null);
+
+  function leadsForColumn(status: LeadStatus): LeadOut[] {
+    // updated_at, not created_at -- a lead's row is created once but gets
+    // touched again on every later call/update_lead about the same guest.
+    // Sorting by created_at put a lead that happened to be *created*
+    // slightly later above one that was *created* earlier but had a real,
+    // much more recent call against it (confirmed live 2026-07-27: a
+    // closed lead outranked the guest's actual latest, still-open call).
+    return leads
+      .filter((lead) => lead.status === status && !isEmptyLead(lead))
+      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+  }
+
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {KANBAN_COLUMNS.map((column) => (
+        <div
+          key={column.status}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragOverColumn(column.status);
+          }}
+          onDragLeave={() => setDragOverColumn((current) => (current === column.status ? null : current))}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOverColumn(null);
+            const leadId = e.dataTransfer.getData("text/plain");
+            if (leadId) onDropStatus(leadId, column.status);
+          }}
+          className={cn(
+            "flex flex-col gap-3 rounded-lg border border-dashed p-3 transition-colors",
+            dragOverColumn === column.status ? "border-ring bg-accent" : "border-transparent"
+          )}
+        >
+          <div className="flex items-center justify-between px-1">
+            <h2 className="text-sm font-medium">{column.label}</h2>
+            <span className="text-xs text-muted-foreground">{leadsForColumn(column.status).length}</span>
+          </div>
+          <div className="flex flex-col gap-2">
+            {leadsForColumn(column.status).map((lead) => (
+              <LeadCard
+                key={lead.id}
+                lead={lead}
+                onClick={() => onCardClick(lead)}
+                onDragStart={(e) => {
+                  e.dataTransfer.setData("text/plain", lead.id);
+                  e.dataTransfer.effectAllowed = "move";
+                }}
+                onMarkHot={column.status === "open" ? onMarkHot : undefined}
+              />
+            ))}
+            {leadsForColumn(column.status).length === 0 && (
+              <p className="px-1 text-xs text-muted-foreground">No leads.</p>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ServiceRequestsTabContent() {
+  const { data: requests, loading, refetch } = useAsync(() => api.leads.serviceRequests(), []);
+  const [search, setSearch] = useState("");
+
+  const filteredRequests = (requests ?? []).filter((req) =>
+    matchesSearch(search, [req.property_name, req.room_number, req.message, req.urgency])
+  );
+
+  async function handleDismiss(callSessionIds: string[]) {
+    try {
+      await api.leads.dismissServiceRequests(callSessionIds);
+      toast.success(callSessionIds.length === 1 ? "Request marked as completed" : "Requests marked as completed");
+      refetch();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Failed to update requests");
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-muted-foreground">
+          In-stay guest asks (housekeeping, amenities, maintenance) MIRA logged during a call.
+        </p>
+        {requests && requests.length > 0 && (
+          <Input
+            placeholder="Search requests…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            leadingIcon={<Search />}
+            className="w-64"
+          />
+        )}
+      </div>
+      {loading ? (
+        <Skeleton className="h-64 w-full" />
+      ) : (
+        <ServiceRequestsTable requests={filteredRequests} onDismiss={handleDismiss} />
+      )}
+    </div>
+  );
+}
+
+function BookingRequestsTabContent() {
+  const leadLabels = useLeadLabels();
+  const searchParams = useSearchParams();
+  const initialStatus = searchParams.get("status") ?? "all";
+
+  const { startDateISO, endDateISO } = useDateRange();
+  const { data: leads, loading, refetch, setData: setLeads } = useAsync(
+    () => api.leads.list({ startDate: startDateISO, endDate: endDateISO }),
+    [startDateISO, endDateISO]
+  );
+  const [statusFilter, setStatusFilter] = useState<string>(initialStatus);
+  const [showEmpty, setShowEmpty] = useState(false);
+  // Same "browser-test" caller identity + default-hidden behavior as the
+  // Calls page's "Include browser test calls" switch (calls/page.tsx) --
+  // here filtered client-side against LeadOut.phone (api.leads.list has no
+  // server-side include_test_calls param the way calls.list does, so this
+  // stays a plain array filter, same mechanism as isEmptyLead below).
+  const [includeTestCalls, setIncludeTestCalls] = useState(false);
+  const [editing, setEditing] = useState<LeadOut | null>(null);
+  const [view, setView] = useState<"table" | "board">("board");
+  const [search, setSearch] = useState("");
+  const [closingLead, setClosingLead] = useState<LeadOut | null>(null);
+
+  const testFilteredLeads = (leads ?? []).filter(
+    (lead) => includeTestCalls || !isBrowserTestIdentity(lead.phone)
+  );
+  const statusFilteredLeads = testFilteredLeads.filter(
+    (lead) => statusFilter === "all" || lead.status === statusFilter
+  );
+  // Applies to both the table and kanban views -- slotted in after
+  // status/test-call filtering, before the empty/content split below, so
+  // "N leads with no captured info" still reflects the searched-down set.
+  const searchFilteredLeads = statusFilteredLeads.filter((lead) =>
+    matchesSearch(search, [
+      leadGuestLabel(lead),
+      leadPhoneLabel(lead),
+      lead.email,
+      lead.check_in,
+      lead.check_out,
+      lead.purpose_of_stay,
+      lead.preferred_location,
+      lead.occasion,
+      lead.status,
+      lead.lead_temperature,
+      lead.urgency,
+      lead.conversation_summary,
+      ...lead.properties_discussed,
+    ])
+  );
+  // updated_at, not created_at -- see leadsForColumn's comment above for why.
+  const contentLeads = searchFilteredLeads
+    .filter((lead) => !isEmptyLead(lead))
+    .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+  const emptyLeads = searchFilteredLeads.filter(isEmptyLead);
+
+  // Drag-drop on the Kanban board should only ever send {status} -- kept
+  // structurally independent of LeadDetailPanel's edit form (temperature +
+  // status + follow-up + summary) so a future edit there can't accidentally
+  // start sending extra fields from a drag. Backend's PATCH /leads/{id}
+  // uses exclude_unset, so omitting lead_temperature here leaves it
+  // completely untouched server-side.
+  async function handleStatusDrop(leadId: string, newStatus: LeadStatus) {
+    const lead = leads?.find((l) => l.id === leadId);
+    if (!lead || lead.status === newStatus) return;
+
+    // Closing (drag onto "Closed Leads") is gated behind CloseLeadDialog's
+    // confirmation popup -- it also creates the calendar block -- so it
+    // never goes through the optimistic PATCH below. See CloseLeadDialog.
+    if (newStatus === "closed") {
+      setClosingLead(lead);
+      return;
+    }
+
+    const previousStatus = lead.status;
+
+    // Optimistic update: move the card immediately instead of waiting on
+    // the PATCH round-trip + refetch, which is what caused the visible
+    // snap-back delay. Revert locally (no refetch needed) if the request
+    // fails -- the server was never touched, so local state is still truth.
+    setLeads((current) =>
+      current?.map((l) => (l.id === leadId ? { ...l, status: newStatus } : l)) ?? current
+    );
+
+    try {
+      await api.leads.update(leadId, { status: newStatus });
+      toast.success(`Moved to ${newStatus}`);
+    } catch (err) {
+      setLeads((current) =>
+        current?.map((l) => (l.id === leadId ? { ...l, status: previousStatus } : l)) ?? current
+      );
+      toast.error(err instanceof ApiError ? err.message : "Failed to update lead status");
+    }
+  }
+
+  async function handleMarkHot(lead: LeadOut) {
+    try {
+      await api.leads.update(lead.id, { status: "booked" });
+      toast.success(`Marked as ${leadLabels.labels.hot} lead`);
+      refetch();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Failed to update lead");
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-muted-foreground">Booking enquiries qualified by the Lead Agent</p>
+        <div className="flex flex-wrap items-center gap-4">
+          <Input
+            placeholder="Search leads…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            leadingIcon={<Search />}
+            className="w-56"
+          />
+          <div className="flex items-center gap-2">
+            <Switch id="include-test-leads" checked={includeTestCalls} onCheckedChange={setIncludeTestCalls} />
+            <Label htmlFor="include-test-leads" className="text-sm text-muted-foreground">
+              Include browser test calls
+            </Label>
+          </div>
+          <div className="flex items-center gap-1 rounded-lg border p-0.5">
+            <Button
+              variant={view === "table" ? "secondary" : "ghost"}
+              size="icon-sm"
+              aria-label="Table view"
+              onClick={() => setView("table")}
+            >
+              <Table2 className="size-4" />
+            </Button>
+            <Button
+              variant={view === "board" ? "secondary" : "ghost"}
+              size="icon-sm"
+              aria-label="Board view"
+              onClick={() => setView("board")}
+            >
+              <LayoutGrid className="size-4" />
+            </Button>
+          </div>
+          {view === "table" && (
+            <Select value={statusFilter} onValueChange={(v) => v && setStatusFilter(v)}>
+              <SelectTrigger className="w-36">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                {STATUSES.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {s}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <DateRangePicker />
+        </div>
+      </div>
+
+      {loading ? (
+        <Skeleton className="h-64 w-full" />
+      ) : view === "board" ? (
+        (leads ?? []).length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No leads yet — they appear here once your portfolio&rsquo;s call intake number starts receiving calls.
+          </p>
+        ) : searchFilteredLeads.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No leads match your search.</p>
+        ) : (
+          <LeadsKanban
+            leads={searchFilteredLeads}
+            onCardClick={setEditing}
+            onDropStatus={handleStatusDrop}
+            onMarkHot={handleMarkHot}
+          />
+        )
+      ) : statusFilteredLeads.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          {leads && leads.length > 0
+            ? "No leads match this status filter."
+            : "No leads yet — they appear here once your portfolio's call intake number starts receiving calls."}
+        </p>
+      ) : searchFilteredLeads.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No leads match your search.</p>
+      ) : (
+        <div className="space-y-4">
+          {contentLeads.length > 0 ? (
+            <LeadsTable leads={contentLeads} onRowClick={setEditing} />
+          ) : (
+            <p className="text-sm text-muted-foreground">No leads with captured info yet for this filter.</p>
+          )}
+
+          {emptyLeads.length > 0 && (
+            <div className="space-y-3 border-t pt-4">
+              <div className="flex items-center gap-2">
+                <Switch id="show-empty-leads" checked={showEmpty} onCheckedChange={setShowEmpty} />
+                <Label htmlFor="show-empty-leads" className="text-sm text-muted-foreground">
+                  Show {emptyLeads.length} lead{emptyLeads.length === 1 ? "" : "s"} with no captured info
+                </Label>
+              </div>
+              {showEmpty && <LeadsTable leads={emptyLeads} muted onRowClick={setEditing} />}
+            </div>
+          )}
+        </div>
+      )}
+
+      <LeadDetailPanel
+        lead={editing}
+        onOpenChange={(open) => !open && setEditing(null)}
+        onSaved={refetch}
+      />
+
+      <CloseLeadDialog
+        lead={closingLead}
+        onOpenChange={(open) => !open && setClosingLead(null)}
+        onConfirmed={() => {
+          setClosingLead(null);
+          refetch();
+        }}
+      />
+    </div>
+  );
+}
+
+function LiveRequestsPageContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialTab = searchParams.get("tab");
+  const [tab, setTab] = useState<RequestsTab>(
+    VALID_TABS.includes(initialTab as RequestsTab) ? (initialTab as RequestsTab) : "service"
+  );
+
+  function handleTabChange(value: unknown) {
+    if (typeof value !== "string" || !VALID_TABS.includes(value as RequestsTab)) return;
+    setTab(value as RequestsTab);
+    router.replace(`/dashboard/leads?tab=${value}`, { scroll: false });
+  }
+
+  return (
+    <div className="space-y-6">
+      <h1 className="page-title">Live Requests</h1>
+
+      <Tabs value={tab} onValueChange={handleTabChange}>
+        <TabsList>
+          <TabsTrigger value="service">Service Requests</TabsTrigger>
+          <TabsTrigger value="booking">Booking Requests</TabsTrigger>
+        </TabsList>
+        <TabsContent value="service" className="pt-4">
+          <ServiceRequestsTabContent />
+        </TabsContent>
+        <TabsContent value="booking" className="pt-4">
+          <BookingRequestsTabContent />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+export default function LeadsPage() {
+  // useSearchParams requires a Suspense boundary -- see Next.js docs (this
+  // route is behind auth/client-rendered anyway, but this is the documented
+  // pattern to avoid de-opting the whole tree above it to client rendering).
+  return (
+    <Suspense fallback={<Skeleton className="h-64 w-full" />}>
+      <LiveRequestsPageContent />
+    </Suspense>
+  );
+}

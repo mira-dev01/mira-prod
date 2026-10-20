@@ -1,0 +1,321 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-montserrat);
+  --font-mono: ui-monospace, "DM Mono", "SFMono-Regular", Menlo, monospace;
+  --font-display: var(--font-libre-baskerville);
+  --font-heading: var(--font-display);
+  --font-subheading: var(--font-montserrat);
+  --font-brand: var(--font-libre-baskerville);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+  --shadow-xs: var(--shadow-xs);
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-xl: var(--shadow-xl);
+}
+
+/* Mira Design System -- parchment/cream light mode (the dashboard is
+   always-light per the brand spec; dark mode below exists for the
+   landing-page context and isn't toggled on in the dashboard today).
+
+   Spacing: Tailwind's --spacing base unit here is 0.25rem (4px), so every
+   *even* spacing utility (p-2, gap-4, p-6, px-8, ...) already lands on an
+   8pt grid -- there's no separate spacing scale to define, just a rule to
+   follow. Use even steps (2/4/6/8/10/12/16/20/24) for layout rhythm
+   (padding, gaps, margins between sections). Odd steps (p-2.5, p-3, gap-5,
+   gap-7...) are reserved for optical corrections only (e.g. aligning text
+   baselines against an icon) -- don't reach for them as a default card or
+   section padding. */
+:root {
+  --background: #f3ede2;
+  --foreground: #2a2420;
+  --card: #fbf7ef;
+  --card-foreground: #2a2420;
+  --popover: #fbf7ef;
+  --popover-foreground: #2a2420;
+  --primary: #b8452f;
+  --primary-foreground: #ffffff;
+  --secondary: #fbf7ef;
+  --secondary-foreground: #2a2420;
+  --muted: #ece3d4;
+  --muted-foreground: #6f6252;
+  --accent: #ece3d4;
+  --accent-foreground: #2a2420;
+  --destructive: #b8452f;
+  --border: #e3d9c8;
+  --input: #e3d9c8;
+  --ring: #d9a441;
+  --chart-1: #d9a441;
+  --chart-2: #6b7d5a;
+  --chart-3: #c17a42;
+  --chart-4: #5f7a99;
+  --chart-5: #8d6f96;
+  --radius: 0.625rem;
+  --sidebar: #fbf7ef;
+  --sidebar-foreground: #2a2420;
+  --sidebar-primary: #b8452f;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #ece3d4;
+  --sidebar-accent-foreground: #2a2420;
+  --sidebar-border: #e3d9c8;
+  --sidebar-ring: #d9a441;
+
+  /* Status + intent-category colors, for badges/accents across calls,
+     leads, and notifications. */
+  --status-live: #75885f;
+  --status-live-bg: rgba(117, 136, 95, 0.12);
+  --status-pending: #d9a441;
+  --status-pending-bg: rgba(217, 164, 65, 0.12);
+  /* Same amber, dark enough to read as text on the cream card (~4.9:1) --
+     for setup actions, where --status-pending alone is too faint. */
+  --status-pending-strong: #8a6512;
+  --status-progress: #5f7a99;
+  --status-progress-bg: rgba(95, 122, 153, 0.12);
+  --status-purple: #8d6f96;
+  --status-purple-bg: rgba(141, 111, 150, 0.12);
+  --status-orange: #c17a42;
+  --status-orange-bg: rgba(193, 122, 66, 0.12);
+  --accent-warm: #d9a441;
+  --accent-warm-bg: rgba(217, 164, 65, 0.12);
+
+  /* Low-priority/-urgency tone. Deliberately a cool slate rather than a
+     washed-out red -- "high" (destructive red) and "medium" (status-pending
+     amber) already have distinct hues; giving "low" a red-family tint too
+     made all three tiers hard to tell apart at a glance during triage. */
+  --priority-low: #7d7267;
+  --priority-low-bg: rgba(125, 114, 103, 0.12);
+
+  /* Elevation scale. Warm, low-contrast shadows (not neutral black) so
+     depth reads as "paper stacked on parchment" rather than a generic
+     Material dropshadow -- consistent with the palette's warm undertone.
+     xs = resting card state (replaces the old single ad hoc shadow),
+     sm/md = hover/lifted states, lg = popovers & dropdowns, xl = dialogs. */
+  --shadow-xs: 0 1px 2px rgba(42, 36, 32, 0.04);
+  --shadow-sm: 0 2px 6px rgba(42, 36, 32, 0.06), 0 1px 2px rgba(42, 36, 32, 0.04);
+  --shadow-md: 0 6px 16px rgba(42, 36, 32, 0.08), 0 2px 4px rgba(42, 36, 32, 0.04);
+  --shadow-lg: 0 12px 28px rgba(42, 36, 32, 0.12), 0 4px 8px rgba(42, 36, 32, 0.04);
+  --shadow-xl: 0 24px 48px rgba(42, 36, 32, 0.16), 0 8px 16px rgba(42, 36, 32, 0.06);
+
+  /* Hover/active deltas. Applied as utility classes (see @layer components
+     below) so every interactive surface -- cards, rows, buttons -- lifts
+     and settles the same way instead of each page inventing its own. */
+  --hover-lift: -2px;
+  --transition-fast: 120ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-base: 180ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dark {
+  --background: #0f0e0c;
+  --foreground: #f0ebe3;
+  --card: #1a1814;
+  --card-foreground: #f0ebe3;
+  --popover: #1a1814;
+  --popover-foreground: #f0ebe3;
+  --primary: #d94f3d;
+  --primary-foreground: #ffffff;
+  --secondary: #221f1b;
+  --secondary-foreground: #f0ebe3;
+  --muted: #221f1b;
+  --muted-foreground: #8a7e72;
+  --accent: #221f1b;
+  --accent-foreground: #f0ebe3;
+  --destructive: #d94f3d;
+  --border: rgba(255, 255, 255, 0.08);
+  --input: rgba(255, 255, 255, 0.14);
+  --ring: #c9a882;
+  --chart-1: #e8a838;
+  --chart-2: #4da6a8;
+  --chart-3: #e07a5f;
+  --chart-4: #6b8fd4;
+  --chart-5: #9b7ec8;
+  --sidebar: #1a1814;
+  --sidebar-foreground: #f0ebe3;
+  --sidebar-primary: #d94f3d;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #221f1b;
+  --sidebar-accent-foreground: #f0ebe3;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-ring: #c9a882;
+
+  /* Dark surfaces need denser, more opaque shadows to read at all --
+     the same rgba alpha values used on parchment are nearly invisible
+     against a near-black background. */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.24);
+  --shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.32), 0 1px 2px rgba(0, 0, 0, 0.24);
+  --shadow-md: 0 6px 16px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.24);
+  --shadow-lg: 0 12px 28px rgba(0, 0, 0, 0.48), 0 4px 8px rgba(0, 0, 0, 0.28);
+  --shadow-xl: 0 24px 48px rgba(0, 0, 0, 0.56), 0 8px 16px rgba(0, 0, 0, 0.32);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+@layer components {
+  /* Page titles use the brand's display face, per the Mira Design System
+     (see ui_kits/dashboard "page-title" class). Clash Display has no
+     italic cut (unlike Boska before it) -- left upright rather than
+     letting the browser synthesize a faux-oblique, which looks poor on
+     geometric sans display faces. */
+  .page-title {
+    font-family: var(--font-display);
+    font-weight: 500;
+    font-size: 1.625rem;
+    letter-spacing: -0.4px;
+    line-height: 1.2;
+  }
+
+  /* Brand wordmark only ("mira" in the sidebar, login card, and public
+     gallery header) -- Alex Brush is a script/handwriting face, always set
+     in lowercase, never italic (it's already slanted by design) or bold
+     (no weight axis, single static cut). Never use this for body/heading
+     text generally. */
+  .brand-logo {
+    font-family: var(--font-brand);
+    font-weight: 500;
+    font-size: 1.25em;
+    font-style: normal;
+  }
+
+  /* Micro section labels, e.g. sidebar nav group headers. */
+  .text-micro {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted-foreground);
+  }
+
+  /* Table column headers (Caller, Status, Started, ...) use the
+     subheading face throughout the app -- currently the same face as body
+     copy (--font-sans), set via --font-subheading so any future divergence
+     only needs to change one variable rather than every TableHead usage.
+     Size/weight still set explicitly here (not left at the table's
+     inherited text-sm + a font-medium utility) -- 1rem/450 was originally
+     tuned to compensate for New Title reading smaller than Amulya at the
+     same declared size; now that the subheading face IS Amulya, that
+     compensation is no longer needed but has been left as-is since sizing
+     wasn't part of this change -- revisit if table headers now look too
+     large relative to body text. */
+  [data-slot="table-head"] {
+    font-family: var(--font-subheading);
+    font-size: 1rem;
+    font-weight: 450;
+  }
+
+  /* Status badge colors -- pair with <Badge variant="outline" className="badge-status-*">
+     to override the default border/bg with the brand's status palette. */
+  .badge-status-live {
+    background: var(--status-live-bg);
+    color: var(--status-live);
+    border-color: transparent;
+  }
+  .badge-status-pending {
+    background: var(--status-pending-bg);
+    color: var(--status-pending);
+    border-color: transparent;
+  }
+  .badge-status-progress {
+    background: var(--status-progress-bg);
+    color: var(--status-progress);
+    border-color: transparent;
+  }
+  .badge-status-purple {
+    background: var(--status-purple-bg);
+    color: var(--status-purple);
+    border-color: transparent;
+  }
+  .badge-status-orange {
+    background: var(--status-orange-bg);
+    color: var(--status-orange);
+    border-color: transparent;
+  }
+  .badge-priority-low {
+    background: var(--priority-low-bg);
+    color: var(--priority-low);
+    border-color: transparent;
+  }
+
+  /* Cards in this design system carry a warm, barely-visible resting
+     shadow rather than relying on border alone. */
+  [data-slot="card"] {
+    box-shadow: var(--shadow-xs);
+  }
+
+  /* Shared hover-elevation convention: apply to any card/row-style surface
+     that should feel "liftable" on hover (property cards, list rows,
+     clickable table rows). Kept as one class so every page lifts the same
+     amount, at the same speed, instead of inventing its own hover shadow. */
+  .surface-interactive {
+    transition: box-shadow var(--transition-base), transform var(--transition-base);
+  }
+  .surface-interactive:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(var(--hover-lift));
+  }
+  .surface-interactive:active {
+    transform: translateY(0);
+    box-shadow: var(--shadow-sm);
+    transition-duration: var(--transition-fast);
+  }
+
+  /* Lighter-touch hover for elements inside an already-elevated container
+     (e.g. a row inside a card) where a translate would look busy -- shadow
+     and a subtle background shift only. */
+  .surface-hover {
+    transition: background-color var(--transition-fast), box-shadow var(--transition-fast);
+  }
+  .surface-hover:hover {
+    background-color: var(--accent);
+  }
+}

@@ -1,0 +1,7321 @@
+{
+  "scriptCompleted": true,
+  "filesAnalyzed": 28,
+  "filesSkipped": [],
+  "analysisOutcomes": {
+    "structure": {
+      "succeeded": 28,
+      "failed": 0
+    },
+    "callGraph": {
+      "succeeded": 28,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "results": [
+    {
+      "path": "backend/app/api/v1/__init__.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 1,
+      "nonEmptyLines": 0,
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "backend/app/api/v1/analytics.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 432,
+      "nonEmptyLines": 401,
+      "functions": [
+        {
+          "name": "analytics_summary",
+          "startLine": 26,
+          "endLine": 142,
+          "params": [
+            "days",
+            "include_test_calls",
+            "date_range",
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "analytics_timeseries",
+          "startLine": 146,
+          "endLine": 265,
+          "params": [
+            "metric",
+            "include_test_calls",
+            "date_range",
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "analytics_recovery",
+          "startLine": 269,
+          "endLine": 432,
+          "params": [
+            "days",
+            "date_range",
+            "current_user",
+            "db"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "analytics_summary",
+          "line": 25,
+          "isDefault": false
+        },
+        {
+          "name": "analytics_timeseries",
+          "line": 145,
+          "isDefault": false
+        },
+        {
+          "name": "analytics_recovery",
+          "line": 268,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "analytics_summary",
+          "callee": "Query",
+          "lineNumber": 27
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "Query",
+          "lineNumber": 28
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "Depends",
+          "lineNumber": 29
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "Depends",
+          "lineNumber": 30
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "Depends",
+          "lineNumber": 31
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "owned_property_ids",
+          "lineNumber": 44
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "datetime.now",
+          "lineNumber": 52
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "timedelta",
+          "lineNumber": 52
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "call_filters.append",
+          "lineNumber": 57
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "call_filters.append",
+          "lineNumber": 59
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "select(CallSession).where",
+          "lineNumber": 61
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "select",
+          "lineNumber": 61
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "db.scalar",
+          "lineNumber": 63
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "select(func.count()).select_from",
+          "lineNumber": 63
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "select",
+          "lineNumber": 63
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "func.count",
+          "lineNumber": 63
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "base.subquery",
+          "lineNumber": 63
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "db.scalar",
+          "lineNumber": 64
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "select(func.count()).select_from",
+          "lineNumber": 65
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "select",
+          "lineNumber": 65
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "func.count",
+          "lineNumber": 65
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "base.where(CallSession.status == \"completed\").subquery",
+          "lineNumber": 65
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "base.where",
+          "lineNumber": 65
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "db.scalar",
+          "lineNumber": 72
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "select(func.count()).select_from",
+          "lineNumber": 73
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "select",
+          "lineNumber": 73
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "func.count",
+          "lineNumber": 73
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "base.where(CallSession.call_type.in_(QUALIFIED_CALL_TYPES)).subquery",
+          "lineNumber": 73
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "base.where",
+          "lineNumber": 73
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "CallSession.call_type.in_",
+          "lineNumber": 73
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "Notification.property_id.in_",
+          "lineNumber": 88
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "escalated_filters.append",
+          "lineNumber": 93
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "db.scalar",
+          "lineNumber": 94
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "select(func.count()).where",
+          "lineNumber": 94
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "select",
+          "lineNumber": 94
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "func.count",
+          "lineNumber": 94
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "Lead.lead_temperature.in_",
+          "lineNumber": 107
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "pipeline_filters.append",
+          "lineNumber": 111
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "db.scalar",
+          "lineNumber": 112
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "select(func.coalesce(func.sum(Lead.budget), 0)).where",
+          "lineNumber": 112
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "select",
+          "lineNumber": 112
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "func.coalesce",
+          "lineNumber": 112
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "func.sum",
+          "lineNumber": 112
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "Notification.property_id.in_",
+          "lineNumber": 114
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "open_notification_filters.append",
+          "lineNumber": 119
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "db.scalar",
+          "lineNumber": 120
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "select(func.count()).where",
+          "lineNumber": 120
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "select",
+          "lineNumber": 120
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "func.count",
+          "lineNumber": 120
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "open_leads_filters.append",
+          "lineNumber": 127
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "db.scalar",
+          "lineNumber": 128
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "select(func.count()).where",
+          "lineNumber": 128
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "select",
+          "lineNumber": 128
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "func.count",
+          "lineNumber": 128
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "date_range.start_date.isoformat",
+          "lineNumber": 132
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "date_range.end_date.isoformat",
+          "lineNumber": 133
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "float",
+          "lineNumber": 139
+        },
+        {
+          "caller": "analytics_summary",
+          "callee": "round",
+          "lineNumber": 141
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "Query",
+          "lineNumber": 147
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "Query",
+          "lineNumber": 148
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "Depends",
+          "lineNumber": 149
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "Depends",
+          "lineNumber": 150
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "Depends",
+          "lineNumber": 151
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "datetime.now(timezone.utc).date",
+          "lineNumber": 159
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "datetime.now",
+          "lineNumber": 159
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "timedelta",
+          "lineNumber": 160
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "datetime.combine",
+          "lineNumber": 162
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "datetime.min.time",
+          "lineNumber": 162
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "datetime.combine",
+          "lineNumber": 163
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "datetime.min.time",
+          "lineNumber": 163
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "timedelta",
+          "lineNumber": 163
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "func.date_trunc",
+          "lineNumber": 184
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "func.timezone",
+          "lineNumber": 184
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "call_filters.append",
+          "lineNumber": 193
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "(\n            await db.execute(\n                select(day.label(\"bucket\"), func.count().label(\"value\")).where(*call_filters).group_by(day)\n            )\n        ).all",
+          "lineNumber": 194
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "db.execute",
+          "lineNumber": 195
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "select(day.label(\"bucket\"), func.count().label(\"value\")).where(*call_filters).group_by",
+          "lineNumber": 196
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "select(day.label(\"bucket\"), func.count().label(\"value\")).where",
+          "lineNumber": 196
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "select",
+          "lineNumber": 196
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "day.label",
+          "lineNumber": 196
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "func.count().label",
+          "lineNumber": 196
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "func.count",
+          "lineNumber": 196
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "call_filters.append",
+          "lineNumber": 207
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "(\n            await db.execute(\n                select(day.label(\"bucket\"), func.count().label(\"value\")).where(*call_filters).group_by(day)\n            )\n        ).all",
+          "lineNumber": 208
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "db.execute",
+          "lineNumber": 209
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "select(day.label(\"bucket\"), func.count().label(\"value\")).where(*call_filters).group_by",
+          "lineNumber": 210
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "select(day.label(\"bucket\"), func.count().label(\"value\")).where",
+          "lineNumber": 210
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "select",
+          "lineNumber": 210
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "day.label",
+          "lineNumber": 210
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "func.count().label",
+          "lineNumber": 210
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "func.count",
+          "lineNumber": 210
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "Lead.lead_temperature.in_",
+          "lineNumber": 216
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "(\n            await db.execute(\n                select(day.label(\"bucket\"), func.coalesce(func.sum(Lead.budget), 0).label(\"value\"))\n                .where(*lead_filters)\n                .group_by(day)\n            )\n        ).all",
+          "lineNumber": 220
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "db.execute",
+          "lineNumber": 221
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "select(day.label(\"bucket\"), func.coalesce(func.sum(Lead.budget), 0).label(\"value\"))\n                .where(*lead_filters)\n                .group_by",
+          "lineNumber": 222
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "select(day.label(\"bucket\"), func.coalesce(func.sum(Lead.budget), 0).label(\"value\"))\n                .where",
+          "lineNumber": 222
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "select",
+          "lineNumber": 222
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "day.label",
+          "lineNumber": 222
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "func.coalesce(func.sum(Lead.budget), 0).label",
+          "lineNumber": 222
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "func.coalesce",
+          "lineNumber": 222
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "func.sum",
+          "lineNumber": 222
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "(\n            await db.execute(\n                select(day.label(\"bucket\"), func.count().label(\"value\")).where(*open_leads_filters).group_by(day)\n            )\n        ).all",
+          "lineNumber": 234
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "db.execute",
+          "lineNumber": 235
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "select(day.label(\"bucket\"), func.count().label(\"value\")).where(*open_leads_filters).group_by",
+          "lineNumber": 236
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "select(day.label(\"bucket\"), func.count().label(\"value\")).where",
+          "lineNumber": 236
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "select",
+          "lineNumber": 236
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "day.label",
+          "lineNumber": 236
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "func.count().label",
+          "lineNumber": 236
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "func.count",
+          "lineNumber": 236
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "owned_property_ids",
+          "lineNumber": 240
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "Notification.property_id.in_",
+          "lineNumber": 242
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "(\n            await db.execute(\n                select(day.label(\"bucket\"), func.count().label(\"value\")).where(*notif_filters).group_by(day)\n            )\n        ).all",
+          "lineNumber": 247
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "db.execute",
+          "lineNumber": 248
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "select(day.label(\"bucket\"), func.count().label(\"value\")).where(*notif_filters).group_by",
+          "lineNumber": 249
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "select(day.label(\"bucket\"), func.count().label(\"value\")).where",
+          "lineNumber": 249
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "select",
+          "lineNumber": 249
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "day.label",
+          "lineNumber": 249
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "func.count().label",
+          "lineNumber": 249
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "func.count",
+          "lineNumber": 249
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "row.bucket.date().isoformat",
+          "lineNumber": 253
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "row.bucket.date",
+          "lineNumber": 253
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "cursor.isoformat",
+          "lineNumber": 260
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "by_date.get",
+          "lineNumber": 261
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "points.append",
+          "lineNumber": 262
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "float",
+          "lineNumber": 262
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "int",
+          "lineNumber": 262
+        },
+        {
+          "caller": "analytics_timeseries",
+          "callee": "timedelta",
+          "lineNumber": 263
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "Query",
+          "lineNumber": 270
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "Depends",
+          "lineNumber": 271
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "Depends",
+          "lineNumber": 272
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "Depends",
+          "lineNumber": 273
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "datetime.now",
+          "lineNumber": 298
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "timedelta",
+          "lineNumber": 298
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "window_filters.append",
+          "lineNumber": 303
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "db.scalar",
+          "lineNumber": 310
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "select(func.count())\n        .select_from(Notification)\n        .join(Lead, Notification.lead_id == Lead.id)\n        .where",
+          "lineNumber": 311
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "select(func.count())\n        .select_from(Notification)\n        .join",
+          "lineNumber": 311
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "select(func.count())\n        .select_from",
+          "lineNumber": 311
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "select",
+          "lineNumber": 311
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "func.count",
+          "lineNumber": 311
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "db.scalar",
+          "lineNumber": 324
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "select(func.count(func.distinct(Notification.lead_id)))\n        .select_from(Notification)\n        .join(Lead, Notification.lead_id == Lead.id)\n        .where",
+          "lineNumber": 325
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "select(func.count(func.distinct(Notification.lead_id)))\n        .select_from(Notification)\n        .join",
+          "lineNumber": 325
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "select(func.count(func.distinct(Notification.lead_id)))\n        .select_from",
+          "lineNumber": 325
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "select",
+          "lineNumber": 325
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "func.count",
+          "lineNumber": 325
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "func.distinct",
+          "lineNumber": 325
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "lead_window_filters.append",
+          "lineNumber": 346
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "db.scalar",
+          "lineNumber": 347
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "select(func.count()).where",
+          "lineNumber": 348
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "select",
+          "lineNumber": 348
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "func.count",
+          "lineNumber": 348
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "Lead.recovery_reason.is_not",
+          "lineNumber": 350
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "db.scalar",
+          "lineNumber": 355
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "select(func.count()).where",
+          "lineNumber": 356
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "select",
+          "lineNumber": 356
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "func.count",
+          "lineNumber": 356
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "Lead.recovery_reason.is_not",
+          "lineNumber": 358
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "select(Notification.lead_id, func.min(Notification.created_at).label(\"busy_at\"))\n        .where(Notification.channel == NOTIFICATION_CHANNEL_BUSY_RECOVERY, Notification.lead_id.is_not(None))\n        .group_by(Notification.lead_id)\n        .subquery",
+          "lineNumber": 371
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "select(Notification.lead_id, func.min(Notification.created_at).label(\"busy_at\"))\n        .where(Notification.channel == NOTIFICATION_CHANNEL_BUSY_RECOVERY, Notification.lead_id.is_not(None))\n        .group_by",
+          "lineNumber": 371
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "select(Notification.lead_id, func.min(Notification.created_at).label(\"busy_at\"))\n        .where",
+          "lineNumber": 371
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "select",
+          "lineNumber": 371
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "func.min(Notification.created_at).label",
+          "lineNumber": 371
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "func.min",
+          "lineNumber": 371
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "Notification.lead_id.is_not",
+          "lineNumber": 372
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "select(Notification.lead_id, func.min(Notification.created_at).label(\"reply_at\"))\n        .where(Notification.channel == NOTIFICATION_CHANNEL_BUSY_RECOVERY_REPLY, Notification.lead_id.is_not(None))\n        .group_by(Notification.lead_id)\n        .subquery",
+          "lineNumber": 377
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "select(Notification.lead_id, func.min(Notification.created_at).label(\"reply_at\"))\n        .where(Notification.channel == NOTIFICATION_CHANNEL_BUSY_RECOVERY_REPLY, Notification.lead_id.is_not(None))\n        .group_by",
+          "lineNumber": 377
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "select(Notification.lead_id, func.min(Notification.created_at).label(\"reply_at\"))\n        .where",
+          "lineNumber": 377
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "select",
+          "lineNumber": 377
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "func.min(Notification.created_at).label",
+          "lineNumber": 377
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "func.min",
+          "lineNumber": 377
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "Notification.lead_id.is_not",
+          "lineNumber": 378
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "db.scalar",
+          "lineNumber": 382
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "select(func.avg(func.extract(\"epoch\", reply_first.c.reply_at - busy_first.c.busy_at)))\n        .select_from(busy_first)\n        .join(reply_first, reply_first.c.lead_id == busy_first.c.lead_id)\n        .join(Lead, Lead.id == busy_first.c.lead_id)\n        .where",
+          "lineNumber": 383
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "select(func.avg(func.extract(\"epoch\", reply_first.c.reply_at - busy_first.c.busy_at)))\n        .select_from(busy_first)\n        .join(reply_first, reply_first.c.lead_id == busy_first.c.lead_id)\n        .join",
+          "lineNumber": 383
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "select(func.avg(func.extract(\"epoch\", reply_first.c.reply_at - busy_first.c.busy_at)))\n        .select_from(busy_first)\n        .join",
+          "lineNumber": 383
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "select(func.avg(func.extract(\"epoch\", reply_first.c.reply_at - busy_first.c.busy_at)))\n        .select_from",
+          "lineNumber": 383
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "select",
+          "lineNumber": 383
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "func.avg",
+          "lineNumber": 383
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "func.extract",
+          "lineNumber": 383
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "db.scalar",
+          "lineNumber": 394
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "select(func.avg(func.extract(\"epoch\", Notification.responded_at - Notification.created_at)))\n        .select_from(Notification)\n        .join(Lead, Notification.lead_id == Lead.id)\n        .where",
+          "lineNumber": 395
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "select(func.avg(func.extract(\"epoch\", Notification.responded_at - Notification.created_at)))\n        .select_from(Notification)\n        .join",
+          "lineNumber": 395
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "select(func.avg(func.extract(\"epoch\", Notification.responded_at - Notification.created_at)))\n        .select_from",
+          "lineNumber": 395
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "select",
+          "lineNumber": 395
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "func.avg",
+          "lineNumber": 395
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "func.extract",
+          "lineNumber": 395
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "Notification.responded_at.is_not",
+          "lineNumber": 400
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "date_range.start_date.isoformat",
+          "lineNumber": 413
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "date_range.end_date.isoformat",
+          "lineNumber": 414
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "round",
+          "lineNumber": 423
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "float",
+          "lineNumber": 423
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "round",
+          "lineNumber": 424
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "float",
+          "lineNumber": 424
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "round",
+          "lineNumber": 425
+        },
+        {
+          "caller": "analytics_recovery",
+          "callee": "round",
+          "lineNumber": 426
+        }
+      ],
+      "metrics": {
+        "importCount": 11,
+        "exportCount": 3,
+        "functionCount": 3,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "backend/app/api/v1/auth.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 148,
+      "nonEmptyLines": 122,
+      "functions": [
+        {
+          "name": "transcribe_registration_intro",
+          "startLine": 20,
+          "endLine": 31,
+          "params": [
+            "audio"
+          ]
+        },
+        {
+          "name": "onboard_host",
+          "startLine": 35,
+          "endLine": 78,
+          "params": [
+            "payload",
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "me",
+          "startLine": 82,
+          "endLine": 83,
+          "params": [
+            "current_user"
+          ]
+        },
+        {
+          "name": "_upload_host_image",
+          "startLine": 86,
+          "endLine": 100,
+          "params": [
+            "file",
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "upload_my_photo",
+          "startLine": 104,
+          "endLine": 112,
+          "params": [
+            "file",
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "upload_my_banner",
+          "startLine": 116,
+          "endLine": 124,
+          "params": [
+            "file",
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "update_me",
+          "startLine": 128,
+          "endLine": 148,
+          "params": [
+            "payload",
+            "current_user",
+            "db"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "transcribe_registration_intro",
+          "line": 19,
+          "isDefault": false
+        },
+        {
+          "name": "onboard_host",
+          "line": 34,
+          "isDefault": false
+        },
+        {
+          "name": "me",
+          "line": 81,
+          "isDefault": false
+        },
+        {
+          "name": "_upload_host_image",
+          "line": 86,
+          "isDefault": false
+        },
+        {
+          "name": "upload_my_photo",
+          "line": 103,
+          "isDefault": false
+        },
+        {
+          "name": "upload_my_banner",
+          "line": 115,
+          "isDefault": false
+        },
+        {
+          "name": "update_me",
+          "line": 127,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "transcribe_registration_intro",
+          "callee": "File",
+          "lineNumber": 20
+        },
+        {
+          "caller": "transcribe_registration_intro",
+          "callee": "faq_service.transcribe_gap_answer_audio",
+          "lineNumber": 28
+        },
+        {
+          "caller": "transcribe_registration_intro",
+          "callee": "HTTPException",
+          "lineNumber": 30
+        },
+        {
+          "caller": "onboard_host",
+          "callee": "Depends",
+          "lineNumber": 37
+        },
+        {
+          "caller": "onboard_host",
+          "callee": "Depends",
+          "lineNumber": 38
+        },
+        {
+          "caller": "onboard_host",
+          "callee": "db.scalar",
+          "lineNumber": 55
+        },
+        {
+          "caller": "onboard_host",
+          "callee": "select(User).where",
+          "lineNumber": 55
+        },
+        {
+          "caller": "onboard_host",
+          "callee": "select",
+          "lineNumber": 55
+        },
+        {
+          "caller": "onboard_host",
+          "callee": "HTTPException",
+          "lineNumber": 57
+        },
+        {
+          "caller": "onboard_host",
+          "callee": "db.commit",
+          "lineNumber": 66
+        },
+        {
+          "caller": "onboard_host",
+          "callee": "bright_data_client.trigger_scrape",
+          "lineNumber": 71
+        },
+        {
+          "caller": "onboard_host",
+          "callee": "str",
+          "lineNumber": 76
+        },
+        {
+          "caller": "onboard_host",
+          "callee": "HostOnboardingResponse",
+          "lineNumber": 78
+        },
+        {
+          "caller": "me",
+          "callee": "Depends",
+          "lineNumber": 82
+        },
+        {
+          "caller": "_upload_host_image",
+          "callee": "HTTPException",
+          "lineNumber": 91
+        },
+        {
+          "caller": "_upload_host_image",
+          "callee": "file.read",
+          "lineNumber": 93
+        },
+        {
+          "caller": "_upload_host_image",
+          "callee": "len",
+          "lineNumber": 94
+        },
+        {
+          "caller": "_upload_host_image",
+          "callee": "HTTPException",
+          "lineNumber": 95
+        },
+        {
+          "caller": "_upload_host_image",
+          "callee": "cloudinary_client.upload_image_bytes",
+          "lineNumber": 98
+        },
+        {
+          "caller": "_upload_host_image",
+          "callee": "HTTPException",
+          "lineNumber": 100
+        },
+        {
+          "caller": "upload_my_photo",
+          "callee": "File",
+          "lineNumber": 105
+        },
+        {
+          "caller": "upload_my_photo",
+          "callee": "Depends",
+          "lineNumber": 106
+        },
+        {
+          "caller": "upload_my_photo",
+          "callee": "Depends",
+          "lineNumber": 107
+        },
+        {
+          "caller": "upload_my_photo",
+          "callee": "_upload_host_image",
+          "lineNumber": 109
+        },
+        {
+          "caller": "upload_my_photo",
+          "callee": "db.commit",
+          "lineNumber": 110
+        },
+        {
+          "caller": "upload_my_photo",
+          "callee": "db.refresh",
+          "lineNumber": 111
+        },
+        {
+          "caller": "upload_my_banner",
+          "callee": "File",
+          "lineNumber": 117
+        },
+        {
+          "caller": "upload_my_banner",
+          "callee": "Depends",
+          "lineNumber": 118
+        },
+        {
+          "caller": "upload_my_banner",
+          "callee": "Depends",
+          "lineNumber": 119
+        },
+        {
+          "caller": "upload_my_banner",
+          "callee": "_upload_host_image",
+          "lineNumber": 121
+        },
+        {
+          "caller": "upload_my_banner",
+          "callee": "db.commit",
+          "lineNumber": 122
+        },
+        {
+          "caller": "upload_my_banner",
+          "callee": "db.refresh",
+          "lineNumber": 123
+        },
+        {
+          "caller": "update_me",
+          "callee": "Depends",
+          "lineNumber": 129
+        },
+        {
+          "caller": "update_me",
+          "callee": "Depends",
+          "lineNumber": 129
+        },
+        {
+          "caller": "update_me",
+          "callee": "db.scalar",
+          "lineNumber": 132
+        },
+        {
+          "caller": "update_me",
+          "callee": "select(User).where",
+          "lineNumber": 132
+        },
+        {
+          "caller": "update_me",
+          "callee": "select",
+          "lineNumber": 132
+        },
+        {
+          "caller": "update_me",
+          "callee": "HTTPException",
+          "lineNumber": 134
+        },
+        {
+          "caller": "update_me",
+          "callee": "db.scalar",
+          "lineNumber": 137
+        },
+        {
+          "caller": "update_me",
+          "callee": "select(User).where",
+          "lineNumber": 138
+        },
+        {
+          "caller": "update_me",
+          "callee": "select",
+          "lineNumber": 138
+        },
+        {
+          "caller": "update_me",
+          "callee": "HTTPException",
+          "lineNumber": 141
+        },
+        {
+          "caller": "update_me",
+          "callee": "payload.model_dump(exclude_unset=True).items",
+          "lineNumber": 143
+        },
+        {
+          "caller": "update_me",
+          "callee": "payload.model_dump",
+          "lineNumber": 143
+        },
+        {
+          "caller": "update_me",
+          "callee": "setattr",
+          "lineNumber": 144
+        },
+        {
+          "caller": "update_me",
+          "callee": "db.commit",
+          "lineNumber": 146
+        },
+        {
+          "caller": "update_me",
+          "callee": "db.refresh",
+          "lineNumber": 147
+        }
+      ],
+      "metrics": {
+        "importCount": 5,
+        "exportCount": 7,
+        "functionCount": 7,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "backend/app/api/v1/bookings.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 76,
+      "nonEmptyLines": 64,
+      "functions": [
+        {
+          "name": "list_bookings",
+          "startLine": 19,
+          "endLine": 36,
+          "params": [
+            "property_id",
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "create_booking",
+          "startLine": 40,
+          "endLine": 48,
+          "params": [
+            "payload",
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "cancel_booking",
+          "startLine": 52,
+          "endLine": 67,
+          "params": [
+            "booking_id",
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "check_availability",
+          "startLine": 71,
+          "endLine": 76,
+          "params": [
+            "payload",
+            "current_user",
+            "db"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "list_bookings",
+          "line": 18,
+          "isDefault": false
+        },
+        {
+          "name": "create_booking",
+          "line": 39,
+          "isDefault": false
+        },
+        {
+          "name": "cancel_booking",
+          "line": 51,
+          "isDefault": false
+        },
+        {
+          "name": "check_availability",
+          "line": 70,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "list_bookings",
+          "callee": "Query",
+          "lineNumber": 20
+        },
+        {
+          "caller": "list_bookings",
+          "callee": "Depends",
+          "lineNumber": 21
+        },
+        {
+          "caller": "list_bookings",
+          "callee": "Depends",
+          "lineNumber": 22
+        },
+        {
+          "caller": "list_bookings",
+          "callee": "get_owned_property",
+          "lineNumber": 25
+        },
+        {
+          "caller": "list_bookings",
+          "callee": "owned_property_ids",
+          "lineNumber": 28
+        },
+        {
+          "caller": "list_bookings",
+          "callee": "list",
+          "lineNumber": 30
+        },
+        {
+          "caller": "list_bookings",
+          "callee": "(\n            await db.scalars(\n                select(Booking).where(Booking.property_id.in_(property_ids)).order_by(Booking.check_in)\n            )\n        ).all",
+          "lineNumber": 31
+        },
+        {
+          "caller": "list_bookings",
+          "callee": "db.scalars",
+          "lineNumber": 32
+        },
+        {
+          "caller": "list_bookings",
+          "callee": "select(Booking).where(Booking.property_id.in_(property_ids)).order_by",
+          "lineNumber": 33
+        },
+        {
+          "caller": "list_bookings",
+          "callee": "select(Booking).where",
+          "lineNumber": 33
+        },
+        {
+          "caller": "list_bookings",
+          "callee": "select",
+          "lineNumber": 33
+        },
+        {
+          "caller": "list_bookings",
+          "callee": "Booking.property_id.in_",
+          "lineNumber": 33
+        },
+        {
+          "caller": "create_booking",
+          "callee": "Depends",
+          "lineNumber": 41
+        },
+        {
+          "caller": "create_booking",
+          "callee": "Depends",
+          "lineNumber": 41
+        },
+        {
+          "caller": "create_booking",
+          "callee": "get_owned_property",
+          "lineNumber": 43
+        },
+        {
+          "caller": "create_booking",
+          "callee": "Booking",
+          "lineNumber": 44
+        },
+        {
+          "caller": "create_booking",
+          "callee": "payload.model_dump",
+          "lineNumber": 44
+        },
+        {
+          "caller": "create_booking",
+          "callee": "db.add",
+          "lineNumber": 45
+        },
+        {
+          "caller": "create_booking",
+          "callee": "db.commit",
+          "lineNumber": 46
+        },
+        {
+          "caller": "create_booking",
+          "callee": "db.refresh",
+          "lineNumber": 47
+        },
+        {
+          "caller": "cancel_booking",
+          "callee": "Depends",
+          "lineNumber": 53
+        },
+        {
+          "caller": "cancel_booking",
+          "callee": "Depends",
+          "lineNumber": 53
+        },
+        {
+          "caller": "cancel_booking",
+          "callee": "db.get",
+          "lineNumber": 62
+        },
+        {
+          "caller": "cancel_booking",
+          "callee": "HTTPException",
+          "lineNumber": 64
+        },
+        {
+          "caller": "cancel_booking",
+          "callee": "get_owned_property",
+          "lineNumber": 65
+        },
+        {
+          "caller": "cancel_booking",
+          "callee": "db.delete",
+          "lineNumber": 66
+        },
+        {
+          "caller": "cancel_booking",
+          "callee": "db.commit",
+          "lineNumber": 67
+        },
+        {
+          "caller": "check_availability",
+          "callee": "Depends",
+          "lineNumber": 72
+        },
+        {
+          "caller": "check_availability",
+          "callee": "Depends",
+          "lineNumber": 72
+        },
+        {
+          "caller": "check_availability",
+          "callee": "get_owned_property",
+          "lineNumber": 74
+        },
+        {
+          "caller": "check_availability",
+          "callee": "is_available",
+          "lineNumber": 75
+        }
+      ],
+      "metrics": {
+        "importCount": 7,
+        "exportCount": 4,
+        "functionCount": 4,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "backend/app/api/v1/calls.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 85,
+      "nonEmptyLines": 78,
+      "functions": [
+        {
+          "name": "list_calls",
+          "startLine": 22,
+          "endLine": 61,
+          "params": [
+            "status_filter",
+            "urgency",
+            "call_type",
+            "limit",
+            "include_test_calls",
+            "date_range",
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "get_call",
+          "startLine": 65,
+          "endLine": 85,
+          "params": [
+            "call_id",
+            "current_user",
+            "db"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "list_calls",
+          "line": 21,
+          "isDefault": false
+        },
+        {
+          "name": "get_call",
+          "line": 64,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "list_calls",
+          "callee": "Query",
+          "lineNumber": 23
+        },
+        {
+          "caller": "list_calls",
+          "callee": "Query",
+          "lineNumber": 24
+        },
+        {
+          "caller": "list_calls",
+          "callee": "Query",
+          "lineNumber": 25
+        },
+        {
+          "caller": "list_calls",
+          "callee": "Query",
+          "lineNumber": 26
+        },
+        {
+          "caller": "list_calls",
+          "callee": "Query",
+          "lineNumber": 27
+        },
+        {
+          "caller": "list_calls",
+          "callee": "Depends",
+          "lineNumber": 28
+        },
+        {
+          "caller": "list_calls",
+          "callee": "Depends",
+          "lineNumber": 29
+        },
+        {
+          "caller": "list_calls",
+          "callee": "Depends",
+          "lineNumber": 30
+        },
+        {
+          "caller": "list_calls",
+          "callee": "select(CallSession)\n        .options(selectinload(CallSession.lead), selectinload(CallSession.guest_profile))\n        .where(CallSession.user_id == current_user.id)\n        .order_by(CallSession.created_at.desc())\n        .limit",
+          "lineNumber": 38
+        },
+        {
+          "caller": "list_calls",
+          "callee": "select(CallSession)\n        .options(selectinload(CallSession.lead), selectinload(CallSession.guest_profile))\n        .where(CallSession.user_id == current_user.id)\n        .order_by",
+          "lineNumber": 38
+        },
+        {
+          "caller": "list_calls",
+          "callee": "select(CallSession)\n        .options(selectinload(CallSession.lead), selectinload(CallSession.guest_profile))\n        .where",
+          "lineNumber": 38
+        },
+        {
+          "caller": "list_calls",
+          "callee": "select(CallSession)\n        .options",
+          "lineNumber": 38
+        },
+        {
+          "caller": "list_calls",
+          "callee": "select",
+          "lineNumber": 38
+        },
+        {
+          "caller": "list_calls",
+          "callee": "selectinload",
+          "lineNumber": 39
+        },
+        {
+          "caller": "list_calls",
+          "callee": "selectinload",
+          "lineNumber": 39
+        },
+        {
+          "caller": "list_calls",
+          "callee": "CallSession.created_at.desc",
+          "lineNumber": 41
+        },
+        {
+          "caller": "list_calls",
+          "callee": "stmt.where",
+          "lineNumber": 45
+        },
+        {
+          "caller": "list_calls",
+          "callee": "stmt.where",
+          "lineNumber": 47
+        },
+        {
+          "caller": "list_calls",
+          "callee": "t.strip",
+          "lineNumber": 52
+        },
+        {
+          "caller": "list_calls",
+          "callee": "call_type.split",
+          "lineNumber": 52
+        },
+        {
+          "caller": "list_calls",
+          "callee": "t.strip",
+          "lineNumber": 52
+        },
+        {
+          "caller": "list_calls",
+          "callee": "stmt.where",
+          "lineNumber": 54
+        },
+        {
+          "caller": "list_calls",
+          "callee": "CallSession.call_type.in_",
+          "lineNumber": 54
+        },
+        {
+          "caller": "list_calls",
+          "callee": "stmt.where",
+          "lineNumber": 56
+        },
+        {
+          "caller": "list_calls",
+          "callee": "stmt.where",
+          "lineNumber": 58
+        },
+        {
+          "caller": "list_calls",
+          "callee": "stmt.where",
+          "lineNumber": 60
+        },
+        {
+          "caller": "list_calls",
+          "callee": "list",
+          "lineNumber": 61
+        },
+        {
+          "caller": "list_calls",
+          "callee": "(await db.scalars(stmt)).all",
+          "lineNumber": 61
+        },
+        {
+          "caller": "list_calls",
+          "callee": "db.scalars",
+          "lineNumber": 61
+        },
+        {
+          "caller": "get_call",
+          "callee": "Depends",
+          "lineNumber": 66
+        },
+        {
+          "caller": "get_call",
+          "callee": "Depends",
+          "lineNumber": 66
+        },
+        {
+          "caller": "get_call",
+          "callee": "db.scalar",
+          "lineNumber": 71
+        },
+        {
+          "caller": "get_call",
+          "callee": "select(CallSession)\n        .options(\n            selectinload(CallSession.lead),\n            selectinload(CallSession.guest_profile),\n            selectinload(CallSession.notifications).selectinload(Notification.property),\n        )\n        .where",
+          "lineNumber": 72
+        },
+        {
+          "caller": "get_call",
+          "callee": "select(CallSession)\n        .options",
+          "lineNumber": 72
+        },
+        {
+          "caller": "get_call",
+          "callee": "select",
+          "lineNumber": 72
+        },
+        {
+          "caller": "get_call",
+          "callee": "selectinload",
+          "lineNumber": 74
+        },
+        {
+          "caller": "get_call",
+          "callee": "selectinload",
+          "lineNumber": 75
+        },
+        {
+          "caller": "get_call",
+          "callee": "selectinload(CallSession.notifications).selectinload",
+          "lineNumber": 76
+        },
+        {
+          "caller": "get_call",
+          "callee": "selectinload",
+          "lineNumber": 76
+        },
+        {
+          "caller": "get_call",
+          "callee": "HTTPException",
+          "lineNumber": 81
+        },
+        {
+          "caller": "get_call",
+          "callee": "CallSessionDetailOut",
+          "lineNumber": 82
+        },
+        {
+          "caller": "get_call",
+          "callee": "CallSessionOut.model_validate(call).model_dump",
+          "lineNumber": 83
+        },
+        {
+          "caller": "get_call",
+          "callee": "CallSessionOut.model_validate",
+          "lineNumber": 83
+        },
+        {
+          "caller": "get_call",
+          "callee": "NotificationOut.model_validate",
+          "lineNumber": 84
+        }
+      ],
+      "metrics": {
+        "importCount": 6,
+        "exportCount": 2,
+        "functionCount": 2,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "backend/app/api/v1/common.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 54,
+      "nonEmptyLines": 40,
+      "functions": [
+        {
+          "name": "get_owned_property",
+          "startLine": 13,
+          "endLine": 17,
+          "params": [
+            "db",
+            "property_id",
+            "user"
+          ]
+        },
+        {
+          "name": "owned_property_ids",
+          "startLine": 20,
+          "endLine": 22,
+          "params": [
+            "db",
+            "user"
+          ]
+        },
+        {
+          "name": "date_range_query",
+          "startLine": 50,
+          "endLine": 54,
+          "params": [
+            "start_date",
+            "end_date"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "DateRange",
+          "startLine": 26,
+          "endLine": 47,
+          "methods": [
+            "since",
+            "until"
+          ],
+          "properties": [
+            "start_date",
+            "end_date"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "get_owned_property",
+          "line": 13,
+          "isDefault": false
+        },
+        {
+          "name": "owned_property_ids",
+          "line": 20,
+          "isDefault": false
+        },
+        {
+          "name": "DateRange",
+          "line": 25,
+          "isDefault": false
+        },
+        {
+          "name": "date_range_query",
+          "line": 50,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "get_owned_property",
+          "callee": "db.get",
+          "lineNumber": 14
+        },
+        {
+          "caller": "get_owned_property",
+          "callee": "HTTPException",
+          "lineNumber": 16
+        },
+        {
+          "caller": "owned_property_ids",
+          "callee": "(await db.scalars(select(Property.id).where(Property.user_id == user.id))).all",
+          "lineNumber": 21
+        },
+        {
+          "caller": "owned_property_ids",
+          "callee": "db.scalars",
+          "lineNumber": 21
+        },
+        {
+          "caller": "owned_property_ids",
+          "callee": "select(Property.id).where",
+          "lineNumber": 21
+        },
+        {
+          "caller": "owned_property_ids",
+          "callee": "select",
+          "lineNumber": 21
+        },
+        {
+          "caller": "owned_property_ids",
+          "callee": "list",
+          "lineNumber": 22
+        },
+        {
+          "caller": "since",
+          "callee": "datetime.combine",
+          "lineNumber": 41
+        },
+        {
+          "caller": "until",
+          "callee": "datetime.combine",
+          "lineNumber": 47
+        },
+        {
+          "caller": "until",
+          "callee": "timedelta",
+          "lineNumber": 47
+        },
+        {
+          "caller": "date_range_query",
+          "callee": "Query",
+          "lineNumber": 51
+        },
+        {
+          "caller": "date_range_query",
+          "callee": "Query",
+          "lineNumber": 52
+        },
+        {
+          "caller": "date_range_query",
+          "callee": "DateRange",
+          "lineNumber": 54
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 4,
+        "functionCount": 3,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "backend/app/api/v1/faq.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 138,
+      "nonEmptyLines": 111,
+      "functions": [
+        {
+          "name": "list_faq_entries",
+          "startLine": 19,
+          "endLine": 22,
+          "params": [
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "create_faq_entry",
+          "startLine": 26,
+          "endLine": 36,
+          "params": [
+            "payload",
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "update_faq_entry",
+          "startLine": 40,
+          "endLine": 58,
+          "params": [
+            "faq_id",
+            "payload",
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "delete_faq_entry",
+          "startLine": 62,
+          "endLine": 69,
+          "params": [
+            "faq_id",
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "list_faq_gaps",
+          "startLine": 79,
+          "endLine": 97,
+          "params": [
+            "property_id",
+            "date_range",
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "faq_gaps_analytics",
+          "startLine": 101,
+          "endLine": 106,
+          "params": [
+            "bucket",
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "answer_faq_gap",
+          "startLine": 110,
+          "endLine": 119,
+          "params": [
+            "gap_id",
+            "payload",
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "answer_faq_gap_voice",
+          "startLine": 123,
+          "endLine": 138,
+          "params": [
+            "gap_id",
+            "apply_to_property",
+            "audio",
+            "current_user",
+            "db"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "list_faq_entries",
+          "line": 18,
+          "isDefault": false
+        },
+        {
+          "name": "create_faq_entry",
+          "line": 25,
+          "isDefault": false
+        },
+        {
+          "name": "update_faq_entry",
+          "line": 39,
+          "isDefault": false
+        },
+        {
+          "name": "delete_faq_entry",
+          "line": 61,
+          "isDefault": false
+        },
+        {
+          "name": "list_faq_gaps",
+          "line": 78,
+          "isDefault": false
+        },
+        {
+          "name": "faq_gaps_analytics",
+          "line": 100,
+          "isDefault": false
+        },
+        {
+          "name": "answer_faq_gap",
+          "line": 109,
+          "isDefault": false
+        },
+        {
+          "name": "answer_faq_gap_voice",
+          "line": 122,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "list_faq_entries",
+          "callee": "Depends",
+          "lineNumber": 20
+        },
+        {
+          "caller": "list_faq_entries",
+          "callee": "Depends",
+          "lineNumber": 20
+        },
+        {
+          "caller": "list_faq_entries",
+          "callee": "faq_service.list_faq_entries",
+          "lineNumber": 22
+        },
+        {
+          "caller": "create_faq_entry",
+          "callee": "Depends",
+          "lineNumber": 27
+        },
+        {
+          "caller": "create_faq_entry",
+          "callee": "Depends",
+          "lineNumber": 27
+        },
+        {
+          "caller": "create_faq_entry",
+          "callee": "get_owned_property",
+          "lineNumber": 30
+        },
+        {
+          "caller": "create_faq_entry",
+          "callee": "FaqEntry",
+          "lineNumber": 32
+        },
+        {
+          "caller": "create_faq_entry",
+          "callee": "payload.model_dump",
+          "lineNumber": 32
+        },
+        {
+          "caller": "create_faq_entry",
+          "callee": "db.add",
+          "lineNumber": 33
+        },
+        {
+          "caller": "create_faq_entry",
+          "callee": "db.commit",
+          "lineNumber": 34
+        },
+        {
+          "caller": "create_faq_entry",
+          "callee": "db.refresh",
+          "lineNumber": 35
+        },
+        {
+          "caller": "update_faq_entry",
+          "callee": "Depends",
+          "lineNumber": 43
+        },
+        {
+          "caller": "update_faq_entry",
+          "callee": "Depends",
+          "lineNumber": 44
+        },
+        {
+          "caller": "update_faq_entry",
+          "callee": "faq_service.get_owned_faq_entry",
+          "lineNumber": 46
+        },
+        {
+          "caller": "update_faq_entry",
+          "callee": "HTTPException",
+          "lineNumber": 48
+        },
+        {
+          "caller": "update_faq_entry",
+          "callee": "get_owned_property",
+          "lineNumber": 51
+        },
+        {
+          "caller": "update_faq_entry",
+          "callee": "payload.model_dump(exclude_unset=True).items",
+          "lineNumber": 53
+        },
+        {
+          "caller": "update_faq_entry",
+          "callee": "payload.model_dump",
+          "lineNumber": 53
+        },
+        {
+          "caller": "update_faq_entry",
+          "callee": "setattr",
+          "lineNumber": 54
+        },
+        {
+          "caller": "update_faq_entry",
+          "callee": "db.commit",
+          "lineNumber": 56
+        },
+        {
+          "caller": "update_faq_entry",
+          "callee": "db.refresh",
+          "lineNumber": 57
+        },
+        {
+          "caller": "delete_faq_entry",
+          "callee": "Depends",
+          "lineNumber": 63
+        },
+        {
+          "caller": "delete_faq_entry",
+          "callee": "Depends",
+          "lineNumber": 63
+        },
+        {
+          "caller": "delete_faq_entry",
+          "callee": "faq_service.get_owned_faq_entry",
+          "lineNumber": 65
+        },
+        {
+          "caller": "delete_faq_entry",
+          "callee": "HTTPException",
+          "lineNumber": 67
+        },
+        {
+          "caller": "delete_faq_entry",
+          "callee": "db.delete",
+          "lineNumber": 68
+        },
+        {
+          "caller": "delete_faq_entry",
+          "callee": "db.commit",
+          "lineNumber": 69
+        },
+        {
+          "caller": "list_faq_gaps",
+          "callee": "Query",
+          "lineNumber": 80
+        },
+        {
+          "caller": "list_faq_gaps",
+          "callee": "Depends",
+          "lineNumber": 81
+        },
+        {
+          "caller": "list_faq_gaps",
+          "callee": "Depends",
+          "lineNumber": 82
+        },
+        {
+          "caller": "list_faq_gaps",
+          "callee": "Depends",
+          "lineNumber": 83
+        },
+        {
+          "caller": "list_faq_gaps",
+          "callee": "faq_service.list_faq_gaps",
+          "lineNumber": 96
+        },
+        {
+          "caller": "faq_gaps_analytics",
+          "callee": "Query",
+          "lineNumber": 102
+        },
+        {
+          "caller": "faq_gaps_analytics",
+          "callee": "Depends",
+          "lineNumber": 103
+        },
+        {
+          "caller": "faq_gaps_analytics",
+          "callee": "Depends",
+          "lineNumber": 104
+        },
+        {
+          "caller": "faq_gaps_analytics",
+          "callee": "faq_service.faq_gap_analytics",
+          "lineNumber": 106
+        },
+        {
+          "caller": "answer_faq_gap",
+          "callee": "Depends",
+          "lineNumber": 113
+        },
+        {
+          "caller": "answer_faq_gap",
+          "callee": "Depends",
+          "lineNumber": 114
+        },
+        {
+          "caller": "answer_faq_gap",
+          "callee": "faq_service.get_owned_unanswered_question",
+          "lineNumber": 116
+        },
+        {
+          "caller": "answer_faq_gap",
+          "callee": "HTTPException",
+          "lineNumber": 118
+        },
+        {
+          "caller": "answer_faq_gap",
+          "callee": "faq_service.answer_faq_gap",
+          "lineNumber": 119
+        },
+        {
+          "caller": "answer_faq_gap_voice",
+          "callee": "File",
+          "lineNumber": 126
+        },
+        {
+          "caller": "answer_faq_gap_voice",
+          "callee": "Depends",
+          "lineNumber": 127
+        },
+        {
+          "caller": "answer_faq_gap_voice",
+          "callee": "Depends",
+          "lineNumber": 128
+        },
+        {
+          "caller": "answer_faq_gap_voice",
+          "callee": "faq_service.get_owned_unanswered_question",
+          "lineNumber": 130
+        },
+        {
+          "caller": "answer_faq_gap_voice",
+          "callee": "HTTPException",
+          "lineNumber": 132
+        },
+        {
+          "caller": "answer_faq_gap_voice",
+          "callee": "faq_service.transcribe_gap_answer_audio",
+          "lineNumber": 134
+        },
+        {
+          "caller": "answer_faq_gap_voice",
+          "callee": "HTTPException",
+          "lineNumber": 136
+        },
+        {
+          "caller": "answer_faq_gap_voice",
+          "callee": "faq_service.answer_faq_gap",
+          "lineNumber": 138
+        }
+      ],
+      "metrics": {
+        "importCount": 7,
+        "exportCount": 8,
+        "functionCount": 8,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "backend/app/api/v1/guests.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 126,
+      "nonEmptyLines": 111,
+      "functions": [
+        {
+          "name": "list_guests",
+          "startLine": 25,
+          "endLine": 47,
+          "params": [
+            "date_range",
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "get_guest",
+          "startLine": 51,
+          "endLine": 65,
+          "params": [
+            "guest_id",
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "get_guest_detail",
+          "startLine": 69,
+          "endLine": 111,
+          "params": [
+            "guest_id",
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "update_guest",
+          "startLine": 115,
+          "endLine": 126,
+          "params": [
+            "guest_id",
+            "payload",
+            "current_user",
+            "db"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "list_guests",
+          "line": 24,
+          "isDefault": false
+        },
+        {
+          "name": "get_guest",
+          "line": 50,
+          "isDefault": false
+        },
+        {
+          "name": "get_guest_detail",
+          "line": 68,
+          "isDefault": false
+        },
+        {
+          "name": "update_guest",
+          "line": 114,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "list_guests",
+          "callee": "Depends",
+          "lineNumber": 26
+        },
+        {
+          "caller": "list_guests",
+          "callee": "Depends",
+          "lineNumber": 27
+        },
+        {
+          "caller": "list_guests",
+          "callee": "Depends",
+          "lineNumber": 28
+        },
+        {
+          "caller": "list_guests",
+          "callee": "select(CallSession.guest_profile_id).where",
+          "lineNumber": 37
+        },
+        {
+          "caller": "list_guests",
+          "callee": "select",
+          "lineNumber": 37
+        },
+        {
+          "caller": "list_guests",
+          "callee": "CallSession.guest_profile_id.isnot",
+          "lineNumber": 38
+        },
+        {
+          "caller": "list_guests",
+          "callee": "stmt.where",
+          "lineNumber": 41
+        },
+        {
+          "caller": "list_guests",
+          "callee": "stmt.where",
+          "lineNumber": 43
+        },
+        {
+          "caller": "list_guests",
+          "callee": "(await db.scalars(stmt.distinct())).all",
+          "lineNumber": 44
+        },
+        {
+          "caller": "list_guests",
+          "callee": "db.scalars",
+          "lineNumber": 44
+        },
+        {
+          "caller": "list_guests",
+          "callee": "stmt.distinct",
+          "lineNumber": 44
+        },
+        {
+          "caller": "list_guests",
+          "callee": "list",
+          "lineNumber": 47
+        },
+        {
+          "caller": "list_guests",
+          "callee": "(await db.scalars(select(GuestProfile).where(GuestProfile.id.in_(guest_ids)))).all",
+          "lineNumber": 47
+        },
+        {
+          "caller": "list_guests",
+          "callee": "db.scalars",
+          "lineNumber": 47
+        },
+        {
+          "caller": "list_guests",
+          "callee": "select(GuestProfile).where",
+          "lineNumber": 47
+        },
+        {
+          "caller": "list_guests",
+          "callee": "select",
+          "lineNumber": 47
+        },
+        {
+          "caller": "list_guests",
+          "callee": "GuestProfile.id.in_",
+          "lineNumber": 47
+        },
+        {
+          "caller": "get_guest",
+          "callee": "Depends",
+          "lineNumber": 52
+        },
+        {
+          "caller": "get_guest",
+          "callee": "Depends",
+          "lineNumber": 52
+        },
+        {
+          "caller": "get_guest",
+          "callee": "db.scalar",
+          "lineNumber": 54
+        },
+        {
+          "caller": "get_guest",
+          "callee": "select(CallSession.id).where",
+          "lineNumber": 55
+        },
+        {
+          "caller": "get_guest",
+          "callee": "select",
+          "lineNumber": 55
+        },
+        {
+          "caller": "get_guest",
+          "callee": "HTTPException",
+          "lineNumber": 60
+        },
+        {
+          "caller": "get_guest",
+          "callee": "db.get",
+          "lineNumber": 62
+        },
+        {
+          "caller": "get_guest",
+          "callee": "HTTPException",
+          "lineNumber": 64
+        },
+        {
+          "caller": "get_guest_detail",
+          "callee": "Depends",
+          "lineNumber": 70
+        },
+        {
+          "caller": "get_guest_detail",
+          "callee": "Depends",
+          "lineNumber": 70
+        },
+        {
+          "caller": "get_guest_detail",
+          "callee": "get_guest",
+          "lineNumber": 74
+        },
+        {
+          "caller": "get_guest_detail",
+          "callee": "db.scalar",
+          "lineNumber": 81
+        },
+        {
+          "caller": "get_guest_detail",
+          "callee": "select(func.coalesce(func.sum(CallSession.revenue_attributed), 0)).where",
+          "lineNumber": 82
+        },
+        {
+          "caller": "get_guest_detail",
+          "callee": "select",
+          "lineNumber": 82
+        },
+        {
+          "caller": "get_guest_detail",
+          "callee": "func.coalesce",
+          "lineNumber": 82
+        },
+        {
+          "caller": "get_guest_detail",
+          "callee": "func.sum",
+          "lineNumber": 82
+        },
+        {
+          "caller": "get_guest_detail",
+          "callee": "select(CallSession, Property.name)\n        .outerjoin(Property, Property.id == CallSession.property_id)\n        .where(CallSession.guest_profile_id == guest_id, CallSession.user_id == current_user.id)\n        .order_by(CallSession.created_at.desc())\n        .limit",
+          "lineNumber": 88
+        },
+        {
+          "caller": "get_guest_detail",
+          "callee": "select(CallSession, Property.name)\n        .outerjoin(Property, Property.id == CallSession.property_id)\n        .where(CallSession.guest_profile_id == guest_id, CallSession.user_id == current_user.id)\n        .order_by",
+          "lineNumber": 88
+        },
+        {
+          "caller": "get_guest_detail",
+          "callee": "select(CallSession, Property.name)\n        .outerjoin(Property, Property.id == CallSession.property_id)\n        .where",
+          "lineNumber": 88
+        },
+        {
+          "caller": "get_guest_detail",
+          "callee": "select(CallSession, Property.name)\n        .outerjoin",
+          "lineNumber": 88
+        },
+        {
+          "caller": "get_guest_detail",
+          "callee": "select",
+          "lineNumber": 88
+        },
+        {
+          "caller": "get_guest_detail",
+          "callee": "CallSession.created_at.desc",
+          "lineNumber": 91
+        },
+        {
+          "caller": "get_guest_detail",
+          "callee": "(await db.execute(recent_calls_stmt)).all",
+          "lineNumber": 94
+        },
+        {
+          "caller": "get_guest_detail",
+          "callee": "db.execute",
+          "lineNumber": 94
+        },
+        {
+          "caller": "get_guest_detail",
+          "callee": "GuestRecentCall",
+          "lineNumber": 96
+        },
+        {
+          "caller": "get_guest_detail",
+          "callee": "GuestProfileDetailOut",
+          "lineNumber": 107
+        },
+        {
+          "caller": "get_guest_detail",
+          "callee": "GuestProfileOut.model_validate(guest).model_dump",
+          "lineNumber": 108
+        },
+        {
+          "caller": "get_guest_detail",
+          "callee": "GuestProfileOut.model_validate",
+          "lineNumber": 108
+        },
+        {
+          "caller": "get_guest_detail",
+          "callee": "float",
+          "lineNumber": 109
+        },
+        {
+          "caller": "update_guest",
+          "callee": "Depends",
+          "lineNumber": 118
+        },
+        {
+          "caller": "update_guest",
+          "callee": "Depends",
+          "lineNumber": 119
+        },
+        {
+          "caller": "update_guest",
+          "callee": "get_guest",
+          "lineNumber": 121
+        },
+        {
+          "caller": "update_guest",
+          "callee": "payload.model_dump(exclude_unset=True).items",
+          "lineNumber": 122
+        },
+        {
+          "caller": "update_guest",
+          "callee": "payload.model_dump",
+          "lineNumber": 122
+        },
+        {
+          "caller": "update_guest",
+          "callee": "setattr",
+          "lineNumber": 123
+        },
+        {
+          "caller": "update_guest",
+          "callee": "db.commit",
+          "lineNumber": 124
+        },
+        {
+          "caller": "update_guest",
+          "callee": "db.refresh",
+          "lineNumber": 125
+        }
+      ],
+      "metrics": {
+        "importCount": 6,
+        "exportCount": 4,
+        "functionCount": 4,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "backend/app/api/v1/leads.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 116,
+      "nonEmptyLines": 94,
+      "functions": [
+        {
+          "name": "_with_urgency",
+          "startLine": 29,
+          "endLine": 56,
+          "params": [
+            "db",
+            "leads"
+          ]
+        },
+        {
+          "name": "list_leads",
+          "startLine": 60,
+          "endLine": 66,
+          "params": [
+            "date_range",
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "list_service_requests",
+          "startLine": 70,
+          "endLine": 77,
+          "params": [
+            "include_dismissed",
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "dismiss_service_requests",
+          "startLine": 81,
+          "endLine": 87,
+          "params": [
+            "payload",
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "get_lead",
+          "startLine": 91,
+          "endLine": 97,
+          "params": [
+            "lead_id",
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "update_lead",
+          "startLine": 101,
+          "endLine": 116,
+          "params": [
+            "lead_id",
+            "payload",
+            "current_user",
+            "db"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "BulkDismissRequest",
+          "startLine": 21,
+          "endLine": 22,
+          "methods": [],
+          "properties": [
+            "call_session_ids"
+          ]
+        },
+        {
+          "name": "BulkDismissResponse",
+          "startLine": 25,
+          "endLine": 26,
+          "methods": [],
+          "properties": [
+            "dismissed"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "BulkDismissRequest",
+          "line": 21,
+          "isDefault": false
+        },
+        {
+          "name": "BulkDismissResponse",
+          "line": 25,
+          "isDefault": false
+        },
+        {
+          "name": "_with_urgency",
+          "line": 29,
+          "isDefault": false
+        },
+        {
+          "name": "list_leads",
+          "line": 59,
+          "isDefault": false
+        },
+        {
+          "name": "list_service_requests",
+          "line": 69,
+          "isDefault": false
+        },
+        {
+          "name": "dismiss_service_requests",
+          "line": 80,
+          "isDefault": false
+        },
+        {
+          "name": "get_lead",
+          "line": 90,
+          "isDefault": false
+        },
+        {
+          "name": "update_lead",
+          "line": 100,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "_with_urgency",
+          "callee": "(\n            await db.execute(\n                select(Notification.call_session_id, Notification.urgency, Notification.created_at)\n                .where(Notification.call_session_id.in_(call_session_ids))\n                .order_by(Notification.created_at.asc())\n            )\n        ).all",
+          "lineNumber": 38
+        },
+        {
+          "caller": "_with_urgency",
+          "callee": "db.execute",
+          "lineNumber": 39
+        },
+        {
+          "caller": "_with_urgency",
+          "callee": "select(Notification.call_session_id, Notification.urgency, Notification.created_at)\n                .where(Notification.call_session_id.in_(call_session_ids))\n                .order_by",
+          "lineNumber": 40
+        },
+        {
+          "caller": "_with_urgency",
+          "callee": "select(Notification.call_session_id, Notification.urgency, Notification.created_at)\n                .where",
+          "lineNumber": 40
+        },
+        {
+          "caller": "_with_urgency",
+          "callee": "select",
+          "lineNumber": 40
+        },
+        {
+          "caller": "_with_urgency",
+          "callee": "Notification.call_session_id.in_",
+          "lineNumber": 41
+        },
+        {
+          "caller": "_with_urgency",
+          "callee": "Notification.created_at.asc",
+          "lineNumber": 42
+        },
+        {
+          "caller": "_with_urgency",
+          "callee": "LeadOut",
+          "lineNumber": 51
+        },
+        {
+          "caller": "_with_urgency",
+          "callee": "getattr",
+          "lineNumber": 52
+        },
+        {
+          "caller": "_with_urgency",
+          "callee": "urgency_by_call_session.get",
+          "lineNumber": 53
+        },
+        {
+          "caller": "list_leads",
+          "callee": "Depends",
+          "lineNumber": 61
+        },
+        {
+          "caller": "list_leads",
+          "callee": "Depends",
+          "lineNumber": 62
+        },
+        {
+          "caller": "list_leads",
+          "callee": "Depends",
+          "lineNumber": 63
+        },
+        {
+          "caller": "list_leads",
+          "callee": "lead_service.list_leads",
+          "lineNumber": 65
+        },
+        {
+          "caller": "list_leads",
+          "callee": "_with_urgency",
+          "lineNumber": 66
+        },
+        {
+          "caller": "list_service_requests",
+          "callee": "Depends",
+          "lineNumber": 72
+        },
+        {
+          "caller": "list_service_requests",
+          "callee": "Depends",
+          "lineNumber": 73
+        },
+        {
+          "caller": "list_service_requests",
+          "callee": "request_feed_service.list_service_requests",
+          "lineNumber": 75
+        },
+        {
+          "caller": "dismiss_service_requests",
+          "callee": "Depends",
+          "lineNumber": 83
+        },
+        {
+          "caller": "dismiss_service_requests",
+          "callee": "Depends",
+          "lineNumber": 84
+        },
+        {
+          "caller": "dismiss_service_requests",
+          "callee": "request_feed_service.bulk_dismiss",
+          "lineNumber": 86
+        },
+        {
+          "caller": "dismiss_service_requests",
+          "callee": "BulkDismissResponse",
+          "lineNumber": 87
+        },
+        {
+          "caller": "get_lead",
+          "callee": "Depends",
+          "lineNumber": 92
+        },
+        {
+          "caller": "get_lead",
+          "callee": "Depends",
+          "lineNumber": 92
+        },
+        {
+          "caller": "get_lead",
+          "callee": "lead_service.get_owned_lead",
+          "lineNumber": 94
+        },
+        {
+          "caller": "get_lead",
+          "callee": "HTTPException",
+          "lineNumber": 96
+        },
+        {
+          "caller": "get_lead",
+          "callee": "_with_urgency",
+          "lineNumber": 97
+        },
+        {
+          "caller": "update_lead",
+          "callee": "Depends",
+          "lineNumber": 104
+        },
+        {
+          "caller": "update_lead",
+          "callee": "Depends",
+          "lineNumber": 105
+        },
+        {
+          "caller": "update_lead",
+          "callee": "lead_service.get_owned_lead",
+          "lineNumber": 107
+        },
+        {
+          "caller": "update_lead",
+          "callee": "HTTPException",
+          "lineNumber": 109
+        },
+        {
+          "caller": "update_lead",
+          "callee": "payload.model_dump(exclude_unset=True).items",
+          "lineNumber": 111
+        },
+        {
+          "caller": "update_lead",
+          "callee": "payload.model_dump",
+          "lineNumber": 111
+        },
+        {
+          "caller": "update_lead",
+          "callee": "setattr",
+          "lineNumber": 112
+        },
+        {
+          "caller": "update_lead",
+          "callee": "db.commit",
+          "lineNumber": 114
+        },
+        {
+          "caller": "update_lead",
+          "callee": "db.refresh",
+          "lineNumber": 115
+        },
+        {
+          "caller": "update_lead",
+          "callee": "_with_urgency",
+          "lineNumber": 116
+        }
+      ],
+      "metrics": {
+        "importCount": 8,
+        "exportCount": 8,
+        "functionCount": 6,
+        "classCount": 2
+      }
+    },
+    {
+      "path": "backend/app/api/v1/negotiation_rules.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 126,
+      "nonEmptyLines": 105,
+      "functions": [
+        {
+          "name": "_get_owned_rule",
+          "startLine": 23,
+          "endLine": 26,
+          "params": [
+            "db",
+            "rule_id",
+            "host_id"
+          ]
+        },
+        {
+          "name": "list_negotiation_rules",
+          "startLine": 30,
+          "endLine": 38,
+          "params": [
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "parse_negotiation_policy",
+          "startLine": 42,
+          "endLine": 71,
+          "params": [
+            "payload",
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "update_negotiation_rule",
+          "startLine": 75,
+          "endLine": 115,
+          "params": [
+            "rule_id",
+            "payload",
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "delete_negotiation_rule",
+          "startLine": 119,
+          "endLine": 126,
+          "params": [
+            "rule_id",
+            "current_user",
+            "db"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "_get_owned_rule",
+          "line": 23,
+          "isDefault": false
+        },
+        {
+          "name": "list_negotiation_rules",
+          "line": 29,
+          "isDefault": false
+        },
+        {
+          "name": "parse_negotiation_policy",
+          "line": 41,
+          "isDefault": false
+        },
+        {
+          "name": "update_negotiation_rule",
+          "line": 74,
+          "isDefault": false
+        },
+        {
+          "name": "delete_negotiation_rule",
+          "line": 118,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "_get_owned_rule",
+          "callee": "db.scalar",
+          "lineNumber": 24
+        },
+        {
+          "caller": "_get_owned_rule",
+          "callee": "select(NegotiationRule).where",
+          "lineNumber": 25
+        },
+        {
+          "caller": "_get_owned_rule",
+          "callee": "select",
+          "lineNumber": 25
+        },
+        {
+          "caller": "list_negotiation_rules",
+          "callee": "Depends",
+          "lineNumber": 31
+        },
+        {
+          "caller": "list_negotiation_rules",
+          "callee": "Depends",
+          "lineNumber": 31
+        },
+        {
+          "caller": "list_negotiation_rules",
+          "callee": "db.scalars",
+          "lineNumber": 33
+        },
+        {
+          "caller": "list_negotiation_rules",
+          "callee": "select(NegotiationRule)\n        .where(NegotiationRule.host_id == current_user.id)\n        .order_by",
+          "lineNumber": 34
+        },
+        {
+          "caller": "list_negotiation_rules",
+          "callee": "select(NegotiationRule)\n        .where",
+          "lineNumber": 34
+        },
+        {
+          "caller": "list_negotiation_rules",
+          "callee": "select",
+          "lineNumber": 34
+        },
+        {
+          "caller": "list_negotiation_rules",
+          "callee": "NegotiationRule.created_at.desc",
+          "lineNumber": 36
+        },
+        {
+          "caller": "list_negotiation_rules",
+          "callee": "list",
+          "lineNumber": 38
+        },
+        {
+          "caller": "list_negotiation_rules",
+          "callee": "result.all",
+          "lineNumber": 38
+        },
+        {
+          "caller": "parse_negotiation_policy",
+          "callee": "Depends",
+          "lineNumber": 44
+        },
+        {
+          "caller": "parse_negotiation_policy",
+          "callee": "Depends",
+          "lineNumber": 45
+        },
+        {
+          "caller": "parse_negotiation_policy",
+          "callee": "negotiation_policy_service.parse_negotiation_policy_text",
+          "lineNumber": 53
+        },
+        {
+          "caller": "parse_negotiation_policy",
+          "callee": "HTTPException",
+          "lineNumber": 55
+        },
+        {
+          "caller": "parse_negotiation_policy",
+          "callee": "HTTPException",
+          "lineNumber": 58
+        },
+        {
+          "caller": "parse_negotiation_policy",
+          "callee": "negotiation_policy_service.build_pending_rules",
+          "lineNumber": 65
+        },
+        {
+          "caller": "parse_negotiation_policy",
+          "callee": "db.add_all",
+          "lineNumber": 66
+        },
+        {
+          "caller": "parse_negotiation_policy",
+          "callee": "db.commit",
+          "lineNumber": 67
+        },
+        {
+          "caller": "parse_negotiation_policy",
+          "callee": "db.refresh",
+          "lineNumber": 69
+        },
+        {
+          "caller": "parse_negotiation_policy",
+          "callee": "NegotiationPolicyParseResponse",
+          "lineNumber": 71
+        },
+        {
+          "caller": "update_negotiation_rule",
+          "callee": "Depends",
+          "lineNumber": 78
+        },
+        {
+          "caller": "update_negotiation_rule",
+          "callee": "Depends",
+          "lineNumber": 79
+        },
+        {
+          "caller": "update_negotiation_rule",
+          "callee": "_get_owned_rule",
+          "lineNumber": 91
+        },
+        {
+          "caller": "update_negotiation_rule",
+          "callee": "HTTPException",
+          "lineNumber": 93
+        },
+        {
+          "caller": "update_negotiation_rule",
+          "callee": "payload.model_dump",
+          "lineNumber": 95
+        },
+        {
+          "caller": "update_negotiation_rule",
+          "callee": "updates.get",
+          "lineNumber": 97
+        },
+        {
+          "caller": "update_negotiation_rule",
+          "callee": "str",
+          "lineNumber": 98
+        },
+        {
+          "caller": "update_negotiation_rule",
+          "callee": "owned_property_ids",
+          "lineNumber": 98
+        },
+        {
+          "caller": "update_negotiation_rule",
+          "callee": "set",
+          "lineNumber": 99
+        },
+        {
+          "caller": "update_negotiation_rule",
+          "callee": "requested_ids.issubset",
+          "lineNumber": 100
+        },
+        {
+          "caller": "update_negotiation_rule",
+          "callee": "HTTPException",
+          "lineNumber": 101
+        },
+        {
+          "caller": "update_negotiation_rule",
+          "callee": "updates.get",
+          "lineNumber": 103
+        },
+        {
+          "caller": "update_negotiation_rule",
+          "callee": "any",
+          "lineNumber": 107
+        },
+        {
+          "caller": "update_negotiation_rule",
+          "callee": "updates.items",
+          "lineNumber": 110
+        },
+        {
+          "caller": "update_negotiation_rule",
+          "callee": "setattr",
+          "lineNumber": 111
+        },
+        {
+          "caller": "update_negotiation_rule",
+          "callee": "db.commit",
+          "lineNumber": 113
+        },
+        {
+          "caller": "update_negotiation_rule",
+          "callee": "db.refresh",
+          "lineNumber": 114
+        },
+        {
+          "caller": "delete_negotiation_rule",
+          "callee": "Depends",
+          "lineNumber": 120
+        },
+        {
+          "caller": "delete_negotiation_rule",
+          "callee": "Depends",
+          "lineNumber": 120
+        },
+        {
+          "caller": "delete_negotiation_rule",
+          "callee": "_get_owned_rule",
+          "lineNumber": 122
+        },
+        {
+          "caller": "delete_negotiation_rule",
+          "callee": "HTTPException",
+          "lineNumber": 124
+        },
+        {
+          "caller": "delete_negotiation_rule",
+          "callee": "db.delete",
+          "lineNumber": 125
+        },
+        {
+          "caller": "delete_negotiation_rule",
+          "callee": "db.commit",
+          "lineNumber": 126
+        }
+      ],
+      "metrics": {
+        "importCount": 5,
+        "exportCount": 5,
+        "functionCount": 5,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "backend/app/api/v1/notifications.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 68,
+      "nonEmptyLines": 52,
+      "functions": [
+        {
+          "name": "get_notifications",
+          "startLine": 23,
+          "endLine": 27,
+          "params": [
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "read_notification",
+          "startLine": 31,
+          "endLine": 35,
+          "params": [
+            "notification_id",
+            "db"
+          ]
+        },
+        {
+          "name": "stream_notifications",
+          "startLine": 39,
+          "endLine": 68,
+          "params": [
+            "request",
+            "current_user",
+            "db"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "get_notifications",
+          "line": 22,
+          "isDefault": false
+        },
+        {
+          "name": "read_notification",
+          "line": 30,
+          "isDefault": false
+        },
+        {
+          "name": "stream_notifications",
+          "line": 38,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "get_notifications",
+          "callee": "Depends",
+          "lineNumber": 24
+        },
+        {
+          "caller": "get_notifications",
+          "callee": "Depends",
+          "lineNumber": 24
+        },
+        {
+          "caller": "get_notifications",
+          "callee": "owned_property_ids",
+          "lineNumber": 26
+        },
+        {
+          "caller": "get_notifications",
+          "callee": "list_notifications",
+          "lineNumber": 27
+        },
+        {
+          "caller": "read_notification",
+          "callee": "Depends",
+          "lineNumber": 31
+        },
+        {
+          "caller": "read_notification",
+          "callee": "mark_read",
+          "lineNumber": 32
+        },
+        {
+          "caller": "read_notification",
+          "callee": "HTTPException",
+          "lineNumber": 34
+        },
+        {
+          "caller": "stream_notifications",
+          "callee": "Depends",
+          "lineNumber": 40
+        },
+        {
+          "caller": "stream_notifications",
+          "callee": "Depends",
+          "lineNumber": 40
+        },
+        {
+          "caller": "stream_notifications",
+          "callee": "owned_property_ids",
+          "lineNumber": 46
+        },
+        {
+          "caller": "event_generator",
+          "callee": "datetime.now",
+          "lineNumber": 49
+        },
+        {
+          "caller": "event_generator",
+          "callee": "request.is_disconnected",
+          "lineNumber": 52
+        },
+        {
+          "caller": "event_generator",
+          "callee": "AsyncSessionLocal",
+          "lineNumber": 55
+        },
+        {
+          "caller": "event_generator",
+          "callee": "list_notifications",
+          "lineNumber": 56
+        },
+        {
+          "caller": "event_generator",
+          "callee": "reversed",
+          "lineNumber": 60
+        },
+        {
+          "caller": "event_generator",
+          "callee": "max",
+          "lineNumber": 61
+        },
+        {
+          "caller": "event_generator",
+          "callee": "NotificationOut.model_validate(notification).model_dump",
+          "lineNumber": 62
+        },
+        {
+          "caller": "event_generator",
+          "callee": "NotificationOut.model_validate",
+          "lineNumber": 62
+        },
+        {
+          "caller": "event_generator",
+          "callee": "json.dumps",
+          "lineNumber": 63
+        },
+        {
+          "caller": "event_generator",
+          "callee": "asyncio.sleep",
+          "lineNumber": 66
+        },
+        {
+          "caller": "stream_notifications",
+          "callee": "StreamingResponse",
+          "lineNumber": 68
+        },
+        {
+          "caller": "stream_notifications",
+          "callee": "event_generator",
+          "lineNumber": 68
+        }
+      ],
+      "metrics": {
+        "importCount": 6,
+        "exportCount": 3,
+        "functionCount": 3,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "backend/app/api/v1/pricing.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 66,
+      "nonEmptyLines": 55,
+      "functions": [
+        {
+          "name": "list_pricing_rules",
+          "startLine": 21,
+          "endLine": 32,
+          "params": [
+            "date_range",
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "create_pricing_rule",
+          "startLine": 36,
+          "endLine": 44,
+          "params": [
+            "payload",
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "delete_pricing_rule",
+          "startLine": 48,
+          "endLine": 56,
+          "params": [
+            "rule_id",
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "quote_price",
+          "startLine": 60,
+          "endLine": 66,
+          "params": [
+            "payload",
+            "current_user",
+            "db"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "list_pricing_rules",
+          "line": 20,
+          "isDefault": false
+        },
+        {
+          "name": "create_pricing_rule",
+          "line": 35,
+          "isDefault": false
+        },
+        {
+          "name": "delete_pricing_rule",
+          "line": 47,
+          "isDefault": false
+        },
+        {
+          "name": "quote_price",
+          "line": 59,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "list_pricing_rules",
+          "callee": "Depends",
+          "lineNumber": 22
+        },
+        {
+          "caller": "list_pricing_rules",
+          "callee": "Depends",
+          "lineNumber": 23
+        },
+        {
+          "caller": "list_pricing_rules",
+          "callee": "Depends",
+          "lineNumber": 24
+        },
+        {
+          "caller": "list_pricing_rules",
+          "callee": "owned_property_ids",
+          "lineNumber": 26
+        },
+        {
+          "caller": "list_pricing_rules",
+          "callee": "select(PricingRule).where",
+          "lineNumber": 27
+        },
+        {
+          "caller": "list_pricing_rules",
+          "callee": "select",
+          "lineNumber": 27
+        },
+        {
+          "caller": "list_pricing_rules",
+          "callee": "PricingRule.property_id.in_",
+          "lineNumber": 27
+        },
+        {
+          "caller": "list_pricing_rules",
+          "callee": "stmt.where",
+          "lineNumber": 29
+        },
+        {
+          "caller": "list_pricing_rules",
+          "callee": "stmt.where",
+          "lineNumber": 31
+        },
+        {
+          "caller": "list_pricing_rules",
+          "callee": "list",
+          "lineNumber": 32
+        },
+        {
+          "caller": "list_pricing_rules",
+          "callee": "(await db.scalars(stmt)).all",
+          "lineNumber": 32
+        },
+        {
+          "caller": "list_pricing_rules",
+          "callee": "db.scalars",
+          "lineNumber": 32
+        },
+        {
+          "caller": "create_pricing_rule",
+          "callee": "Depends",
+          "lineNumber": 37
+        },
+        {
+          "caller": "create_pricing_rule",
+          "callee": "Depends",
+          "lineNumber": 37
+        },
+        {
+          "caller": "create_pricing_rule",
+          "callee": "get_owned_property",
+          "lineNumber": 39
+        },
+        {
+          "caller": "create_pricing_rule",
+          "callee": "PricingRule",
+          "lineNumber": 40
+        },
+        {
+          "caller": "create_pricing_rule",
+          "callee": "payload.model_dump",
+          "lineNumber": 40
+        },
+        {
+          "caller": "create_pricing_rule",
+          "callee": "db.add",
+          "lineNumber": 41
+        },
+        {
+          "caller": "create_pricing_rule",
+          "callee": "db.commit",
+          "lineNumber": 42
+        },
+        {
+          "caller": "create_pricing_rule",
+          "callee": "db.refresh",
+          "lineNumber": 43
+        },
+        {
+          "caller": "delete_pricing_rule",
+          "callee": "Depends",
+          "lineNumber": 49
+        },
+        {
+          "caller": "delete_pricing_rule",
+          "callee": "Depends",
+          "lineNumber": 49
+        },
+        {
+          "caller": "delete_pricing_rule",
+          "callee": "owned_property_ids",
+          "lineNumber": 51
+        },
+        {
+          "caller": "delete_pricing_rule",
+          "callee": "db.get",
+          "lineNumber": 52
+        },
+        {
+          "caller": "delete_pricing_rule",
+          "callee": "HTTPException",
+          "lineNumber": 54
+        },
+        {
+          "caller": "delete_pricing_rule",
+          "callee": "db.delete",
+          "lineNumber": 55
+        },
+        {
+          "caller": "delete_pricing_rule",
+          "callee": "db.commit",
+          "lineNumber": 56
+        },
+        {
+          "caller": "quote_price",
+          "callee": "Depends",
+          "lineNumber": 61
+        },
+        {
+          "caller": "quote_price",
+          "callee": "Depends",
+          "lineNumber": 61
+        },
+        {
+          "caller": "quote_price",
+          "callee": "get_owned_property",
+          "lineNumber": 64
+        },
+        {
+          "caller": "quote_price",
+          "callee": "calculate_price",
+          "lineNumber": 65
+        },
+        {
+          "caller": "quote_price",
+          "callee": "asdict",
+          "lineNumber": 66
+        }
+      ],
+      "metrics": {
+        "importCount": 6,
+        "exportCount": 4,
+        "functionCount": 4,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "backend/app/api/v1/properties.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 494,
+      "nonEmptyLines": 431,
+      "functions": [
+        {
+          "name": "_brand_candidate",
+          "startLine": 43,
+          "endLine": 63,
+          "params": [
+            "raw_name"
+          ]
+        },
+        {
+          "name": "_resolve_brand",
+          "startLine": 66,
+          "endLine": 89,
+          "params": [
+            "db",
+            "user_id",
+            "raw_name"
+          ]
+        },
+        {
+          "name": "list_properties",
+          "startLine": 93,
+          "endLine": 98,
+          "params": [
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "_upsert_property_from_parsed",
+          "startLine": 101,
+          "endLine": 167,
+          "params": [
+            "user_id",
+            "listing_id",
+            "label",
+            "parsed"
+          ]
+        },
+        {
+          "name": "import_properties",
+          "startLine": 171,
+          "endLine": 197,
+          "params": [
+            "files",
+            "current_user"
+          ]
+        },
+        {
+          "name": "_listing_id_from_url",
+          "startLine": 200,
+          "endLine": 202,
+          "params": [
+            "url"
+          ]
+        },
+        {
+          "name": "import_airbnb_urls_trigger",
+          "startLine": 206,
+          "endLine": 218,
+          "params": [
+            "payload",
+            "current_user"
+          ]
+        },
+        {
+          "name": "import_airbnb_urls_status",
+          "startLine": 222,
+          "endLine": 255,
+          "params": [
+            "snapshot_id",
+            "current_user"
+          ]
+        },
+        {
+          "name": "create_property",
+          "startLine": 259,
+          "endLine": 271,
+          "params": [
+            "payload",
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "get_property",
+          "startLine": 275,
+          "endLine": 278,
+          "params": [
+            "property_id",
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "get_property_gallery",
+          "startLine": 282,
+          "endLine": 290,
+          "params": [
+            "property_id",
+            "db"
+          ]
+        },
+        {
+          "name": "update_property",
+          "startLine": 294,
+          "endLine": 315,
+          "params": [
+            "property_id",
+            "payload",
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "_renormalize_one",
+          "startLine": 318,
+          "endLine": 371,
+          "params": [
+            "db",
+            "property_",
+            "allow_llm_fallback"
+          ]
+        },
+        {
+          "name": "renormalize_property_name",
+          "startLine": 375,
+          "endLine": 389,
+          "params": [
+            "property_id",
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "renormalize_all_property_names",
+          "startLine": 393,
+          "endLine": 409,
+          "params": [
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "backfill_missing_display_names",
+          "startLine": 412,
+          "endLine": 439,
+          "params": [
+            "db"
+          ]
+        },
+        {
+          "name": "add_property_photo",
+          "startLine": 447,
+          "endLine": 474,
+          "params": [
+            "property_id",
+            "file",
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "delete_property",
+          "startLine": 478,
+          "endLine": 483,
+          "params": [
+            "property_id",
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "sync_ical",
+          "startLine": 487,
+          "endLine": 494,
+          "params": [
+            "property_id",
+            "current_user",
+            "db"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "_brand_candidate",
+          "line": 43,
+          "isDefault": false
+        },
+        {
+          "name": "_resolve_brand",
+          "line": 66,
+          "isDefault": false
+        },
+        {
+          "name": "list_properties",
+          "line": 92,
+          "isDefault": false
+        },
+        {
+          "name": "_upsert_property_from_parsed",
+          "line": 101,
+          "isDefault": false
+        },
+        {
+          "name": "import_properties",
+          "line": 170,
+          "isDefault": false
+        },
+        {
+          "name": "_listing_id_from_url",
+          "line": 200,
+          "isDefault": false
+        },
+        {
+          "name": "import_airbnb_urls_trigger",
+          "line": 205,
+          "isDefault": false
+        },
+        {
+          "name": "import_airbnb_urls_status",
+          "line": 221,
+          "isDefault": false
+        },
+        {
+          "name": "create_property",
+          "line": 258,
+          "isDefault": false
+        },
+        {
+          "name": "get_property",
+          "line": 274,
+          "isDefault": false
+        },
+        {
+          "name": "get_property_gallery",
+          "line": 281,
+          "isDefault": false
+        },
+        {
+          "name": "update_property",
+          "line": 293,
+          "isDefault": false
+        },
+        {
+          "name": "_renormalize_one",
+          "line": 318,
+          "isDefault": false
+        },
+        {
+          "name": "renormalize_property_name",
+          "line": 374,
+          "isDefault": false
+        },
+        {
+          "name": "renormalize_all_property_names",
+          "line": 392,
+          "isDefault": false
+        },
+        {
+          "name": "backfill_missing_display_names",
+          "line": 412,
+          "isDefault": false
+        },
+        {
+          "name": "add_property_photo",
+          "line": 446,
+          "isDefault": false
+        },
+        {
+          "name": "delete_property",
+          "line": 477,
+          "isDefault": false
+        },
+        {
+          "name": "sync_ical",
+          "line": 486,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "_brand_candidate",
+          "callee": "s.strip",
+          "lineNumber": 54
+        },
+        {
+          "caller": "_brand_candidate",
+          "callee": "NAME_DELIMITER_RE.split",
+          "lineNumber": 54
+        },
+        {
+          "caller": "_brand_candidate",
+          "callee": "s.strip",
+          "lineNumber": 54
+        },
+        {
+          "caller": "_brand_candidate",
+          "callee": "len",
+          "lineNumber": 55
+        },
+        {
+          "caller": "_brand_candidate",
+          "callee": "_TRAILING_COUNT_RE.sub(\"\", segments[-1]).strip",
+          "lineNumber": 57
+        },
+        {
+          "caller": "_brand_candidate",
+          "callee": "_TRAILING_COUNT_RE.sub",
+          "lineNumber": 57
+        },
+        {
+          "caller": "_brand_candidate",
+          "callee": "len",
+          "lineNumber": 58
+        },
+        {
+          "caller": "_brand_candidate",
+          "callee": "candidate.split",
+          "lineNumber": 58
+        },
+        {
+          "caller": "_brand_candidate",
+          "callee": "candidate[:80].strip",
+          "lineNumber": 63
+        },
+        {
+          "caller": "_resolve_brand",
+          "callee": "_brand_candidate",
+          "lineNumber": 73
+        },
+        {
+          "caller": "_resolve_brand",
+          "callee": "list",
+          "lineNumber": 77
+        },
+        {
+          "caller": "_resolve_brand",
+          "callee": "(\n            await db.scalars(\n                select(Property).where(Property.user_id == user_id, Property.raw_name.isnot(None))\n            )\n        ).all",
+          "lineNumber": 78
+        },
+        {
+          "caller": "_resolve_brand",
+          "callee": "db.scalars",
+          "lineNumber": 79
+        },
+        {
+          "caller": "_resolve_brand",
+          "callee": "select(Property).where",
+          "lineNumber": 80
+        },
+        {
+          "caller": "_resolve_brand",
+          "callee": "select",
+          "lineNumber": 80
+        },
+        {
+          "caller": "_resolve_brand",
+          "callee": "Property.raw_name.isnot",
+          "lineNumber": 80
+        },
+        {
+          "caller": "_resolve_brand",
+          "callee": "other.brand.lower",
+          "lineNumber": 85
+        },
+        {
+          "caller": "_resolve_brand",
+          "callee": "candidate.lower",
+          "lineNumber": 85
+        },
+        {
+          "caller": "_resolve_brand",
+          "callee": "_brand_candidate",
+          "lineNumber": 87
+        },
+        {
+          "caller": "list_properties",
+          "callee": "Depends",
+          "lineNumber": 94
+        },
+        {
+          "caller": "list_properties",
+          "callee": "Depends",
+          "lineNumber": 94
+        },
+        {
+          "caller": "list_properties",
+          "callee": "list",
+          "lineNumber": 96
+        },
+        {
+          "caller": "list_properties",
+          "callee": "(await db.scalars(select(Property).where(Property.user_id == current_user.id))).all",
+          "lineNumber": 97
+        },
+        {
+          "caller": "list_properties",
+          "callee": "db.scalars",
+          "lineNumber": 97
+        },
+        {
+          "caller": "list_properties",
+          "callee": "select(Property).where",
+          "lineNumber": 97
+        },
+        {
+          "caller": "list_properties",
+          "callee": "select",
+          "lineNumber": 97
+        },
+        {
+          "caller": "_upsert_property_from_parsed",
+          "callee": "fields.get",
+          "lineNumber": 115
+        },
+        {
+          "caller": "_upsert_property_from_parsed",
+          "callee": "PropertyImportResult",
+          "lineNumber": 116
+        },
+        {
+          "caller": "_upsert_property_from_parsed",
+          "callee": "fields.pop",
+          "lineNumber": 121
+        },
+        {
+          "caller": "_upsert_property_from_parsed",
+          "callee": "AsyncSessionLocal",
+          "lineNumber": 123
+        },
+        {
+          "caller": "_upsert_property_from_parsed",
+          "callee": "normalize_property_name_llm_fallback",
+          "lineNumber": 125
+        },
+        {
+          "caller": "_upsert_property_from_parsed",
+          "callee": "fields.get",
+          "lineNumber": 126
+        },
+        {
+          "caller": "_upsert_property_from_parsed",
+          "callee": "fields.get",
+          "lineNumber": 126
+        },
+        {
+          "caller": "_upsert_property_from_parsed",
+          "callee": "fields.get",
+          "lineNumber": 129
+        },
+        {
+          "caller": "_upsert_property_from_parsed",
+          "callee": "fields.get",
+          "lineNumber": 131
+        },
+        {
+          "caller": "_upsert_property_from_parsed",
+          "callee": "fields.get",
+          "lineNumber": 133
+        },
+        {
+          "caller": "_upsert_property_from_parsed",
+          "callee": "fields.get",
+          "lineNumber": 135
+        },
+        {
+          "caller": "_upsert_property_from_parsed",
+          "callee": "fields.get",
+          "lineNumber": 137
+        },
+        {
+          "caller": "_upsert_property_from_parsed",
+          "callee": "fields.get",
+          "lineNumber": 140
+        },
+        {
+          "caller": "_upsert_property_from_parsed",
+          "callee": "fields.get",
+          "lineNumber": 140
+        },
+        {
+          "caller": "_upsert_property_from_parsed",
+          "callee": "_resolve_brand",
+          "lineNumber": 141
+        },
+        {
+          "caller": "_upsert_property_from_parsed",
+          "callee": "db.scalar",
+          "lineNumber": 145
+        },
+        {
+          "caller": "_upsert_property_from_parsed",
+          "callee": "select(Property).where",
+          "lineNumber": 146
+        },
+        {
+          "caller": "_upsert_property_from_parsed",
+          "callee": "select",
+          "lineNumber": 146
+        },
+        {
+          "caller": "_upsert_property_from_parsed",
+          "callee": "fields.items",
+          "lineNumber": 149
+        },
+        {
+          "caller": "_upsert_property_from_parsed",
+          "callee": "setattr",
+          "lineNumber": 150
+        },
+        {
+          "caller": "_upsert_property_from_parsed",
+          "callee": "db.commit",
+          "lineNumber": 151
+        },
+        {
+          "caller": "_upsert_property_from_parsed",
+          "callee": "db.refresh",
+          "lineNumber": 152
+        },
+        {
+          "caller": "_upsert_property_from_parsed",
+          "callee": "faq_service.sync_imported_faq_entries",
+          "lineNumber": 153
+        },
+        {
+          "caller": "_upsert_property_from_parsed",
+          "callee": "sync_property_chunks",
+          "lineNumber": 154
+        },
+        {
+          "caller": "_upsert_property_from_parsed",
+          "callee": "PropertyImportResult",
+          "lineNumber": 155
+        },
+        {
+          "caller": "_upsert_property_from_parsed",
+          "callee": "Property",
+          "lineNumber": 159
+        },
+        {
+          "caller": "_upsert_property_from_parsed",
+          "callee": "db.add",
+          "lineNumber": 160
+        },
+        {
+          "caller": "_upsert_property_from_parsed",
+          "callee": "db.commit",
+          "lineNumber": 161
+        },
+        {
+          "caller": "_upsert_property_from_parsed",
+          "callee": "db.refresh",
+          "lineNumber": 162
+        },
+        {
+          "caller": "_upsert_property_from_parsed",
+          "callee": "faq_service.sync_imported_faq_entries",
+          "lineNumber": 163
+        },
+        {
+          "caller": "_upsert_property_from_parsed",
+          "callee": "sync_property_chunks",
+          "lineNumber": 164
+        },
+        {
+          "caller": "_upsert_property_from_parsed",
+          "callee": "PropertyImportResult",
+          "lineNumber": 165
+        },
+        {
+          "caller": "import_properties",
+          "callee": "File",
+          "lineNumber": 172
+        },
+        {
+          "caller": "import_properties",
+          "callee": "Depends",
+          "lineNumber": 173
+        },
+        {
+          "caller": "import_properties",
+          "callee": "filename.rsplit",
+          "lineNumber": 189
+        },
+        {
+          "caller": "import_properties",
+          "callee": "json.loads",
+          "lineNumber": 191
+        },
+        {
+          "caller": "import_properties",
+          "callee": "upload.read",
+          "lineNumber": 191
+        },
+        {
+          "caller": "import_properties",
+          "callee": "parse_airbnb_listing",
+          "lineNumber": 192
+        },
+        {
+          "caller": "import_properties",
+          "callee": "results.append",
+          "lineNumber": 193
+        },
+        {
+          "caller": "import_properties",
+          "callee": "_upsert_property_from_parsed",
+          "lineNumber": 193
+        },
+        {
+          "caller": "import_properties",
+          "callee": "results.append",
+          "lineNumber": 195
+        },
+        {
+          "caller": "import_properties",
+          "callee": "PropertyImportResult",
+          "lineNumber": 195
+        },
+        {
+          "caller": "import_properties",
+          "callee": "str",
+          "lineNumber": 195
+        },
+        {
+          "caller": "_listing_id_from_url",
+          "callee": "_ROOM_ID_RE.search",
+          "lineNumber": 201
+        },
+        {
+          "caller": "_listing_id_from_url",
+          "callee": "match.group",
+          "lineNumber": 202
+        },
+        {
+          "caller": "import_airbnb_urls_trigger",
+          "callee": "Depends",
+          "lineNumber": 207
+        },
+        {
+          "caller": "import_airbnb_urls_trigger",
+          "callee": "bright_data_client.trigger_scrape",
+          "lineNumber": 215
+        },
+        {
+          "caller": "import_airbnb_urls_trigger",
+          "callee": "HTTPException",
+          "lineNumber": 217
+        },
+        {
+          "caller": "import_airbnb_urls_trigger",
+          "callee": "str",
+          "lineNumber": 217
+        },
+        {
+          "caller": "import_airbnb_urls_trigger",
+          "callee": "AirbnbUrlImportTriggered",
+          "lineNumber": 218
+        },
+        {
+          "caller": "import_airbnb_urls_status",
+          "callee": "Depends",
+          "lineNumber": 223
+        },
+        {
+          "caller": "import_airbnb_urls_status",
+          "callee": "bright_data_client.get_snapshot_status",
+          "lineNumber": 232
+        },
+        {
+          "caller": "import_airbnb_urls_status",
+          "callee": "HTTPException",
+          "lineNumber": 234
+        },
+        {
+          "caller": "import_airbnb_urls_status",
+          "callee": "str",
+          "lineNumber": 234
+        },
+        {
+          "caller": "import_airbnb_urls_status",
+          "callee": "AirbnbUrlImportStatus",
+          "lineNumber": 237
+        },
+        {
+          "caller": "import_airbnb_urls_status",
+          "callee": "bright_data_client.get_snapshot_data",
+          "lineNumber": 240
+        },
+        {
+          "caller": "import_airbnb_urls_status",
+          "callee": "HTTPException",
+          "lineNumber": 242
+        },
+        {
+          "caller": "import_airbnb_urls_status",
+          "callee": "str",
+          "lineNumber": 242
+        },
+        {
+          "caller": "import_airbnb_urls_status",
+          "callee": "record.get",
+          "lineNumber": 246
+        },
+        {
+          "caller": "import_airbnb_urls_status",
+          "callee": "record.get",
+          "lineNumber": 246
+        },
+        {
+          "caller": "import_airbnb_urls_status",
+          "callee": "str",
+          "lineNumber": 247
+        },
+        {
+          "caller": "import_airbnb_urls_status",
+          "callee": "record.get",
+          "lineNumber": 247
+        },
+        {
+          "caller": "import_airbnb_urls_status",
+          "callee": "_listing_id_from_url",
+          "lineNumber": 247
+        },
+        {
+          "caller": "import_airbnb_urls_status",
+          "callee": "record.get",
+          "lineNumber": 248
+        },
+        {
+          "caller": "import_airbnb_urls_status",
+          "callee": "record.get",
+          "lineNumber": 248
+        },
+        {
+          "caller": "import_airbnb_urls_status",
+          "callee": "parse_bright_data_listing",
+          "lineNumber": 250
+        },
+        {
+          "caller": "import_airbnb_urls_status",
+          "callee": "results.append",
+          "lineNumber": 251
+        },
+        {
+          "caller": "import_airbnb_urls_status",
+          "callee": "_upsert_property_from_parsed",
+          "lineNumber": 251
+        },
+        {
+          "caller": "import_airbnb_urls_status",
+          "callee": "results.append",
+          "lineNumber": 253
+        },
+        {
+          "caller": "import_airbnb_urls_status",
+          "callee": "PropertyImportResult",
+          "lineNumber": 253
+        },
+        {
+          "caller": "import_airbnb_urls_status",
+          "callee": "str",
+          "lineNumber": 253
+        },
+        {
+          "caller": "import_airbnb_urls_status",
+          "callee": "AirbnbUrlImportStatus",
+          "lineNumber": 255
+        },
+        {
+          "caller": "create_property",
+          "callee": "Depends",
+          "lineNumber": 260
+        },
+        {
+          "caller": "create_property",
+          "callee": "Depends",
+          "lineNumber": 260
+        },
+        {
+          "caller": "create_property",
+          "callee": "Property",
+          "lineNumber": 262
+        },
+        {
+          "caller": "create_property",
+          "callee": "payload.model_dump",
+          "lineNumber": 264
+        },
+        {
+          "caller": "create_property",
+          "callee": "item.model_dump",
+          "lineNumber": 265
+        },
+        {
+          "caller": "create_property",
+          "callee": "canonicalize_amenities",
+          "lineNumber": 266
+        },
+        {
+          "caller": "create_property",
+          "callee": "db.add",
+          "lineNumber": 268
+        },
+        {
+          "caller": "create_property",
+          "callee": "db.commit",
+          "lineNumber": 269
+        },
+        {
+          "caller": "create_property",
+          "callee": "db.refresh",
+          "lineNumber": 270
+        },
+        {
+          "caller": "get_property",
+          "callee": "Depends",
+          "lineNumber": 276
+        },
+        {
+          "caller": "get_property",
+          "callee": "Depends",
+          "lineNumber": 276
+        },
+        {
+          "caller": "get_property",
+          "callee": "get_owned_property",
+          "lineNumber": 278
+        },
+        {
+          "caller": "get_property_gallery",
+          "callee": "Depends",
+          "lineNumber": 282
+        },
+        {
+          "caller": "get_property_gallery",
+          "callee": "db.get",
+          "lineNumber": 287
+        },
+        {
+          "caller": "get_property_gallery",
+          "callee": "HTTPException",
+          "lineNumber": 289
+        },
+        {
+          "caller": "update_property",
+          "callee": "Depends",
+          "lineNumber": 297
+        },
+        {
+          "caller": "update_property",
+          "callee": "Depends",
+          "lineNumber": 298
+        },
+        {
+          "caller": "update_property",
+          "callee": "get_owned_property",
+          "lineNumber": 300
+        },
+        {
+          "caller": "update_property",
+          "callee": "payload.model_dump",
+          "lineNumber": 301
+        },
+        {
+          "caller": "update_property",
+          "callee": "isinstance",
+          "lineNumber": 303
+        },
+        {
+          "caller": "update_property",
+          "callee": "item.model_dump",
+          "lineNumber": 303
+        },
+        {
+          "caller": "update_property",
+          "callee": "canonicalize_amenities",
+          "lineNumber": 310
+        },
+        {
+          "caller": "update_property",
+          "callee": "updates.items",
+          "lineNumber": 311
+        },
+        {
+          "caller": "update_property",
+          "callee": "setattr",
+          "lineNumber": 312
+        },
+        {
+          "caller": "update_property",
+          "callee": "db.commit",
+          "lineNumber": 313
+        },
+        {
+          "caller": "update_property",
+          "callee": "db.refresh",
+          "lineNumber": 314
+        },
+        {
+          "caller": "_renormalize_one",
+          "callee": "normalize_property_name",
+          "lineNumber": 346
+        },
+        {
+          "caller": "_renormalize_one",
+          "callee": "normalize_property_name_llm_fallback",
+          "lineNumber": 348
+        },
+        {
+          "caller": "_renormalize_one",
+          "callee": "_resolve_brand",
+          "lineNumber": 369
+        },
+        {
+          "caller": "renormalize_property_name",
+          "callee": "Depends",
+          "lineNumber": 377
+        },
+        {
+          "caller": "renormalize_property_name",
+          "callee": "Depends",
+          "lineNumber": 378
+        },
+        {
+          "caller": "renormalize_property_name",
+          "callee": "get_owned_property",
+          "lineNumber": 385
+        },
+        {
+          "caller": "renormalize_property_name",
+          "callee": "_renormalize_one",
+          "lineNumber": 386
+        },
+        {
+          "caller": "renormalize_property_name",
+          "callee": "db.commit",
+          "lineNumber": 387
+        },
+        {
+          "caller": "renormalize_property_name",
+          "callee": "db.refresh",
+          "lineNumber": 388
+        },
+        {
+          "caller": "renormalize_all_property_names",
+          "callee": "Depends",
+          "lineNumber": 394
+        },
+        {
+          "caller": "renormalize_all_property_names",
+          "callee": "Depends",
+          "lineNumber": 394
+        },
+        {
+          "caller": "renormalize_all_property_names",
+          "callee": "list",
+          "lineNumber": 401
+        },
+        {
+          "caller": "renormalize_all_property_names",
+          "callee": "(await db.scalars(select(Property).where(Property.user_id == current_user.id))).all",
+          "lineNumber": 402
+        },
+        {
+          "caller": "renormalize_all_property_names",
+          "callee": "db.scalars",
+          "lineNumber": 402
+        },
+        {
+          "caller": "renormalize_all_property_names",
+          "callee": "select(Property).where",
+          "lineNumber": 402
+        },
+        {
+          "caller": "renormalize_all_property_names",
+          "callee": "select",
+          "lineNumber": 402
+        },
+        {
+          "caller": "renormalize_all_property_names",
+          "callee": "_renormalize_one",
+          "lineNumber": 405
+        },
+        {
+          "caller": "renormalize_all_property_names",
+          "callee": "db.commit",
+          "lineNumber": 406
+        },
+        {
+          "caller": "renormalize_all_property_names",
+          "callee": "db.refresh",
+          "lineNumber": 408
+        },
+        {
+          "caller": "backfill_missing_display_names",
+          "callee": "list",
+          "lineNumber": 435
+        },
+        {
+          "caller": "backfill_missing_display_names",
+          "callee": "(await db.scalars(select(Property).where(Property.display_name.is_(None)))).all",
+          "lineNumber": 435
+        },
+        {
+          "caller": "backfill_missing_display_names",
+          "callee": "db.scalars",
+          "lineNumber": 435
+        },
+        {
+          "caller": "backfill_missing_display_names",
+          "callee": "select(Property).where",
+          "lineNumber": 435
+        },
+        {
+          "caller": "backfill_missing_display_names",
+          "callee": "select",
+          "lineNumber": 435
+        },
+        {
+          "caller": "backfill_missing_display_names",
+          "callee": "Property.display_name.is_",
+          "lineNumber": 435
+        },
+        {
+          "caller": "backfill_missing_display_names",
+          "callee": "_renormalize_one",
+          "lineNumber": 437
+        },
+        {
+          "caller": "backfill_missing_display_names",
+          "callee": "db.commit",
+          "lineNumber": 438
+        },
+        {
+          "caller": "backfill_missing_display_names",
+          "callee": "len",
+          "lineNumber": 439
+        },
+        {
+          "caller": "add_property_photo",
+          "callee": "File",
+          "lineNumber": 449
+        },
+        {
+          "caller": "add_property_photo",
+          "callee": "Depends",
+          "lineNumber": 450
+        },
+        {
+          "caller": "add_property_photo",
+          "callee": "Depends",
+          "lineNumber": 451
+        },
+        {
+          "caller": "add_property_photo",
+          "callee": "HTTPException",
+          "lineNumber": 459
+        },
+        {
+          "caller": "add_property_photo",
+          "callee": "file.read",
+          "lineNumber": 461
+        },
+        {
+          "caller": "add_property_photo",
+          "callee": "len",
+          "lineNumber": 462
+        },
+        {
+          "caller": "add_property_photo",
+          "callee": "HTTPException",
+          "lineNumber": 463
+        },
+        {
+          "caller": "add_property_photo",
+          "callee": "get_owned_property",
+          "lineNumber": 465
+        },
+        {
+          "caller": "add_property_photo",
+          "callee": "cloudinary_client.upload_image_bytes",
+          "lineNumber": 467
+        },
+        {
+          "caller": "add_property_photo",
+          "callee": "HTTPException",
+          "lineNumber": 469
+        },
+        {
+          "caller": "add_property_photo",
+          "callee": "db.commit",
+          "lineNumber": 472
+        },
+        {
+          "caller": "add_property_photo",
+          "callee": "db.refresh",
+          "lineNumber": 473
+        },
+        {
+          "caller": "delete_property",
+          "callee": "Depends",
+          "lineNumber": 479
+        },
+        {
+          "caller": "delete_property",
+          "callee": "Depends",
+          "lineNumber": 479
+        },
+        {
+          "caller": "delete_property",
+          "callee": "get_owned_property",
+          "lineNumber": 481
+        },
+        {
+          "caller": "delete_property",
+          "callee": "db.delete",
+          "lineNumber": 482
+        },
+        {
+          "caller": "delete_property",
+          "callee": "db.commit",
+          "lineNumber": 483
+        },
+        {
+          "caller": "sync_ical",
+          "callee": "Depends",
+          "lineNumber": 488
+        },
+        {
+          "caller": "sync_ical",
+          "callee": "Depends",
+          "lineNumber": 488
+        },
+        {
+          "caller": "sync_ical",
+          "callee": "get_owned_property",
+          "lineNumber": 490
+        },
+        {
+          "caller": "sync_ical",
+          "callee": "HTTPException",
+          "lineNumber": 492
+        },
+        {
+          "caller": "sync_ical",
+          "callee": "sync_property_ical",
+          "lineNumber": 493
+        }
+      ],
+      "metrics": {
+        "importCount": 10,
+        "exportCount": 19,
+        "functionCount": 19,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "backend/app/api/v1/technicians.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 48,
+      "nonEmptyLines": 39,
+      "functions": [
+        {
+          "name": "list_technicians",
+          "startLine": 18,
+          "endLine": 24,
+          "params": [
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "create_technician",
+          "startLine": 28,
+          "endLine": 36,
+          "params": [
+            "payload",
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "delete_technician",
+          "startLine": 40,
+          "endLine": 48,
+          "params": [
+            "technician_id",
+            "current_user",
+            "db"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "list_technicians",
+          "line": 17,
+          "isDefault": false
+        },
+        {
+          "name": "create_technician",
+          "line": 27,
+          "isDefault": false
+        },
+        {
+          "name": "delete_technician",
+          "line": 39,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "list_technicians",
+          "callee": "Depends",
+          "lineNumber": 19
+        },
+        {
+          "caller": "list_technicians",
+          "callee": "Depends",
+          "lineNumber": 19
+        },
+        {
+          "caller": "list_technicians",
+          "callee": "owned_property_ids",
+          "lineNumber": 21
+        },
+        {
+          "caller": "list_technicians",
+          "callee": "list",
+          "lineNumber": 22
+        },
+        {
+          "caller": "list_technicians",
+          "callee": "(await db.scalars(select(Technician).where(Technician.property_id.in_(property_ids)))).all",
+          "lineNumber": 23
+        },
+        {
+          "caller": "list_technicians",
+          "callee": "db.scalars",
+          "lineNumber": 23
+        },
+        {
+          "caller": "list_technicians",
+          "callee": "select(Technician).where",
+          "lineNumber": 23
+        },
+        {
+          "caller": "list_technicians",
+          "callee": "select",
+          "lineNumber": 23
+        },
+        {
+          "caller": "list_technicians",
+          "callee": "Technician.property_id.in_",
+          "lineNumber": 23
+        },
+        {
+          "caller": "create_technician",
+          "callee": "Depends",
+          "lineNumber": 29
+        },
+        {
+          "caller": "create_technician",
+          "callee": "Depends",
+          "lineNumber": 29
+        },
+        {
+          "caller": "create_technician",
+          "callee": "get_owned_property",
+          "lineNumber": 31
+        },
+        {
+          "caller": "create_technician",
+          "callee": "Technician",
+          "lineNumber": 32
+        },
+        {
+          "caller": "create_technician",
+          "callee": "payload.model_dump",
+          "lineNumber": 32
+        },
+        {
+          "caller": "create_technician",
+          "callee": "db.add",
+          "lineNumber": 33
+        },
+        {
+          "caller": "create_technician",
+          "callee": "db.commit",
+          "lineNumber": 34
+        },
+        {
+          "caller": "create_technician",
+          "callee": "db.refresh",
+          "lineNumber": 35
+        },
+        {
+          "caller": "delete_technician",
+          "callee": "Depends",
+          "lineNumber": 41
+        },
+        {
+          "caller": "delete_technician",
+          "callee": "Depends",
+          "lineNumber": 41
+        },
+        {
+          "caller": "delete_technician",
+          "callee": "owned_property_ids",
+          "lineNumber": 43
+        },
+        {
+          "caller": "delete_technician",
+          "callee": "db.get",
+          "lineNumber": 44
+        },
+        {
+          "caller": "delete_technician",
+          "callee": "HTTPException",
+          "lineNumber": 46
+        },
+        {
+          "caller": "delete_technician",
+          "callee": "db.delete",
+          "lineNumber": 47
+        },
+        {
+          "caller": "delete_technician",
+          "callee": "db.commit",
+          "lineNumber": 48
+        }
+      ],
+      "metrics": {
+        "importCount": 6,
+        "exportCount": 3,
+        "functionCount": 3,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "backend/app/api/v1/voice.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 521,
+      "nonEmptyLines": 459,
+      "functions": [
+        {
+          "name": "transcribe_dictation",
+          "startLine": 67,
+          "endLine": 86,
+          "params": [
+            "audio",
+            "current_user"
+          ]
+        },
+        {
+          "name": "_ice_servers",
+          "startLine": 89,
+          "endLine": 126,
+          "params": []
+        },
+        {
+          "name": "exotel_voice_ws",
+          "startLine": 130,
+          "endLine": 138,
+          "params": [
+            "websocket",
+            "token"
+          ]
+        },
+        {
+          "name": "twilio_voice_incoming",
+          "startLine": 142,
+          "endLine": 163,
+          "params": [
+            "request",
+            "token"
+          ]
+        },
+        {
+          "name": "twilio_voice_ws",
+          "startLine": 167,
+          "endLine": 175,
+          "params": [
+            "websocket",
+            "token"
+          ]
+        },
+        {
+          "name": "browser_test_offer",
+          "startLine": 190,
+          "endLine": 213,
+          "params": [
+            "payload",
+            "current_user",
+            "db"
+          ]
+        },
+        {
+          "name": "browser_test_page",
+          "startLine": 217,
+          "endLine": 234,
+          "params": [
+            "token",
+            "property_id"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "BrowserOfferRequest",
+          "startLine": 178,
+          "endLine": 181,
+          "methods": [],
+          "properties": [
+            "sdp",
+            "type",
+            "property_id"
+          ]
+        },
+        {
+          "name": "BrowserOfferResponse",
+          "startLine": 184,
+          "endLine": 186,
+          "methods": [],
+          "properties": [
+            "sdp",
+            "type"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "transcribe_dictation",
+          "line": 66,
+          "isDefault": false
+        },
+        {
+          "name": "_ice_servers",
+          "line": 89,
+          "isDefault": false
+        },
+        {
+          "name": "exotel_voice_ws",
+          "line": 129,
+          "isDefault": false
+        },
+        {
+          "name": "twilio_voice_incoming",
+          "line": 141,
+          "isDefault": false
+        },
+        {
+          "name": "twilio_voice_ws",
+          "line": 166,
+          "isDefault": false
+        },
+        {
+          "name": "BrowserOfferRequest",
+          "line": 178,
+          "isDefault": false
+        },
+        {
+          "name": "BrowserOfferResponse",
+          "line": 184,
+          "isDefault": false
+        },
+        {
+          "name": "browser_test_offer",
+          "line": 189,
+          "isDefault": false
+        },
+        {
+          "name": "browser_test_page",
+          "line": 216,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "transcribe_dictation",
+          "callee": "File",
+          "lineNumber": 68
+        },
+        {
+          "caller": "transcribe_dictation",
+          "callee": "Depends",
+          "lineNumber": 69
+        },
+        {
+          "caller": "transcribe_dictation",
+          "callee": "faq_service.transcribe_gap_answer_audio",
+          "lineNumber": 81
+        },
+        {
+          "caller": "transcribe_dictation",
+          "callee": "HTTPException",
+          "lineNumber": 83
+        },
+        {
+          "caller": "_ice_servers",
+          "callee": "IceServer",
+          "lineNumber": 98
+        },
+        {
+          "caller": "_ice_servers",
+          "callee": "IceServer",
+          "lineNumber": 99
+        },
+        {
+          "caller": "_ice_servers",
+          "callee": "settings.turn_url.startswith",
+          "lineNumber": 102
+        },
+        {
+          "caller": "_ice_servers",
+          "callee": "settings.turn_url.startswith",
+          "lineNumber": 102
+        },
+        {
+          "caller": "_ice_servers",
+          "callee": "logger.error",
+          "lineNumber": 103
+        },
+        {
+          "caller": "_ice_servers",
+          "callee": "servers.append",
+          "lineNumber": 108
+        },
+        {
+          "caller": "_ice_servers",
+          "callee": "IceServer",
+          "lineNumber": 109
+        },
+        {
+          "caller": "_ice_servers",
+          "callee": "settings.turn_url_tls.startswith",
+          "lineNumber": 115
+        },
+        {
+          "caller": "_ice_servers",
+          "callee": "settings.turn_url_tls.startswith",
+          "lineNumber": 115
+        },
+        {
+          "caller": "_ice_servers",
+          "callee": "logger.error",
+          "lineNumber": 116
+        },
+        {
+          "caller": "_ice_servers",
+          "callee": "servers.append",
+          "lineNumber": 121
+        },
+        {
+          "caller": "_ice_servers",
+          "callee": "IceServer",
+          "lineNumber": 122
+        },
+        {
+          "caller": "exotel_voice_ws",
+          "callee": "verify_webhook_token",
+          "lineNumber": 131
+        },
+        {
+          "caller": "exotel_voice_ws",
+          "callee": "logger.warning",
+          "lineNumber": 132
+        },
+        {
+          "caller": "exotel_voice_ws",
+          "callee": "websocket.close",
+          "lineNumber": 133
+        },
+        {
+          "caller": "exotel_voice_ws",
+          "callee": "websocket.accept",
+          "lineNumber": 136
+        },
+        {
+          "caller": "exotel_voice_ws",
+          "callee": "parse_telephony_websocket",
+          "lineNumber": 137
+        },
+        {
+          "caller": "exotel_voice_ws",
+          "callee": "run_voice_pipeline",
+          "lineNumber": 138
+        },
+        {
+          "caller": "twilio_voice_incoming",
+          "callee": "verify_voice_webhook_token",
+          "lineNumber": 150
+        },
+        {
+          "caller": "twilio_voice_incoming",
+          "callee": "logger.warning",
+          "lineNumber": 151
+        },
+        {
+          "caller": "twilio_voice_incoming",
+          "callee": "Response",
+          "lineNumber": 152
+        },
+        {
+          "caller": "twilio_voice_incoming",
+          "callee": "build_reject_twiml",
+          "lineNumber": 152
+        },
+        {
+          "caller": "twilio_voice_incoming",
+          "callee": "request.form",
+          "lineNumber": 154
+        },
+        {
+          "caller": "twilio_voice_incoming",
+          "callee": "str",
+          "lineNumber": 155
+        },
+        {
+          "caller": "twilio_voice_incoming",
+          "callee": "form.get",
+          "lineNumber": 155
+        },
+        {
+          "caller": "twilio_voice_incoming",
+          "callee": "str",
+          "lineNumber": 156
+        },
+        {
+          "caller": "twilio_voice_incoming",
+          "callee": "form.get",
+          "lineNumber": 156
+        },
+        {
+          "caller": "twilio_voice_incoming",
+          "callee": "settings.backend_base_url.startswith",
+          "lineNumber": 158
+        },
+        {
+          "caller": "twilio_voice_incoming",
+          "callee": "settings.backend_base_url.split(\"://\", 1)[-1].rstrip",
+          "lineNumber": 159
+        },
+        {
+          "caller": "twilio_voice_incoming",
+          "callee": "settings.backend_base_url.split",
+          "lineNumber": 159
+        },
+        {
+          "caller": "twilio_voice_incoming",
+          "callee": "build_connect_stream_twiml",
+          "lineNumber": 162
+        },
+        {
+          "caller": "twilio_voice_incoming",
+          "callee": "Response",
+          "lineNumber": 163
+        },
+        {
+          "caller": "twilio_voice_ws",
+          "callee": "verify_voice_webhook_token",
+          "lineNumber": 168
+        },
+        {
+          "caller": "twilio_voice_ws",
+          "callee": "logger.warning",
+          "lineNumber": 169
+        },
+        {
+          "caller": "twilio_voice_ws",
+          "callee": "websocket.close",
+          "lineNumber": 170
+        },
+        {
+          "caller": "twilio_voice_ws",
+          "callee": "websocket.accept",
+          "lineNumber": 173
+        },
+        {
+          "caller": "twilio_voice_ws",
+          "callee": "parse_telephony_websocket",
+          "lineNumber": 174
+        },
+        {
+          "caller": "twilio_voice_ws",
+          "callee": "run_voice_pipeline_twilio",
+          "lineNumber": 175
+        },
+        {
+          "caller": "browser_test_offer",
+          "callee": "Depends",
+          "lineNumber": 192
+        },
+        {
+          "caller": "browser_test_offer",
+          "callee": "Depends",
+          "lineNumber": 193
+        },
+        {
+          "caller": "browser_test_offer",
+          "callee": "SmallWebRTCConnection",
+          "lineNumber": 203
+        },
+        {
+          "caller": "browser_test_offer",
+          "callee": "_ice_servers",
+          "lineNumber": 203
+        },
+        {
+          "caller": "browser_test_offer",
+          "callee": "connection.initialize",
+          "lineNumber": 204
+        },
+        {
+          "caller": "browser_test_offer",
+          "callee": "connection.get_answer",
+          "lineNumber": 205
+        },
+        {
+          "caller": "browser_test_offer",
+          "callee": "get_owned_property",
+          "lineNumber": 208
+        },
+        {
+          "caller": "browser_test_offer",
+          "callee": "asyncio.create_task",
+          "lineNumber": 209
+        },
+        {
+          "caller": "browser_test_offer",
+          "callee": "run_browser_voice_pipeline",
+          "lineNumber": 209
+        },
+        {
+          "caller": "browser_test_offer",
+          "callee": "asyncio.create_task",
+          "lineNumber": 211
+        },
+        {
+          "caller": "browser_test_offer",
+          "callee": "run_browser_lead_pipeline",
+          "lineNumber": 211
+        },
+        {
+          "caller": "browser_test_offer",
+          "callee": "BrowserOfferResponse",
+          "lineNumber": 213
+        },
+        {
+          "caller": "browser_test_page",
+          "callee": "_ice_servers",
+          "lineNumber": 226
+        },
+        {
+          "caller": "browser_test_page",
+          "callee": "_TEST_PAGE_TEMPLATE\n        .replace(\"__PROPERTY_ID__\", property_id)\n        .replace(\"__TOKEN__\", token)\n        .replace",
+          "lineNumber": 230
+        },
+        {
+          "caller": "browser_test_page",
+          "callee": "_TEST_PAGE_TEMPLATE\n        .replace(\"__PROPERTY_ID__\", property_id)\n        .replace",
+          "lineNumber": 230
+        },
+        {
+          "caller": "browser_test_page",
+          "callee": "_TEST_PAGE_TEMPLATE\n        .replace",
+          "lineNumber": 230
+        },
+        {
+          "caller": "browser_test_page",
+          "callee": "json.dumps",
+          "lineNumber": 233
+        }
+      ],
+      "metrics": {
+        "importCount": 6,
+        "exportCount": 9,
+        "functionCount": 7,
+        "classCount": 2
+      }
+    },
+    {
+      "path": "backend/app/auth/dependencies.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 113,
+      "nonEmptyLines": 93,
+      "functions": [
+        {
+          "name": "_clerk_jwks_url",
+          "startLine": 21,
+          "endLine": 30,
+          "params": []
+        },
+        {
+          "name": "_jwk_client",
+          "startLine": 34,
+          "endLine": 38,
+          "params": []
+        },
+        {
+          "name": "_resolve_local_user",
+          "startLine": 41,
+          "endLine": 77,
+          "params": [
+            "db",
+            "clerk_user_id"
+          ]
+        },
+        {
+          "name": "get_current_user",
+          "startLine": 80,
+          "endLine": 113,
+          "params": [
+            "credentials",
+            "db"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "_clerk_jwks_url",
+          "line": 21,
+          "isDefault": false
+        },
+        {
+          "name": "_jwk_client",
+          "line": 33,
+          "isDefault": false
+        },
+        {
+          "name": "_resolve_local_user",
+          "line": 41,
+          "isDefault": false
+        },
+        {
+          "name": "get_current_user",
+          "line": 80,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "_clerk_jwks_url",
+          "callee": "RuntimeError",
+          "lineNumber": 26
+        },
+        {
+          "caller": "_clerk_jwks_url",
+          "callee": "settings.clerk_publishable_key.split",
+          "lineNumber": 27
+        },
+        {
+          "caller": "_clerk_jwks_url",
+          "callee": "len",
+          "lineNumber": 28
+        },
+        {
+          "caller": "_clerk_jwks_url",
+          "callee": "base64.b64decode(padded).decode().rstrip",
+          "lineNumber": 29
+        },
+        {
+          "caller": "_clerk_jwks_url",
+          "callee": "base64.b64decode(padded).decode",
+          "lineNumber": 29
+        },
+        {
+          "caller": "_clerk_jwks_url",
+          "callee": "base64.b64decode",
+          "lineNumber": 29
+        },
+        {
+          "caller": "_jwk_client",
+          "callee": "jwt.PyJWKClient",
+          "lineNumber": 38
+        },
+        {
+          "caller": "_jwk_client",
+          "callee": "_clerk_jwks_url",
+          "lineNumber": 38
+        },
+        {
+          "caller": "_resolve_local_user",
+          "callee": "db.scalar",
+          "lineNumber": 54
+        },
+        {
+          "caller": "_resolve_local_user",
+          "callee": "select(User).where",
+          "lineNumber": 54
+        },
+        {
+          "caller": "_resolve_local_user",
+          "callee": "select",
+          "lineNumber": 54
+        },
+        {
+          "caller": "_resolve_local_user",
+          "callee": "fetch_user_email",
+          "lineNumber": 59
+        },
+        {
+          "caller": "_resolve_local_user",
+          "callee": "logger.exception",
+          "lineNumber": 61
+        },
+        {
+          "caller": "_resolve_local_user",
+          "callee": "db.scalar",
+          "lineNumber": 66
+        },
+        {
+          "caller": "_resolve_local_user",
+          "callee": "select(User).where",
+          "lineNumber": 66
+        },
+        {
+          "caller": "_resolve_local_user",
+          "callee": "select",
+          "lineNumber": 66
+        },
+        {
+          "caller": "_resolve_local_user",
+          "callee": "db.commit",
+          "lineNumber": 69
+        },
+        {
+          "caller": "_resolve_local_user",
+          "callee": "db.refresh",
+          "lineNumber": 70
+        },
+        {
+          "caller": "_resolve_local_user",
+          "callee": "User",
+          "lineNumber": 73
+        },
+        {
+          "caller": "_resolve_local_user",
+          "callee": "db.add",
+          "lineNumber": 74
+        },
+        {
+          "caller": "_resolve_local_user",
+          "callee": "db.commit",
+          "lineNumber": 75
+        },
+        {
+          "caller": "_resolve_local_user",
+          "callee": "db.refresh",
+          "lineNumber": 76
+        },
+        {
+          "caller": "get_current_user",
+          "callee": "Depends",
+          "lineNumber": 81
+        },
+        {
+          "caller": "get_current_user",
+          "callee": "Depends",
+          "lineNumber": 82
+        },
+        {
+          "caller": "get_current_user",
+          "callee": "HTTPException",
+          "lineNumber": 85
+        },
+        {
+          "caller": "get_current_user",
+          "callee": "_jwk_client().get_signing_key_from_jwt",
+          "lineNumber": 88
+        },
+        {
+          "caller": "get_current_user",
+          "callee": "_jwk_client",
+          "lineNumber": 88
+        },
+        {
+          "caller": "get_current_user",
+          "callee": "jwt.decode",
+          "lineNumber": 89
+        },
+        {
+          "caller": "get_current_user",
+          "callee": "HTTPException",
+          "lineNumber": 91
+        },
+        {
+          "caller": "get_current_user",
+          "callee": "payload.get",
+          "lineNumber": 93
+        },
+        {
+          "caller": "get_current_user",
+          "callee": "HTTPException",
+          "lineNumber": 95
+        },
+        {
+          "caller": "get_current_user",
+          "callee": "_resolve_local_user",
+          "lineNumber": 97
+        },
+        {
+          "caller": "get_current_user",
+          "callee": "HTTPException",
+          "lineNumber": 99
+        },
+        {
+          "caller": "get_current_user",
+          "callee": "payload.get",
+          "lineNumber": 110
+        },
+        {
+          "caller": "get_current_user",
+          "callee": "(payload.get(\"o\") or {}).get",
+          "lineNumber": 110
+        },
+        {
+          "caller": "get_current_user",
+          "callee": "payload.get",
+          "lineNumber": 110
+        },
+        {
+          "caller": "get_current_user",
+          "callee": "bool",
+          "lineNumber": 111
+        }
+      ],
+      "metrics": {
+        "importCount": 2,
+        "exportCount": 4,
+        "functionCount": 4,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "backend/app/database.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 24,
+      "nonEmptyLines": 16,
+      "functions": [
+        {
+          "name": "get_db",
+          "startLine": 22,
+          "endLine": 24,
+          "params": []
+        }
+      ],
+      "classes": [
+        {
+          "name": "Base",
+          "startLine": 18,
+          "endLine": 19,
+          "methods": [],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "Base",
+          "line": 18,
+          "isDefault": false
+        },
+        {
+          "name": "get_db",
+          "line": 22,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "get_db",
+          "callee": "AsyncSessionLocal",
+          "lineNumber": 23
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 2,
+        "functionCount": 1,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "backend/app/integrations/bright_data_client.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 85,
+      "nonEmptyLines": 70,
+      "functions": [
+        {
+          "name": "_headers",
+          "startLine": 28,
+          "endLine": 34,
+          "params": []
+        },
+        {
+          "name": "trigger_scrape",
+          "startLine": 37,
+          "endLine": 53,
+          "params": [
+            "urls",
+            "timeout"
+          ]
+        },
+        {
+          "name": "get_snapshot_status",
+          "startLine": 56,
+          "endLine": 71,
+          "params": [
+            "snapshot_id",
+            "timeout"
+          ]
+        },
+        {
+          "name": "get_snapshot_data",
+          "startLine": 74,
+          "endLine": 85,
+          "params": [
+            "snapshot_id",
+            "timeout"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "BrightDataError",
+          "startLine": 24,
+          "endLine": 25,
+          "methods": [],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "BrightDataError",
+          "line": 24,
+          "isDefault": false
+        },
+        {
+          "name": "_headers",
+          "line": 28,
+          "isDefault": false
+        },
+        {
+          "name": "trigger_scrape",
+          "line": 37,
+          "isDefault": false
+        },
+        {
+          "name": "get_snapshot_status",
+          "line": 56,
+          "isDefault": false
+        },
+        {
+          "name": "get_snapshot_data",
+          "line": 74,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "_headers",
+          "callee": "BrightDataError",
+          "lineNumber": 30
+        },
+        {
+          "caller": "trigger_scrape",
+          "callee": "httpx.AsyncClient",
+          "lineNumber": 40
+        },
+        {
+          "caller": "trigger_scrape",
+          "callee": "client.post",
+          "lineNumber": 41
+        },
+        {
+          "caller": "trigger_scrape",
+          "callee": "_headers",
+          "lineNumber": 44
+        },
+        {
+          "caller": "trigger_scrape",
+          "callee": "BrightDataError",
+          "lineNumber": 48
+        },
+        {
+          "caller": "trigger_scrape",
+          "callee": "response.json",
+          "lineNumber": 49
+        },
+        {
+          "caller": "trigger_scrape",
+          "callee": "data.get",
+          "lineNumber": 50
+        },
+        {
+          "caller": "trigger_scrape",
+          "callee": "BrightDataError",
+          "lineNumber": 52
+        },
+        {
+          "caller": "get_snapshot_status",
+          "callee": "httpx.AsyncClient",
+          "lineNumber": 61
+        },
+        {
+          "caller": "get_snapshot_status",
+          "callee": "client.get",
+          "lineNumber": 62
+        },
+        {
+          "caller": "get_snapshot_status",
+          "callee": "_headers",
+          "lineNumber": 62
+        },
+        {
+          "caller": "get_snapshot_status",
+          "callee": "BrightDataError",
+          "lineNumber": 64
+        },
+        {
+          "caller": "get_snapshot_status",
+          "callee": "response.json",
+          "lineNumber": 65
+        },
+        {
+          "caller": "get_snapshot_status",
+          "callee": "(data.get(\"status\") or \"\").lower",
+          "lineNumber": 66
+        },
+        {
+          "caller": "get_snapshot_status",
+          "callee": "data.get",
+          "lineNumber": 66
+        },
+        {
+          "caller": "get_snapshot_data",
+          "callee": "httpx.AsyncClient",
+          "lineNumber": 76
+        },
+        {
+          "caller": "get_snapshot_data",
+          "callee": "client.get",
+          "lineNumber": 77
+        },
+        {
+          "caller": "get_snapshot_data",
+          "callee": "_headers",
+          "lineNumber": 78
+        },
+        {
+          "caller": "get_snapshot_data",
+          "callee": "BrightDataError",
+          "lineNumber": 81
+        },
+        {
+          "caller": "get_snapshot_data",
+          "callee": "response.json",
+          "lineNumber": 82
+        },
+        {
+          "caller": "get_snapshot_data",
+          "callee": "isinstance",
+          "lineNumber": 83
+        },
+        {
+          "caller": "get_snapshot_data",
+          "callee": "BrightDataError",
+          "lineNumber": 84
+        },
+        {
+          "caller": "get_snapshot_data",
+          "callee": "type",
+          "lineNumber": 84
+        }
+      ],
+      "metrics": {
+        "importCount": 1,
+        "exportCount": 5,
+        "functionCount": 4,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "backend/app/integrations/cloudinary_client.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 96,
+      "nonEmptyLines": 80,
+      "functions": [
+        {
+          "name": "_ensure_configured",
+          "startLine": 27,
+          "endLine": 39,
+          "params": []
+        },
+        {
+          "name": "upload_image_from_url",
+          "startLine": 42,
+          "endLine": 63,
+          "params": [
+            "source_url",
+            "folder"
+          ]
+        },
+        {
+          "name": "upload_images_from_urls",
+          "startLine": 66,
+          "endLine": 76,
+          "params": [
+            "source_urls",
+            "folder",
+            "max_images"
+          ]
+        },
+        {
+          "name": "upload_image_bytes",
+          "startLine": 79,
+          "endLine": 96,
+          "params": [
+            "data",
+            "folder"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "_ensure_configured",
+          "line": 27,
+          "isDefault": false
+        },
+        {
+          "name": "upload_image_from_url",
+          "line": 42,
+          "isDefault": false
+        },
+        {
+          "name": "upload_images_from_urls",
+          "line": 66,
+          "isDefault": false
+        },
+        {
+          "name": "upload_image_bytes",
+          "line": 79,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "_ensure_configured",
+          "callee": "cloudinary.config",
+          "lineNumber": 32
+        },
+        {
+          "caller": "upload_image_from_url",
+          "callee": "_ensure_configured",
+          "lineNumber": 49
+        },
+        {
+          "caller": "upload_image_from_url",
+          "callee": "asyncio.to_thread",
+          "lineNumber": 53
+        },
+        {
+          "caller": "upload_image_from_url",
+          "callee": "str",
+          "lineNumber": 57
+        },
+        {
+          "caller": "upload_image_from_url",
+          "callee": "uuid.uuid4",
+          "lineNumber": 57
+        },
+        {
+          "caller": "upload_image_from_url",
+          "callee": "result.get",
+          "lineNumber": 60
+        },
+        {
+          "caller": "upload_image_from_url",
+          "callee": "logger.warning",
+          "lineNumber": 62
+        },
+        {
+          "caller": "upload_images_from_urls",
+          "callee": "asyncio.gather",
+          "lineNumber": 73
+        },
+        {
+          "caller": "upload_images_from_urls",
+          "callee": "upload_image_from_url",
+          "lineNumber": 74
+        },
+        {
+          "caller": "upload_image_bytes",
+          "callee": "_ensure_configured",
+          "lineNumber": 86
+        },
+        {
+          "caller": "upload_image_bytes",
+          "callee": "RuntimeError",
+          "lineNumber": 87
+        },
+        {
+          "caller": "upload_image_bytes",
+          "callee": "asyncio.to_thread",
+          "lineNumber": 89
+        },
+        {
+          "caller": "upload_image_bytes",
+          "callee": "str",
+          "lineNumber": 93
+        },
+        {
+          "caller": "upload_image_bytes",
+          "callee": "uuid.uuid4",
+          "lineNumber": 93
+        }
+      ],
+      "metrics": {
+        "importCount": 1,
+        "exportCount": 4,
+        "functionCount": 4,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "backend/app/integrations/ical_client.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 62,
+      "nonEmptyLines": 47,
+      "functions": [
+        {
+          "name": "parse_ical",
+          "startLine": 18,
+          "endLine": 49,
+          "params": [
+            "raw"
+          ]
+        },
+        {
+          "name": "_to_date",
+          "startLine": 52,
+          "endLine": 55,
+          "params": [
+            "value"
+          ]
+        },
+        {
+          "name": "fetch_ical",
+          "startLine": 58,
+          "endLine": 62,
+          "params": [
+            "url",
+            "timeout"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "ICalEvent",
+          "startLine": 11,
+          "endLine": 15,
+          "methods": [],
+          "properties": [
+            "uid",
+            "check_in",
+            "check_out",
+            "summary"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "ICalEvent",
+          "line": 10,
+          "isDefault": false
+        },
+        {
+          "name": "parse_ical",
+          "line": 18,
+          "isDefault": false
+        },
+        {
+          "name": "_to_date",
+          "line": 52,
+          "isDefault": false
+        },
+        {
+          "name": "fetch_ical",
+          "line": 58,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "parse_ical",
+          "callee": "Calendar.from_ical",
+          "lineNumber": 25
+        },
+        {
+          "caller": "parse_ical",
+          "callee": "cal.walk",
+          "lineNumber": 28
+        },
+        {
+          "caller": "parse_ical",
+          "callee": "component.get",
+          "lineNumber": 29
+        },
+        {
+          "caller": "parse_ical",
+          "callee": "component.get",
+          "lineNumber": 30
+        },
+        {
+          "caller": "parse_ical",
+          "callee": "component.get",
+          "lineNumber": 31
+        },
+        {
+          "caller": "parse_ical",
+          "callee": "_to_date",
+          "lineNumber": 35
+        },
+        {
+          "caller": "parse_ical",
+          "callee": "_to_date",
+          "lineNumber": 36
+        },
+        {
+          "caller": "parse_ical",
+          "callee": "events.append",
+          "lineNumber": 40
+        },
+        {
+          "caller": "parse_ical",
+          "callee": "ICalEvent",
+          "lineNumber": 41
+        },
+        {
+          "caller": "parse_ical",
+          "callee": "str",
+          "lineNumber": 42
+        },
+        {
+          "caller": "parse_ical",
+          "callee": "str",
+          "lineNumber": 45
+        },
+        {
+          "caller": "parse_ical",
+          "callee": "component.get",
+          "lineNumber": 45
+        },
+        {
+          "caller": "parse_ical",
+          "callee": "component.get",
+          "lineNumber": 45
+        },
+        {
+          "caller": "_to_date",
+          "callee": "isinstance",
+          "lineNumber": 53
+        },
+        {
+          "caller": "_to_date",
+          "callee": "value.date",
+          "lineNumber": 54
+        },
+        {
+          "caller": "fetch_ical",
+          "callee": "httpx.AsyncClient",
+          "lineNumber": 59
+        },
+        {
+          "caller": "fetch_ical",
+          "callee": "client.get",
+          "lineNumber": 60
+        },
+        {
+          "caller": "fetch_ical",
+          "callee": "response.raise_for_status",
+          "lineNumber": 61
+        },
+        {
+          "caller": "fetch_ical",
+          "callee": "parse_ical",
+          "lineNumber": 62
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 4,
+        "functionCount": 3,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "backend/app/main.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 271,
+      "nonEmptyLines": 235,
+      "functions": [
+        {
+          "name": "_scheduled_ical_sync",
+          "startLine": 52,
+          "endLine": 56,
+          "params": []
+        },
+        {
+          "name": "_backfill_property_display_names",
+          "startLine": 59,
+          "endLine": 75,
+          "params": []
+        },
+        {
+          "name": "_scheduled_smart_pricing_refresh",
+          "startLine": 78,
+          "endLine": 80,
+          "params": []
+        },
+        {
+          "name": "_scheduled_live_pricing_cache_refresh",
+          "startLine": 83,
+          "endLine": 85,
+          "params": []
+        },
+        {
+          "name": "_check_db_health",
+          "startLine": 88,
+          "endLine": 103,
+          "params": []
+        },
+        {
+          "name": "_check_llm_health",
+          "startLine": 114,
+          "endLine": 192,
+          "params": []
+        },
+        {
+          "name": "lifespan",
+          "startLine": 196,
+          "endLine": 228,
+          "params": [
+            "app"
+          ]
+        },
+        {
+          "name": "health",
+          "startLine": 261,
+          "endLine": 262,
+          "params": []
+        },
+        {
+          "name": "llm_health_status",
+          "startLine": 266,
+          "endLine": 271,
+          "params": []
+        }
+      ],
+      "classes": [
+        {
+          "name": "_PropagateToStdlib",
+          "startLine": 39,
+          "endLine": 42,
+          "methods": [
+            "emit"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "_PropagateToStdlib",
+          "line": 39,
+          "isDefault": false
+        },
+        {
+          "name": "_scheduled_ical_sync",
+          "line": 52,
+          "isDefault": false
+        },
+        {
+          "name": "_backfill_property_display_names",
+          "line": 59,
+          "isDefault": false
+        },
+        {
+          "name": "_scheduled_smart_pricing_refresh",
+          "line": 78,
+          "isDefault": false
+        },
+        {
+          "name": "_scheduled_live_pricing_cache_refresh",
+          "line": 83,
+          "isDefault": false
+        },
+        {
+          "name": "_check_db_health",
+          "line": 88,
+          "isDefault": false
+        },
+        {
+          "name": "_check_llm_health",
+          "line": 114,
+          "isDefault": false
+        },
+        {
+          "name": "lifespan",
+          "line": 195,
+          "isDefault": false
+        },
+        {
+          "name": "health",
+          "line": 260,
+          "isDefault": false
+        },
+        {
+          "name": "llm_health_status",
+          "line": 265,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "emit",
+          "callee": "logging.getLogger",
+          "lineNumber": 41
+        },
+        {
+          "caller": "emit",
+          "callee": "stdlib_logger.handle",
+          "lineNumber": 42
+        },
+        {
+          "caller": "_scheduled_ical_sync",
+          "callee": "AsyncSessionLocal",
+          "lineNumber": 53
+        },
+        {
+          "caller": "_scheduled_ical_sync",
+          "callee": "sync_all_properties",
+          "lineNumber": 54
+        },
+        {
+          "caller": "_scheduled_ical_sync",
+          "callee": "logger.info",
+          "lineNumber": 56
+        },
+        {
+          "caller": "_backfill_property_display_names",
+          "callee": "AsyncSessionLocal",
+          "lineNumber": 70
+        },
+        {
+          "caller": "_backfill_property_display_names",
+          "callee": "properties.backfill_missing_display_names",
+          "lineNumber": 71
+        },
+        {
+          "caller": "_backfill_property_display_names",
+          "callee": "logger.info",
+          "lineNumber": 73
+        },
+        {
+          "caller": "_backfill_property_display_names",
+          "callee": "logger.exception",
+          "lineNumber": 75
+        },
+        {
+          "caller": "_scheduled_smart_pricing_refresh",
+          "callee": "AsyncSessionLocal",
+          "lineNumber": 79
+        },
+        {
+          "caller": "_scheduled_smart_pricing_refresh",
+          "callee": "refresh_smart_pricing",
+          "lineNumber": 80
+        },
+        {
+          "caller": "_scheduled_live_pricing_cache_refresh",
+          "callee": "AsyncSessionLocal",
+          "lineNumber": 84
+        },
+        {
+          "caller": "_scheduled_live_pricing_cache_refresh",
+          "callee": "refresh_live_pricing_cache",
+          "lineNumber": 85
+        },
+        {
+          "caller": "_check_db_health",
+          "callee": "AsyncSessionLocal",
+          "lineNumber": 100
+        },
+        {
+          "caller": "_check_db_health",
+          "callee": "db.execute",
+          "lineNumber": 101
+        },
+        {
+          "caller": "_check_db_health",
+          "callee": "text",
+          "lineNumber": 101
+        },
+        {
+          "caller": "_check_db_health",
+          "callee": "logger.warning",
+          "lineNumber": 103
+        },
+        {
+          "caller": "_check_llm_health",
+          "callee": "AsyncGroq",
+          "lineNumber": 132
+        },
+        {
+          "caller": "_check_llm_health",
+          "callee": "time.monotonic",
+          "lineNumber": 138
+        },
+        {
+          "caller": "_check_llm_health",
+          "callee": "client.chat.completions.create",
+          "lineNumber": 140
+        },
+        {
+          "caller": "_check_llm_health",
+          "callee": "round",
+          "lineNumber": 148
+        },
+        {
+          "caller": "_check_llm_health",
+          "callee": "time.monotonic",
+          "lineNumber": 148
+        },
+        {
+          "caller": "_check_llm_health",
+          "callee": "datetime.now(timezone.utc).isoformat",
+          "lineNumber": 149
+        },
+        {
+          "caller": "_check_llm_health",
+          "callee": "datetime.now",
+          "lineNumber": 149
+        },
+        {
+          "caller": "_check_llm_health",
+          "callee": "logger.info",
+          "lineNumber": 152
+        },
+        {
+          "caller": "_check_llm_health",
+          "callee": "datetime.now(timezone.utc).isoformat",
+          "lineNumber": 157
+        },
+        {
+          "caller": "_check_llm_health",
+          "callee": "datetime.now",
+          "lineNumber": 157
+        },
+        {
+          "caller": "_check_llm_health",
+          "callee": "str",
+          "lineNumber": 158
+        },
+        {
+          "caller": "_check_llm_health",
+          "callee": "logger.warning",
+          "lineNumber": 160
+        },
+        {
+          "caller": "_check_llm_health",
+          "callee": "client.close",
+          "lineNumber": 161
+        },
+        {
+          "caller": "_check_llm_health",
+          "callee": "time.monotonic",
+          "lineNumber": 166
+        },
+        {
+          "caller": "_check_llm_health",
+          "callee": "AsyncOpenAI",
+          "lineNumber": 167
+        },
+        {
+          "caller": "_check_llm_health",
+          "callee": "client.chat.completions.create",
+          "lineNumber": 171
+        },
+        {
+          "caller": "_check_llm_health",
+          "callee": "round",
+          "lineNumber": 179
+        },
+        {
+          "caller": "_check_llm_health",
+          "callee": "time.monotonic",
+          "lineNumber": 179
+        },
+        {
+          "caller": "_check_llm_health",
+          "callee": "datetime.now(timezone.utc).isoformat",
+          "lineNumber": 180
+        },
+        {
+          "caller": "_check_llm_health",
+          "callee": "datetime.now",
+          "lineNumber": 180
+        },
+        {
+          "caller": "_check_llm_health",
+          "callee": "logger.info",
+          "lineNumber": 183
+        },
+        {
+          "caller": "_check_llm_health",
+          "callee": "datetime.now(timezone.utc).isoformat",
+          "lineNumber": 188
+        },
+        {
+          "caller": "_check_llm_health",
+          "callee": "datetime.now",
+          "lineNumber": 188
+        },
+        {
+          "caller": "_check_llm_health",
+          "callee": "str",
+          "lineNumber": 189
+        },
+        {
+          "caller": "_check_llm_health",
+          "callee": "logger.warning",
+          "lineNumber": 191
+        },
+        {
+          "caller": "_check_llm_health",
+          "callee": "client.close",
+          "lineNumber": 192
+        },
+        {
+          "caller": "lifespan",
+          "callee": "scheduler.add_job",
+          "lineNumber": 197
+        },
+        {
+          "caller": "lifespan",
+          "callee": "scheduler.add_job",
+          "lineNumber": 205
+        },
+        {
+          "caller": "lifespan",
+          "callee": "scheduler.add_job",
+          "lineNumber": 209
+        },
+        {
+          "caller": "lifespan",
+          "callee": "scheduler.add_job",
+          "lineNumber": 212
+        },
+        {
+          "caller": "lifespan",
+          "callee": "scheduler.add_job",
+          "lineNumber": 218
+        },
+        {
+          "caller": "lifespan",
+          "callee": "scheduler.start",
+          "lineNumber": 221
+        },
+        {
+          "caller": "lifespan",
+          "callee": "asyncio.create_task",
+          "lineNumber": 222
+        },
+        {
+          "caller": "lifespan",
+          "callee": "_scheduled_ical_sync",
+          "lineNumber": 222
+        },
+        {
+          "caller": "lifespan",
+          "callee": "asyncio.create_task",
+          "lineNumber": 223
+        },
+        {
+          "caller": "lifespan",
+          "callee": "_check_llm_health",
+          "lineNumber": 223
+        },
+        {
+          "caller": "lifespan",
+          "callee": "asyncio.create_task",
+          "lineNumber": 224
+        },
+        {
+          "caller": "lifespan",
+          "callee": "_check_db_health",
+          "lineNumber": 224
+        },
+        {
+          "caller": "lifespan",
+          "callee": "asyncio.create_task",
+          "lineNumber": 225
+        },
+        {
+          "caller": "lifespan",
+          "callee": "_backfill_property_display_names",
+          "lineNumber": 225
+        },
+        {
+          "caller": "lifespan",
+          "callee": "logger.info",
+          "lineNumber": 226
+        },
+        {
+          "caller": "lifespan",
+          "callee": "scheduler.shutdown",
+          "lineNumber": 228
+        }
+      ],
+      "metrics": {
+        "importCount": 7,
+        "exportCount": 10,
+        "functionCount": 9,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "backend/app/models/booking.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 27,
+      "nonEmptyLines": 21,
+      "classes": [
+        {
+          "name": "Booking",
+          "startLine": 12,
+          "endLine": 27,
+          "methods": [],
+          "properties": [
+            "property_id",
+            "guest_phone",
+            "guest_name",
+            "check_in",
+            "check_out",
+            "platform",
+            "source_uid",
+            "status",
+            "property"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "Booking",
+          "line": 12,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "backend/app/models/notification.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 69,
+      "nonEmptyLines": 62,
+      "classes": [
+        {
+          "name": "Notification",
+          "startLine": 13,
+          "endLine": 69,
+          "methods": [
+            "property_name"
+          ],
+          "properties": [
+            "property_id",
+            "call_session_id",
+            "lead_id",
+            "channel",
+            "urgency",
+            "message",
+            "status",
+            "responded_at",
+            "property",
+            "call_session"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "Notification",
+          "line": 13,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "backend/app/models/technician.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 22,
+      "nonEmptyLines": 16,
+      "classes": [
+        {
+          "name": "Technician",
+          "startLine": 11,
+          "endLine": 22,
+          "methods": [],
+          "properties": [
+            "property_id",
+            "name",
+            "specialty",
+            "phone",
+            "rating",
+            "property"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "Technician",
+          "line": 11,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "backend/app/models/user.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 116,
+      "nonEmptyLines": 101,
+      "classes": [
+        {
+          "name": "User",
+          "startLine": 10,
+          "endLine": 116,
+          "methods": [],
+          "properties": [
+            "email",
+            "hashed_password",
+            "clerk_user_id",
+            "name",
+            "phone",
+            "tier",
+            "status",
+            "lead_exophone",
+            "twilio_lead_number",
+            "business_name",
+            "airbnb_host_status",
+            "property_count_estimate",
+            "timezone",
+            "terms_accepted_at",
+            "photo_url",
+            "banner_url",
+            "whatsapp_assist_enabled",
+            "notification_email",
+            "agent_first_message",
+            "agent_persona",
+            "agent_escalation_phrase",
+            "agent_voice_gender",
+            "agent_language_policy",
+            "discount_policy_text",
+            "negotiation_allowed",
+            "max_discount_percent_override",
+            "allow_pets",
+            "allow_early_checkin",
+            "follow_up_channel_preference",
+            "properties",
+            "leads",
+            "faq_entries",
+            "negotiation_rules"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "User",
+          "line": 10,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "backend/app/schemas/booking.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 34,
+      "nonEmptyLines": 26,
+      "classes": [
+        {
+          "name": "BookingCreate",
+          "startLine": 7,
+          "endLine": 13,
+          "methods": [],
+          "properties": [
+            "property_id",
+            "guest_phone",
+            "guest_name",
+            "check_in",
+            "check_out",
+            "platform"
+          ]
+        },
+        {
+          "name": "BookingOut",
+          "startLine": 16,
+          "endLine": 27,
+          "methods": [],
+          "properties": [
+            "id",
+            "property_id",
+            "guest_phone",
+            "guest_name",
+            "check_in",
+            "check_out",
+            "platform",
+            "status",
+            "created_at"
+          ]
+        },
+        {
+          "name": "AvailabilityQuery",
+          "startLine": 30,
+          "endLine": 34,
+          "methods": [],
+          "properties": [
+            "property_id",
+            "check_in",
+            "check_out",
+            "num_guests"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "BookingCreate",
+          "line": 7,
+          "isDefault": false
+        },
+        {
+          "name": "BookingOut",
+          "line": 16,
+          "isDefault": false
+        },
+        {
+          "name": "AvailabilityQuery",
+          "line": 30,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 3,
+        "functionCount": 0,
+        "classCount": 3
+      }
+    },
+    {
+      "path": "backend/app/schemas/call_session.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 48,
+      "nonEmptyLines": 41,
+      "classes": [
+        {
+          "name": "CallSessionOut",
+          "startLine": 10,
+          "endLine": 40,
+          "methods": [],
+          "properties": [
+            "id",
+            "exotel_call_id",
+            "property_id",
+            "guest_profile_id",
+            "caller_number",
+            "guest_name",
+            "guest_phone",
+            "duration_minutes",
+            "recording_url",
+            "transcript",
+            "ai_summary",
+            "status",
+            "urgency",
+            "call_type",
+            "classification_confidence",
+            "classification_reason",
+            "revenue_attributed",
+            "started_at",
+            "ended_at",
+            "created_at"
+          ]
+        },
+        {
+          "name": "CallSessionDetailOut",
+          "startLine": 43,
+          "endLine": 48,
+          "methods": [],
+          "properties": [
+            "escalations"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "CallSessionOut",
+          "line": 10,
+          "isDefault": false
+        },
+        {
+          "name": "CallSessionDetailOut",
+          "line": 43,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 2,
+        "functionCount": 0,
+        "classCount": 2
+      }
+    },
+    {
+      "path": "backend/app/schemas/faq_entry.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 40,
+      "nonEmptyLines": 31,
+      "classes": [
+        {
+          "name": "FaqEntryCreate",
+          "startLine": 10,
+          "endLine": 16,
+          "methods": [],
+          "properties": [
+            "property_id",
+            "question",
+            "answer",
+            "category",
+            "status",
+            "verified_by"
+          ]
+        },
+        {
+          "name": "FaqEntryUpdate",
+          "startLine": 19,
+          "endLine": 25,
+          "methods": [],
+          "properties": [
+            "property_id",
+            "question",
+            "answer",
+            "category",
+            "status",
+            "verified_by"
+          ]
+        },
+        {
+          "name": "FaqEntryOut",
+          "startLine": 28,
+          "endLine": 40,
+          "methods": [],
+          "properties": [
+            "id",
+            "user_id",
+            "property_id",
+            "question",
+            "answer",
+            "category",
+            "status",
+            "verified_by",
+            "created_at",
+            "updated_at"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "FaqEntryCreate",
+          "line": 10,
+          "isDefault": false
+        },
+        {
+          "name": "FaqEntryUpdate",
+          "line": 19,
+          "isDefault": false
+        },
+        {
+          "name": "FaqEntryOut",
+          "line": 28,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 3,
+        "functionCount": 0,
+        "classCount": 3
+      }
+    }
+  ]
+}

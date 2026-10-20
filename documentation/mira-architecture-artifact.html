@@ -1,0 +1,322 @@
+<title>Mira Architecture</title>
+<style>
+  :root {
+    --bg: #f7f4ee;
+    --surface: #fffcf7;
+    --ink: #2a2420;
+    --muted: #7d7267;
+    --line: #c9beac;
+    --accent: #b8452f;
+    --accent-2: #5f7a99;
+    --accent-soft: rgba(184, 69, 47, 0.08);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f0e0c;
+      --surface: #1a1814;
+      --ink: #f0ebe3;
+      --muted: #a89c8d;
+      --line: #423c34;
+      --accent: #e0684f;
+      --accent-2: #7fa3e0;
+      --accent-soft: rgba(224, 104, 79, 0.14);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f0e0c;
+    --surface: #1a1814;
+    --ink: #f0ebe3;
+    --muted: #a89c8d;
+    --line: #423c34;
+    --accent: #e0684f;
+    --accent-2: #7fa3e0;
+    --accent-soft: rgba(224, 104, 79, 0.14);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    padding-inline: 20px;
+    padding-block: 28px;
+  }
+  .wrap { max-width: 1400px; margin: 0 auto; }
+
+  .eyebrow {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 6px;
+  }
+  h1 {
+    font-size: clamp(22px, 3vw, 30px);
+    line-height: 1.1;
+    margin: 0 0 16px;
+    text-wrap: balance;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+
+  .fig-shell {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px;
+    overflow-x: auto;
+  }
+  svg.diagram { display: block; min-width: 900px; width: 100%; height: auto; }
+
+  .svg-box-label { font-family: "IBM Plex Sans", sans-serif; font-weight: 600; font-size: 13px; fill: var(--ink); }
+  .svg-box-sub { font-family: "IBM Plex Mono", monospace; font-size: 10px; fill: var(--muted); }
+  .svg-arrow-label { font-family: "IBM Plex Mono", monospace; font-size: 10px; fill: var(--muted); }
+  .svg-arrow-label-accent { font-family: "IBM Plex Mono", monospace; font-size: 10px; fill: var(--accent); font-weight: 500; }
+  .svg-section { font-family: "IBM Plex Mono", monospace; font-size: 12px; fill: var(--accent); letter-spacing: 0.06em; font-weight: 500; }
+  .svg-note { font-family: "IBM Plex Mono", monospace; font-size: 10px; fill: var(--muted); }
+  .svg-legend-vendor { font-family: "IBM Plex Mono", monospace; font-size: 11.5px; font-weight: 600; fill: var(--ink); }
+  .svg-legend-role { font-family: "IBM Plex Sans", sans-serif; font-size: 10.5px; fill: var(--muted); }
+  .svg-footer { font-family: "IBM Plex Mono", monospace; font-size: 9.5px; fill: var(--muted); }
+
+  @media (max-width: 480px) {
+    body { padding-inline: 12px; }
+    .fig-shell { padding: 10px; }
+  }
+</style>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<div class="wrap">
+  <p class="eyebrow">System architecture</p>
+  <h1>How Mira is put together</h1>
+
+  <div class="fig-shell">
+    <svg class="diagram" viewBox="0 0 1400 850" role="img"
+      aria-label="Mira architecture in one diagram: a guest call flows through Exotel, Sarvam speech-to-text, Groq's LLM with an Anthropic and OpenRouter fallback chain, 13 tools touching Postgres, Redis, SearchApi.io, Twilio and Resend, and Sarvam text-to-speech. A second panel shows two simultaneous calls racing for one Redis lock, one proceeding and one routed to WhatsApp recovery. A third panel shows the host dashboard reaching the same backend and database, plus a hosting legend naming every vendor.">
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="currentColor" />
+        </marker>
+        <marker id="arrowAccent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)" />
+        </marker>
+      </defs>
+
+      <!-- ============ ZONE A: LIVE CALL ============ -->
+      <text x="20" y="18" class="svg-section">LIVE CALL</text>
+
+      <g color="var(--muted)">
+        <!-- Row A1: main spine -->
+        <rect x="20" y="52" width="105" height="64" rx="6" fill="var(--surface)" stroke="var(--line)" stroke-width="1.5"/>
+        <text x="72" y="80" text-anchor="middle" class="svg-box-label">Guest</text>
+        <text x="72" y="96" text-anchor="middle" class="svg-box-sub">phone call</text>
+
+        <line x1="125" y1="84" x2="168" y2="84" stroke="var(--line)" stroke-width="1.5" marker-end="url(#arrow)"/>
+        <text x="146" y="74" text-anchor="middle" class="svg-arrow-label">dials</text>
+
+        <rect x="168" y="52" width="150" height="64" rx="6" fill="var(--surface)" stroke="var(--line)" stroke-width="1.5"/>
+        <text x="243" y="74" text-anchor="middle" class="svg-box-label">Exotel</text>
+        <text x="243" y="89" text-anchor="middle" class="svg-box-sub">primary telephony</text>
+        <text x="243" y="102" text-anchor="middle" class="svg-box-sub">(Twilio Voice: fallback)</text>
+
+        <line x1="318" y1="84" x2="361" y2="84" stroke="var(--line)" stroke-width="1.5" marker-end="url(#arrow)"/>
+        <text x="339" y="70" text-anchor="middle" class="svg-arrow-label">streams</text>
+        <text x="339" y="81" text-anchor="middle" class="svg-arrow-label">audio</text>
+
+        <rect x="361" y="52" width="125" height="64" rx="6" fill="var(--surface)" stroke="var(--line)" stroke-width="1.5"/>
+        <text x="423" y="74" text-anchor="middle" class="svg-box-label">Sarvam STT</text>
+        <text x="423" y="89" text-anchor="middle" class="svg-box-sub">hi + en, one model</text>
+        <text x="423" y="102" text-anchor="middle" class="svg-box-sub">(code-mixed)</text>
+
+        <line x1="486" y1="84" x2="529" y2="84" stroke="var(--line)" stroke-width="1.5" marker-end="url(#arrow)"/>
+        <text x="507" y="74" text-anchor="middle" class="svg-arrow-label">transcript</text>
+
+        <rect x="529" y="42" width="230" height="84" rx="6" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/>
+        <text x="644" y="64" text-anchor="middle" class="svg-box-label">Groq LLM</text>
+        <text x="644" y="79" text-anchor="middle" class="svg-box-sub">gpt-oss-120b</text>
+        <text x="644" y="94" text-anchor="middle" class="svg-arrow-label" style="font-size:9px">on failure &rarr; Anthropic &rarr; OpenRouter</text>
+        <text x="644" y="109" text-anchor="middle" class="svg-box-sub">13 tools available to call</text>
+
+        <line x1="759" y1="84" x2="802" y2="84" stroke="var(--line)" stroke-width="1.5" marker-end="url(#arrow)"/>
+        <text x="780" y="70" text-anchor="middle" class="svg-arrow-label">reply</text>
+        <text x="780" y="81" text-anchor="middle" class="svg-arrow-label">text</text>
+
+        <rect x="802" y="52" width="125" height="64" rx="6" fill="var(--surface)" stroke="var(--line)" stroke-width="1.5"/>
+        <text x="864" y="78" text-anchor="middle" class="svg-box-label">Sarvam TTS</text>
+        <text x="864" y="94" text-anchor="middle" class="svg-box-sub">streamed live</text>
+
+        <!-- return path: TTS back to Exotel, arcing above row A1 -->
+        <path d="M 864,52 C 864,4 400,4 243,48" fill="none" stroke="var(--line)" stroke-width="1.5" marker-end="url(#arrow)"/>
+        <text x="560" y="12" text-anchor="middle" class="svg-note">audio out, spoken as it streams &mdash; never waits for the full reply</text>
+
+        <!-- Row A2: concurrency check + tools -->
+        <line x1="243" y1="116" x2="243" y2="188" stroke="var(--line)" stroke-width="1.5" marker-end="url(#arrow)"/>
+        <text x="253" y="150" class="svg-arrow-label">is this host</text>
+        <text x="253" y="161" class="svg-arrow-label">already on a call?</text>
+
+        <rect x="168" y="188" width="150" height="60" rx="6" fill="var(--surface)" stroke="var(--line)" stroke-width="1.5"/>
+        <text x="243" y="210" text-anchor="middle" class="svg-box-label">Redis &mdash; lease</text>
+        <text x="243" y="224" text-anchor="middle" class="svg-box-sub">SET NX, 45s TTL</text>
+        <text x="243" y="238" text-anchor="middle" class="svg-arrow-label-accent">busy &rarr; panel B</text>
+
+        <line x1="644" y1="126" x2="644" y2="188" stroke="var(--accent)" stroke-width="1.5" marker-end="url(#arrowAccent)"/>
+        <text x="654" y="152" class="svg-arrow-label-accent">calls a tool</text>
+        <text x="654" y="163" class="svg-arrow-label-accent">mid-reply</text>
+
+        <rect x="529" y="188" width="230" height="60" rx="6" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/>
+        <text x="644" y="210" text-anchor="middle" class="svg-box-label">13 tools</text>
+        <text x="644" y="224" text-anchor="middle" class="svg-box-sub">check_calendar, get_pricing &hellip;</text>
+        <text x="644" y="238" text-anchor="middle" class="svg-box-sub">tools.py &rarr; tool_handlers.py</text>
+
+        <!-- Row A3: what the tools touch -->
+        <text x="20" y="300" class="svg-note" style="font-size:10.5px">WHAT THE TOOLS ACTUALLY TOUCH</text>
+
+        <line x1="560" y1="248" x2="95" y2="316" stroke="var(--line)" stroke-width="1.25" marker-end="url(#arrow)"/>
+        <line x1="600" y1="248" x2="365" y2="316" stroke="var(--line)" stroke-width="1.25" marker-end="url(#arrow)"/>
+        <line x1="644" y1="248" x2="630" y2="316" stroke="var(--line)" stroke-width="1.25" marker-end="url(#arrow)"/>
+        <line x1="688" y1="248" x2="895" y2="316" stroke="var(--line)" stroke-width="1.25" marker-end="url(#arrow)"/>
+        <line x1="728" y1="248" x2="1160" y2="316" stroke="var(--line)" stroke-width="1.25" marker-end="url(#arrow)"/>
+
+        <rect x="20" y="316" width="220" height="60" rx="6" fill="var(--surface)" stroke="var(--line)" stroke-width="1.5"/>
+        <text x="130" y="338" text-anchor="middle" class="svg-box-label">Postgres &mdash; Neon</text>
+        <text x="130" y="353" text-anchor="middle" class="svg-box-sub">leads, calls, bookings</text>
+        <text x="130" y="366" text-anchor="middle" class="svg-arrow-label">writes / reads</text>
+
+        <rect x="270" y="316" width="220" height="60" rx="6" fill="var(--surface)" stroke="var(--line)" stroke-width="1.5"/>
+        <text x="380" y="338" text-anchor="middle" class="svg-box-label">Redis &mdash; Upstash</text>
+        <text x="380" y="353" text-anchor="middle" class="svg-box-sub">live nightly-rate cache</text>
+        <text x="380" y="366" text-anchor="middle" class="svg-arrow-label">reads / writes</text>
+
+        <rect x="520" y="316" width="220" height="60" rx="6" fill="var(--surface)" stroke="var(--line)" stroke-width="1.5"/>
+        <text x="630" y="338" text-anchor="middle" class="svg-box-label">SearchApi.io</text>
+        <text x="630" y="353" text-anchor="middle" class="svg-box-sub">live Airbnb pricing</text>
+        <text x="630" y="366" text-anchor="middle" class="svg-arrow-label">fetches on cache miss</text>
+
+        <rect x="770" y="316" width="220" height="60" rx="6" fill="var(--surface)" stroke="var(--line)" stroke-width="1.5"/>
+        <text x="880" y="338" text-anchor="middle" class="svg-box-label">Twilio</text>
+        <text x="880" y="353" text-anchor="middle" class="svg-box-sub">WhatsApp Business API</text>
+        <text x="880" y="366" text-anchor="middle" class="svg-arrow-label">sends</text>
+
+        <rect x="1040" y="316" width="220" height="60" rx="6" fill="var(--surface)" stroke="var(--line)" stroke-width="1.5"/>
+        <text x="1150" y="338" text-anchor="middle" class="svg-box-label">Resend</text>
+        <text x="1150" y="353" text-anchor="middle" class="svg-box-sub">host call-summary email</text>
+        <text x="1150" y="366" text-anchor="middle" class="svg-arrow-label">sends after call ends</text>
+      </g>
+
+      <!-- divider -->
+      <line x1="20" y1="404" x2="1380" y2="404" stroke="var(--line)" stroke-width="1"/>
+
+      <!-- ============ ZONE B: CONCURRENCY LOCK ============ -->
+      <text x="20" y="428" class="svg-section">TWO CALLS, ONE LOCK</text>
+
+      <g color="var(--muted)">
+        <rect x="20" y="448" width="170" height="50" rx="6" fill="var(--surface)" stroke="var(--line)" stroke-width="1.5"/>
+        <text x="105" y="469" text-anchor="middle" class="svg-box-label">Call A arrives</text>
+        <text x="105" y="483" text-anchor="middle" class="svg-box-sub">t = 0.00s</text>
+
+        <rect x="480" y="448" width="180" height="50" rx="6" fill="var(--surface)" stroke="var(--line)" stroke-width="1.5"/>
+        <text x="570" y="469" text-anchor="middle" class="svg-box-label">Call B arrives</text>
+        <text x="570" y="483" text-anchor="middle" class="svg-box-sub">t = 0.30s, same host</text>
+
+        <line x1="130" y1="498" x2="280" y2="548" stroke="var(--line)" stroke-width="1.5" marker-end="url(#arrow)"/>
+        <line x1="555" y1="498" x2="410" y2="548" stroke="var(--line)" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+        <rect x="150" y="548" width="380" height="56" rx="6" fill="var(--surface)" stroke="var(--ink)" stroke-width="1.5"/>
+        <text x="340" y="570" text-anchor="middle" class="svg-box-label">Redis</text>
+        <text x="340" y="585" text-anchor="middle" class="svg-box-sub">call_lease:{host}:{property} &mdash; one atomic SET NX</text>
+
+        <line x1="230" y1="604" x2="130" y2="654" stroke="var(--line)" stroke-width="1.5" marker-end="url(#arrow)"/>
+        <text x="145" y="628" text-anchor="middle" class="svg-arrow-label">SET NX</text>
+        <text x="145" y="639" text-anchor="middle" class="svg-arrow-label">succeeds</text>
+
+        <line x1="450" y1="604" x2="555" y2="654" stroke="var(--accent)" stroke-width="1.5" marker-end="url(#arrowAccent)"/>
+        <text x="540" y="628" text-anchor="middle" class="svg-arrow-label-accent">SET NX fails</text>
+        <text x="540" y="639" text-anchor="middle" class="svg-arrow-label-accent">key held</text>
+
+        <rect x="20" y="654" width="220" height="48" rx="6" fill="var(--surface)" stroke="var(--line)" stroke-width="1.5"/>
+        <text x="130" y="674" text-anchor="middle" class="svg-box-label">START_PIPELINE</text>
+        <text x="130" y="688" text-anchor="middle" class="svg-box-sub">Call A answered normally</text>
+
+        <rect x="440" y="654" width="230" height="48" rx="6" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/>
+        <text x="555" y="674" text-anchor="middle" class="svg-box-label">BUSY_RECOVERY</text>
+        <text x="555" y="688" text-anchor="middle" class="svg-box-sub">no pipeline is built for B</text>
+
+        <line x1="555" y1="702" x2="555" y2="732" stroke="var(--accent)" stroke-width="1.5" marker-end="url(#arrowAccent)"/>
+        <rect x="410" y="732" width="290" height="48" rx="6" fill="var(--surface)" stroke="var(--line)" stroke-width="1.5"/>
+        <text x="555" y="752" text-anchor="middle" class="svg-box-label">WhatsApp to guest B</text>
+        <text x="555" y="766" text-anchor="middle" class="svg-box-sub">property / price / photos / talk to host</text>
+
+        <text x="20" y="812" class="svg-note">Redis unreachable &rarr; the lock fails open, never rejects a live call</text>
+      </g>
+
+      <!-- ============ ZONE C: DASHBOARD + HOSTING ============ -->
+      <text x="740" y="428" class="svg-section">DASHBOARD, AFTER THE CALL</text>
+
+      <g color="var(--muted)">
+        <rect x="740" y="448" width="115" height="52" rx="6" fill="var(--surface)" stroke="var(--line)" stroke-width="1.5"/>
+        <text x="797" y="470" text-anchor="middle" class="svg-box-label">Browser</text>
+        <text x="797" y="483" text-anchor="middle" class="svg-box-sub" style="font-size:8.5px">hostwithmira.com</text>
+
+        <line x1="855" y1="474" x2="878" y2="474" stroke="var(--line)" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+        <rect x="878" y="448" width="105" height="52" rx="6" fill="var(--surface)" stroke="var(--line)" stroke-width="1.5"/>
+        <text x="930" y="470" text-anchor="middle" class="svg-box-label">Next.js</text>
+        <text x="930" y="483" text-anchor="middle" class="svg-box-sub">on Vercel</text>
+
+        <line x1="983" y1="474" x2="1006" y2="474" stroke="var(--line)" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+        <rect x="1006" y="448" width="95" height="52" rx="6" fill="var(--surface)" stroke="var(--line)" stroke-width="1.5"/>
+        <text x="1053" y="470" text-anchor="middle" class="svg-box-label">Clerk</text>
+        <text x="1053" y="483" text-anchor="middle" class="svg-box-sub">session</text>
+
+        <line x1="1101" y1="474" x2="1124" y2="474" stroke="var(--line)" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+        <rect x="1124" y="448" width="125" height="52" rx="6" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/>
+        <text x="1186" y="470" text-anchor="middle" class="svg-box-label">Backend</text>
+        <text x="1186" y="483" text-anchor="middle" class="svg-box-sub">Railway, panel A</text>
+
+        <line x1="1249" y1="474" x2="1272" y2="474" stroke="var(--accent)" stroke-width="1.5" marker-end="url(#arrowAccent)"/>
+
+        <rect x="1272" y="448" width="108" height="52" rx="6" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/>
+        <text x="1326" y="470" text-anchor="middle" class="svg-box-label">Postgres</text>
+        <text x="1326" y="483" text-anchor="middle" class="svg-box-sub">Neon, panel A</text>
+
+        <text x="740" y="524" class="svg-note">Same backend &amp; database as the live call &mdash; a lead created mid-call is queryable the moment it commits.</text>
+
+        <line x1="740" y1="546" x2="1380" y2="546" stroke="var(--line)" stroke-width="1"/>
+        <text x="740" y="568" class="svg-section" style="font-size:11px">HOSTING &amp; MODEL VENDORS</text>
+
+        <!-- legend column 1 -->
+        <text x="740" y="592" class="svg-legend-vendor">Railway</text>
+        <text x="740" y="605" class="svg-legend-role">FastAPI backend + voice pipeline</text>
+        <text x="740" y="626" class="svg-legend-vendor">Vercel</text>
+        <text x="740" y="639" class="svg-legend-role">Next.js host dashboard</text>
+        <text x="740" y="660" class="svg-legend-vendor">Neon</text>
+        <text x="740" y="673" class="svg-legend-role">Postgres, system of record</text>
+        <text x="740" y="694" class="svg-legend-vendor">Upstash</text>
+        <text x="740" y="707" class="svg-legend-role">Redis, leases + price cache</text>
+        <text x="740" y="728" class="svg-legend-vendor">Exotel</text>
+        <text x="740" y="741" class="svg-legend-role">Primary telephony, India-focused</text>
+        <text x="740" y="762" class="svg-legend-vendor">Twilio</text>
+        <text x="740" y="775" class="svg-legend-role">WhatsApp API + fallback voice</text>
+
+        <!-- legend column 2 -->
+        <text x="1070" y="592" class="svg-legend-vendor">Clerk</text>
+        <text x="1070" y="605" class="svg-legend-role">Host auth + organizations</text>
+        <text x="1070" y="626" class="svg-legend-vendor">Resend</text>
+        <text x="1070" y="639" class="svg-legend-role">Host-facing transactional email</text>
+        <text x="1070" y="660" class="svg-legend-vendor">Sarvam</text>
+        <text x="1070" y="673" class="svg-legend-role">STT + TTS, Hindi + English</text>
+        <text x="1070" y="694" class="svg-legend-vendor">Groq</text>
+        <text x="1070" y="707" class="svg-legend-role">Primary LLM, gpt-oss-120b</text>
+        <text x="1070" y="728" class="svg-legend-vendor">Anthropic / OpenRouter</text>
+        <text x="1070" y="741" class="svg-legend-role">LLM fallback chain, in order</text>
+        <text x="1070" y="762" class="svg-legend-vendor">SearchApi.io</text>
+        <text x="1070" y="775" class="svg-legend-role">Live Airbnb price lookups</text>
+      </g>
+
+      <text x="20" y="832" class="svg-footer">mira &mdash; architecture as of 2026-09-28, drawn from the live codebase, not a spec.</text>
+    </svg>
+  </div>
+</div>

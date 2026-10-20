@@ -1,0 +1,833 @@
+{
+  "nodes": [
+    {
+      "id": "file:frontend/src/app/dashboard/opportunities/page.tsx",
+      "type": "file",
+      "name": "page.tsx",
+      "filePath": "frontend/src/app/dashboard/opportunities/page.tsx",
+      "summary": "Busy Call Recovery opportunities page grouping recovered leads by recovery reason type (busy, missed, etc.), with tab navigation, search, and real-time refresh via notification stream.",
+      "tags": ["component", "api-handler", "dashboard"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:frontend/src/app/dashboard/opportunities/page.tsx:OpportunitiesPageContent",
+      "type": "function",
+      "name": "OpportunitiesPageContent",
+      "filePath": "frontend/src/app/dashboard/opportunities/page.tsx",
+      "lineRange": [20, 128],
+      "summary": "Fetches leads, subscribes to the notification stream for real-time updates, and renders tabbed opportunity lists filtered by recovery reason type and search text.",
+      "tags": ["component", "api-handler", "event-handler"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:frontend/src/app/dashboard/page.tsx",
+      "type": "file",
+      "name": "page.tsx",
+      "filePath": "frontend/src/app/dashboard/page.tsx",
+      "summary": "Main dashboard overview page showing KPI stat cards, a call-volume sparkline, live escalated leads card, recovery analytics card, and a recent calls summary.",
+      "tags": ["component", "api-handler", "entry-point", "dashboard"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:frontend/src/app/dashboard/page.tsx:OverviewPage",
+      "type": "function",
+      "name": "OverviewPage",
+      "filePath": "frontend/src/app/dashboard/page.tsx",
+      "lineRange": [23, 232],
+      "summary": "Fetches analytics summary, calls, and leads in parallel and composes the dashboard layout with stat cards, call history chart, live requests, recovery analytics, and leads list.",
+      "tags": ["component", "api-handler"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:frontend/src/app/dashboard/pricing/page.tsx",
+      "type": "file",
+      "name": "page.tsx",
+      "filePath": "frontend/src/app/dashboard/pricing/page.tsx",
+      "summary": "Pricing management page with a live quote tool (property/date/guests form), smart pricing comparison table showing market Airbnb rates, and negotiation rule list.",
+      "tags": ["component", "api-handler", "dashboard"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:frontend/src/app/dashboard/pricing/page.tsx:PricingPageContent",
+      "type": "function",
+      "name": "PricingPageContent",
+      "filePath": "frontend/src/app/dashboard/pricing/page.tsx",
+      "lineRange": [30, 217],
+      "summary": "Fetches properties and negotiation rules, renders smart pricing table, a quote-request form, and the resulting price breakdown.",
+      "tags": ["component", "api-handler"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:frontend/src/app/dashboard/profile/page.tsx",
+      "type": "file",
+      "name": "page.tsx",
+      "filePath": "frontend/src/app/dashboard/profile/page.tsx",
+      "summary": "Host profile page with editable sections for name/business, avatar/banner photo upload, guest call number, notification email, and WhatsApp toggle.",
+      "tags": ["component", "api-handler", "event-handler", "dashboard"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:frontend/src/app/dashboard/profile/page.tsx:ProfilePage",
+      "type": "function",
+      "name": "ProfilePage",
+      "filePath": "frontend/src/app/dashboard/profile/page.tsx",
+      "lineRange": [19, 356],
+      "summary": "Manages host profile editing: photo/banner upload, name/business save, guest call number, notification email, and WhatsApp preference toggle — all calling api.auth.updateMe.",
+      "tags": ["component", "api-handler", "event-handler"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:frontend/src/app/dashboard/properties/ai-training/page.tsx",
+      "type": "file",
+      "name": "page.tsx",
+      "filePath": "frontend/src/app/dashboard/properties/ai-training/page.tsx",
+      "summary": "AI training personalization page letting hosts set Mira's personality (greeting style, response language, voice gender) and a custom first message for guest calls.",
+      "tags": ["component", "api-handler", "dashboard"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:frontend/src/app/dashboard/properties/ai-training/page.tsx:AiTrainingPage",
+      "type": "function",
+      "name": "AiTrainingPage",
+      "filePath": "frontend/src/app/dashboard/properties/ai-training/page.tsx",
+      "lineRange": [19, 150],
+      "summary": "Renders the AI personalization form (greeting style, language, voice gender, first message) and saves via api.auth.updateMe on submit.",
+      "tags": ["component", "api-handler"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:frontend/src/app/dashboard/properties/page.tsx",
+      "type": "file",
+      "name": "page.tsx",
+      "filePath": "frontend/src/app/dashboard/properties/page.tsx",
+      "summary": "Properties management page supporting create, edit, delete, iCal sync, Airbnb URL import, file import, browser test launch, and per-property FAQ editing.",
+      "tags": ["component", "api-handler", "event-handler", "dashboard"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:frontend/src/app/dashboard/properties/page.tsx:PropertiesPage",
+      "type": "function",
+      "name": "PropertiesPage",
+      "filePath": "frontend/src/app/dashboard/properties/page.tsx",
+      "lineRange": [99, 584],
+      "summary": "Full property CRUD page: lists and searches properties, handles creation/editing forms, Airbnb URL import with async polling, file import, iCal sync, and in-browser voice test launch.",
+      "tags": ["component", "api-handler", "event-handler"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:frontend/src/app/dashboard/settings/page.tsx",
+      "type": "file",
+      "name": "page.tsx",
+      "filePath": "frontend/src/app/dashboard/settings/page.tsx",
+      "summary": "Settings page with tabbed sections for call-ownership configuration, technician management, exophone setup, notification email, and host phone number.",
+      "tags": ["component", "api-handler", "dashboard"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:frontend/src/app/dashboard/settings/page.tsx:SettingsPageContent",
+      "type": "function",
+      "name": "SettingsPageContent",
+      "filePath": "frontend/src/app/dashboard/settings/page.tsx",
+      "lineRange": [38, 274],
+      "summary": "Renders the settings tab layout and handles all form saves for exophone, host phone, notification email, and lead agent browser test launch.",
+      "tags": ["component", "api-handler", "event-handler"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:frontend/src/components/actionable-card.tsx",
+      "type": "file",
+      "name": "actionable-card.tsx",
+      "filePath": "frontend/src/components/actionable-card.tsx",
+      "summary": "Reusable card component for displaying a prioritized actionable item with title, summary, metadata badges, and an optional compact layout — used by LiveRequestsCard.",
+      "tags": ["component", "ui", "service"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:frontend/src/components/actionable-card.tsx:ActionableCard",
+      "type": "function",
+      "name": "ActionableCard",
+      "filePath": "frontend/src/components/actionable-card.tsx",
+      "lineRange": [35, 105],
+      "summary": "Renders a clickable card with priority color coding, title, summary, and metadata badge list; supports compact mode for space-constrained contexts.",
+      "tags": ["component", "ui"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:frontend/src/components/call-summary-card.tsx",
+      "type": "file",
+      "name": "call-summary-card.tsx",
+      "filePath": "frontend/src/components/call-summary-card.tsx",
+      "summary": "Structured display card for an AI-generated call summary, showing booking snapshot, host action items, key details, and missing information fields.",
+      "tags": ["component", "ui", "data-model"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:frontend/src/components/call-summary-card.tsx:CallSummaryCard",
+      "type": "function",
+      "name": "CallSummaryCard",
+      "filePath": "frontend/src/components/call-summary-card.tsx",
+      "lineRange": [32, 115],
+      "summary": "Renders the AI call summary sections: properties discussed, intent, host action list, key details, and missing information — each in a labeled card field.",
+      "tags": ["component", "ui"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:frontend/src/components/calls-table.tsx",
+      "type": "file",
+      "name": "calls-table.tsx",
+      "filePath": "frontend/src/components/calls-table.tsx",
+      "summary": "Shared calls table component with row-click navigation to call detail, status/urgency/type color utilities, duration formatting, and compact mode support.",
+      "tags": ["component", "ui", "utility"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:frontend/src/components/calls-table.tsx:CallsTable",
+      "type": "function",
+      "name": "CallsTable",
+      "filePath": "frontend/src/components/calls-table.tsx",
+      "lineRange": [88, 168],
+      "summary": "Renders a table of calls with status badges, duration, caller identity, property, and started-at timestamp; navigates to call detail on row click.",
+      "tags": ["component", "ui"],
+      "complexity": "moderate"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:frontend/src/app/dashboard/opportunities/page.tsx",
+      "target": "file:frontend/src/components/opportunity-list.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/opportunities/page.tsx",
+      "target": "file:frontend/src/components/ui/badge.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/opportunities/page.tsx",
+      "target": "file:frontend/src/components/ui/card.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/opportunities/page.tsx",
+      "target": "file:frontend/src/hooks/use-notification-stream.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/opportunities/page.tsx",
+      "target": "file:frontend/src/lib/opportunities.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/opportunities/page.tsx",
+      "target": "file:frontend/src/lib/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/opportunities/page.tsx",
+      "target": "function:frontend/src/app/dashboard/opportunities/page.tsx:OpportunitiesPageContent",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/page.tsx",
+      "target": "file:frontend/src/components/live-requests-card.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/page.tsx",
+      "target": "file:frontend/src/components/recovery-analytics-card.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/page.tsx",
+      "target": "file:frontend/src/components/stat-card.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/page.tsx",
+      "target": "file:frontend/src/components/ui/card.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/page.tsx",
+      "target": "file:frontend/src/components/ui/skeleton.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/page.tsx",
+      "target": "file:frontend/src/hooks/use-async.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/page.tsx",
+      "target": "file:frontend/src/lib/api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/page.tsx",
+      "target": "function:frontend/src/app/dashboard/page.tsx:OverviewPage",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/page.tsx",
+      "target": "function:frontend/src/app/dashboard/page.tsx:OverviewPage",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/pricing/page.tsx",
+      "target": "file:frontend/src/components/ui/badge.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/pricing/page.tsx",
+      "target": "file:frontend/src/components/ui/button.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/pricing/page.tsx",
+      "target": "file:frontend/src/components/ui/card.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/pricing/page.tsx",
+      "target": "file:frontend/src/components/ui/input.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/pricing/page.tsx",
+      "target": "file:frontend/src/components/ui/label.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/pricing/page.tsx",
+      "target": "file:frontend/src/components/ui/skeleton.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/pricing/page.tsx",
+      "target": "file:frontend/src/lib/api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/pricing/page.tsx",
+      "target": "file:frontend/src/lib/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/pricing/page.tsx",
+      "target": "file:frontend/src/lib/utils.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/pricing/page.tsx",
+      "target": "function:frontend/src/app/dashboard/pricing/page.tsx:PricingPageContent",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/profile/page.tsx",
+      "target": "file:frontend/src/components/settings/ai-training-section.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/profile/page.tsx",
+      "target": "file:frontend/src/components/ui/avatar.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/profile/page.tsx",
+      "target": "file:frontend/src/components/ui/button.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/profile/page.tsx",
+      "target": "file:frontend/src/components/ui/card.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/profile/page.tsx",
+      "target": "file:frontend/src/components/ui/input.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/profile/page.tsx",
+      "target": "file:frontend/src/components/ui/label.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/profile/page.tsx",
+      "target": "file:frontend/src/components/ui/skeleton.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/profile/page.tsx",
+      "target": "file:frontend/src/components/ui/textarea.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/profile/page.tsx",
+      "target": "file:frontend/src/hooks/use-async.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/profile/page.tsx",
+      "target": "file:frontend/src/lib/api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/profile/page.tsx",
+      "target": "file:frontend/src/lib/auth-context.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/profile/page.tsx",
+      "target": "file:frontend/src/lib/utils.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/profile/page.tsx",
+      "target": "function:frontend/src/app/dashboard/profile/page.tsx:ProfilePage",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/profile/page.tsx",
+      "target": "function:frontend/src/app/dashboard/profile/page.tsx:ProfilePage",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/properties/ai-training/page.tsx",
+      "target": "file:frontend/src/components/settings/ai-training-section.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/properties/ai-training/page.tsx",
+      "target": "file:frontend/src/components/ui/skeleton.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/properties/ai-training/page.tsx",
+      "target": "file:frontend/src/hooks/use-async.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/properties/ai-training/page.tsx",
+      "target": "file:frontend/src/lib/api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/properties/ai-training/page.tsx",
+      "target": "file:frontend/src/lib/auth-context.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/properties/ai-training/page.tsx",
+      "target": "function:frontend/src/app/dashboard/properties/ai-training/page.tsx:AiTrainingPage",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/properties/ai-training/page.tsx",
+      "target": "function:frontend/src/app/dashboard/properties/ai-training/page.tsx:AiTrainingPage",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/properties/page.tsx",
+      "target": "file:frontend/src/components/pending-import-banner.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/properties/page.tsx",
+      "target": "file:frontend/src/components/property-form-fields.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/properties/page.tsx",
+      "target": "file:frontend/src/components/property-form-section.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/properties/page.tsx",
+      "target": "file:frontend/src/components/property-photo-carousel.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/properties/page.tsx",
+      "target": "file:frontend/src/components/property-photos-manager.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/properties/page.tsx",
+      "target": "file:frontend/src/components/ui/button.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/properties/page.tsx",
+      "target": "file:frontend/src/components/ui/card.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/properties/page.tsx",
+      "target": "file:frontend/src/components/ui/input.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/properties/page.tsx",
+      "target": "file:frontend/src/components/ui/label.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/properties/page.tsx",
+      "target": "file:frontend/src/components/ui/skeleton.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/properties/page.tsx",
+      "target": "file:frontend/src/components/ui/textarea.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/properties/page.tsx",
+      "target": "file:frontend/src/hooks/use-async.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/properties/page.tsx",
+      "target": "file:frontend/src/lib/api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/properties/page.tsx",
+      "target": "file:frontend/src/lib/auth-context.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/properties/page.tsx",
+      "target": "file:frontend/src/lib/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/properties/page.tsx",
+      "target": "file:frontend/src/lib/utils.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/properties/page.tsx",
+      "target": "function:frontend/src/app/dashboard/properties/page.tsx:PropertiesPage",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/properties/page.tsx",
+      "target": "function:frontend/src/app/dashboard/properties/page.tsx:PropertiesPage",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/settings/page.tsx",
+      "target": "file:frontend/src/components/settings/call-ownership-card.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/settings/page.tsx",
+      "target": "file:frontend/src/components/settings/technicians-section.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/settings/page.tsx",
+      "target": "file:frontend/src/components/ui/button.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/settings/page.tsx",
+      "target": "file:frontend/src/components/ui/card.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/settings/page.tsx",
+      "target": "file:frontend/src/components/ui/skeleton.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/settings/page.tsx",
+      "target": "file:frontend/src/hooks/use-async.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/settings/page.tsx",
+      "target": "file:frontend/src/lib/api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/settings/page.tsx",
+      "target": "file:frontend/src/lib/auth-context.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/settings/page.tsx",
+      "target": "file:frontend/src/lib/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/app/dashboard/settings/page.tsx",
+      "target": "function:frontend/src/app/dashboard/settings/page.tsx:SettingsPageContent",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:frontend/src/components/actionable-card.tsx",
+      "target": "file:frontend/src/components/ui/card.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/actionable-card.tsx",
+      "target": "file:frontend/src/lib/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/actionable-card.tsx",
+      "target": "function:frontend/src/components/actionable-card.tsx:ActionableCard",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:frontend/src/components/actionable-card.tsx",
+      "target": "function:frontend/src/components/actionable-card.tsx:ActionableCard",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:frontend/src/components/call-summary-card.tsx",
+      "target": "file:frontend/src/components/ui/card.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/call-summary-card.tsx",
+      "target": "file:frontend/src/lib/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/call-summary-card.tsx",
+      "target": "file:frontend/src/lib/utils.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/call-summary-card.tsx",
+      "target": "function:frontend/src/components/call-summary-card.tsx:CallSummaryCard",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:frontend/src/components/call-summary-card.tsx",
+      "target": "function:frontend/src/components/call-summary-card.tsx:CallSummaryCard",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:frontend/src/components/calls-table.tsx",
+      "target": "file:frontend/src/components/status-chip.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/calls-table.tsx",
+      "target": "file:frontend/src/components/ui/badge.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/calls-table.tsx",
+      "target": "file:frontend/src/components/ui/skeleton.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/calls-table.tsx",
+      "target": "file:frontend/src/lib/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/calls-table.tsx",
+      "target": "file:frontend/src/lib/utils.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:frontend/src/components/calls-table.tsx",
+      "target": "function:frontend/src/components/calls-table.tsx:CallsTable",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:frontend/src/components/calls-table.tsx",
+      "target": "function:frontend/src/components/calls-table.tsx:CallsTable",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    }
+  ]
+}

@@ -1,0 +1,107 @@
+services:
+  - type: web
+    name: mira-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      # Pointed at Neon (external managed Postgres) instead of a Render
+      # database -- Render's free Postgres expires after 90 days. Set the
+      # Neon connection string manually in the Render dashboard; include
+      # ?sslmode=require, config.py rewrites it for asyncpg automatically.
+      - key: DATABASE_URL
+        sync: false
+      # Render has no Blueprint property for a service's public HTTPS URL
+      # (only its private-network hostname, which a browser can't reach) --
+      # fill these in manually with the real https://*.onrender.com URLs
+      # after the first deploy. See deploy steps.
+      - key: FRONTEND_BASE_URL
+        sync: false
+      - key: BACKEND_BASE_URL
+        sync: false
+      # Clerk owns auth entirely -- set these manually in the Render
+      # dashboard from the Clerk instance's API Keys page.
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: CLERK_PUBLISHABLE_KEY
+        sync: false
+      - key: CLERK_DEV_ORG_ID
+        sync: false
+      - key: LLM_PROVIDER
+        value: groq
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
+      # Fallback chain _build_llm() (app/voice/pipeline.py) walks in order,
+      # skipping any model app/main.py's periodic health check has marked
+      # down (e.g. a 429 from that model's own rate limit). JSON array
+      # string -- pydantic-settings parses list[str] fields from env vars
+      # this way. Falls back further to OpenRouter only if every model here
+      # is down.
+      - key: GROQ_MODELS
+        value: '["openai/gpt-oss-120b", "llama-3.1-8b-instant", "openai/gpt-oss-20b"]'
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ANTHROPIC_MODEL
+        value: claude-sonnet-4-6
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_MODEL
+        value: openai/gpt-oss-120b
+      - key: SARVAM_API_KEY
+        sync: false
+      - key: SARVAM_STT_MODEL
+        value: saaras:v3
+      - key: SARVAM_TTS_MODEL
+        value: bulbul:v3
+      - key: SARVAM_TTS_SPEAKER
+        value: roopa
+      - key: EXOTEL_SID
+        sync: false
+      - key: EXOTEL_API_KEY
+        sync: false
+      - key: EXOTEL_API_TOKEN
+        sync: false
+      - key: EXOTEL_SUBDOMAIN
+        value: api.exotel.com
+      - key: EXOTEL_WEBHOOK_TOKEN
+        generateValue: true
+      - key: EXOTEL_VIRTUAL_NUMBER
+        sync: false
+      # Twilio credentials (TWILIO_ACCOUNT_SID etc.) are set manually in the
+      # Render dashboard, not blueprint-managed here. This kill switch IS
+      # blueprint-managed since it's a plain boolean with a safe default --
+      # flip it in the Render dashboard's env var editor (still works even
+      # though it's declared here) when Twilio is degraded, no redeploy
+      # needed, just a service restart. See config.py's twilio_enabled.
+      - key: TWILIO_ENABLED
+        value: "true"
+
+  - type: web
+    name: mira-frontend
+    runtime: node
+    plan: free
+    buildCommand: cd frontend && npm install && npm run build
+    startCommand: cd frontend && npm run start -- -p $PORT
+    envVars:
+      # Must be the backend's public URL + /api/v1, e.g.
+      # https://mira-backend.onrender.com/api/v1 -- fill in after first
+      # deploy. NEXT_PUBLIC_* vars are baked in at build time, so changing
+      # this requires a redeploy (Render does this automatically on save).
+      - key: NEXT_PUBLIC_API_BASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+        sync: false
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: NEXT_PUBLIC_CLERK_SIGN_IN_URL
+        value: /login
+      - key: NEXT_PUBLIC_CLERK_SIGN_UP_URL
+        value: /sign-up
+      - key: NEXT_PUBLIC_CLERK_DEV_ORG_ID
+        sync: false

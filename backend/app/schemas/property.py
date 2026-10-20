@@ -1,0 +1,314 @@
+import ipaddress
+import re
+import uuid
+from datetime import datetime
+from typing import Literal
+from urllib.parse import urlsplit
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+
+def _validate_ical_url(value: str | None) -> str | None:
+    """Blocks the obvious SSRF case: a host pointing ical_url at an internal/
+    cloud-metadata address. fetch_ical (app/integrations/ical_client.py) has
+    no destination checking of its own, and is re-run on every property
+    automatically by the unconditional sync cron -- reject here, once, at
+    the point the host actually sets the value, rather than at fetch time."""
+    if not value:
+        return value
+    parts = urlsplit(value)
+    if parts.scheme not in ("http", "https"):
+        raise ValueError("ical_url must be an http:// or https:// URL")
+    host = parts.hostname
+    if not host:
+        raise ValueError("ical_url must include a host")
+    if host == "localhost" or host.endswith(".local"):
+        raise ValueError("ical_url may not point to a local/internal host")
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        ip = None
+    if ip is not None and (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast):
+        raise ValueError("ical_url may not point to a private/internal address")
+    return value
+
+
+class FAQItem(BaseModel):
+    question: str
+    answer: str
+
+
+class SeasonalNote(BaseModel):
+    note: str
+    start_month: int = Field(ge=1, le=12)
+    end_month: int = Field(ge=1, le=12)
+
+
+class LandmarkItem(BaseModel):
+    name: str
+    distance_minutes: int = Field(ge=0)
+    mode: Literal["walk", "drive"] | None = None
+
+
+class PropertyCreate(BaseModel):
+    name: str
+    city: str | None = None
+    exophone: str | None = None
+    twilio_number: str | None = None
+    base_price: float = Field(ge=0)
+    ical_url: str | None = None
+    usp: str | None = Field(default=None, max_length=280)
+    house_rules: str | None = None
+    neighborhood_info: str | None = None
+    faq: list[FAQItem] = Field(default_factory=list)
+    amenities: list[str] = Field(default_factory=list)
+    photos: list[str] = Field(default_factory=list)
+    seasonal_notes: list[SeasonalNote] = Field(default_factory=list)
+    check_in_time: str = "14:00"
+    check_out_time: str = "11:00"
+    max_guests: int = 4
+    minimum_nights: int = Field(default=1, ge=1)
+    saturday_minimum_stay_enabled: bool = False
+
+    @field_validator("exophone", "twilio_number")
+    @classmethod
+    def _blank_exophone_is_none(cls, value: str | None) -> str | None:
+        # exophone/twilio_number are both unique in the DB -- an empty
+        # string is a real value there (and would collide across
+        # properties), so treat "not set" as None rather than "".
+        return value or None
+
+    @field_validator("ical_url")
+    @classmethod
+    def _check_ical_url(cls, value: str | None) -> str | None:
+        return _validate_ical_url(value)
+
+
+_CALL_HANDLING_MODES = {"MIRA", "HOST", "SCHEDULED"}
+_HH_MM_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+
+
+class PropertyUpdate(BaseModel):
+    name: str | None = None
+    display_name: str | None = Field(default=None, max_length=120)
+    spoken_name: str | None = Field(default=None, max_length=60)
+    property_type: str | None = Field(default=None, max_length=60)
+    property_style: str | None = Field(default=None, max_length=80)
+    brand: str | None = Field(default=None, max_length=80)
+    bedroom_count: int | None = Field(default=None, ge=0)
+    city: str | None = None
+    exophone: str | None = None
+    twilio_number: str | None = None
+    base_price: float | None = None
+    ical_url: str | None = None
+    usp: str | None = Field(default=None, max_length=280)
+    house_rules: str | None = None
+    neighborhood_info: str | None = None
+    landmarks: list[LandmarkItem] | None = None
+    faq: list[FAQItem] | None = None
+    amenities: list[str] | None = None
+    photos: list[str] | None = None
+    seasonal_notes: list[SeasonalNote] | None = None
+    check_in_time: str | None = None
+    check_out_time: str | None = None
+    max_guests: int | None = None
+    minimum_nights: int | None = Field(default=None, ge=1)
+    saturday_minimum_stay_enabled: bool | None = None
+    exact_airbnb_pricing: bool | None = None
+    is_premium: bool | None = None
+    call_handling_mode: str | None = None
+    call_handling_schedule_start: str | None = None
+    call_handling_schedule_end: str | None = None
+    timezone: str | None = None
+
+    @field_validator("exophone", "twilio_number")
+    @classmethod
+    def _blank_exophone_is_none(cls, value: str | None) -> str | None:
+        return value or None
+
+    @field_validator("ical_url")
+    @classmethod
+    def _check_ical_url(cls, value: str | None) -> str | None:
+        return _validate_ical_url(value)
+
+    @field_validator("call_handling_mode")
+    @classmethod
+    def _check_call_handling_mode(cls, value: str | None) -> str | None:
+        # Deliberately just membership -- no schedule ownership logic, no
+        # start/end comparison, no overnight-window rejection belongs at
+        # this boundary. resolve_effective_call_owner (a later phase) is
+        # where "22:00 -> 06:00" gets interpreted; here it's just a string.
+        if value is not None and value not in _CALL_HANDLING_MODES:
+            raise ValueError(f"call_handling_mode must be one of {sorted(_CALL_HANDLING_MODES)}")
+        return value
+
+    @field_validator("call_handling_schedule_start", "call_handling_schedule_end")
+    @classmethod
+    def _check_call_handling_schedule_format(cls, value: str | None) -> str | None:
+        # Format only (HH:MM, 00:00-23:59) -- same "just a string" scope as
+        # the mode check above. Overnight windows (start > end) are valid
+        # values, not rejected here; a later phase's resolver interprets
+        # the wraparound. Mirrors check_in_time/check_out_time's own lack
+        # of stricter validation, except this field additionally gates
+        # SCHEDULED mode's correctness (see _check_schedule_required_for_
+        # scheduled_mode below), so a garbage string here would silently
+        # break that mode -- worth the extra format check that
+        # check_in_time/check_out_time don't bother with.
+        if value is not None and not _HH_MM_RE.match(value):
+            raise ValueError("must be in HH:MM 24-hour format, e.g. '09:00' or '22:00'")
+        return value
+
+    @field_validator("timezone")
+    @classmethod
+    def _check_timezone(cls, value: str | None) -> str | None:
+        # Real IANA-identifier check via the stdlib zoneinfo database
+        # (already used elsewhere in this codebase, see
+        # app/prompts/system_prompt.py's IST = ZoneInfo("Asia/Kolkata") --
+        # no new dependency). User.timezone (app/schemas/user.py) has no
+        # equivalent check today and is left as-is here, out of this
+        # phase's scope -- but a garbage value in THIS new column would
+        # silently break the future resolve_effective_call_owner the
+        # moment it tries ZoneInfo(property.timezone), with no chance to
+        # catch it before then. Worth the asymmetry versus User.timezone
+        # for a field that gates a not-yet-built but already-planned
+        # comparison, rather than leaving it to fail loudly (or silently
+        # fall back) deep inside a live call much later.
+        if value is not None:
+            try:
+                ZoneInfo(value)
+            except ZoneInfoNotFoundError:
+                raise ValueError(f"'{value}' is not a valid IANA timezone identifier, e.g. 'Asia/Kolkata'")
+        return value
+
+    @model_validator(mode="after")
+    def _check_schedule_required_for_scheduled_mode(self) -> "PropertyUpdate":
+        # Cross-field: SCHEDULED mode is meaningless without both bounds of
+        # the window it's supposed to switch on -- a property saved as
+        # SCHEDULED with one or both times still null has no way to
+        # actually be evaluated later (resolve_effective_call_owner would
+        # have nothing to compare against). Only enforced when THIS
+        # request is setting mode to SCHEDULED, and requires THIS same
+        # request to also supply both start and end -- a request that only
+        # touches unrelated fields never reaches here with
+        # call_handling_mode populated, so it can't retroactively
+        # invalidate an already-SCHEDULED property. This deliberately does
+        # NOT try to check "does the property already have a schedule from
+        # an earlier request" -- that needs the persisted row, not just
+        # this request's payload, so a host switching TO SCHEDULED must
+        # always (re-)supply both times in the same request, even if a
+        # stale schedule happens to already be sitting on the row from a
+        # prior HOST/MIRA-mode edit. Stricter than strictly necessary, but
+        # unambiguous and requires no DB round-trip inside a pure schema
+        # validator.
+        if self.call_handling_mode == "SCHEDULED":
+            if self.call_handling_schedule_start is None or self.call_handling_schedule_end is None:
+                raise ValueError(
+                    "call_handling_schedule_start and call_handling_schedule_end are required "
+                    "when call_handling_mode is SCHEDULED"
+                )
+        return self
+
+
+class PropertyGalleryOut(BaseModel):
+    """Unauthenticated, minimal view for the public guest-facing photo
+    gallery page -- only fields safe to expose with no login (see the
+    send_photos voice tool in app/services/tool_handlers.py, which is the
+    only thing that hands this URL out)."""
+
+    id: uuid.UUID
+    name: str
+    city: str | None
+    photos: list[str]
+
+
+class PropertyOut(BaseModel):
+    id: uuid.UUID
+    user_id: uuid.UUID
+    name: str
+    raw_name: str | None
+    display_name: str | None
+    spoken_name: str | None
+    property_type: str | None
+    property_style: str | None
+    brand: str | None
+    bedroom_count: int | None
+    city: str | None
+    exophone: str | None
+    twilio_number: str | None
+    base_price: float
+    ical_url: str | None
+    usp: str | None
+    house_rules: str | None
+    neighborhood_info: str | None
+    landmarks: list[LandmarkItem]
+    faq: list[dict]
+    amenities: list[str]
+    amenity_tags: list[str]
+    photos: list[str]
+    seasonal_notes: list[SeasonalNote]
+    check_in_time: str
+    check_out_time: str
+    max_guests: int
+    minimum_nights: int
+    saturday_minimum_stay_enabled: bool
+    airbnb_listing_id: str | None
+    smart_price_estimate: float | None
+    smart_price_sample_size: int
+    smart_price_updated_at: datetime | None
+    exact_airbnb_pricing: bool
+    is_premium: bool
+    host_transfer_phone: str | None
+    call_handling_mode: str
+    call_handling_schedule_start: str | None
+    call_handling_schedule_end: str | None
+    timezone: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class PropertyImportResult(BaseModel):
+    filename: str
+    status: Literal["created", "updated", "error"]
+    property: PropertyOut | None = None
+    faq_entries_created: int = 0
+    error: str | None = None
+
+
+class TransferNumberGroup(BaseModel):
+    """One host transfer number and the properties it covers."""
+
+    phone: str = Field(min_length=1, max_length=32)
+    property_ids: list[uuid.UUID] = Field(min_length=1)
+
+    @field_validator("phone")
+    @classmethod
+    def _dialable(cls, value: str) -> str:
+        value = value.strip()
+        # Same >= 10-digit rule the live transfer itself applies
+        # (tool_handlers._has_usable_host_phone).
+        if sum(ch.isdigit() for ch in value) < 10:
+            raise ValueError("enter a full phone number, e.g. +919812345678")
+        return value
+
+
+class TransferNumbersUpdate(BaseModel):
+    """The complete set of groups: properties not listed get no number of
+    their own (they use the account number)."""
+
+    groups: list[TransferNumberGroup] = Field(max_length=100)
+
+
+class AirbnbUrlImportRequest(BaseModel):
+    urls: list[str] = Field(min_length=1, max_length=50)
+
+
+class AirbnbUrlImportTriggered(BaseModel):
+    snapshot_id: str
+
+
+class AirbnbUrlImportStatus(BaseModel):
+    status: Literal["running", "ready", "failed"]
+    results: list[PropertyImportResult] = Field(default_factory=list)
+    error: str | None = None

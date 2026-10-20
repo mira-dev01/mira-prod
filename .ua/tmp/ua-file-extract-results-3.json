@@ -1,0 +1,6938 @@
+{
+  "scriptCompleted": true,
+  "filesAnalyzed": 27,
+  "filesSkipped": [],
+  "analysisOutcomes": {
+    "structure": {
+      "succeeded": 27,
+      "failed": 0
+    },
+    "callGraph": {
+      "succeeded": 27,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "results": [
+    {
+      "path": "backend/app/__init__.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 1,
+      "nonEmptyLines": 0,
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "backend/app/schemas/call_classification.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 31,
+      "nonEmptyLines": 25,
+      "classes": [
+        {
+          "name": "ClassificationResult",
+          "startLine": 28,
+          "endLine": 31,
+          "methods": [],
+          "properties": [
+            "call_type",
+            "confidence",
+            "reason"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "ClassificationResult",
+          "line": 28,
+          "isDefault": false
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "backend/app/services/call_classification_service.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 168,
+      "nonEmptyLines": 133,
+      "functions": [
+        {
+          "name": "_pre_check",
+          "startLine": 69,
+          "endLine": 79,
+          "params": [
+            "transcript",
+            "duration_seconds"
+          ]
+        },
+        {
+          "name": "_parse_classification_response",
+          "startLine": 82,
+          "endLine": 103,
+          "params": [
+            "raw_text"
+          ]
+        },
+        {
+          "name": "_call_groq",
+          "startLine": 106,
+          "endLine": 115,
+          "params": [
+            "prompt"
+          ]
+        },
+        {
+          "name": "_call_anthropic",
+          "startLine": 118,
+          "endLine": 127,
+          "params": [
+            "prompt"
+          ]
+        },
+        {
+          "name": "_call_openrouter",
+          "startLine": 130,
+          "endLine": 138,
+          "params": [
+            "prompt"
+          ]
+        },
+        {
+          "name": "_call_llm_with_fallback",
+          "startLine": 141,
+          "endLine": 150,
+          "params": [
+            "transcript"
+          ]
+        },
+        {
+          "name": "classify_call",
+          "startLine": 153,
+          "endLine": 168,
+          "params": [
+            "transcript",
+            "duration_seconds"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "CallClassificationError",
+          "startLine": 65,
+          "endLine": 66,
+          "methods": [],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "CallClassificationError",
+          "line": 65,
+          "isDefault": false
+        },
+        {
+          "name": "_pre_check",
+          "line": 69,
+          "isDefault": false
+        },
+        {
+          "name": "_parse_classification_response",
+          "line": 82,
+          "isDefault": false
+        },
+        {
+          "name": "_call_groq",
+          "line": 106,
+          "isDefault": false
+        },
+        {
+          "name": "_call_anthropic",
+          "line": 118,
+          "isDefault": false
+        },
+        {
+          "name": "_call_openrouter",
+          "line": 130,
+          "isDefault": false
+        },
+        {
+          "name": "_call_llm_with_fallback",
+          "line": 141,
+          "isDefault": false
+        },
+        {
+          "name": "classify_call",
+          "line": 153,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "_pre_check",
+          "callee": "(transcript or \"\").strip",
+          "lineNumber": 73
+        },
+        {
+          "caller": "_pre_check",
+          "callee": "ClassificationResult",
+          "lineNumber": 74
+        },
+        {
+          "caller": "_pre_check",
+          "callee": "ClassificationResult",
+          "lineNumber": 76
+        },
+        {
+          "caller": "_parse_classification_response",
+          "callee": "json.loads",
+          "lineNumber": 84
+        },
+        {
+          "caller": "_parse_classification_response",
+          "callee": "CallClassificationError",
+          "lineNumber": 86
+        },
+        {
+          "caller": "_parse_classification_response",
+          "callee": "parsed.get",
+          "lineNumber": 88
+        },
+        {
+          "caller": "_parse_classification_response",
+          "callee": "isinstance",
+          "lineNumber": 89
+        },
+        {
+          "caller": "_parse_classification_response",
+          "callee": "CallClassificationError",
+          "lineNumber": 90
+        },
+        {
+          "caller": "_parse_classification_response",
+          "callee": "call_type.strip().upper",
+          "lineNumber": 91
+        },
+        {
+          "caller": "_parse_classification_response",
+          "callee": "call_type.strip",
+          "lineNumber": 91
+        },
+        {
+          "caller": "_parse_classification_response",
+          "callee": "CallClassificationError",
+          "lineNumber": 93
+        },
+        {
+          "caller": "_parse_classification_response",
+          "callee": "parsed.get",
+          "lineNumber": 95
+        },
+        {
+          "caller": "_parse_classification_response",
+          "callee": "isinstance",
+          "lineNumber": 96
+        },
+        {
+          "caller": "_parse_classification_response",
+          "callee": "max",
+          "lineNumber": 98
+        },
+        {
+          "caller": "_parse_classification_response",
+          "callee": "min",
+          "lineNumber": 98
+        },
+        {
+          "caller": "_parse_classification_response",
+          "callee": "float",
+          "lineNumber": 98
+        },
+        {
+          "caller": "_parse_classification_response",
+          "callee": "parsed.get",
+          "lineNumber": 100
+        },
+        {
+          "caller": "_parse_classification_response",
+          "callee": "reason.strip",
+          "lineNumber": 101
+        },
+        {
+          "caller": "_parse_classification_response",
+          "callee": "isinstance",
+          "lineNumber": 101
+        },
+        {
+          "caller": "_parse_classification_response",
+          "callee": "reason.strip",
+          "lineNumber": 101
+        },
+        {
+          "caller": "_parse_classification_response",
+          "callee": "ClassificationResult",
+          "lineNumber": 103
+        },
+        {
+          "caller": "_call_groq",
+          "callee": "AsyncGroq",
+          "lineNumber": 109
+        },
+        {
+          "caller": "_call_groq",
+          "callee": "client.chat.completions.create",
+          "lineNumber": 110
+        },
+        {
+          "caller": "_call_anthropic",
+          "callee": "AsyncAnthropic",
+          "lineNumber": 121
+        },
+        {
+          "caller": "_call_anthropic",
+          "callee": "client.messages.create",
+          "lineNumber": 122
+        },
+        {
+          "caller": "_call_anthropic",
+          "callee": "\"\".join",
+          "lineNumber": 127
+        },
+        {
+          "caller": "_call_openrouter",
+          "callee": "AsyncOpenAI",
+          "lineNumber": 133
+        },
+        {
+          "caller": "_call_openrouter",
+          "callee": "client.chat.completions.create",
+          "lineNumber": 134
+        },
+        {
+          "caller": "_call_llm_with_fallback",
+          "callee": "_call_anthropic",
+          "lineNumber": 145
+        },
+        {
+          "caller": "_call_llm_with_fallback",
+          "callee": "_call_groq",
+          "lineNumber": 147
+        },
+        {
+          "caller": "_call_llm_with_fallback",
+          "callee": "_call_openrouter",
+          "lineNumber": 149
+        },
+        {
+          "caller": "_call_llm_with_fallback",
+          "callee": "CallClassificationError",
+          "lineNumber": 150
+        },
+        {
+          "caller": "classify_call",
+          "callee": "_pre_check",
+          "lineNumber": 159
+        },
+        {
+          "caller": "classify_call",
+          "callee": "asyncio.wait_for",
+          "lineNumber": 164
+        },
+        {
+          "caller": "classify_call",
+          "callee": "_call_llm_with_fallback",
+          "lineNumber": 164
+        },
+        {
+          "caller": "classify_call",
+          "callee": "_parse_classification_response",
+          "lineNumber": 165
+        },
+        {
+          "caller": "classify_call",
+          "callee": "logger.exception",
+          "lineNumber": 167
+        },
+        {
+          "caller": "classify_call",
+          "callee": "ClassificationResult",
+          "lineNumber": 168
+        }
+      ],
+      "metrics": {
+        "importCount": 2,
+        "exportCount": 8,
+        "functionCount": 7,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "backend/app/voice/__init__.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 1,
+      "nonEmptyLines": 0,
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 0,
+        "functionCount": 0,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "backend/app/voice/conversation_quality.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 83,
+      "nonEmptyLines": 69,
+      "classes": [
+        {
+          "name": "ValidationResult",
+          "startLine": 37,
+          "endLine": 57,
+          "methods": [
+            "is_failure"
+          ],
+          "properties": [
+            "rule",
+            "severity",
+            "confidence",
+            "metadata",
+            "processing_time_ms",
+            "turn_index"
+          ]
+        },
+        {
+          "name": "ConversationQuality",
+          "startLine": 61,
+          "endLine": 83,
+          "methods": [
+            "record",
+            "clear_pending_style_correction"
+          ],
+          "properties": [
+            "validations",
+            "pending_style_correction"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "ValidationResult",
+          "line": 36,
+          "isDefault": false
+        },
+        {
+          "name": "ConversationQuality",
+          "line": 60,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "record",
+          "callee": "self.validations.append",
+          "lineNumber": 78
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 2,
+        "functionCount": 0,
+        "classCount": 2
+      }
+    },
+    {
+      "path": "backend/app/voice/conversation_state.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 413,
+      "nonEmptyLines": 370,
+      "classes": [
+        {
+          "name": "Salience",
+          "startLine": 101,
+          "endLine": 121,
+          "methods": [
+            "score"
+          ],
+          "properties": [
+            "count",
+            "last_turn"
+          ]
+        },
+        {
+          "name": "ConversationState",
+          "startLine": 138,
+          "endLine": 413,
+          "methods": [
+            "touch_attention",
+            "attention_score",
+            "advance_turn",
+            "lock_property",
+            "set_slot",
+            "record_recommendations",
+            "resolve_cheaper_budget",
+            "resolve_larger_num_guests",
+            "record_quoted_price",
+            "mark_checking_availability",
+            "mark_negotiating",
+            "mark_escalated",
+            "mark_farewell_pending",
+            "mark_reopened",
+            "mark_closed",
+            "_recompute_goal"
+          ],
+          "properties": [
+            "selected_property_id",
+            "selected_property_name",
+            "slots",
+            "recommendations_shown",
+            "guest_accepted_property_id",
+            "escalated",
+            "closing_state",
+            "conversation_goal",
+            "current_spoken_language",
+            "explicit_language_preference",
+            "conversation_style",
+            "quoted_price",
+            "turn_index",
+            "attention"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "Salience",
+          "line": 100,
+          "isDefault": false
+        },
+        {
+          "name": "ConversationState",
+          "line": 137,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "score",
+          "callee": "max",
+          "lineNumber": 116
+        },
+        {
+          "caller": "touch_attention",
+          "callee": "self.attention.setdefault",
+          "lineNumber": 244
+        },
+        {
+          "caller": "touch_attention",
+          "callee": "Salience",
+          "lineNumber": 244
+        },
+        {
+          "caller": "attention_score",
+          "callee": "self.attention.get",
+          "lineNumber": 249
+        },
+        {
+          "caller": "attention_score",
+          "callee": "entry.score",
+          "lineNumber": 252
+        },
+        {
+          "caller": "lock_property",
+          "callee": "any",
+          "lineNumber": 266
+        },
+        {
+          "caller": "lock_property",
+          "callee": "str",
+          "lineNumber": 266
+        },
+        {
+          "caller": "lock_property",
+          "callee": "o.get",
+          "lineNumber": 266
+        },
+        {
+          "caller": "lock_property",
+          "callee": "str",
+          "lineNumber": 266
+        },
+        {
+          "caller": "lock_property",
+          "callee": "self._recompute_goal",
+          "lineNumber": 268
+        },
+        {
+          "caller": "set_slot",
+          "callee": "self.slots.get",
+          "lineNumber": 286
+        },
+        {
+          "caller": "set_slot",
+          "callee": "self.touch_attention",
+          "lineNumber": 289
+        },
+        {
+          "caller": "set_slot",
+          "callee": "self._recompute_goal",
+          "lineNumber": 290
+        },
+        {
+          "caller": "record_recommendations",
+          "callee": "self._recompute_goal",
+          "lineNumber": 294
+        },
+        {
+          "caller": "resolve_cheaper_budget",
+          "callee": "o.get",
+          "lineNumber": 319
+        },
+        {
+          "caller": "resolve_cheaper_budget",
+          "callee": "min",
+          "lineNumber": 322
+        },
+        {
+          "caller": "resolve_larger_num_guests",
+          "callee": "o.get",
+          "lineNumber": 333
+        },
+        {
+          "caller": "resolve_larger_num_guests",
+          "callee": "max",
+          "lineNumber": 336
+        },
+        {
+          "caller": "mark_reopened",
+          "callee": "self._recompute_goal",
+          "lineNumber": 380
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 2,
+        "functionCount": 0,
+        "classCount": 2
+      }
+    },
+    {
+      "path": "backend/app/voice/conversation_style.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 416,
+      "nonEmptyLines": 356,
+      "functions": [
+        {
+          "name": "_default_style",
+          "startLine": 116,
+          "endLine": 128,
+          "params": []
+        },
+        {
+          "name": "_weight_for_index",
+          "startLine": 157,
+          "endLine": 160,
+          "params": [
+            "i"
+          ]
+        },
+        {
+          "name": "_weighted_english_ratio",
+          "startLine": 163,
+          "endLine": 175,
+          "params": [
+            "history"
+          ]
+        },
+        {
+          "name": "_weighted_devanagari_ratio",
+          "startLine": 178,
+          "endLine": 187,
+          "params": [
+            "history"
+          ]
+        },
+        {
+          "name": "_language_family_from_score",
+          "startLine": 197,
+          "endLine": 209,
+          "params": [
+            "weighted_english",
+            "has_recent_hinglish_token"
+          ]
+        },
+        {
+          "name": "_score_clearly_supports",
+          "startLine": 212,
+          "endLine": 227,
+          "params": [
+            "weighted_english",
+            "candidate"
+          ]
+        },
+        {
+          "name": "_consecutive_turns_agreeing_with",
+          "startLine": 318,
+          "endLine": 334,
+          "params": [
+            "history",
+            "language"
+          ]
+        },
+        {
+          "name": "render_style_block",
+          "startLine": 337,
+          "endLine": 370,
+          "params": [
+            "style",
+            "emphasized"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "TurnSignal",
+          "startLine": 82,
+          "endLine": 90,
+          "methods": [],
+          "properties": [
+            "english_ratio",
+            "devanagari_ratio",
+            "has_hinglish_token"
+          ]
+        },
+        {
+          "name": "ConversationStyle",
+          "startLine": 94,
+          "endLine": 113,
+          "methods": [],
+          "properties": [
+            "language",
+            "script",
+            "english_ratio",
+            "politeness",
+            "tone",
+            "hospitality_style",
+            "confidence",
+            "previous_style",
+            "last_language_switch_turn",
+            "turn_index"
+          ]
+        },
+        {
+          "name": "ConversationAnalyzer",
+          "startLine": 131,
+          "endLine": 145,
+          "methods": [
+            "analyze_turn"
+          ],
+          "properties": []
+        },
+        {
+          "name": "StyleEngine",
+          "startLine": 230,
+          "endLine": 315,
+          "methods": [
+            "__init__",
+            "update"
+          ],
+          "properties": []
+        },
+        {
+          "name": "ConversationStyleProcessor",
+          "startLine": 373,
+          "endLine": 416,
+          "methods": [
+            "__init__",
+            "process_frame"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "TurnSignal",
+          "line": 81,
+          "isDefault": false
+        },
+        {
+          "name": "ConversationStyle",
+          "line": 93,
+          "isDefault": false
+        },
+        {
+          "name": "_default_style",
+          "line": 116,
+          "isDefault": false
+        },
+        {
+          "name": "ConversationAnalyzer",
+          "line": 131,
+          "isDefault": false
+        },
+        {
+          "name": "_weight_for_index",
+          "line": 157,
+          "isDefault": false
+        },
+        {
+          "name": "_weighted_english_ratio",
+          "line": 163,
+          "isDefault": false
+        },
+        {
+          "name": "_weighted_devanagari_ratio",
+          "line": 178,
+          "isDefault": false
+        },
+        {
+          "name": "_language_family_from_score",
+          "line": 197,
+          "isDefault": false
+        },
+        {
+          "name": "_score_clearly_supports",
+          "line": 212,
+          "isDefault": false
+        },
+        {
+          "name": "StyleEngine",
+          "line": 230,
+          "isDefault": false
+        },
+        {
+          "name": "_consecutive_turns_agreeing_with",
+          "line": 318,
+          "isDefault": false
+        },
+        {
+          "name": "render_style_block",
+          "line": 337,
+          "isDefault": false
+        },
+        {
+          "name": "ConversationStyleProcessor",
+          "line": 373,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "_default_style",
+          "callee": "ConversationStyle",
+          "lineNumber": 117
+        },
+        {
+          "caller": "analyze_turn",
+          "callee": "devanagari_ratio",
+          "lineNumber": 140
+        },
+        {
+          "caller": "analyze_turn",
+          "callee": "TurnSignal",
+          "lineNumber": 141
+        },
+        {
+          "caller": "analyze_turn",
+          "callee": "english_word_ratio",
+          "lineNumber": 142
+        },
+        {
+          "caller": "analyze_turn",
+          "callee": "has_hinglish_token",
+          "lineNumber": 144
+        },
+        {
+          "caller": "_weight_for_index",
+          "callee": "len",
+          "lineNumber": 158
+        },
+        {
+          "caller": "_weighted_english_ratio",
+          "callee": "enumerate",
+          "lineNumber": 171
+        },
+        {
+          "caller": "_weighted_english_ratio",
+          "callee": "reversed",
+          "lineNumber": 171
+        },
+        {
+          "caller": "_weighted_english_ratio",
+          "callee": "_weight_for_index",
+          "lineNumber": 172
+        },
+        {
+          "caller": "_weighted_devanagari_ratio",
+          "callee": "enumerate",
+          "lineNumber": 183
+        },
+        {
+          "caller": "_weighted_devanagari_ratio",
+          "callee": "reversed",
+          "lineNumber": 183
+        },
+        {
+          "caller": "_weighted_devanagari_ratio",
+          "callee": "_weight_for_index",
+          "lineNumber": 184
+        },
+        {
+          "caller": "update",
+          "callee": "_weighted_english_ratio",
+          "lineNumber": 261
+        },
+        {
+          "caller": "update",
+          "callee": "_weighted_devanagari_ratio",
+          "lineNumber": 262
+        },
+        {
+          "caller": "update",
+          "callee": "any",
+          "lineNumber": 263
+        },
+        {
+          "caller": "update",
+          "callee": "_language_family_from_score",
+          "lineNumber": 265
+        },
+        {
+          "caller": "update",
+          "callee": "min",
+          "lineNumber": 280
+        },
+        {
+          "caller": "update",
+          "callee": "_score_clearly_supports",
+          "lineNumber": 287
+        },
+        {
+          "caller": "update",
+          "callee": "_consecutive_turns_agreeing_with",
+          "lineNumber": 288
+        },
+        {
+          "caller": "update",
+          "callee": "max",
+          "lineNumber": 299
+        },
+        {
+          "caller": "update",
+          "callee": "ConversationStyle",
+          "lineNumber": 303
+        },
+        {
+          "caller": "update",
+          "callee": "round",
+          "lineNumber": 306
+        },
+        {
+          "caller": "update",
+          "callee": "round",
+          "lineNumber": 310
+        },
+        {
+          "caller": "_consecutive_turns_agreeing_with",
+          "callee": "reversed",
+          "lineNumber": 326
+        },
+        {
+          "caller": "_consecutive_turns_agreeing_with",
+          "callee": "_language_family_from_score",
+          "lineNumber": 327
+        },
+        {
+          "caller": "render_style_block",
+          "callee": "round",
+          "lineNumber": 354
+        },
+        {
+          "caller": "__init__",
+          "callee": "super().__init__",
+          "lineNumber": 388
+        },
+        {
+          "caller": "__init__",
+          "callee": "super",
+          "lineNumber": 388
+        },
+        {
+          "caller": "__init__",
+          "callee": "StyleEngine",
+          "lineNumber": 390
+        },
+        {
+          "caller": "process_frame",
+          "callee": "super().process_frame",
+          "lineNumber": 394
+        },
+        {
+          "caller": "process_frame",
+          "callee": "super",
+          "lineNumber": 394
+        },
+        {
+          "caller": "process_frame",
+          "callee": "isinstance",
+          "lineNumber": 396
+        },
+        {
+          "caller": "process_frame",
+          "callee": "ConversationAnalyzer.analyze_turn",
+          "lineNumber": 398
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self._engine.update",
+          "lineNumber": 399
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self._conversation_state.advance_turn",
+          "lineNumber": 414
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 416
+        }
+      ],
+      "metrics": {
+        "importCount": 2,
+        "exportCount": 13,
+        "functionCount": 8,
+        "classCount": 5
+      }
+    },
+    {
+      "path": "backend/app/voice/end_call_reliability_guard.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 115,
+      "nonEmptyLines": 91,
+      "functions": [
+        {
+          "name": "_normalize",
+          "startLine": 63,
+          "endLine": 64,
+          "params": [
+            "text"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "EndCallReliabilityGuardProcessor",
+          "startLine": 70,
+          "endLine": 115,
+          "methods": [
+            "__init__",
+            "process_frame"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "_normalize",
+          "line": 63,
+          "isDefault": false
+        },
+        {
+          "name": "EndCallReliabilityGuardProcessor",
+          "line": 70,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "_normalize",
+          "callee": "re.sub(r\"\\s+\", \" \", _NON_WORD_RE.sub(\" \", text.lower())).strip",
+          "lineNumber": 64
+        },
+        {
+          "caller": "_normalize",
+          "callee": "re.sub",
+          "lineNumber": 64
+        },
+        {
+          "caller": "_normalize",
+          "callee": "_NON_WORD_RE.sub",
+          "lineNumber": 64
+        },
+        {
+          "caller": "_normalize",
+          "callee": "text.lower",
+          "lineNumber": 64
+        },
+        {
+          "caller": "__init__",
+          "callee": "super().__init__",
+          "lineNumber": 75
+        },
+        {
+          "caller": "__init__",
+          "callee": "super",
+          "lineNumber": 75
+        },
+        {
+          "caller": "process_frame",
+          "callee": "super().process_frame",
+          "lineNumber": 81
+        },
+        {
+          "caller": "process_frame",
+          "callee": "super",
+          "lineNumber": 81
+        },
+        {
+          "caller": "process_frame",
+          "callee": "isinstance",
+          "lineNumber": 83
+        },
+        {
+          "caller": "process_frame",
+          "callee": "any",
+          "lineNumber": 84
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 86
+        },
+        {
+          "caller": "process_frame",
+          "callee": "isinstance",
+          "lineNumber": 89
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 91
+        },
+        {
+          "caller": "process_frame",
+          "callee": "isinstance",
+          "lineNumber": 94
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self._buffer.append",
+          "lineNumber": 95
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 96
+        },
+        {
+          "caller": "process_frame",
+          "callee": "isinstance",
+          "lineNumber": 99
+        },
+        {
+          "caller": "process_frame",
+          "callee": "_normalize",
+          "lineNumber": 102
+        },
+        {
+          "caller": "process_frame",
+          "callee": "\"\".join",
+          "lineNumber": 102
+        },
+        {
+          "caller": "process_frame",
+          "callee": "logger.warning",
+          "lineNumber": 106
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self._silence_watchdog.request_end_after_current_turn",
+          "lineNumber": 110
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 112
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 115
+        }
+      ],
+      "metrics": {
+        "importCount": 2,
+        "exportCount": 2,
+        "functionCount": 1,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "backend/app/voice/escalation_phrase_guard.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 114,
+      "nonEmptyLines": 95,
+      "classes": [
+        {
+          "name": "EscalationPhraseGuardProcessor",
+          "startLine": 55,
+          "endLine": 114,
+          "methods": [
+            "__init__",
+            "process_frame"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "EscalationPhraseGuardProcessor",
+          "line": 55,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "__init__",
+          "callee": "super().__init__",
+          "lineNumber": 61
+        },
+        {
+          "caller": "__init__",
+          "callee": "super",
+          "lineNumber": 61
+        },
+        {
+          "caller": "process_frame",
+          "callee": "super().process_frame",
+          "lineNumber": 67
+        },
+        {
+          "caller": "process_frame",
+          "callee": "super",
+          "lineNumber": 67
+        },
+        {
+          "caller": "process_frame",
+          "callee": "isinstance",
+          "lineNumber": 69
+        },
+        {
+          "caller": "process_frame",
+          "callee": "any",
+          "lineNumber": 70
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 75
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 79
+        },
+        {
+          "caller": "process_frame",
+          "callee": "isinstance",
+          "lineNumber": 82
+        },
+        {
+          "caller": "process_frame",
+          "callee": "isinstance",
+          "lineNumber": 87
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self._buffer.append",
+          "lineNumber": 88
+        },
+        {
+          "caller": "process_frame",
+          "callee": "isinstance",
+          "lineNumber": 91
+        },
+        {
+          "caller": "process_frame",
+          "callee": "\"\".join",
+          "lineNumber": 92
+        },
+        {
+          "caller": "process_frame",
+          "callee": "text.strip",
+          "lineNumber": 95
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 98
+        },
+        {
+          "caller": "process_frame",
+          "callee": "logger.warning",
+          "lineNumber": 104
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 109
+        },
+        {
+          "caller": "process_frame",
+          "callee": "LLMFullResponseStartFrame",
+          "lineNumber": 109
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 110
+        },
+        {
+          "caller": "process_frame",
+          "callee": "LLMTextFrame",
+          "lineNumber": 110
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 111
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 114
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "backend/app/voice/handoff_signal.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 87,
+      "nonEmptyLines": 75,
+      "functions": [
+        {
+          "name": "register_call",
+          "startLine": 31,
+          "endLine": 39,
+          "params": [
+            "call_session_id"
+          ]
+        },
+        {
+          "name": "unregister_call",
+          "startLine": 42,
+          "endLine": 48,
+          "params": [
+            "call_session_id"
+          ]
+        },
+        {
+          "name": "request_handoff",
+          "startLine": 51,
+          "endLine": 68,
+          "params": [
+            "call_session_id"
+          ]
+        },
+        {
+          "name": "wait_for_handoff_request",
+          "startLine": 71,
+          "endLine": 87,
+          "params": [
+            "call_session_id"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "register_call",
+          "line": 31,
+          "isDefault": false
+        },
+        {
+          "name": "unregister_call",
+          "line": 42,
+          "isDefault": false
+        },
+        {
+          "name": "request_handoff",
+          "line": 51,
+          "isDefault": false
+        },
+        {
+          "name": "wait_for_handoff_request",
+          "line": 71,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "register_call",
+          "callee": "asyncio.Event",
+          "lineNumber": 39
+        },
+        {
+          "caller": "unregister_call",
+          "callee": "_handoff_events.pop",
+          "lineNumber": 48
+        },
+        {
+          "caller": "request_handoff",
+          "callee": "_handoff_events.get",
+          "lineNumber": 64
+        },
+        {
+          "caller": "request_handoff",
+          "callee": "event.set",
+          "lineNumber": 67
+        },
+        {
+          "caller": "wait_for_handoff_request",
+          "callee": "_handoff_events.get",
+          "lineNumber": 78
+        },
+        {
+          "caller": "wait_for_handoff_request",
+          "callee": "KeyError",
+          "lineNumber": 86
+        },
+        {
+          "caller": "wait_for_handoff_request",
+          "callee": "event.wait",
+          "lineNumber": 87
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 4,
+        "functionCount": 4,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "backend/app/voice/language_heuristics.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 83,
+      "nonEmptyLines": 73,
+      "functions": [
+        {
+          "name": "devanagari_ratio",
+          "startLine": 37,
+          "endLine": 51,
+          "params": [
+            "text"
+          ]
+        },
+        {
+          "name": "has_hinglish_token",
+          "startLine": 54,
+          "endLine": 61,
+          "params": [
+            "text"
+          ]
+        },
+        {
+          "name": "english_word_ratio",
+          "startLine": 64,
+          "endLine": 83,
+          "params": [
+            "text"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "devanagari_ratio",
+          "line": 37,
+          "isDefault": false
+        },
+        {
+          "name": "has_hinglish_token",
+          "line": 54,
+          "isDefault": false
+        },
+        {
+          "name": "english_word_ratio",
+          "line": 64,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "devanagari_ratio",
+          "callee": "ch.isalpha",
+          "lineNumber": 44
+        },
+        {
+          "caller": "devanagari_ratio",
+          "callee": "unicodedata.name",
+          "lineNumber": 47
+        },
+        {
+          "caller": "has_hinglish_token",
+          "callee": "text.lower().split",
+          "lineNumber": 57
+        },
+        {
+          "caller": "has_hinglish_token",
+          "callee": "text.lower",
+          "lineNumber": 57
+        },
+        {
+          "caller": "has_hinglish_token",
+          "callee": "word.strip",
+          "lineNumber": 58
+        },
+        {
+          "caller": "english_word_ratio",
+          "callee": "w.strip",
+          "lineNumber": 72
+        },
+        {
+          "caller": "english_word_ratio",
+          "callee": "text.split",
+          "lineNumber": 72
+        },
+        {
+          "caller": "english_word_ratio",
+          "callee": "sum",
+          "lineNumber": 80
+        },
+        {
+          "caller": "english_word_ratio",
+          "callee": "w.isascii",
+          "lineNumber": 81
+        },
+        {
+          "caller": "english_word_ratio",
+          "callee": "w.replace(\"'\", \"\").isalpha",
+          "lineNumber": 81
+        },
+        {
+          "caller": "english_word_ratio",
+          "callee": "w.replace",
+          "lineNumber": 81
+        },
+        {
+          "caller": "english_word_ratio",
+          "callee": "w.lower",
+          "lineNumber": 81
+        },
+        {
+          "caller": "english_word_ratio",
+          "callee": "len",
+          "lineNumber": 83
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 3,
+        "functionCount": 3,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "backend/app/voice/language_sync.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 84,
+      "nonEmptyLines": 69,
+      "classes": [
+        {
+          "name": "LanguageSyncProcessor",
+          "startLine": 49,
+          "endLine": 84,
+          "methods": [
+            "__init__",
+            "process_frame"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "LanguageSyncProcessor",
+          "line": 49,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "__init__",
+          "callee": "super().__init__",
+          "lineNumber": 53
+        },
+        {
+          "caller": "__init__",
+          "callee": "super",
+          "lineNumber": 53
+        },
+        {
+          "caller": "process_frame",
+          "callee": "super().process_frame",
+          "lineNumber": 65
+        },
+        {
+          "caller": "process_frame",
+          "callee": "super",
+          "lineNumber": 65
+        },
+        {
+          "caller": "process_frame",
+          "callee": "isinstance",
+          "lineNumber": 67
+        },
+        {
+          "caller": "process_frame",
+          "callee": "logger.debug",
+          "lineNumber": 73
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 79
+        },
+        {
+          "caller": "process_frame",
+          "callee": "TTSUpdateSettingsFrame",
+          "lineNumber": 80
+        },
+        {
+          "caller": "process_frame",
+          "callee": "SarvamTTSService.Settings",
+          "lineNumber": 80
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 84
+        }
+      ],
+      "metrics": {
+        "importCount": 1,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "backend/app/voice/meta_commentary_guard.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 126,
+      "nonEmptyLines": 108,
+      "classes": [
+        {
+          "name": "MetaCommentaryGuardProcessor",
+          "startLine": 47,
+          "endLine": 126,
+          "methods": [
+            "__init__",
+            "process_frame",
+            "_consume"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "MetaCommentaryGuardProcessor",
+          "line": 47,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "__init__",
+          "callee": "super().__init__",
+          "lineNumber": 53
+        },
+        {
+          "caller": "__init__",
+          "callee": "super",
+          "lineNumber": 53
+        },
+        {
+          "caller": "process_frame",
+          "callee": "super().process_frame",
+          "lineNumber": 57
+        },
+        {
+          "caller": "process_frame",
+          "callee": "super",
+          "lineNumber": 57
+        },
+        {
+          "caller": "process_frame",
+          "callee": "isinstance",
+          "lineNumber": 59
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 61
+        },
+        {
+          "caller": "process_frame",
+          "callee": "isinstance",
+          "lineNumber": 64
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self._consume",
+          "lineNumber": 65
+        },
+        {
+          "caller": "process_frame",
+          "callee": "isinstance",
+          "lineNumber": 68
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 73
+        },
+        {
+          "caller": "process_frame",
+          "callee": "LLMTextFrame",
+          "lineNumber": 73
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 75
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 78
+        },
+        {
+          "caller": "_consume",
+          "callee": "text.find",
+          "lineNumber": 89
+        },
+        {
+          "caller": "_consume",
+          "callee": "self.push_frame",
+          "lineNumber": 91
+        },
+        {
+          "caller": "_consume",
+          "callee": "LLMTextFrame",
+          "lineNumber": 91
+        },
+        {
+          "caller": "_consume",
+          "callee": "self.push_frame",
+          "lineNumber": 94
+        },
+        {
+          "caller": "_consume",
+          "callee": "LLMTextFrame",
+          "lineNumber": 94
+        },
+        {
+          "caller": "_consume",
+          "callee": "self._held.find",
+          "lineNumber": 100
+        },
+        {
+          "caller": "_consume",
+          "callee": "len",
+          "lineNumber": 102
+        },
+        {
+          "caller": "_consume",
+          "callee": "self.push_frame",
+          "lineNumber": 103
+        },
+        {
+          "caller": "_consume",
+          "callee": "LLMTextFrame",
+          "lineNumber": 103
+        },
+        {
+          "caller": "_consume",
+          "callee": "_META_COMMENTARY_RE.search",
+          "lineNumber": 110
+        },
+        {
+          "caller": "_consume",
+          "callee": "logger.warning",
+          "lineNumber": 111
+        },
+        {
+          "caller": "_consume",
+          "callee": "self.push_frame",
+          "lineNumber": 116
+        },
+        {
+          "caller": "_consume",
+          "callee": "LLMTextFrame",
+          "lineNumber": 116
+        },
+        {
+          "caller": "_consume",
+          "callee": "rest.find",
+          "lineNumber": 120
+        },
+        {
+          "caller": "_consume",
+          "callee": "self.push_frame",
+          "lineNumber": 122
+        },
+        {
+          "caller": "_consume",
+          "callee": "LLMTextFrame",
+          "lineNumber": 122
+        },
+        {
+          "caller": "_consume",
+          "callee": "self.push_frame",
+          "lineNumber": 125
+        },
+        {
+          "caller": "_consume",
+          "callee": "LLMTextFrame",
+          "lineNumber": 125
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "backend/app/voice/pipeline.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 1902,
+      "nonEmptyLines": 1779,
+      "functions": [
+        {
+          "name": "_spawn_background_task",
+          "startLine": 109,
+          "endLine": 114,
+          "params": [
+            "coro"
+          ]
+        },
+        {
+          "name": "_hangup_exotel_call",
+          "startLine": 117,
+          "endLine": 132,
+          "params": [
+            "exotel_call_id"
+          ]
+        },
+        {
+          "name": "_pick_groq_model",
+          "startLine": 166,
+          "endLine": 182,
+          "params": []
+        },
+        {
+          "name": "_build_llm",
+          "startLine": 324,
+          "endLine": 391,
+          "params": []
+        },
+        {
+          "name": "_build_openrouter_llm",
+          "startLine": 394,
+          "endLine": 436,
+          "params": []
+        },
+        {
+          "name": "_is_host_handoff_frame",
+          "startLine": 469,
+          "endLine": 478,
+          "params": [
+            "frame"
+          ]
+        },
+        {
+          "name": "_renew_call_lease_periodically",
+          "startLine": 503,
+          "endLine": 542,
+          "params": [
+            "host_user_id",
+            "property_id",
+            "token"
+          ]
+        },
+        {
+          "name": "_run_pipeline",
+          "startLine": 545,
+          "endLine": 723,
+          "params": [
+            "transport",
+            "property_id",
+            "call_session_id",
+            "host_user_id",
+            "system_prompt",
+            "first_message",
+            "caller_number",
+            "property_name",
+            "guest_profile_id",
+            "guest_known_name",
+            "exotel_call_id",
+            "ringing_audio_task",
+            "voice_gender",
+            "call_lease_token"
+          ]
+        },
+        {
+          "name": "_wait_and_trigger_handoff",
+          "startLine": 726,
+          "endLine": 763,
+          "params": [
+            "worker",
+            "call_session_id"
+          ]
+        },
+        {
+          "name": "_run_pipeline_inner",
+          "startLine": 766,
+          "endLine": 1334,
+          "params": [
+            "transport",
+            "property_id",
+            "call_session_id",
+            "host_user_id",
+            "system_prompt",
+            "first_message",
+            "caller_number",
+            "property_name",
+            "guest_profile_id",
+            "guest_known_name",
+            "exotel_call_id",
+            "ringing_audio_task",
+            "voice_gender",
+            "handoff_outcome"
+          ]
+        },
+        {
+          "name": "_reject_call_as_busy",
+          "startLine": 1337,
+          "endLine": 1370,
+          "params": [
+            "websocket",
+            "call_data",
+            "ringing_audio_task",
+            "exotel_call_id"
+          ]
+        },
+        {
+          "name": "run_voice_pipeline",
+          "startLine": 1373,
+          "endLine": 1591,
+          "params": [
+            "websocket",
+            "call_data"
+          ]
+        },
+        {
+          "name": "run_voice_pipeline_twilio",
+          "startLine": 1594,
+          "endLine": 1809,
+          "params": [
+            "websocket",
+            "call_data"
+          ]
+        },
+        {
+          "name": "run_browser_voice_pipeline",
+          "startLine": 1812,
+          "endLine": 1859,
+          "params": [
+            "connection",
+            "property_"
+          ]
+        },
+        {
+          "name": "run_browser_lead_pipeline",
+          "startLine": 1862,
+          "endLine": 1902,
+          "params": [
+            "connection",
+            "user"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "_FallbackGroqLLMService",
+          "startLine": 185,
+          "endLine": 270,
+          "methods": [
+            "create_client",
+            "get_chat_completions"
+          ],
+          "properties": []
+        },
+        {
+          "name": "_ReconnectingSarvamSTTService",
+          "startLine": 273,
+          "endLine": 321,
+          "methods": [
+            "__init__",
+            "run_stt"
+          ],
+          "properties": []
+        },
+        {
+          "name": "_HandoffOutcome",
+          "startLine": 481,
+          "endLine": 500,
+          "methods": [],
+          "properties": [
+            "is_host_handoff"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "_spawn_background_task",
+          "line": 109,
+          "isDefault": false
+        },
+        {
+          "name": "_hangup_exotel_call",
+          "line": 117,
+          "isDefault": false
+        },
+        {
+          "name": "_pick_groq_model",
+          "line": 166,
+          "isDefault": false
+        },
+        {
+          "name": "_FallbackGroqLLMService",
+          "line": 185,
+          "isDefault": false
+        },
+        {
+          "name": "_ReconnectingSarvamSTTService",
+          "line": 273,
+          "isDefault": false
+        },
+        {
+          "name": "_build_llm",
+          "line": 324,
+          "isDefault": false
+        },
+        {
+          "name": "_build_openrouter_llm",
+          "line": 394,
+          "isDefault": false
+        },
+        {
+          "name": "_is_host_handoff_frame",
+          "line": 469,
+          "isDefault": false
+        },
+        {
+          "name": "_HandoffOutcome",
+          "line": 481,
+          "isDefault": false
+        },
+        {
+          "name": "_renew_call_lease_periodically",
+          "line": 503,
+          "isDefault": false
+        },
+        {
+          "name": "_run_pipeline",
+          "line": 545,
+          "isDefault": false
+        },
+        {
+          "name": "_wait_and_trigger_handoff",
+          "line": 726,
+          "isDefault": false
+        },
+        {
+          "name": "_run_pipeline_inner",
+          "line": 766,
+          "isDefault": false
+        },
+        {
+          "name": "_reject_call_as_busy",
+          "line": 1337,
+          "isDefault": false
+        },
+        {
+          "name": "run_voice_pipeline",
+          "line": 1373,
+          "isDefault": false
+        },
+        {
+          "name": "run_voice_pipeline_twilio",
+          "line": 1594,
+          "isDefault": false
+        },
+        {
+          "name": "run_browser_voice_pipeline",
+          "line": 1812,
+          "isDefault": false
+        },
+        {
+          "name": "run_browser_lead_pipeline",
+          "line": 1862,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "_spawn_background_task",
+          "callee": "asyncio.create_task",
+          "lineNumber": 111
+        },
+        {
+          "caller": "_spawn_background_task",
+          "callee": "_background_tasks.add",
+          "lineNumber": 112
+        },
+        {
+          "caller": "_spawn_background_task",
+          "callee": "task.add_done_callback",
+          "lineNumber": 113
+        },
+        {
+          "caller": "_hangup_exotel_call",
+          "callee": "exotel_client.hangup_call",
+          "lineNumber": 129
+        },
+        {
+          "caller": "_hangup_exotel_call",
+          "callee": "logger.info",
+          "lineNumber": 130
+        },
+        {
+          "caller": "_hangup_exotel_call",
+          "callee": "logger.exception",
+          "lineNumber": 132
+        },
+        {
+          "caller": "_pick_groq_model",
+          "callee": "llm_health.get",
+          "lineNumber": 176
+        },
+        {
+          "caller": "_pick_groq_model",
+          "callee": "health.get",
+          "lineNumber": 177
+        },
+        {
+          "caller": "create_client",
+          "callee": "AsyncOpenAI",
+          "lineNumber": 216
+        },
+        {
+          "caller": "create_client",
+          "callee": "DefaultAsyncHttpxClient",
+          "lineNumber": 220
+        },
+        {
+          "caller": "create_client",
+          "callee": "httpx.Limits",
+          "lineNumber": 221
+        },
+        {
+          "caller": "get_chat_completions",
+          "callee": "super().get_chat_completions",
+          "lineNumber": 256
+        },
+        {
+          "caller": "get_chat_completions",
+          "callee": "super",
+          "lineNumber": 256
+        },
+        {
+          "caller": "get_chat_completions",
+          "callee": "logger.warning",
+          "lineNumber": 258
+        },
+        {
+          "caller": "get_chat_completions",
+          "callee": "datetime.now(timezone.utc).isoformat",
+          "lineNumber": 262
+        },
+        {
+          "caller": "get_chat_completions",
+          "callee": "datetime.now",
+          "lineNumber": 262
+        },
+        {
+          "caller": "get_chat_completions",
+          "callee": "str",
+          "lineNumber": 263
+        },
+        {
+          "caller": "__init__",
+          "callee": "super().__init__",
+          "lineNumber": 291
+        },
+        {
+          "caller": "__init__",
+          "callee": "super",
+          "lineNumber": 291
+        },
+        {
+          "caller": "run_stt",
+          "callee": "super().run_stt",
+          "lineNumber": 298
+        },
+        {
+          "caller": "run_stt",
+          "callee": "super",
+          "lineNumber": 298
+        },
+        {
+          "caller": "run_stt",
+          "callee": "isinstance",
+          "lineNumber": 299
+        },
+        {
+          "caller": "run_stt",
+          "callee": "time.monotonic",
+          "lineNumber": 300
+        },
+        {
+          "caller": "run_stt",
+          "callee": "logger.warning",
+          "lineNumber": 307
+        },
+        {
+          "caller": "run_stt",
+          "callee": "self._disconnect",
+          "lineNumber": 309
+        },
+        {
+          "caller": "run_stt",
+          "callee": "self._connect",
+          "lineNumber": 310
+        },
+        {
+          "caller": "run_stt",
+          "callee": "logger.info",
+          "lineNumber": 311
+        },
+        {
+          "caller": "run_stt",
+          "callee": "logger.exception",
+          "lineNumber": 313
+        },
+        {
+          "caller": "_build_llm",
+          "callee": "AnthropicLLMService",
+          "lineNumber": 326
+        },
+        {
+          "caller": "_build_llm",
+          "callee": "AnthropicLLMService.Settings",
+          "lineNumber": 328
+        },
+        {
+          "caller": "_build_llm",
+          "callee": "_build_openrouter_llm",
+          "lineNumber": 331
+        },
+        {
+          "caller": "_build_llm",
+          "callee": "all",
+          "lineNumber": 345
+        },
+        {
+          "caller": "_build_llm",
+          "callee": "llm_health.get(model, {}).get",
+          "lineNumber": 346
+        },
+        {
+          "caller": "_build_llm",
+          "callee": "llm_health.get",
+          "lineNumber": 346
+        },
+        {
+          "caller": "_build_llm",
+          "callee": "logger.warning",
+          "lineNumber": 348
+        },
+        {
+          "caller": "_build_llm",
+          "callee": "_build_openrouter_llm",
+          "lineNumber": 349
+        },
+        {
+          "caller": "_build_llm",
+          "callee": "_pick_groq_model",
+          "lineNumber": 351
+        },
+        {
+          "caller": "_build_llm",
+          "callee": "_FallbackGroqLLMService",
+          "lineNumber": 371
+        },
+        {
+          "caller": "_build_llm",
+          "callee": "GroqLLMService.Settings",
+          "lineNumber": 390
+        },
+        {
+          "caller": "_build_openrouter_llm",
+          "callee": "OpenAILLMService",
+          "lineNumber": 432
+        },
+        {
+          "caller": "_build_openrouter_llm",
+          "callee": "OpenAILLMService.Settings",
+          "lineNumber": 435
+        },
+        {
+          "caller": "_is_host_handoff_frame",
+          "callee": "getattr",
+          "lineNumber": 478
+        },
+        {
+          "caller": "_renew_call_lease_periodically",
+          "callee": "asyncio.sleep",
+          "lineNumber": 528
+        },
+        {
+          "caller": "_renew_call_lease_periodically",
+          "callee": "call_coordinator.renew",
+          "lineNumber": 529
+        },
+        {
+          "caller": "_renew_call_lease_periodically",
+          "callee": "logger.warning",
+          "lineNumber": 531
+        },
+        {
+          "caller": "_renew_call_lease_periodically",
+          "callee": "logger.exception",
+          "lineNumber": 540
+        },
+        {
+          "caller": "_run_pipeline",
+          "callee": "asyncio.create_task",
+          "lineNumber": 582
+        },
+        {
+          "caller": "_run_pipeline",
+          "callee": "_renew_call_lease_periodically",
+          "lineNumber": 582
+        },
+        {
+          "caller": "_run_pipeline",
+          "callee": "_HandoffOutcome",
+          "lineNumber": 586
+        },
+        {
+          "caller": "_run_pipeline",
+          "callee": "_run_pipeline_inner",
+          "lineNumber": 588
+        },
+        {
+          "caller": "_run_pipeline",
+          "callee": "renewal_task.done",
+          "lineNumber": 605
+        },
+        {
+          "caller": "_run_pipeline",
+          "callee": "renewal_task.cancel",
+          "lineNumber": 606
+        },
+        {
+          "caller": "_run_pipeline",
+          "callee": "ringing_audio_task.done",
+          "lineNumber": 618
+        },
+        {
+          "caller": "_run_pipeline",
+          "callee": "ringing_audio_task.cancel",
+          "lineNumber": 619
+        },
+        {
+          "caller": "_run_pipeline",
+          "callee": "logger.info",
+          "lineNumber": 666
+        },
+        {
+          "caller": "_run_pipeline",
+          "callee": "_spawn_background_task",
+          "lineNumber": 667
+        },
+        {
+          "caller": "_run_pipeline",
+          "callee": "_hangup_exotel_call",
+          "lineNumber": 667
+        },
+        {
+          "caller": "_run_pipeline",
+          "callee": "logger.info",
+          "lineNumber": 669
+        },
+        {
+          "caller": "_run_pipeline",
+          "callee": "call_coordinator.release",
+          "lineNumber": 688
+        },
+        {
+          "caller": "_run_pipeline",
+          "callee": "logger.exception",
+          "lineNumber": 691
+        },
+        {
+          "caller": "_run_pipeline",
+          "callee": "logger.info",
+          "lineNumber": 718
+        },
+        {
+          "caller": "_run_pipeline",
+          "callee": "_spawn_background_task",
+          "lineNumber": 723
+        },
+        {
+          "caller": "_run_pipeline",
+          "callee": "recovery_service.process_availability_recovery",
+          "lineNumber": 723
+        },
+        {
+          "caller": "_wait_and_trigger_handoff",
+          "callee": "wait_for_handoff_request",
+          "lineNumber": 758
+        },
+        {
+          "caller": "_wait_and_trigger_handoff",
+          "callee": "logger.info",
+          "lineNumber": 761
+        },
+        {
+          "caller": "_wait_and_trigger_handoff",
+          "callee": "worker.queue_frame",
+          "lineNumber": 762
+        },
+        {
+          "caller": "_wait_and_trigger_handoff",
+          "callee": "TTSSpeakFrame",
+          "lineNumber": 762
+        },
+        {
+          "caller": "_wait_and_trigger_handoff",
+          "callee": "worker.queue_frame",
+          "lineNumber": 763
+        },
+        {
+          "caller": "_wait_and_trigger_handoff",
+          "callee": "EndFrame",
+          "lineNumber": 763
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "_ReconnectingSarvamSTTService",
+          "lineNumber": 782
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "ConversationState",
+          "lineNumber": 793
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "str",
+          "lineNumber": 794
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "ConversationQuality",
+          "lineNumber": 803
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "LanguageSyncProcessor",
+          "lineNumber": 811
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "ConversationStyleProcessor",
+          "lineNumber": 820
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "SilenceWatchdogProcessor",
+          "lineNumber": 837
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "EscalationPhraseGuardProcessor",
+          "lineNumber": 841
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "RedundantContextGuardProcessor",
+          "lineNumber": 850
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "StatePromptSyncProcessor",
+          "lineNumber": 862
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "PrematureEndCallGuardProcessor",
+          "lineNumber": 867
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "PropertyRecommendationGuardProcessor",
+          "lineNumber": 871
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "SlowToolFillerProcessor",
+          "lineNumber": 879
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "RepetitionGuardProcessor",
+          "lineNumber": 888
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "MetaCommentaryGuardProcessor",
+          "lineNumber": 892
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "StyleComplianceMonitor",
+          "lineNumber": 906
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "ResponseShapeValidatorProcessor",
+          "lineNumber": 924
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "aiohttp.ClientSession",
+          "lineNumber": 926
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "SarvamTTSService",
+          "lineNumber": 927
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "SarvamTTSService.Settings",
+          "lineNumber": 930
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "VOICE_BY_GENDER.get",
+          "lineNumber": 932
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "_build_llm",
+          "lineNumber": 939
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "build_voice_tools",
+          "lineNumber": 947
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "LLMContext",
+          "lineNumber": 964
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "EndCallReliabilityGuardProcessor",
+          "lineNumber": 978
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "HybridCompletenessUserTurnStopStrategy",
+          "lineNumber": 1003
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "SpeechTimeoutUserTurnStopStrategy",
+          "lineNumber": 1005
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "LLMContextAggregatorPair",
+          "lineNumber": 1006
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "LLMUserAggregatorParams",
+          "lineNumber": 1008
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "UserTurnStrategies",
+          "lineNumber": 1009
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "Pipeline",
+          "lineNumber": 1013
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "transport.input",
+          "lineNumber": 1015
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "transport.output",
+          "lineNumber": 1034
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "PipelineWorker",
+          "lineNumber": 1044
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "PipelineParams",
+          "lineNumber": 1044
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "worker.event_handler",
+          "lineNumber": 1046
+        },
+        {
+          "caller": "_on_finished",
+          "callee": "_is_host_handoff_frame",
+          "lineNumber": 1102
+        },
+        {
+          "caller": "_on_finished",
+          "callee": "logger.info",
+          "lineNumber": 1113
+        },
+        {
+          "caller": "_on_finished",
+          "callee": "_spawn_background_task",
+          "lineNumber": 1114
+        },
+        {
+          "caller": "_on_finished",
+          "callee": "_hangup_exotel_call",
+          "lineNumber": 1114
+        },
+        {
+          "caller": "_on_finished",
+          "callee": "logger.info",
+          "lineNumber": 1116
+        },
+        {
+          "caller": "_on_finished",
+          "callee": "\"\\n\".join",
+          "lineNumber": 1122
+        },
+        {
+          "caller": "_on_finished",
+          "callee": "message.get",
+          "lineNumber": 1123
+        },
+        {
+          "caller": "_on_finished",
+          "callee": "message.get",
+          "lineNumber": 1123
+        },
+        {
+          "caller": "_on_finished",
+          "callee": "message.get",
+          "lineNumber": 1125
+        },
+        {
+          "caller": "_on_finished",
+          "callee": "message.get",
+          "lineNumber": 1126
+        },
+        {
+          "caller": "_on_finished",
+          "callee": "AsyncSessionLocal",
+          "lineNumber": 1128
+        },
+        {
+          "caller": "_on_finished",
+          "callee": "call_service.finalize_call_session",
+          "lineNumber": 1149
+        },
+        {
+          "caller": "_on_finished",
+          "callee": "(finalized_session.ended_at - finalized_session.started_at).total_seconds",
+          "lineNumber": 1155
+        },
+        {
+          "caller": "_on_finished",
+          "callee": "call_classification_service.classify_call",
+          "lineNumber": 1162
+        },
+        {
+          "caller": "_on_finished",
+          "callee": "call_service.set_call_classification",
+          "lineNumber": 1163
+        },
+        {
+          "caller": "_on_finished",
+          "callee": "call_summary_service.summarize_call",
+          "lineNumber": 1169
+        },
+        {
+          "caller": "_on_finished",
+          "callee": "call_service.set_call_summary",
+          "lineNumber": 1170
+        },
+        {
+          "caller": "_on_finished",
+          "callee": "any",
+          "lineNumber": 1172
+        },
+        {
+          "caller": "_on_finished",
+          "callee": "m.get",
+          "lineNumber": 1172
+        },
+        {
+          "caller": "_on_finished",
+          "callee": "lead_service.backfill_lead",
+          "lineNumber": 1198
+        },
+        {
+          "caller": "_on_finished",
+          "callee": "lead_service.delete_if_empty",
+          "lineNumber": 1202
+        },
+        {
+          "caller": "_on_finished",
+          "callee": "lead_service.delete_for_unqualified_call",
+          "lineNumber": 1212
+        },
+        {
+          "caller": "_update_guest_memory",
+          "callee": "AsyncSessionLocal",
+          "lineNumber": 1222
+        },
+        {
+          "caller": "_update_guest_memory",
+          "callee": "guest_memory_service.update_guest_memory_from_call",
+          "lineNumber": 1223
+        },
+        {
+          "caller": "_update_guest_memory",
+          "callee": "logger.exception",
+          "lineNumber": 1227
+        },
+        {
+          "caller": "_on_finished",
+          "callee": "asyncio.create_task",
+          "lineNumber": 1229
+        },
+        {
+          "caller": "_on_finished",
+          "callee": "_update_guest_memory",
+          "lineNumber": 1229
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "transport.event_handler",
+          "lineNumber": 1233
+        },
+        {
+          "caller": "_on_connected_greeting",
+          "callee": "worker.queue_frame",
+          "lineNumber": 1262
+        },
+        {
+          "caller": "_on_connected_greeting",
+          "callee": "TTSSpeakFrame",
+          "lineNumber": 1262
+        },
+        {
+          "caller": "_on_connected_greeting",
+          "callee": "logger.warning",
+          "lineNumber": 1264
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "transport.event_handler",
+          "lineNumber": 1274
+        },
+        {
+          "caller": "_on_client_disconnected",
+          "callee": "worker.cancel",
+          "lineNumber": 1276
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "ringing_audio_task.cancel",
+          "lineNumber": 1291
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "register_call",
+          "lineNumber": 1308
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "asyncio.create_task",
+          "lineNumber": 1309
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "_wait_and_trigger_handoff",
+          "lineNumber": 1310
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "WorkerRunner",
+          "lineNumber": 1314
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "runner.add_workers",
+          "lineNumber": 1315
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "runner.run",
+          "lineNumber": 1316
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "handoff_listener_task.done",
+          "lineNumber": 1327
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "handoff_listener_task.cancel",
+          "lineNumber": 1328
+        },
+        {
+          "caller": "_run_pipeline_inner",
+          "callee": "unregister_call",
+          "lineNumber": 1334
+        },
+        {
+          "caller": "_reject_call_as_busy",
+          "callee": "logger.info",
+          "lineNumber": 1352
+        },
+        {
+          "caller": "_reject_call_as_busy",
+          "callee": "ringing_audio_task.cancel",
+          "lineNumber": 1354
+        },
+        {
+          "caller": "_reject_call_as_busy",
+          "callee": "play_busy_message",
+          "lineNumber": 1360
+        },
+        {
+          "caller": "_reject_call_as_busy",
+          "callee": "logger.info",
+          "lineNumber": 1362
+        },
+        {
+          "caller": "_reject_call_as_busy",
+          "callee": "exotel_client.hangup_call",
+          "lineNumber": 1364
+        },
+        {
+          "caller": "_reject_call_as_busy",
+          "callee": "logger.exception",
+          "lineNumber": 1366
+        },
+        {
+          "caller": "_reject_call_as_busy",
+          "callee": "websocket.close",
+          "lineNumber": 1368
+        },
+        {
+          "caller": "run_voice_pipeline",
+          "callee": "asyncio.create_task",
+          "lineNumber": 1398
+        },
+        {
+          "caller": "run_voice_pipeline",
+          "callee": "play_ringing_tone",
+          "lineNumber": 1398
+        },
+        {
+          "caller": "run_voice_pipeline",
+          "callee": "AsyncSessionLocal",
+          "lineNumber": 1401
+        },
+        {
+          "caller": "run_voice_pipeline",
+          "callee": "call_service.get_property_by_number",
+          "lineNumber": 1402
+        },
+        {
+          "caller": "run_voice_pipeline",
+          "callee": "call_service.get_user_by_lead_number",
+          "lineNumber": 1403
+        },
+        {
+          "caller": "run_voice_pipeline",
+          "callee": "logger.warning",
+          "lineNumber": 1406
+        },
+        {
+          "caller": "run_voice_pipeline",
+          "callee": "ringing_audio_task.cancel",
+          "lineNumber": 1412
+        },
+        {
+          "caller": "run_voice_pipeline",
+          "callee": "websocket.close",
+          "lineNumber": 1418
+        },
+        {
+          "caller": "run_voice_pipeline",
+          "callee": "call_coordinator.acquire_or_reject",
+          "lineNumber": 1458
+        },
+        {
+          "caller": "run_voice_pipeline",
+          "callee": "logger.exception",
+          "lineNumber": 1462
+        },
+        {
+          "caller": "run_voice_pipeline",
+          "callee": "logger.warning",
+          "lineNumber": 1469
+        },
+        {
+          "caller": "run_voice_pipeline",
+          "callee": "_reject_call_as_busy",
+          "lineNumber": 1480
+        },
+        {
+          "caller": "run_voice_pipeline",
+          "callee": "call_service.get_or_create_guest_profile",
+          "lineNumber": 1497
+        },
+        {
+          "caller": "run_voice_pipeline",
+          "callee": "lead_service.get_active_booking",
+          "lineNumber": 1498
+        },
+        {
+          "caller": "run_voice_pipeline",
+          "callee": "db.get",
+          "lineNumber": 1501
+        },
+        {
+          "caller": "run_voice_pipeline",
+          "callee": "call_service.get_or_create_call_session",
+          "lineNumber": 1502
+        },
+        {
+          "caller": "run_voice_pipeline",
+          "callee": "asyncio.create_task",
+          "lineNumber": 1517
+        },
+        {
+          "caller": "run_voice_pipeline",
+          "callee": "guest_calling_notification.maybe_notify_guest_calling",
+          "lineNumber": 1518
+        },
+        {
+          "caller": "run_voice_pipeline",
+          "callee": "faq_service.list_verified_property_faq",
+          "lineNumber": 1522
+        },
+        {
+          "caller": "run_voice_pipeline",
+          "callee": "build_system_prompt",
+          "lineNumber": 1523
+        },
+        {
+          "caller": "run_voice_pipeline",
+          "callee": "first_message_for",
+          "lineNumber": 1527
+        },
+        {
+          "caller": "run_voice_pipeline",
+          "callee": "list",
+          "lineNumber": 1532
+        },
+        {
+          "caller": "run_voice_pipeline",
+          "callee": "(await db.scalars(select(Property).where(Property.user_id == lead_user.id))).all",
+          "lineNumber": 1533
+        },
+        {
+          "caller": "run_voice_pipeline",
+          "callee": "db.scalars",
+          "lineNumber": 1533
+        },
+        {
+          "caller": "run_voice_pipeline",
+          "callee": "select(Property).where",
+          "lineNumber": 1533
+        },
+        {
+          "caller": "run_voice_pipeline",
+          "callee": "select",
+          "lineNumber": 1533
+        },
+        {
+          "caller": "run_voice_pipeline",
+          "callee": "call_service.get_or_create_call_session",
+          "lineNumber": 1535
+        },
+        {
+          "caller": "run_voice_pipeline",
+          "callee": "build_lead_system_prompt",
+          "lineNumber": 1543
+        },
+        {
+          "caller": "run_voice_pipeline",
+          "callee": "lead_first_message_for",
+          "lineNumber": 1546
+        },
+        {
+          "caller": "run_voice_pipeline",
+          "callee": "asyncio.create_task",
+          "lineNumber": 1561
+        },
+        {
+          "caller": "run_voice_pipeline",
+          "callee": "recovery_service.handle_busy_recovery",
+          "lineNumber": 1561
+        },
+        {
+          "caller": "run_voice_pipeline",
+          "callee": "ExotelFrameSerializer",
+          "lineNumber": 1564
+        },
+        {
+          "caller": "run_voice_pipeline",
+          "callee": "FastAPIWebsocketTransport",
+          "lineNumber": 1565
+        },
+        {
+          "caller": "run_voice_pipeline",
+          "callee": "FastAPIWebsocketParams",
+          "lineNumber": 1567
+        },
+        {
+          "caller": "run_voice_pipeline",
+          "callee": "create_vad_analyzer",
+          "lineNumber": 1572
+        },
+        {
+          "caller": "run_voice_pipeline",
+          "callee": "_run_pipeline",
+          "lineNumber": 1576
+        },
+        {
+          "caller": "run_voice_pipeline_twilio",
+          "callee": "asyncio.create_task",
+          "lineNumber": 1657
+        },
+        {
+          "caller": "run_voice_pipeline_twilio",
+          "callee": "play_ringing_tone",
+          "lineNumber": 1657
+        },
+        {
+          "caller": "run_voice_pipeline_twilio",
+          "callee": "AsyncSessionLocal",
+          "lineNumber": 1662
+        },
+        {
+          "caller": "run_voice_pipeline_twilio",
+          "callee": "call_service.get_property_by_twilio_number",
+          "lineNumber": 1663
+        },
+        {
+          "caller": "run_voice_pipeline_twilio",
+          "callee": "call_service.get_user_by_twilio_lead_number",
+          "lineNumber": 1665
+        },
+        {
+          "caller": "run_voice_pipeline_twilio",
+          "callee": "logger.warning",
+          "lineNumber": 1669
+        },
+        {
+          "caller": "run_voice_pipeline_twilio",
+          "callee": "ringing_audio_task.cancel",
+          "lineNumber": 1675
+        },
+        {
+          "caller": "run_voice_pipeline_twilio",
+          "callee": "websocket.close",
+          "lineNumber": 1681
+        },
+        {
+          "caller": "run_voice_pipeline_twilio",
+          "callee": "call_coordinator.acquire_or_reject",
+          "lineNumber": 1693
+        },
+        {
+          "caller": "run_voice_pipeline_twilio",
+          "callee": "logger.exception",
+          "lineNumber": 1697
+        },
+        {
+          "caller": "run_voice_pipeline_twilio",
+          "callee": "logger.warning",
+          "lineNumber": 1704
+        },
+        {
+          "caller": "run_voice_pipeline_twilio",
+          "callee": "_reject_call_as_busy",
+          "lineNumber": 1714
+        },
+        {
+          "caller": "run_voice_pipeline_twilio",
+          "callee": "call_service.get_or_create_guest_profile",
+          "lineNumber": 1723
+        },
+        {
+          "caller": "run_voice_pipeline_twilio",
+          "callee": "lead_service.get_active_booking",
+          "lineNumber": 1724
+        },
+        {
+          "caller": "run_voice_pipeline_twilio",
+          "callee": "db.get",
+          "lineNumber": 1727
+        },
+        {
+          "caller": "run_voice_pipeline_twilio",
+          "callee": "call_service.get_or_create_call_session",
+          "lineNumber": 1728
+        },
+        {
+          "caller": "run_voice_pipeline_twilio",
+          "callee": "asyncio.create_task",
+          "lineNumber": 1738
+        },
+        {
+          "caller": "run_voice_pipeline_twilio",
+          "callee": "guest_calling_notification.maybe_notify_guest_calling",
+          "lineNumber": 1739
+        },
+        {
+          "caller": "run_voice_pipeline_twilio",
+          "callee": "faq_service.list_verified_property_faq",
+          "lineNumber": 1743
+        },
+        {
+          "caller": "run_voice_pipeline_twilio",
+          "callee": "build_system_prompt",
+          "lineNumber": 1744
+        },
+        {
+          "caller": "run_voice_pipeline_twilio",
+          "callee": "first_message_for",
+          "lineNumber": 1748
+        },
+        {
+          "caller": "run_voice_pipeline_twilio",
+          "callee": "list",
+          "lineNumber": 1753
+        },
+        {
+          "caller": "run_voice_pipeline_twilio",
+          "callee": "(await db.scalars(select(Property).where(Property.user_id == lead_user.id))).all",
+          "lineNumber": 1754
+        },
+        {
+          "caller": "run_voice_pipeline_twilio",
+          "callee": "db.scalars",
+          "lineNumber": 1754
+        },
+        {
+          "caller": "run_voice_pipeline_twilio",
+          "callee": "select(Property).where",
+          "lineNumber": 1754
+        },
+        {
+          "caller": "run_voice_pipeline_twilio",
+          "callee": "select",
+          "lineNumber": 1754
+        },
+        {
+          "caller": "run_voice_pipeline_twilio",
+          "callee": "call_service.get_or_create_call_session",
+          "lineNumber": 1756
+        },
+        {
+          "caller": "run_voice_pipeline_twilio",
+          "callee": "build_lead_system_prompt",
+          "lineNumber": 1764
+        },
+        {
+          "caller": "run_voice_pipeline_twilio",
+          "callee": "lead_first_message_for",
+          "lineNumber": 1767
+        },
+        {
+          "caller": "run_voice_pipeline_twilio",
+          "callee": "asyncio.create_task",
+          "lineNumber": 1775
+        },
+        {
+          "caller": "run_voice_pipeline_twilio",
+          "callee": "recovery_service.handle_busy_recovery",
+          "lineNumber": 1775
+        },
+        {
+          "caller": "run_voice_pipeline_twilio",
+          "callee": "TwilioFrameSerializer",
+          "lineNumber": 1778
+        },
+        {
+          "caller": "run_voice_pipeline_twilio",
+          "callee": "FastAPIWebsocketTransport",
+          "lineNumber": 1784
+        },
+        {
+          "caller": "run_voice_pipeline_twilio",
+          "callee": "FastAPIWebsocketParams",
+          "lineNumber": 1786
+        },
+        {
+          "caller": "run_voice_pipeline_twilio",
+          "callee": "create_vad_analyzer",
+          "lineNumber": 1791
+        },
+        {
+          "caller": "run_voice_pipeline_twilio",
+          "callee": "_run_pipeline",
+          "lineNumber": 1795
+        },
+        {
+          "caller": "run_browser_voice_pipeline",
+          "callee": "AsyncSessionLocal",
+          "lineNumber": 1819
+        },
+        {
+          "caller": "run_browser_voice_pipeline",
+          "callee": "db.get",
+          "lineNumber": 1820
+        },
+        {
+          "caller": "run_browser_voice_pipeline",
+          "callee": "call_service.get_or_create_guest_profile",
+          "lineNumber": 1821
+        },
+        {
+          "caller": "run_browser_voice_pipeline",
+          "callee": "call_service.get_or_create_call_session",
+          "lineNumber": 1824
+        },
+        {
+          "caller": "run_browser_voice_pipeline",
+          "callee": "faq_service.list_verified_property_faq",
+          "lineNumber": 1832
+        },
+        {
+          "caller": "run_browser_voice_pipeline",
+          "callee": "build_system_prompt",
+          "lineNumber": 1833
+        },
+        {
+          "caller": "run_browser_voice_pipeline",
+          "callee": "first_message_for",
+          "lineNumber": 1834
+        },
+        {
+          "caller": "run_browser_voice_pipeline",
+          "callee": "SmallWebRTCTransport",
+          "lineNumber": 1840
+        },
+        {
+          "caller": "run_browser_voice_pipeline",
+          "callee": "TransportParams",
+          "lineNumber": 1842
+        },
+        {
+          "caller": "run_browser_voice_pipeline",
+          "callee": "create_vad_analyzer",
+          "lineNumber": 1845
+        },
+        {
+          "caller": "run_browser_voice_pipeline",
+          "callee": "_run_pipeline",
+          "lineNumber": 1849
+        },
+        {
+          "caller": "run_browser_lead_pipeline",
+          "callee": "AsyncSessionLocal",
+          "lineNumber": 1865
+        },
+        {
+          "caller": "run_browser_lead_pipeline",
+          "callee": "list",
+          "lineNumber": 1866
+        },
+        {
+          "caller": "run_browser_lead_pipeline",
+          "callee": "(await db.scalars(select(Property).where(Property.user_id == user.id))).all",
+          "lineNumber": 1866
+        },
+        {
+          "caller": "run_browser_lead_pipeline",
+          "callee": "db.scalars",
+          "lineNumber": 1866
+        },
+        {
+          "caller": "run_browser_lead_pipeline",
+          "callee": "select(Property).where",
+          "lineNumber": 1866
+        },
+        {
+          "caller": "run_browser_lead_pipeline",
+          "callee": "select",
+          "lineNumber": 1866
+        },
+        {
+          "caller": "run_browser_lead_pipeline",
+          "callee": "call_service.get_or_create_guest_profile",
+          "lineNumber": 1867
+        },
+        {
+          "caller": "run_browser_lead_pipeline",
+          "callee": "lead_service.get_active_booking",
+          "lineNumber": 1870
+        },
+        {
+          "caller": "run_browser_lead_pipeline",
+          "callee": "call_service.get_or_create_call_session",
+          "lineNumber": 1871
+        },
+        {
+          "caller": "run_browser_lead_pipeline",
+          "callee": "build_lead_system_prompt",
+          "lineNumber": 1879
+        },
+        {
+          "caller": "run_browser_lead_pipeline",
+          "callee": "lead_first_message_for",
+          "lineNumber": 1880
+        },
+        {
+          "caller": "run_browser_lead_pipeline",
+          "callee": "SmallWebRTCTransport",
+          "lineNumber": 1884
+        },
+        {
+          "caller": "run_browser_lead_pipeline",
+          "callee": "TransportParams",
+          "lineNumber": 1886
+        },
+        {
+          "caller": "run_browser_lead_pipeline",
+          "callee": "create_vad_analyzer",
+          "lineNumber": 1889
+        },
+        {
+          "caller": "run_browser_lead_pipeline",
+          "callee": "_run_pipeline",
+          "lineNumber": 1893
+        }
+      ],
+      "metrics": {
+        "importCount": 29,
+        "exportCount": 18,
+        "functionCount": 15,
+        "classCount": 3
+      }
+    },
+    {
+      "path": "backend/app/voice/premature_end_call_guard.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 80,
+      "nonEmptyLines": 66,
+      "classes": [
+        {
+          "name": "PrematureEndCallGuardProcessor",
+          "startLine": 40,
+          "endLine": 80,
+          "methods": [
+            "__init__",
+            "process_frame"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "PrematureEndCallGuardProcessor",
+          "line": 40,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "__init__",
+          "callee": "super().__init__",
+          "lineNumber": 45
+        },
+        {
+          "caller": "__init__",
+          "callee": "super",
+          "lineNumber": 45
+        },
+        {
+          "caller": "process_frame",
+          "callee": "super().process_frame",
+          "lineNumber": 51
+        },
+        {
+          "caller": "process_frame",
+          "callee": "super",
+          "lineNumber": 51
+        },
+        {
+          "caller": "process_frame",
+          "callee": "isinstance",
+          "lineNumber": 53
+        },
+        {
+          "caller": "process_frame",
+          "callee": "any",
+          "lineNumber": 54
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 56
+        },
+        {
+          "caller": "process_frame",
+          "callee": "isinstance",
+          "lineNumber": 59
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 61
+        },
+        {
+          "caller": "process_frame",
+          "callee": "isinstance",
+          "lineNumber": 64
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self._buffer.append",
+          "lineNumber": 65
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 66
+        },
+        {
+          "caller": "process_frame",
+          "callee": "isinstance",
+          "lineNumber": 69
+        },
+        {
+          "caller": "process_frame",
+          "callee": "\"\".join",
+          "lineNumber": 71
+        },
+        {
+          "caller": "process_frame",
+          "callee": "logger.warning",
+          "lineNumber": 72
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self._silence_watchdog.cancel_end_request",
+          "lineNumber": 76
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 77
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 80
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "backend/app/voice/redundant_context_guard.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 93,
+      "nonEmptyLines": 80,
+      "classes": [
+        {
+          "name": "RedundantContextGuardProcessor",
+          "startLine": 61,
+          "endLine": 93,
+          "methods": [
+            "__init__",
+            "process_frame"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "RedundantContextGuardProcessor",
+          "line": 61,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "__init__",
+          "callee": "super().__init__",
+          "lineNumber": 67
+        },
+        {
+          "caller": "__init__",
+          "callee": "super",
+          "lineNumber": 67
+        },
+        {
+          "caller": "process_frame",
+          "callee": "super().process_frame",
+          "lineNumber": 72
+        },
+        {
+          "caller": "process_frame",
+          "callee": "super",
+          "lineNumber": 72
+        },
+        {
+          "caller": "process_frame",
+          "callee": "isinstance",
+          "lineNumber": 74
+        },
+        {
+          "caller": "process_frame",
+          "callee": "logger.warning",
+          "lineNumber": 76
+        },
+        {
+          "caller": "process_frame",
+          "callee": "len",
+          "lineNumber": 82
+        },
+        {
+          "caller": "process_frame",
+          "callee": "logger.warning",
+          "lineNumber": 84
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 93
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "backend/app/voice/repetition_guard.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 241,
+      "nonEmptyLines": 206,
+      "functions": [
+        {
+          "name": "_normalize",
+          "startLine": 82,
+          "endLine": 83,
+          "params": [
+            "sentence"
+          ]
+        },
+        {
+          "name": "_word_overlap",
+          "startLine": 86,
+          "endLine": 90,
+          "params": [
+            "a",
+            "b"
+          ]
+        },
+        {
+          "name": "_prices_in",
+          "startLine": 93,
+          "endLine": 99,
+          "params": [
+            "text"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "RepetitionGuardProcessor",
+          "startLine": 102,
+          "endLine": 241,
+          "methods": [
+            "__init__",
+            "process_frame",
+            "_consume",
+            "_judge_sentence",
+            "_is_unprompted_structured_repeat"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "_normalize",
+          "line": 82,
+          "isDefault": false
+        },
+        {
+          "name": "_word_overlap",
+          "line": 86,
+          "isDefault": false
+        },
+        {
+          "name": "_prices_in",
+          "line": 93,
+          "isDefault": false
+        },
+        {
+          "name": "RepetitionGuardProcessor",
+          "line": 102,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "_normalize",
+          "callee": "re.sub(r\"\\s+\", \" \", _NON_WORD_RE.sub(\" \", sentence.lower())).strip",
+          "lineNumber": 83
+        },
+        {
+          "caller": "_normalize",
+          "callee": "re.sub",
+          "lineNumber": 83
+        },
+        {
+          "caller": "_normalize",
+          "callee": "_NON_WORD_RE.sub",
+          "lineNumber": 83
+        },
+        {
+          "caller": "_normalize",
+          "callee": "sentence.lower",
+          "lineNumber": 83
+        },
+        {
+          "caller": "_word_overlap",
+          "callee": "set",
+          "lineNumber": 87
+        },
+        {
+          "caller": "_word_overlap",
+          "callee": "a.split",
+          "lineNumber": 87
+        },
+        {
+          "caller": "_word_overlap",
+          "callee": "set",
+          "lineNumber": 87
+        },
+        {
+          "caller": "_word_overlap",
+          "callee": "b.split",
+          "lineNumber": 87
+        },
+        {
+          "caller": "_word_overlap",
+          "callee": "len",
+          "lineNumber": 90
+        },
+        {
+          "caller": "_word_overlap",
+          "callee": "max",
+          "lineNumber": 90
+        },
+        {
+          "caller": "_word_overlap",
+          "callee": "len",
+          "lineNumber": 90
+        },
+        {
+          "caller": "_word_overlap",
+          "callee": "len",
+          "lineNumber": 90
+        },
+        {
+          "caller": "_prices_in",
+          "callee": "m.replace",
+          "lineNumber": 99
+        },
+        {
+          "caller": "_prices_in",
+          "callee": "_PRICE_RE.findall",
+          "lineNumber": 99
+        },
+        {
+          "caller": "__init__",
+          "callee": "super().__init__",
+          "lineNumber": 107
+        },
+        {
+          "caller": "__init__",
+          "callee": "super",
+          "lineNumber": 107
+        },
+        {
+          "caller": "__init__",
+          "callee": "set",
+          "lineNumber": 126
+        },
+        {
+          "caller": "process_frame",
+          "callee": "super().process_frame",
+          "lineNumber": 129
+        },
+        {
+          "caller": "process_frame",
+          "callee": "super",
+          "lineNumber": 129
+        },
+        {
+          "caller": "process_frame",
+          "callee": "isinstance",
+          "lineNumber": 131
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 136
+        },
+        {
+          "caller": "process_frame",
+          "callee": "isinstance",
+          "lineNumber": 139
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 144
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self._consume",
+          "lineNumber": 145
+        },
+        {
+          "caller": "process_frame",
+          "callee": "isinstance",
+          "lineNumber": 148
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self._sentence_buffer.strip",
+          "lineNumber": 167
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self._judge_sentence",
+          "lineNumber": 168
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 171
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 174
+        },
+        {
+          "caller": "_consume",
+          "callee": "_SENTENCE_SPLIT_RE.split",
+          "lineNumber": 178
+        },
+        {
+          "caller": "_consume",
+          "callee": "self._judge_sentence",
+          "lineNumber": 185
+        },
+        {
+          "caller": "_consume",
+          "callee": "logger.warning",
+          "lineNumber": 187
+        },
+        {
+          "caller": "_judge_sentence",
+          "callee": "_normalize",
+          "lineNumber": 196
+        },
+        {
+          "caller": "_judge_sentence",
+          "callee": "len",
+          "lineNumber": 198
+        },
+        {
+          "caller": "_judge_sentence",
+          "callee": "len",
+          "lineNumber": 203
+        },
+        {
+          "caller": "_judge_sentence",
+          "callee": "normalized.split",
+          "lineNumber": 203
+        },
+        {
+          "caller": "_judge_sentence",
+          "callee": "_word_overlap",
+          "lineNumber": 205
+        },
+        {
+          "caller": "_judge_sentence",
+          "callee": "self._is_unprompted_structured_repeat",
+          "lineNumber": 208
+        },
+        {
+          "caller": "_judge_sentence",
+          "callee": "self._seen_sentences.append",
+          "lineNumber": 211
+        },
+        {
+          "caller": "_is_unprompted_structured_repeat",
+          "callee": "qp.get",
+          "lineNumber": 228
+        },
+        {
+          "caller": "_is_unprompted_structured_repeat",
+          "callee": "property_name.lower",
+          "lineNumber": 229
+        },
+        {
+          "caller": "_is_unprompted_structured_repeat",
+          "callee": "raw_sentence.lower",
+          "lineNumber": 229
+        },
+        {
+          "caller": "_is_unprompted_structured_repeat",
+          "callee": "_prices_in",
+          "lineNumber": 232
+        },
+        {
+          "caller": "_is_unprompted_structured_repeat",
+          "callee": "f\"{qp['total']:,.0f}\".replace",
+          "lineNumber": 233
+        },
+        {
+          "caller": "_is_unprompted_structured_repeat",
+          "callee": "property_name.lower",
+          "lineNumber": 237
+        },
+        {
+          "caller": "_is_unprompted_structured_repeat",
+          "callee": "self._spoken_facts.add",
+          "lineNumber": 240
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 4,
+        "functionCount": 3,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "backend/app/voice/response_shape_guard.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 378,
+      "nonEmptyLines": 330,
+      "functions": [
+        {
+          "name": "count_questions",
+          "startLine": 110,
+          "endLine": 111,
+          "params": [
+            "text"
+          ]
+        },
+        {
+          "name": "has_multiple_unconnected_questions",
+          "startLine": 114,
+          "endLine": 140,
+          "params": [
+            "text"
+          ]
+        },
+        {
+          "name": "count_greeting_openers",
+          "startLine": 143,
+          "endLine": 144,
+          "params": [
+            "text"
+          ]
+        },
+        {
+          "name": "has_duplicated_safe_line",
+          "startLine": 147,
+          "endLine": 148,
+          "params": [
+            "text"
+          ]
+        },
+        {
+          "name": "has_duplicated_punctuation",
+          "startLine": 151,
+          "endLine": 152,
+          "params": [
+            "text"
+          ]
+        },
+        {
+          "name": "ends_mid_clause",
+          "startLine": 155,
+          "endLine": 162,
+          "params": [
+            "text"
+          ]
+        },
+        {
+          "name": "count_recommendation_blocks",
+          "startLine": 165,
+          "endLine": 166,
+          "params": [
+            "text"
+          ]
+        },
+        {
+          "name": "has_multiple_recommendation_blocks",
+          "startLine": 169,
+          "endLine": 170,
+          "params": [
+            "text"
+          ]
+        },
+        {
+          "name": "_incremental_violations",
+          "startLine": 178,
+          "endLine": 190,
+          "params": [
+            "text"
+          ]
+        },
+        {
+          "name": "validate_response_shape",
+          "startLine": 193,
+          "endLine": 204,
+          "params": [
+            "text"
+          ]
+        },
+        {
+          "name": "first_clean_sentence_or_original",
+          "startLine": 230,
+          "endLine": 244,
+          "params": [
+            "text"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "ResponseShapeValidatorProcessor",
+          "startLine": 247,
+          "endLine": 378,
+          "methods": [
+            "__init__",
+            "process_frame",
+            "_consume"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "count_questions",
+          "line": 110,
+          "isDefault": false
+        },
+        {
+          "name": "has_multiple_unconnected_questions",
+          "line": 114,
+          "isDefault": false
+        },
+        {
+          "name": "count_greeting_openers",
+          "line": 143,
+          "isDefault": false
+        },
+        {
+          "name": "has_duplicated_safe_line",
+          "line": 147,
+          "isDefault": false
+        },
+        {
+          "name": "has_duplicated_punctuation",
+          "line": 151,
+          "isDefault": false
+        },
+        {
+          "name": "ends_mid_clause",
+          "line": 155,
+          "isDefault": false
+        },
+        {
+          "name": "count_recommendation_blocks",
+          "line": 165,
+          "isDefault": false
+        },
+        {
+          "name": "has_multiple_recommendation_blocks",
+          "line": 169,
+          "isDefault": false
+        },
+        {
+          "name": "_incremental_violations",
+          "line": 178,
+          "isDefault": false
+        },
+        {
+          "name": "validate_response_shape",
+          "line": 193,
+          "isDefault": false
+        },
+        {
+          "name": "first_clean_sentence_or_original",
+          "line": 230,
+          "isDefault": false
+        },
+        {
+          "name": "ResponseShapeValidatorProcessor",
+          "line": 247,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "count_questions",
+          "callee": "text.count",
+          "lineNumber": 111
+        },
+        {
+          "caller": "has_multiple_unconnected_questions",
+          "callee": "s.strip",
+          "lineNumber": 125
+        },
+        {
+          "caller": "has_multiple_unconnected_questions",
+          "callee": "text.split",
+          "lineNumber": 125
+        },
+        {
+          "caller": "has_multiple_unconnected_questions",
+          "callee": "s.strip",
+          "lineNumber": 125
+        },
+        {
+          "caller": "has_multiple_unconnected_questions",
+          "callee": "len",
+          "lineNumber": 126
+        },
+        {
+          "caller": "has_multiple_unconnected_questions",
+          "callee": "range",
+          "lineNumber": 135
+        },
+        {
+          "caller": "has_multiple_unconnected_questions",
+          "callee": "len",
+          "lineNumber": 135
+        },
+        {
+          "caller": "has_multiple_unconnected_questions",
+          "callee": "following.split",
+          "lineNumber": 137
+        },
+        {
+          "caller": "has_multiple_unconnected_questions",
+          "callee": "following.split",
+          "lineNumber": 137
+        },
+        {
+          "caller": "has_multiple_unconnected_questions",
+          "callee": "_QUESTION_CONNECTOR_RE.fullmatch",
+          "lineNumber": 138
+        },
+        {
+          "caller": "has_multiple_unconnected_questions",
+          "callee": "following[:1].isupper",
+          "lineNumber": 138
+        },
+        {
+          "caller": "count_greeting_openers",
+          "callee": "len",
+          "lineNumber": 144
+        },
+        {
+          "caller": "count_greeting_openers",
+          "callee": "_GREETING_RE.findall",
+          "lineNumber": 144
+        },
+        {
+          "caller": "has_duplicated_safe_line",
+          "callee": "text.count",
+          "lineNumber": 148
+        },
+        {
+          "caller": "has_duplicated_punctuation",
+          "callee": "bool",
+          "lineNumber": 152
+        },
+        {
+          "caller": "has_duplicated_punctuation",
+          "callee": "_DUPLICATED_PUNCTUATION_RE.search",
+          "lineNumber": 152
+        },
+        {
+          "caller": "ends_mid_clause",
+          "callee": "text.strip",
+          "lineNumber": 156
+        },
+        {
+          "caller": "ends_mid_clause",
+          "callee": "_TERMINAL_PUNCTUATION_RE.search",
+          "lineNumber": 159
+        },
+        {
+          "caller": "ends_mid_clause",
+          "callee": "re.sub(r\"[.!?]+$\", \"\", stripped).split()[-1].lower",
+          "lineNumber": 161
+        },
+        {
+          "caller": "ends_mid_clause",
+          "callee": "re.sub(r\"[.!?]+$\", \"\", stripped).split",
+          "lineNumber": 161
+        },
+        {
+          "caller": "ends_mid_clause",
+          "callee": "re.sub",
+          "lineNumber": 161
+        },
+        {
+          "caller": "ends_mid_clause",
+          "callee": "stripped.split",
+          "lineNumber": 161
+        },
+        {
+          "caller": "count_recommendation_blocks",
+          "callee": "sum",
+          "lineNumber": 166
+        },
+        {
+          "caller": "count_recommendation_blocks",
+          "callee": "text.count",
+          "lineNumber": 166
+        },
+        {
+          "caller": "count_recommendation_blocks",
+          "callee": "CONFIDENCE_INTROS.values",
+          "lineNumber": 166
+        },
+        {
+          "caller": "has_multiple_recommendation_blocks",
+          "callee": "count_recommendation_blocks",
+          "lineNumber": 170
+        },
+        {
+          "caller": "_incremental_violations",
+          "callee": "has_multiple_unconnected_questions",
+          "lineNumber": 180
+        },
+        {
+          "caller": "_incremental_violations",
+          "callee": "violations.append",
+          "lineNumber": 181
+        },
+        {
+          "caller": "_incremental_violations",
+          "callee": "count_greeting_openers",
+          "lineNumber": 182
+        },
+        {
+          "caller": "_incremental_violations",
+          "callee": "violations.append",
+          "lineNumber": 183
+        },
+        {
+          "caller": "_incremental_violations",
+          "callee": "has_duplicated_safe_line",
+          "lineNumber": 184
+        },
+        {
+          "caller": "_incremental_violations",
+          "callee": "violations.append",
+          "lineNumber": 185
+        },
+        {
+          "caller": "_incremental_violations",
+          "callee": "has_duplicated_punctuation",
+          "lineNumber": 186
+        },
+        {
+          "caller": "_incremental_violations",
+          "callee": "violations.append",
+          "lineNumber": 187
+        },
+        {
+          "caller": "_incremental_violations",
+          "callee": "has_multiple_recommendation_blocks",
+          "lineNumber": 188
+        },
+        {
+          "caller": "_incremental_violations",
+          "callee": "violations.append",
+          "lineNumber": 189
+        },
+        {
+          "caller": "validate_response_shape",
+          "callee": "_incremental_violations",
+          "lineNumber": 201
+        },
+        {
+          "caller": "validate_response_shape",
+          "callee": "ends_mid_clause",
+          "lineNumber": 202
+        },
+        {
+          "caller": "validate_response_shape",
+          "callee": "violations.append",
+          "lineNumber": 203
+        },
+        {
+          "caller": "first_clean_sentence_or_original",
+          "callee": "p.strip",
+          "lineNumber": 241
+        },
+        {
+          "caller": "first_clean_sentence_or_original",
+          "callee": "_SENTENCE_SPLIT_RE.split",
+          "lineNumber": 241
+        },
+        {
+          "caller": "first_clean_sentence_or_original",
+          "callee": "text.strip",
+          "lineNumber": 241
+        },
+        {
+          "caller": "first_clean_sentence_or_original",
+          "callee": "p.strip",
+          "lineNumber": 241
+        },
+        {
+          "caller": "__init__",
+          "callee": "super().__init__",
+          "lineNumber": 262
+        },
+        {
+          "caller": "__init__",
+          "callee": "super",
+          "lineNumber": 262
+        },
+        {
+          "caller": "process_frame",
+          "callee": "super().process_frame",
+          "lineNumber": 275
+        },
+        {
+          "caller": "process_frame",
+          "callee": "super",
+          "lineNumber": 275
+        },
+        {
+          "caller": "process_frame",
+          "callee": "isinstance",
+          "lineNumber": 277
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 283
+        },
+        {
+          "caller": "process_frame",
+          "callee": "isinstance",
+          "lineNumber": 286
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self._consume",
+          "lineNumber": 293
+        },
+        {
+          "caller": "process_frame",
+          "callee": "isinstance",
+          "lineNumber": 296
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self._sentence_buffer.strip",
+          "lineNumber": 297
+        },
+        {
+          "caller": "process_frame",
+          "callee": "ends_mid_clause",
+          "lineNumber": 304
+        },
+        {
+          "caller": "process_frame",
+          "callee": "logger.warning",
+          "lineNumber": 305
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 309
+        },
+        {
+          "caller": "process_frame",
+          "callee": "LLMTextFrame",
+          "lineNumber": 309
+        },
+        {
+          "caller": "process_frame",
+          "callee": "ends_mid_clause",
+          "lineNumber": 313
+        },
+        {
+          "caller": "process_frame",
+          "callee": "logger.warning",
+          "lineNumber": 314
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 318
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 321
+        },
+        {
+          "caller": "_consume",
+          "callee": "_SENTENCE_SPLIT_CAPTURING_RE.split",
+          "lineNumber": 337
+        },
+        {
+          "caller": "_consume",
+          "callee": "zip",
+          "lineNumber": 346
+        },
+        {
+          "caller": "_consume",
+          "callee": "_incremental_violations",
+          "lineNumber": 348
+        },
+        {
+          "caller": "_consume",
+          "callee": "logger.warning",
+          "lineNumber": 350
+        },
+        {
+          "caller": "_consume",
+          "callee": "self._quality.record",
+          "lineNumber": 356
+        },
+        {
+          "caller": "_consume",
+          "callee": "ValidationResult",
+          "lineNumber": 357
+        },
+        {
+          "caller": "_consume",
+          "callee": "self.push_frame",
+          "lineNumber": 376
+        },
+        {
+          "caller": "_consume",
+          "callee": "LLMTextFrame",
+          "lineNumber": 376
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 12,
+        "functionCount": 11,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "backend/app/voice/ringing_audio.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 414,
+      "nonEmptyLines": 378,
+      "functions": [
+        {
+          "name": "_resolve_test_chunk_bytes",
+          "startLine": 111,
+          "endLine": 144,
+          "params": []
+        },
+        {
+          "name": "_load_pcm",
+          "startLine": 177,
+          "endLine": 189,
+          "params": [
+            "filename"
+          ]
+        },
+        {
+          "name": "_stream_pcm",
+          "startLine": 219,
+          "endLine": 284,
+          "params": [
+            "websocket",
+            "stream_sid",
+            "pcm",
+            "chunk_bytes",
+            "chunk_duration_s",
+            "on_chunk_sent"
+          ]
+        },
+        {
+          "name": "play_ringing_tone",
+          "startLine": 287,
+          "endLine": 307,
+          "params": [
+            "websocket",
+            "stream_sid"
+          ]
+        },
+        {
+          "name": "play_busy_message",
+          "startLine": 310,
+          "endLine": 414,
+          "params": [
+            "websocket",
+            "stream_sid"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "_UnexpectedWavFormat",
+          "startLine": 160,
+          "endLine": 174,
+          "methods": [],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "_resolve_test_chunk_bytes",
+          "line": 111,
+          "isDefault": false
+        },
+        {
+          "name": "_UnexpectedWavFormat",
+          "line": 160,
+          "isDefault": false
+        },
+        {
+          "name": "_load_pcm",
+          "line": 177,
+          "isDefault": false
+        },
+        {
+          "name": "_stream_pcm",
+          "line": 219,
+          "isDefault": false
+        },
+        {
+          "name": "play_ringing_tone",
+          "line": 287,
+          "isDefault": false
+        },
+        {
+          "name": "play_busy_message",
+          "line": 310,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "_resolve_test_chunk_bytes",
+          "callee": "os.environ.get",
+          "lineNumber": 121
+        },
+        {
+          "caller": "_resolve_test_chunk_bytes",
+          "callee": "int",
+          "lineNumber": 125
+        },
+        {
+          "caller": "_resolve_test_chunk_bytes",
+          "callee": "logger.error",
+          "lineNumber": 127
+        },
+        {
+          "caller": "_resolve_test_chunk_bytes",
+          "callee": "logger.error",
+          "lineNumber": 136
+        },
+        {
+          "caller": "_load_pcm",
+          "callee": "wave.open",
+          "lineNumber": 178
+        },
+        {
+          "caller": "_load_pcm",
+          "callee": "str",
+          "lineNumber": 178
+        },
+        {
+          "caller": "_load_pcm",
+          "callee": "wav_file.getframerate",
+          "lineNumber": 179
+        },
+        {
+          "caller": "_load_pcm",
+          "callee": "wav_file.getnchannels",
+          "lineNumber": 180
+        },
+        {
+          "caller": "_load_pcm",
+          "callee": "wav_file.getsampwidth",
+          "lineNumber": 181
+        },
+        {
+          "caller": "_load_pcm",
+          "callee": "_UnexpectedWavFormat",
+          "lineNumber": 183
+        },
+        {
+          "caller": "_load_pcm",
+          "callee": "wav_file.readframes",
+          "lineNumber": 189
+        },
+        {
+          "caller": "_load_pcm",
+          "callee": "wav_file.getnframes",
+          "lineNumber": 189
+        },
+        {
+          "caller": "_stream_pcm",
+          "callee": "asyncio.get_running_loop",
+          "lineNumber": 261
+        },
+        {
+          "caller": "_stream_pcm",
+          "callee": "loop.time",
+          "lineNumber": 262
+        },
+        {
+          "caller": "_stream_pcm",
+          "callee": "range",
+          "lineNumber": 264
+        },
+        {
+          "caller": "_stream_pcm",
+          "callee": "len",
+          "lineNumber": 264
+        },
+        {
+          "caller": "_stream_pcm",
+          "callee": "base64.b64encode(chunk).decode",
+          "lineNumber": 266
+        },
+        {
+          "caller": "_stream_pcm",
+          "callee": "base64.b64encode",
+          "lineNumber": 266
+        },
+        {
+          "caller": "_stream_pcm",
+          "callee": "loop.time",
+          "lineNumber": 269
+        },
+        {
+          "caller": "_stream_pcm",
+          "callee": "websocket.send_text",
+          "lineNumber": 270
+        },
+        {
+          "caller": "_stream_pcm",
+          "callee": "json.dumps",
+          "lineNumber": 270
+        },
+        {
+          "caller": "_stream_pcm",
+          "callee": "loop.time",
+          "lineNumber": 271
+        },
+        {
+          "caller": "_stream_pcm",
+          "callee": "on_chunk_sent",
+          "lineNumber": 273
+        },
+        {
+          "caller": "_stream_pcm",
+          "callee": "len",
+          "lineNumber": 275
+        },
+        {
+          "caller": "_stream_pcm",
+          "callee": "loop.time",
+          "lineNumber": 282
+        },
+        {
+          "caller": "_stream_pcm",
+          "callee": "asyncio.sleep",
+          "lineNumber": 284
+        },
+        {
+          "caller": "play_ringing_tone",
+          "callee": "_stream_pcm",
+          "lineNumber": 301
+        },
+        {
+          "caller": "play_ringing_tone",
+          "callee": "logger.warning",
+          "lineNumber": 307
+        },
+        {
+          "caller": "play_busy_message",
+          "callee": "len",
+          "lineNumber": 328
+        },
+        {
+          "caller": "play_busy_message",
+          "callee": "len",
+          "lineNumber": 329
+        },
+        {
+          "caller": "play_busy_message",
+          "callee": "range",
+          "lineNumber": 329
+        },
+        {
+          "caller": "play_busy_message",
+          "callee": "logger.info",
+          "lineNumber": 332
+        },
+        {
+          "caller": "play_busy_message",
+          "callee": "logger.info",
+          "lineNumber": 342
+        },
+        {
+          "caller": "_on_chunk_sent",
+          "callee": "time.monotonic",
+          "lineNumber": 349
+        },
+        {
+          "caller": "_on_chunk_sent",
+          "callee": "logger.info",
+          "lineNumber": 352
+        },
+        {
+          "caller": "_on_chunk_sent",
+          "callee": "logger.debug",
+          "lineNumber": 355
+        },
+        {
+          "caller": "play_busy_message",
+          "callee": "_stream_pcm",
+          "lineNumber": 367
+        },
+        {
+          "caller": "play_busy_message",
+          "callee": "logger.info",
+          "lineNumber": 375
+        },
+        {
+          "caller": "play_busy_message",
+          "callee": "logger.info",
+          "lineNumber": 377
+        },
+        {
+          "caller": "play_busy_message",
+          "callee": "websocket.send_text",
+          "lineNumber": 393
+        },
+        {
+          "caller": "play_busy_message",
+          "callee": "json.dumps",
+          "lineNumber": 404
+        },
+        {
+          "caller": "play_busy_message",
+          "callee": "logger.info",
+          "lineNumber": 406
+        },
+        {
+          "caller": "play_busy_message",
+          "callee": "logger.warning",
+          "lineNumber": 408
+        },
+        {
+          "caller": "play_busy_message",
+          "callee": "logger.info",
+          "lineNumber": 410
+        },
+        {
+          "caller": "play_busy_message",
+          "callee": "logger.warning",
+          "lineNumber": 414
+        }
+      ],
+      "metrics": {
+        "importCount": 1,
+        "exportCount": 6,
+        "functionCount": 5,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "backend/app/voice/silence_watchdog.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 243,
+      "nonEmptyLines": 217,
+      "classes": [
+        {
+          "name": "SilenceWatchdogProcessor",
+          "startLine": 76,
+          "endLine": 243,
+          "methods": [
+            "__init__",
+            "hangup_pending",
+            "request_end_after_current_turn",
+            "cancel_end_request",
+            "process_frame",
+            "_restart_timer",
+            "_cancel_timer",
+            "_on_timeout"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "SilenceWatchdogProcessor",
+          "line": 76,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "__init__",
+          "callee": "super().__init__",
+          "lineNumber": 88
+        },
+        {
+          "caller": "__init__",
+          "callee": "super",
+          "lineNumber": 88
+        },
+        {
+          "caller": "request_end_after_current_turn",
+          "callee": "logger.info",
+          "lineNumber": 119
+        },
+        {
+          "caller": "request_end_after_current_turn",
+          "callee": "self._conversation_state.mark_farewell_pending",
+          "lineNumber": 122
+        },
+        {
+          "caller": "request_end_after_current_turn",
+          "callee": "self._cancel_timer",
+          "lineNumber": 123
+        },
+        {
+          "caller": "cancel_end_request",
+          "callee": "self._conversation_state.mark_reopened",
+          "lineNumber": 138
+        },
+        {
+          "caller": "process_frame",
+          "callee": "super().process_frame",
+          "lineNumber": 141
+        },
+        {
+          "caller": "process_frame",
+          "callee": "super",
+          "lineNumber": 141
+        },
+        {
+          "caller": "process_frame",
+          "callee": "isinstance",
+          "lineNumber": 143
+        },
+        {
+          "caller": "process_frame",
+          "callee": "logger.info",
+          "lineNumber": 146
+        },
+        {
+          "caller": "process_frame",
+          "callee": "logger.info",
+          "lineNumber": 147
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self._conversation_state.mark_closed",
+          "lineNumber": 149
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 150
+        },
+        {
+          "caller": "process_frame",
+          "callee": "EndWorkerFrame",
+          "lineNumber": 150
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self._restart_timer",
+          "lineNumber": 160
+        },
+        {
+          "caller": "process_frame",
+          "callee": "isinstance",
+          "lineNumber": 161
+        },
+        {
+          "caller": "process_frame",
+          "callee": "frame.text.strip",
+          "lineNumber": 162
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self._conversation_state.mark_reopened",
+          "lineNumber": 173
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self._cancel_timer",
+          "lineNumber": 175
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 183
+        },
+        {
+          "caller": "_restart_timer",
+          "callee": "self._cancel_timer",
+          "lineNumber": 186
+        },
+        {
+          "caller": "_restart_timer",
+          "callee": "self.create_task",
+          "lineNumber": 187
+        },
+        {
+          "caller": "_restart_timer",
+          "callee": "self._on_timeout",
+          "lineNumber": 187
+        },
+        {
+          "caller": "_cancel_timer",
+          "callee": "self.cancel_task",
+          "lineNumber": 191
+        },
+        {
+          "caller": "_on_timeout",
+          "callee": "asyncio.sleep",
+          "lineNumber": 196
+        },
+        {
+          "caller": "_on_timeout",
+          "callee": "logger.info",
+          "lineNumber": 208
+        },
+        {
+          "caller": "_on_timeout",
+          "callee": "self.push_frame",
+          "lineNumber": 212
+        },
+        {
+          "caller": "_on_timeout",
+          "callee": "TTSSpeakFrame",
+          "lineNumber": 212
+        },
+        {
+          "caller": "_on_timeout",
+          "callee": "self.push_frame",
+          "lineNumber": 222
+        },
+        {
+          "caller": "_on_timeout",
+          "callee": "EndWorkerFrame",
+          "lineNumber": 222
+        },
+        {
+          "caller": "_on_timeout",
+          "callee": "logger.info",
+          "lineNumber": 225
+        },
+        {
+          "caller": "_on_timeout",
+          "callee": "min",
+          "lineNumber": 234
+        },
+        {
+          "caller": "_on_timeout",
+          "callee": "len",
+          "lineNumber": 234
+        },
+        {
+          "caller": "_on_timeout",
+          "callee": "self.push_frame",
+          "lineNumber": 235
+        },
+        {
+          "caller": "_on_timeout",
+          "callee": "TTSSpeakFrame",
+          "lineNumber": 235
+        },
+        {
+          "caller": "_on_timeout",
+          "callee": "self._restart_timer",
+          "lineNumber": 243
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "backend/app/voice/slow_tool_filler.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 144,
+      "nonEmptyLines": 122,
+      "classes": [
+        {
+          "name": "SlowToolFillerProcessor",
+          "startLine": 61,
+          "endLine": 144,
+          "methods": [
+            "__init__",
+            "process_frame",
+            "_start_timer",
+            "_cancel_timer",
+            "_on_timeout"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "SlowToolFillerProcessor",
+          "line": 61,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "__init__",
+          "callee": "super().__init__",
+          "lineNumber": 72
+        },
+        {
+          "caller": "__init__",
+          "callee": "super",
+          "lineNumber": 72
+        },
+        {
+          "caller": "process_frame",
+          "callee": "super().process_frame",
+          "lineNumber": 82
+        },
+        {
+          "caller": "process_frame",
+          "callee": "super",
+          "lineNumber": 82
+        },
+        {
+          "caller": "process_frame",
+          "callee": "isinstance",
+          "lineNumber": 84
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self._start_timer",
+          "lineNumber": 101
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 102
+        },
+        {
+          "caller": "process_frame",
+          "callee": "isinstance",
+          "lineNumber": 105
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self._cancel_timer",
+          "lineNumber": 108
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 109
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 112
+        },
+        {
+          "caller": "_start_timer",
+          "callee": "self._cancel_timer",
+          "lineNumber": 115
+        },
+        {
+          "caller": "_start_timer",
+          "callee": "self.create_task",
+          "lineNumber": 116
+        },
+        {
+          "caller": "_start_timer",
+          "callee": "self._on_timeout",
+          "lineNumber": 116
+        },
+        {
+          "caller": "_cancel_timer",
+          "callee": "self.cancel_task",
+          "lineNumber": 120
+        },
+        {
+          "caller": "_on_timeout",
+          "callee": "asyncio.sleep",
+          "lineNumber": 125
+        },
+        {
+          "caller": "_on_timeout",
+          "callee": "len",
+          "lineNumber": 141
+        },
+        {
+          "caller": "_on_timeout",
+          "callee": "logger.info",
+          "lineNumber": 143
+        },
+        {
+          "caller": "_on_timeout",
+          "callee": "self.push_frame",
+          "lineNumber": 144
+        },
+        {
+          "caller": "_on_timeout",
+          "callee": "TTSSpeakFrame",
+          "lineNumber": 144
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 1,
+        "functionCount": 0,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "backend/app/voice/state_prompt_sync.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 286,
+      "nonEmptyLines": 256,
+      "functions": [
+        {
+          "name": "_closing_hint",
+          "startLine": 109,
+          "endLine": 128,
+          "params": [
+            "state"
+          ]
+        },
+        {
+          "name": "_format_slots",
+          "startLine": 143,
+          "endLine": 163,
+          "params": [
+            "state"
+          ]
+        },
+        {
+          "name": "_language_hint",
+          "startLine": 166,
+          "endLine": 196,
+          "params": [
+            "state",
+            "quality"
+          ]
+        },
+        {
+          "name": "build_state_block_content",
+          "startLine": 199,
+          "endLine": 234,
+          "params": [
+            "state",
+            "quality"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "StatePromptSyncProcessor",
+          "startLine": 237,
+          "endLine": 286,
+          "methods": [
+            "__init__",
+            "process_frame"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "_closing_hint",
+          "line": 109,
+          "isDefault": false
+        },
+        {
+          "name": "_format_slots",
+          "line": 143,
+          "isDefault": false
+        },
+        {
+          "name": "_language_hint",
+          "line": 166,
+          "isDefault": false
+        },
+        {
+          "name": "build_state_block_content",
+          "line": 199,
+          "isDefault": false
+        },
+        {
+          "name": "StatePromptSyncProcessor",
+          "line": 237,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "_closing_hint",
+          "callee": "state.quoted_price.get",
+          "lineNumber": 125
+        },
+        {
+          "caller": "_format_slots",
+          "callee": "_SLOT_LABELS.items",
+          "lineNumber": 151
+        },
+        {
+          "caller": "_format_slots",
+          "callee": "known.sort",
+          "lineNumber": 152
+        },
+        {
+          "caller": "_format_slots",
+          "callee": "state.attention_score",
+          "lineNumber": 152
+        },
+        {
+          "caller": "_format_slots",
+          "callee": "state.attention.get",
+          "lineNumber": 159
+        },
+        {
+          "caller": "_format_slots",
+          "callee": "parts.append",
+          "lineNumber": 162
+        },
+        {
+          "caller": "_format_slots",
+          "callee": "\", \".join",
+          "lineNumber": 163
+        },
+        {
+          "caller": "_language_hint",
+          "callee": "quality.clear_pending_style_correction",
+          "lineNumber": 195
+        },
+        {
+          "caller": "_language_hint",
+          "callee": "render_style_block",
+          "lineNumber": 196
+        },
+        {
+          "caller": "build_state_block_content",
+          "callee": "_format_slots",
+          "lineNumber": 206
+        },
+        {
+          "caller": "build_state_block_content",
+          "callee": "_closing_hint",
+          "lineNumber": 207
+        },
+        {
+          "caller": "build_state_block_content",
+          "callee": "_GOAL_HINTS.get",
+          "lineNumber": 207
+        },
+        {
+          "caller": "build_state_block_content",
+          "callee": "_language_hint",
+          "lineNumber": 208
+        },
+        {
+          "caller": "build_state_block_content",
+          "callee": "lines.append",
+          "lineNumber": 215
+        },
+        {
+          "caller": "build_state_block_content",
+          "callee": "\", \".join",
+          "lineNumber": 217
+        },
+        {
+          "caller": "build_state_block_content",
+          "callee": "lines.append",
+          "lineNumber": 218
+        },
+        {
+          "caller": "build_state_block_content",
+          "callee": "lines.append",
+          "lineNumber": 224
+        },
+        {
+          "caller": "build_state_block_content",
+          "callee": "lines.append",
+          "lineNumber": 230
+        },
+        {
+          "caller": "build_state_block_content",
+          "callee": "lines.append",
+          "lineNumber": 232
+        },
+        {
+          "caller": "build_state_block_content",
+          "callee": "\"\\n\".join",
+          "lineNumber": 234
+        },
+        {
+          "caller": "__init__",
+          "callee": "super().__init__",
+          "lineNumber": 243
+        },
+        {
+          "caller": "__init__",
+          "callee": "super",
+          "lineNumber": 243
+        },
+        {
+          "caller": "process_frame",
+          "callee": "super().process_frame",
+          "lineNumber": 258
+        },
+        {
+          "caller": "process_frame",
+          "callee": "super",
+          "lineNumber": 258
+        },
+        {
+          "caller": "process_frame",
+          "callee": "isinstance",
+          "lineNumber": 260
+        },
+        {
+          "caller": "process_frame",
+          "callee": "build_state_block_content",
+          "lineNumber": 261
+        },
+        {
+          "caller": "process_frame",
+          "callee": "next",
+          "lineNumber": 264
+        },
+        {
+          "caller": "process_frame",
+          "callee": "enumerate",
+          "lineNumber": 265
+        },
+        {
+          "caller": "process_frame",
+          "callee": "messages.insert",
+          "lineNumber": 277
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 286
+        }
+      ],
+      "metrics": {
+        "importCount": 3,
+        "exportCount": 5,
+        "functionCount": 4,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "backend/app/voice/style_compliance_monitor.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 231,
+      "nonEmptyLines": 198,
+      "functions": [
+        {
+          "name": "_expected_language_family",
+          "startLine": 60,
+          "endLine": 72,
+          "params": [
+            "style"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "StyleComplianceRule",
+          "startLine": 75,
+          "endLine": 154,
+          "methods": [
+            "check"
+          ],
+          "properties": []
+        },
+        {
+          "name": "StyleComplianceMonitor",
+          "startLine": 167,
+          "endLine": 231,
+          "methods": [
+            "__init__",
+            "process_frame",
+            "_observe",
+            "_finalize"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "_expected_language_family",
+          "line": 60,
+          "isDefault": false
+        },
+        {
+          "name": "StyleComplianceRule",
+          "line": 75,
+          "isDefault": false
+        },
+        {
+          "name": "StyleComplianceMonitor",
+          "line": 167,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "check",
+          "callee": "time.perf_counter",
+          "lineNumber": 84
+        },
+        {
+          "caller": "check",
+          "callee": "_expected_language_family",
+          "lineNumber": 85
+        },
+        {
+          "caller": "check",
+          "callee": "ValidationResult",
+          "lineNumber": 88
+        },
+        {
+          "caller": "check",
+          "callee": "round",
+          "lineNumber": 93
+        },
+        {
+          "caller": "check",
+          "callee": "time.perf_counter",
+          "lineNumber": 93
+        },
+        {
+          "caller": "check",
+          "callee": "devanagari_ratio",
+          "lineNumber": 96
+        },
+        {
+          "caller": "check",
+          "callee": "ValidationResult",
+          "lineNumber": 99
+        },
+        {
+          "caller": "check",
+          "callee": "round",
+          "lineNumber": 108
+        },
+        {
+          "caller": "check",
+          "callee": "time.perf_counter",
+          "lineNumber": 108
+        },
+        {
+          "caller": "check",
+          "callee": "has_hinglish_token",
+          "lineNumber": 111
+        },
+        {
+          "caller": "check",
+          "callee": "round",
+          "lineNumber": 116
+        },
+        {
+          "caller": "check",
+          "callee": "round",
+          "lineNumber": 118
+        },
+        {
+          "caller": "check",
+          "callee": "time.perf_counter",
+          "lineNumber": 118
+        },
+        {
+          "caller": "check",
+          "callee": "ValidationResult",
+          "lineNumber": 122
+        },
+        {
+          "caller": "check",
+          "callee": "min",
+          "lineNumber": 125
+        },
+        {
+          "caller": "check",
+          "callee": "ValidationResult",
+          "lineNumber": 129
+        },
+        {
+          "caller": "check",
+          "callee": "ValidationResult",
+          "lineNumber": 141
+        },
+        {
+          "caller": "check",
+          "callee": "ValidationResult",
+          "lineNumber": 144
+        },
+        {
+          "caller": "__init__",
+          "callee": "super().__init__",
+          "lineNumber": 181
+        },
+        {
+          "caller": "__init__",
+          "callee": "super",
+          "lineNumber": 181
+        },
+        {
+          "caller": "__init__",
+          "callee": "StyleComplianceRule",
+          "lineNumber": 191
+        },
+        {
+          "caller": "process_frame",
+          "callee": "super().process_frame",
+          "lineNumber": 197
+        },
+        {
+          "caller": "process_frame",
+          "callee": "super",
+          "lineNumber": 197
+        },
+        {
+          "caller": "process_frame",
+          "callee": "isinstance",
+          "lineNumber": 199
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 203
+        },
+        {
+          "caller": "process_frame",
+          "callee": "isinstance",
+          "lineNumber": 206
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self._observe",
+          "lineNumber": 207
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 208
+        },
+        {
+          "caller": "process_frame",
+          "callee": "isinstance",
+          "lineNumber": 211
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self._shadow_text.strip",
+          "lineNumber": 212
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self._finalize",
+          "lineNumber": 213
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 214
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self.push_frame",
+          "lineNumber": 217
+        },
+        {
+          "caller": "_finalize",
+          "callee": "dataclasses.replace",
+          "lineNumber": 229
+        },
+        {
+          "caller": "_finalize",
+          "callee": "self._rule.check",
+          "lineNumber": 229
+        },
+        {
+          "caller": "_finalize",
+          "callee": "self._quality.record",
+          "lineNumber": 231
+        }
+      ],
+      "metrics": {
+        "importCount": 3,
+        "exportCount": 3,
+        "functionCount": 1,
+        "classCount": 2
+      }
+    },
+    {
+      "path": "backend/app/voice/tools.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 865,
+      "nonEmptyLines": 817,
+      "functions": [
+        {
+          "name": "_parse_iso_date",
+          "startLine": 88,
+          "endLine": 98,
+          "params": [
+            "value"
+          ]
+        },
+        {
+          "name": "build_voice_tools",
+          "startLine": 101,
+          "endLine": 865,
+          "params": [
+            "call_session_id",
+            "property_id",
+            "host_user_id",
+            "conversation_state",
+            "guest_profile_id",
+            "caller_number",
+            "silence_watchdog",
+            "property_recommendation_guard"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "_parse_iso_date",
+          "line": 88,
+          "isDefault": false
+        },
+        {
+          "name": "build_voice_tools",
+          "line": 101,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "_parse_iso_date",
+          "callee": "date.fromisoformat",
+          "lineNumber": 96
+        },
+        {
+          "caller": "build_voice_tools",
+          "callee": "ConversationState",
+          "lineNumber": 124
+        },
+        {
+          "caller": "check_calendar",
+          "callee": "AsyncSessionLocal",
+          "lineNumber": 141
+        },
+        {
+          "caller": "check_calendar",
+          "callee": "CheckCalendarArgs",
+          "lineNumber": 143
+        },
+        {
+          "caller": "_on_checked",
+          "callee": "property_recommendation_guard.record_tool_result",
+          "lineNumber": 154
+        },
+        {
+          "caller": "check_calendar",
+          "callee": "tool_handlers.handle_check_calendar",
+          "lineNumber": 158
+        },
+        {
+          "caller": "check_calendar",
+          "callee": "state.set_slot",
+          "lineNumber": 166
+        },
+        {
+          "caller": "check_calendar",
+          "callee": "state.set_slot",
+          "lineNumber": 167
+        },
+        {
+          "caller": "check_calendar",
+          "callee": "state.set_slot",
+          "lineNumber": 168
+        },
+        {
+          "caller": "check_calendar",
+          "callee": "state.lock_property",
+          "lineNumber": 169
+        },
+        {
+          "caller": "check_calendar",
+          "callee": "state.mark_checking_availability",
+          "lineNumber": 170
+        },
+        {
+          "caller": "check_calendar",
+          "callee": "params.result_callback",
+          "lineNumber": 173
+        },
+        {
+          "caller": "get_pricing",
+          "callee": "AsyncSessionLocal",
+          "lineNumber": 204
+        },
+        {
+          "caller": "get_pricing",
+          "callee": "GetPricingArgs",
+          "lineNumber": 206
+        },
+        {
+          "caller": "get_pricing",
+          "callee": "state.set_slot",
+          "lineNumber": 216
+        },
+        {
+          "caller": "get_pricing",
+          "callee": "state.set_slot",
+          "lineNumber": 217
+        },
+        {
+          "caller": "get_pricing",
+          "callee": "state.set_slot",
+          "lineNumber": 218
+        },
+        {
+          "caller": "get_pricing",
+          "callee": "state.lock_property",
+          "lineNumber": 219
+        },
+        {
+          "caller": "get_pricing",
+          "callee": "state.mark_checking_availability",
+          "lineNumber": 220
+        },
+        {
+          "caller": "_on_priced",
+          "callee": "state.record_quoted_price",
+          "lineNumber": 240
+        },
+        {
+          "caller": "_on_priced",
+          "callee": "property_recommendation_guard.record_tool_result",
+          "lineNumber": 242
+        },
+        {
+          "caller": "get_pricing",
+          "callee": "tool_handlers.handle_get_pricing",
+          "lineNumber": 246
+        },
+        {
+          "caller": "get_pricing",
+          "callee": "params.result_callback",
+          "lineNumber": 251
+        },
+        {
+          "caller": "dispatch_technician",
+          "callee": "AsyncSessionLocal",
+          "lineNumber": 269
+        },
+        {
+          "caller": "dispatch_technician",
+          "callee": "DispatchTechnicianArgs",
+          "lineNumber": 271
+        },
+        {
+          "caller": "dispatch_technician",
+          "callee": "tool_handlers.handle_dispatch_technician",
+          "lineNumber": 277
+        },
+        {
+          "caller": "dispatch_technician",
+          "callee": "params.result_callback",
+          "lineNumber": 280
+        },
+        {
+          "caller": "send_whatsapp",
+          "callee": "params.result_callback",
+          "lineNumber": 299
+        },
+        {
+          "caller": "send_whatsapp",
+          "callee": "AsyncSessionLocal",
+          "lineNumber": 301
+        },
+        {
+          "caller": "send_whatsapp",
+          "callee": "SendWhatsappArgs",
+          "lineNumber": 303
+        },
+        {
+          "caller": "send_whatsapp",
+          "callee": "tool_handlers.handle_send_whatsapp",
+          "lineNumber": 304
+        },
+        {
+          "caller": "send_whatsapp",
+          "callee": "params.result_callback",
+          "lineNumber": 307
+        },
+        {
+          "caller": "send_photos",
+          "callee": "params.result_callback",
+          "lineNumber": 326
+        },
+        {
+          "caller": "send_photos",
+          "callee": "AsyncSessionLocal",
+          "lineNumber": 328
+        },
+        {
+          "caller": "send_photos",
+          "callee": "SendPhotosArgs",
+          "lineNumber": 330
+        },
+        {
+          "caller": "send_photos",
+          "callee": "tool_handlers.handle_send_photos",
+          "lineNumber": 331
+        },
+        {
+          "caller": "send_photos",
+          "callee": "params.result_callback",
+          "lineNumber": 334
+        },
+        {
+          "caller": "escalate_to_host",
+          "callee": "AsyncSessionLocal",
+          "lineNumber": 354
+        },
+        {
+          "caller": "escalate_to_host",
+          "callee": "EscalateToHostArgs",
+          "lineNumber": 356
+        },
+        {
+          "caller": "escalate_to_host",
+          "callee": "tool_handlers.handle_escalate_to_host",
+          "lineNumber": 363
+        },
+        {
+          "caller": "escalate_to_host",
+          "callee": "state.mark_escalated",
+          "lineNumber": 366
+        },
+        {
+          "caller": "escalate_to_host",
+          "callee": "params.result_callback",
+          "lineNumber": 369
+        },
+        {
+          "caller": "negotiate_rate",
+          "callee": "AsyncSessionLocal",
+          "lineNumber": 392
+        },
+        {
+          "caller": "negotiate_rate",
+          "callee": "NegotiateRateArgs",
+          "lineNumber": 394
+        },
+        {
+          "caller": "_on_negotiated",
+          "callee": "property_recommendation_guard.record_tool_result",
+          "lineNumber": 410
+        },
+        {
+          "caller": "negotiate_rate",
+          "callee": "tool_handlers.handle_negotiate_rate",
+          "lineNumber": 415
+        },
+        {
+          "caller": "negotiate_rate",
+          "callee": "state.set_slot",
+          "lineNumber": 418
+        },
+        {
+          "caller": "negotiate_rate",
+          "callee": "state.set_slot",
+          "lineNumber": 419
+        },
+        {
+          "caller": "negotiate_rate",
+          "callee": "state.set_slot",
+          "lineNumber": 420
+        },
+        {
+          "caller": "negotiate_rate",
+          "callee": "state.lock_property",
+          "lineNumber": 421
+        },
+        {
+          "caller": "negotiate_rate",
+          "callee": "state.mark_negotiating",
+          "lineNumber": 422
+        },
+        {
+          "caller": "negotiate_rate",
+          "callee": "params.result_callback",
+          "lineNumber": 425
+        },
+        {
+          "caller": "recommend_properties",
+          "callee": "any",
+          "lineNumber": 489
+        },
+        {
+          "caller": "recommend_properties",
+          "callee": "params.result_callback",
+          "lineNumber": 502
+        },
+        {
+          "caller": "recommend_properties",
+          "callee": "state.slots.get",
+          "lineNumber": 517
+        },
+        {
+          "caller": "recommend_properties",
+          "callee": "state.slots.get",
+          "lineNumber": 518
+        },
+        {
+          "caller": "recommend_properties",
+          "callee": "state.slots.get",
+          "lineNumber": 526
+        },
+        {
+          "caller": "recommend_properties",
+          "callee": "state.slots.get",
+          "lineNumber": 529
+        },
+        {
+          "caller": "recommend_properties",
+          "callee": "state.slots.get",
+          "lineNumber": 538
+        },
+        {
+          "caller": "recommend_properties",
+          "callee": "sorted",
+          "lineNumber": 539
+        },
+        {
+          "caller": "recommend_properties",
+          "callee": "set",
+          "lineNumber": 539
+        },
+        {
+          "caller": "recommend_properties",
+          "callee": "set",
+          "lineNumber": 539
+        },
+        {
+          "caller": "recommend_properties",
+          "callee": "state.touch_attention",
+          "lineNumber": 552
+        },
+        {
+          "caller": "recommend_properties",
+          "callee": "canonicalize_amenity",
+          "lineNumber": 552
+        },
+        {
+          "caller": "recommend_properties",
+          "callee": "state.resolve_cheaper_budget",
+          "lineNumber": 569
+        },
+        {
+          "caller": "recommend_properties",
+          "callee": "state.resolve_larger_num_guests",
+          "lineNumber": 572
+        },
+        {
+          "caller": "recommend_properties",
+          "callee": "_parse_iso_date",
+          "lineNumber": 585
+        },
+        {
+          "caller": "recommend_properties",
+          "callee": "state.slots.get",
+          "lineNumber": 585
+        },
+        {
+          "caller": "recommend_properties",
+          "callee": "_parse_iso_date",
+          "lineNumber": 586
+        },
+        {
+          "caller": "recommend_properties",
+          "callee": "state.slots.get",
+          "lineNumber": 586
+        },
+        {
+          "caller": "recommend_properties",
+          "callee": "state.attention_score",
+          "lineNumber": 596
+        },
+        {
+          "caller": "recommend_properties",
+          "callee": "canonicalize_amenities",
+          "lineNumber": 596
+        },
+        {
+          "caller": "recommend_properties",
+          "callee": "AsyncSessionLocal",
+          "lineNumber": 600
+        },
+        {
+          "caller": "recommend_properties",
+          "callee": "RecommendPropertiesArgs",
+          "lineNumber": 601
+        },
+        {
+          "caller": "recommend_properties",
+          "callee": "tool_handlers.handle_recommend_properties",
+          "lineNumber": 612
+        },
+        {
+          "caller": "recommend_properties",
+          "callee": "render_recommendation_text",
+          "lineNumber": 621
+        },
+        {
+          "caller": "recommend_properties",
+          "callee": "property_recommendation_guard.record_tool_result",
+          "lineNumber": 623
+        },
+        {
+          "caller": "recommend_properties",
+          "callee": "state.set_slot",
+          "lineNumber": 625
+        },
+        {
+          "caller": "recommend_properties",
+          "callee": "state.set_slot",
+          "lineNumber": 627
+        },
+        {
+          "caller": "recommend_properties",
+          "callee": "state.set_slot",
+          "lineNumber": 628
+        },
+        {
+          "caller": "recommend_properties",
+          "callee": "state.set_slot",
+          "lineNumber": 629
+        },
+        {
+          "caller": "recommend_properties",
+          "callee": "state.set_slot",
+          "lineNumber": 630
+        },
+        {
+          "caller": "recommend_properties",
+          "callee": "state.record_recommendations",
+          "lineNumber": 631
+        },
+        {
+          "caller": "recommend_properties",
+          "callee": "str",
+          "lineNumber": 634
+        },
+        {
+          "caller": "recommend_properties",
+          "callee": "params.result_callback",
+          "lineNumber": 642
+        },
+        {
+          "caller": "update_lead",
+          "callee": "_LANGUAGE_PREFERENCE_MAP.get",
+          "lineNumber": 720
+        },
+        {
+          "caller": "update_lead",
+          "callee": "preferred_language.strip().lower",
+          "lineNumber": 720
+        },
+        {
+          "caller": "update_lead",
+          "callee": "preferred_language.strip",
+          "lineNumber": 720
+        },
+        {
+          "caller": "update_lead",
+          "callee": "AsyncSessionLocal",
+          "lineNumber": 723
+        },
+        {
+          "caller": "update_lead",
+          "callee": "UpdateLeadArgs",
+          "lineNumber": 725
+        },
+        {
+          "caller": "update_lead",
+          "callee": "tool_handlers.handle_update_lead",
+          "lineNumber": 745
+        },
+        {
+          "caller": "update_lead",
+          "callee": "state.set_slot",
+          "lineNumber": 754
+        },
+        {
+          "caller": "update_lead",
+          "callee": "args.check_in.isoformat",
+          "lineNumber": 754
+        },
+        {
+          "caller": "update_lead",
+          "callee": "state.set_slot",
+          "lineNumber": 755
+        },
+        {
+          "caller": "update_lead",
+          "callee": "args.check_out.isoformat",
+          "lineNumber": 755
+        },
+        {
+          "caller": "update_lead",
+          "callee": "state.set_slot",
+          "lineNumber": 756
+        },
+        {
+          "caller": "update_lead",
+          "callee": "state.set_slot",
+          "lineNumber": 757
+        },
+        {
+          "caller": "update_lead",
+          "callee": "state.set_slot",
+          "lineNumber": 758
+        },
+        {
+          "caller": "update_lead",
+          "callee": "state.set_slot",
+          "lineNumber": 759
+        },
+        {
+          "caller": "update_lead",
+          "callee": "state.set_slot",
+          "lineNumber": 760
+        },
+        {
+          "caller": "update_lead",
+          "callee": "state.set_slot",
+          "lineNumber": 761
+        },
+        {
+          "caller": "update_lead",
+          "callee": "params.result_callback",
+          "lineNumber": 764
+        },
+        {
+          "caller": "search_faq",
+          "callee": "AsyncSessionLocal",
+          "lineNumber": 778
+        },
+        {
+          "caller": "search_faq",
+          "callee": "SearchFaqArgs",
+          "lineNumber": 779
+        },
+        {
+          "caller": "search_faq",
+          "callee": "uuid.UUID",
+          "lineNumber": 790
+        },
+        {
+          "caller": "_on_answered",
+          "callee": "property_recommendation_guard.record_tool_result",
+          "lineNumber": 800
+        },
+        {
+          "caller": "search_faq",
+          "callee": "tool_handlers.handle_search_faq",
+          "lineNumber": 804
+        },
+        {
+          "caller": "search_faq",
+          "callee": "params.result_callback",
+          "lineNumber": 807
+        },
+        {
+          "caller": "end_call",
+          "callee": "silence_watchdog.request_end_after_current_turn",
+          "lineNumber": 819
+        },
+        {
+          "caller": "end_call",
+          "callee": "params.result_callback",
+          "lineNumber": 828
+        },
+        {
+          "caller": "end_call",
+          "callee": "FunctionCallResultProperties",
+          "lineNumber": 829
+        },
+        {
+          "caller": "decline_irrelevant_call",
+          "callee": "silence_watchdog.request_end_after_current_turn",
+          "lineNumber": 846
+        },
+        {
+          "caller": "decline_irrelevant_call",
+          "callee": "params.result_callback",
+          "lineNumber": 848
+        },
+        {
+          "caller": "decline_irrelevant_call",
+          "callee": "FunctionCallResultProperties",
+          "lineNumber": 849
+        }
+      ],
+      "metrics": {
+        "importCount": 9,
+        "exportCount": 2,
+        "functionCount": 2,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "backend/app/voice/turn_strategies.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 297,
+      "nonEmptyLines": 266,
+      "functions": [
+        {
+          "name": "_is_incomplete",
+          "startLine": 52,
+          "endLine": 73,
+          "params": [
+            "text"
+          ]
+        }
+      ],
+      "classes": [
+        {
+          "name": "HybridCompletenessUserTurnStopStrategy",
+          "startLine": 76,
+          "endLine": 297,
+          "methods": [
+            "__init__",
+            "reset",
+            "cleanup",
+            "process_frame",
+            "_handle_vad_user_started_speaking",
+            "_handle_vad_user_stopped_speaking",
+            "_handle_transcription",
+            "_restart_speech_timer",
+            "_speech_timer_handler",
+            "_stt_timeout_handler",
+            "_maybe_trigger_user_turn_stopped",
+            "_cancel_all_tasks"
+          ],
+          "properties": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "_is_incomplete",
+          "line": 52,
+          "isDefault": false
+        },
+        {
+          "name": "HybridCompletenessUserTurnStopStrategy",
+          "line": 76,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "_is_incomplete",
+          "callee": "text.strip",
+          "lineNumber": 54
+        },
+        {
+          "caller": "_is_incomplete",
+          "callee": "stripped.rstrip(\".,!?\").split",
+          "lineNumber": 57
+        },
+        {
+          "caller": "_is_incomplete",
+          "callee": "stripped.rstrip",
+          "lineNumber": 57
+        },
+        {
+          "caller": "_is_incomplete",
+          "callee": "words[-1].lower",
+          "lineNumber": 60
+        },
+        {
+          "caller": "_is_incomplete",
+          "callee": "stripped.endswith",
+          "lineNumber": 62
+        },
+        {
+          "caller": "_is_incomplete",
+          "callee": "len",
+          "lineNumber": 71
+        },
+        {
+          "caller": "__init__",
+          "callee": "super().__init__",
+          "lineNumber": 98
+        },
+        {
+          "caller": "__init__",
+          "callee": "super",
+          "lineNumber": 98
+        },
+        {
+          "caller": "reset",
+          "callee": "super().reset",
+          "lineNumber": 119
+        },
+        {
+          "caller": "reset",
+          "callee": "super",
+          "lineNumber": 119
+        },
+        {
+          "caller": "reset",
+          "callee": "self._cancel_all_tasks",
+          "lineNumber": 127
+        },
+        {
+          "caller": "cleanup",
+          "callee": "super().cleanup",
+          "lineNumber": 130
+        },
+        {
+          "caller": "cleanup",
+          "callee": "super",
+          "lineNumber": 130
+        },
+        {
+          "caller": "cleanup",
+          "callee": "self._cancel_all_tasks",
+          "lineNumber": 131
+        },
+        {
+          "caller": "process_frame",
+          "callee": "logger.debug",
+          "lineNumber": 134
+        },
+        {
+          "caller": "process_frame",
+          "callee": "type",
+          "lineNumber": 134
+        },
+        {
+          "caller": "process_frame",
+          "callee": "isinstance",
+          "lineNumber": 135
+        },
+        {
+          "caller": "process_frame",
+          "callee": "logger.debug",
+          "lineNumber": 137
+        },
+        {
+          "caller": "process_frame",
+          "callee": "isinstance",
+          "lineNumber": 138
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self._handle_vad_user_started_speaking",
+          "lineNumber": 139
+        },
+        {
+          "caller": "process_frame",
+          "callee": "isinstance",
+          "lineNumber": 140
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self._handle_vad_user_stopped_speaking",
+          "lineNumber": 141
+        },
+        {
+          "caller": "process_frame",
+          "callee": "isinstance",
+          "lineNumber": 142
+        },
+        {
+          "caller": "process_frame",
+          "callee": "self._handle_transcription",
+          "lineNumber": 143
+        },
+        {
+          "caller": "_handle_vad_user_started_speaking",
+          "callee": "logger.debug",
+          "lineNumber": 147
+        },
+        {
+          "caller": "_handle_vad_user_started_speaking",
+          "callee": "self._cancel_all_tasks",
+          "lineNumber": 154
+        },
+        {
+          "caller": "_handle_vad_user_stopped_speaking",
+          "callee": "logger.debug",
+          "lineNumber": 157
+        },
+        {
+          "caller": "_handle_vad_user_stopped_speaking",
+          "callee": "time.monotonic",
+          "lineNumber": 160
+        },
+        {
+          "caller": "_handle_vad_user_stopped_speaking",
+          "callee": "self._restart_speech_timer",
+          "lineNumber": 161
+        },
+        {
+          "caller": "_handle_vad_user_stopped_speaking",
+          "callee": "max",
+          "lineNumber": 163
+        },
+        {
+          "caller": "_handle_vad_user_stopped_speaking",
+          "callee": "self.task_manager.create_task",
+          "lineNumber": 166
+        },
+        {
+          "caller": "_handle_vad_user_stopped_speaking",
+          "callee": "self._stt_timeout_handler",
+          "lineNumber": 167
+        },
+        {
+          "caller": "_handle_transcription",
+          "callee": "logger.debug",
+          "lineNumber": 172
+        },
+        {
+          "caller": "_handle_transcription",
+          "callee": "self.task_manager.cancel_task",
+          "lineNumber": 178
+        },
+        {
+          "caller": "_handle_transcription",
+          "callee": "self._maybe_trigger_user_turn_stopped",
+          "lineNumber": 181
+        },
+        {
+          "caller": "_handle_transcription",
+          "callee": "logger.debug",
+          "lineNumber": 195
+        },
+        {
+          "caller": "_handle_transcription",
+          "callee": "time.monotonic",
+          "lineNumber": 197
+        },
+        {
+          "caller": "_handle_transcription",
+          "callee": "self._restart_speech_timer",
+          "lineNumber": 198
+        },
+        {
+          "caller": "_restart_speech_timer",
+          "callee": "self.task_manager.cancel_task",
+          "lineNumber": 202
+        },
+        {
+          "caller": "_restart_speech_timer",
+          "callee": "self.task_manager.create_task",
+          "lineNumber": 205
+        },
+        {
+          "caller": "_restart_speech_timer",
+          "callee": "self._speech_timer_handler",
+          "lineNumber": 206
+        },
+        {
+          "caller": "_speech_timer_handler",
+          "callee": "asyncio.sleep",
+          "lineNumber": 211
+        },
+        {
+          "caller": "_speech_timer_handler",
+          "callee": "time.monotonic",
+          "lineNumber": 220
+        },
+        {
+          "caller": "_speech_timer_handler",
+          "callee": "bool",
+          "lineNumber": 230
+        },
+        {
+          "caller": "_speech_timer_handler",
+          "callee": "self._text.strip",
+          "lineNumber": 230
+        },
+        {
+          "caller": "_speech_timer_handler",
+          "callee": "_is_incomplete",
+          "lineNumber": 230
+        },
+        {
+          "caller": "_speech_timer_handler",
+          "callee": "logger.debug",
+          "lineNumber": 231
+        },
+        {
+          "caller": "_speech_timer_handler",
+          "callee": "self._restart_speech_timer",
+          "lineNumber": 245
+        },
+        {
+          "caller": "_speech_timer_handler",
+          "callee": "self._maybe_trigger_user_turn_stopped",
+          "lineNumber": 249
+        },
+        {
+          "caller": "_stt_timeout_handler",
+          "callee": "asyncio.sleep",
+          "lineNumber": 253
+        },
+        {
+          "caller": "_stt_timeout_handler",
+          "callee": "self._maybe_trigger_user_turn_stopped",
+          "lineNumber": 259
+        },
+        {
+          "caller": "_maybe_trigger_user_turn_stopped",
+          "callee": "logger.debug",
+          "lineNumber": 262
+        },
+        {
+          "caller": "_maybe_trigger_user_turn_stopped",
+          "callee": "logger.debug",
+          "lineNumber": 287
+        },
+        {
+          "caller": "_maybe_trigger_user_turn_stopped",
+          "callee": "self.trigger_user_turn_stopped",
+          "lineNumber": 289
+        },
+        {
+          "caller": "_cancel_all_tasks",
+          "callee": "self.task_manager.cancel_task",
+          "lineNumber": 293
+        },
+        {
+          "caller": "_cancel_all_tasks",
+          "callee": "self.task_manager.cancel_task",
+          "lineNumber": 296
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 2,
+        "functionCount": 1,
+        "classCount": 1
+      }
+    },
+    {
+      "path": "backend/app/voice/vad.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 59,
+      "nonEmptyLines": 43,
+      "functions": [
+        {
+          "name": "_load_shared_model",
+          "startLine": 21,
+          "endLine": 32,
+          "params": []
+        },
+        {
+          "name": "create_vad_analyzer",
+          "startLine": 40,
+          "endLine": 59,
+          "params": [
+            "params"
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "_load_shared_model",
+          "line": 21,
+          "isDefault": false
+        },
+        {
+          "name": "create_vad_analyzer",
+          "line": 40,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "_load_shared_model",
+          "callee": "str",
+          "lineNumber": 25
+        },
+        {
+          "caller": "_load_shared_model",
+          "callee": "impresources.files(\"pipecat.audio.vad.data\").joinpath",
+          "lineNumber": 25
+        },
+        {
+          "caller": "_load_shared_model",
+          "callee": "impresources.files",
+          "lineNumber": 25
+        },
+        {
+          "caller": "_load_shared_model",
+          "callee": "impresources.path",
+          "lineNumber": 29
+        },
+        {
+          "caller": "_load_shared_model",
+          "callee": "str",
+          "lineNumber": 30
+        },
+        {
+          "caller": "_load_shared_model",
+          "callee": "SileroOnnxModel",
+          "lineNumber": 32
+        },
+        {
+          "caller": "create_vad_analyzer",
+          "callee": "SileroVADAnalyzer.__new__",
+          "lineNumber": 48
+        },
+        {
+          "caller": "create_vad_analyzer",
+          "callee": "type",
+          "lineNumber": 49
+        },
+        {
+          "caller": "create_vad_analyzer",
+          "callee": "VADAnalyzerBase.__init__",
+          "lineNumber": 50
+        },
+        {
+          "caller": "create_vad_analyzer",
+          "callee": "SileroOnnxModel.__new__",
+          "lineNumber": 52
+        },
+        {
+          "caller": "create_vad_analyzer",
+          "callee": "model.reset_states",
+          "lineNumber": 54
+        }
+      ],
+      "metrics": {
+        "importCount": 0,
+        "exportCount": 2,
+        "functionCount": 2,
+        "classCount": 0
+      }
+    },
+    {
+      "path": "backend/tests/test_conversation_quality.py",
+      "language": "python",
+      "fileCategory": "code",
+      "totalLines": 89,
+      "nonEmptyLines": 65,
+      "functions": [
+        {
+          "name": "test_validation_result_is_failure_property",
+          "startLine": 10,
+          "endLine": 16,
+          "params": []
+        },
+        {
+          "name": "test_validation_result_is_frozen",
+          "startLine": 19,
+          "endLine": 24,
+          "params": []
+        },
+        {
+          "name": "test_validation_result_default_metadata_is_empty_dict",
+          "startLine": 27,
+          "endLine": 29,
+          "params": []
+        },
+        {
+          "name": "test_two_validation_results_have_independent_metadata_dicts",
+          "startLine": 32,
+          "endLine": 39,
+          "params": []
+        },
+        {
+          "name": "test_record_appends_to_validations",
+          "startLine": 42,
+          "endLine": 46,
+          "params": []
+        },
+        {
+          "name": "test_record_style_compliance_fail_sets_pending_correction",
+          "startLine": 49,
+          "endLine": 52,
+          "params": []
+        },
+        {
+          "name": "test_record_style_compliance_info_does_not_set_pending_correction",
+          "startLine": 55,
+          "endLine": 58,
+          "params": []
+        },
+        {
+          "name": "test_record_non_style_rule_fail_never_sets_pending_style_correction",
+          "startLine": 61,
+          "endLine": 67,
+          "params": []
+        },
+        {
+          "name": "test_clear_pending_style_correction",
+          "startLine": 70,
+          "endLine": 75,
+          "params": []
+        },
+        {
+          "name": "test_fresh_conversation_quality_has_no_validations_and_no_pending_correction",
+          "startLine": 78,
+          "endLine": 81,
+          "params": []
+        },
+        {
+          "name": "test_two_conversation_quality_instances_never_share_state",
+          "startLine": 84,
+          "endLine": 89,
+          "params": []
+        }
+      ],
+      "exports": [
+        {
+          "name": "test_validation_result_is_failure_property",
+          "line": 10,
+          "isDefault": false
+        },
+        {
+          "name": "test_validation_result_is_frozen",
+          "line": 19,
+          "isDefault": false
+        },
+        {
+          "name": "test_validation_result_default_metadata_is_empty_dict",
+          "line": 27,
+          "isDefault": false
+        },
+        {
+          "name": "test_two_validation_results_have_independent_metadata_dicts",
+          "line": 32,
+          "isDefault": false
+        },
+        {
+          "name": "test_record_appends_to_validations",
+          "line": 42,
+          "isDefault": false
+        },
+        {
+          "name": "test_record_style_compliance_fail_sets_pending_correction",
+          "line": 49,
+          "isDefault": false
+        },
+        {
+          "name": "test_record_style_compliance_info_does_not_set_pending_correction",
+          "line": 55,
+          "isDefault": false
+        },
+        {
+          "name": "test_record_non_style_rule_fail_never_sets_pending_style_correction",
+          "line": 61,
+          "isDefault": false
+        },
+        {
+          "name": "test_clear_pending_style_correction",
+          "line": 70,
+          "isDefault": false
+        },
+        {
+          "name": "test_fresh_conversation_quality_has_no_validations_and_no_pending_correction",
+          "line": 78,
+          "isDefault": false
+        },
+        {
+          "name": "test_two_conversation_quality_instances_never_share_state",
+          "line": 84,
+          "isDefault": false
+        }
+      ],
+      "callGraph": [
+        {
+          "caller": "test_validation_result_is_failure_property",
+          "callee": "ValidationResult",
+          "lineNumber": 11
+        },
+        {
+          "caller": "test_validation_result_is_failure_property",
+          "callee": "ValidationResult",
+          "lineNumber": 12
+        },
+        {
+          "caller": "test_validation_result_is_failure_property",
+          "callee": "ValidationResult",
+          "lineNumber": 13
+        },
+        {
+          "caller": "test_validation_result_is_frozen",
+          "callee": "ValidationResult",
+          "lineNumber": 22
+        },
+        {
+          "caller": "test_validation_result_is_frozen",
+          "callee": "pytest.raises",
+          "lineNumber": 23
+        },
+        {
+          "caller": "test_validation_result_default_metadata_is_empty_dict",
+          "callee": "ValidationResult",
+          "lineNumber": 28
+        },
+        {
+          "caller": "test_two_validation_results_have_independent_metadata_dicts",
+          "callee": "ValidationResult",
+          "lineNumber": 36
+        },
+        {
+          "caller": "test_two_validation_results_have_independent_metadata_dicts",
+          "callee": "ValidationResult",
+          "lineNumber": 37
+        },
+        {
+          "caller": "test_record_appends_to_validations",
+          "callee": "ConversationQuality",
+          "lineNumber": 43
+        },
+        {
+          "caller": "test_record_appends_to_validations",
+          "callee": "ValidationResult",
+          "lineNumber": 44
+        },
+        {
+          "caller": "test_record_appends_to_validations",
+          "callee": "quality.record",
+          "lineNumber": 45
+        },
+        {
+          "caller": "test_record_style_compliance_fail_sets_pending_correction",
+          "callee": "ConversationQuality",
+          "lineNumber": 50
+        },
+        {
+          "caller": "test_record_style_compliance_fail_sets_pending_correction",
+          "callee": "quality.record",
+          "lineNumber": 51
+        },
+        {
+          "caller": "test_record_style_compliance_fail_sets_pending_correction",
+          "callee": "ValidationResult",
+          "lineNumber": 51
+        },
+        {
+          "caller": "test_record_style_compliance_info_does_not_set_pending_correction",
+          "callee": "ConversationQuality",
+          "lineNumber": 56
+        },
+        {
+          "caller": "test_record_style_compliance_info_does_not_set_pending_correction",
+          "callee": "quality.record",
+          "lineNumber": 57
+        },
+        {
+          "caller": "test_record_style_compliance_info_does_not_set_pending_correction",
+          "callee": "ValidationResult",
+          "lineNumber": 57
+        },
+        {
+          "caller": "test_record_non_style_rule_fail_never_sets_pending_style_correction",
+          "callee": "ConversationQuality",
+          "lineNumber": 65
+        },
+        {
+          "caller": "test_record_non_style_rule_fail_never_sets_pending_style_correction",
+          "callee": "quality.record",
+          "lineNumber": 66
+        },
+        {
+          "caller": "test_record_non_style_rule_fail_never_sets_pending_style_correction",
+          "callee": "ValidationResult",
+          "lineNumber": 66
+        },
+        {
+          "caller": "test_clear_pending_style_correction",
+          "callee": "ConversationQuality",
+          "lineNumber": 71
+        },
+        {
+          "caller": "test_clear_pending_style_correction",
+          "callee": "quality.record",
+          "lineNumber": 72
+        },
+        {
+          "caller": "test_clear_pending_style_correction",
+          "callee": "ValidationResult",
+          "lineNumber": 72
+        },
+        {
+          "caller": "test_clear_pending_style_correction",
+          "callee": "quality.clear_pending_style_correction",
+          "lineNumber": 74
+        },
+        {
+          "caller": "test_fresh_conversation_quality_has_no_validations_and_no_pending_correction",
+          "callee": "ConversationQuality",
+          "lineNumber": 79
+        },
+        {
+          "caller": "test_two_conversation_quality_instances_never_share_state",
+          "callee": "ConversationQuality",
+          "lineNumber": 85
+        },
+        {
+          "caller": "test_two_conversation_quality_instances_never_share_state",
+          "callee": "ConversationQuality",
+          "lineNumber": 86
+        },
+        {
+          "caller": "test_two_conversation_quality_instances_never_share_state",
+          "callee": "a.record",
+          "lineNumber": 87
+        },
+        {
+          "caller": "test_two_conversation_quality_instances_never_share_state",
+          "callee": "ValidationResult",
+          "lineNumber": 87
+        }
+      ],
+      "metrics": {
+        "importCount": 1,
+        "exportCount": 11,
+        "functionCount": 11,
+        "classCount": 0
+      }
+    }
+  ]
+}

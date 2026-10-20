@@ -1,0 +1,33 @@
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.32,<1.0
+sqlalchemy[asyncio]>=2.0.36,<3.0
+asyncpg>=0.30,<1.0
+alembic>=1.14,<2.0
+pydantic[email]>=2.9,<3.0
+pydantic-settings>=2.6,<3.0
+pyjwt>=2.9,<3.0
+cryptography>=43.0,<50.0
+bcrypt>=4.2,<5.0
+httpx>=0.27,<1.0
+icalendar>=6.0,<7.0
+apscheduler>=3.10,<4.0
+redis>=5.2,<6.0
+python-multipart>=0.0.12
+python-dotenv>=1.0
+cloudinary>=1.41,<2.0
+pipecat-ai[websocket,webrtc,anthropic,groq,sarvam]>=1.5.0,<2.0
+# Pinned to a floor + capped major (was unbounded >=0.0.60) after Railway
+# silently rebuilt onto 1.5.0 while local dev was still on 1.4.0 -- an
+# unpinned range like that means every fresh `pip install` (i.e. every
+# Railway deploy) can land on a different pipecat-ai release than whatever
+# was last actually tested, with no record of which version any given
+# deploy is running. Bump the floor deliberately when there's a reason to
+# upgrade, rather than getting a new version for free on the next push.
+# pipecat's SmallWebRTCTransport (browser test feature) hard-imports cv2 at
+# module load time but doesn't declare it as a dependency of the [webrtc]
+# extra -- without this, a fresh install crashes on import.
+opencv-python>=4.13,<5.0
+pytest>=8.3,<9.0
+pytest-asyncio>=0.24,<1.0
+respx>=0.21,<1.0
+ruff>=0.7,<1.0

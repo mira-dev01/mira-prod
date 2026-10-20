@@ -1,0 +1,306 @@
+{
+  "nodes": [
+    {
+      "id": "file:backend/app/__init__.py",
+      "type": "file",
+      "name": "__init__.py",
+      "filePath": "backend/app/__init__.py",
+      "summary": "Empty Python package initializer for the backend app module.",
+      "tags": ["entry-point", "barrel"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:backend/app/schemas/call_classification.py",
+      "type": "file",
+      "name": "call_classification.py",
+      "filePath": "backend/app/schemas/call_classification.py",
+      "summary": "Defines the ClassificationResult Pydantic schema carrying the LLM-derived call type, confidence score, and reason used by the call classification service.",
+      "tags": ["type-definition", "schema", "validation"],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:backend/app/schemas/call_classification.py:ClassificationResult",
+      "type": "class",
+      "name": "ClassificationResult",
+      "filePath": "backend/app/schemas/call_classification.py",
+      "lineRange": [28, 31],
+      "summary": "Pydantic model holding a single call classification outcome: call_type enum, confidence float, and a plain-text reason.",
+      "tags": ["type-definition", "schema", "data-model"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:backend/app/services/call_classification_service.py",
+      "type": "file",
+      "name": "call_classification_service.py",
+      "filePath": "backend/app/services/call_classification_service.py",
+      "summary": "Post-call LLM classification service that determines whether a completed call was a genuine booking inquiry or spam/irrelevant, using a provider fallback chain (Groq → Anthropic → OpenRouter) with a 20-second timeout.",
+      "tags": ["service", "api-handler"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:backend/app/services/call_classification_service.py:classify_call",
+      "type": "function",
+      "name": "classify_call",
+      "filePath": "backend/app/services/call_classification_service.py",
+      "lineRange": [153, 168],
+      "summary": "Public entry point: runs pre-checks, invokes the LLM fallback chain, parses the JSON response, and returns a ClassificationResult; falls back to UNKNOWN on any exception.",
+      "tags": ["service", "api-handler"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:backend/app/services/call_classification_service.py:_call_llm_with_fallback",
+      "type": "function",
+      "name": "_call_llm_with_fallback",
+      "filePath": "backend/app/services/call_classification_service.py",
+      "lineRange": [141, 150],
+      "summary": "Tries Groq, then Anthropic, then OpenRouter in sequence, returning the first successful raw text response for classification.",
+      "tags": ["service", "utility"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:backend/app/voice/__init__.py",
+      "type": "file",
+      "name": "__init__.py",
+      "filePath": "backend/app/voice/__init__.py",
+      "summary": "Empty Python package initializer for the voice pipeline subpackage.",
+      "tags": ["entry-point", "barrel"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:backend/app/voice/conversation_quality.py",
+      "type": "file",
+      "name": "conversation_quality.py",
+      "filePath": "backend/app/voice/conversation_quality.py",
+      "summary": "Defines the ConversationQuality accumulator and ValidationResult record used by all pipeline guard processors to log quality observations; ConversationQuality also manages the pending_style_correction flag that bridges style compliance back to StatePromptSyncProcessor.",
+      "tags": ["data-model", "type-definition", "middleware"],
+      "complexity": "simple",
+      "languageNotes": "Uses frozen dataclasses for ValidationResult to guarantee immutability across async pipeline stages."
+    },
+    {
+      "id": "class:backend/app/voice/conversation_quality.py:ConversationQuality",
+      "type": "class",
+      "name": "ConversationQuality",
+      "filePath": "backend/app/voice/conversation_quality.py",
+      "lineRange": [61, 83],
+      "summary": "Mutable accumulator for per-call quality observations; records ValidationResult entries and tracks pending_style_correction — the only deliberate cross-concern bridge between quality observation and behavioral nudging.",
+      "tags": ["data-model", "middleware"],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:backend/app/voice/conversation_quality.py:ValidationResult",
+      "type": "class",
+      "name": "ValidationResult",
+      "filePath": "backend/app/voice/conversation_quality.py",
+      "lineRange": [37, 57],
+      "summary": "Frozen dataclass capturing a single pipeline validation event with rule name, severity, confidence, metadata, processing time, and turn index.",
+      "tags": ["type-definition", "data-model"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:backend/app/voice/conversation_state.py",
+      "type": "file",
+      "name": "conversation_state.py",
+      "filePath": "backend/app/voice/conversation_state.py",
+      "summary": "Defines ConversationState — the authoritative mutable store for all conversation facts: locked property, guest slots, recommendations shown, escalation flag, closing state, conversation goal, and attention salience tracking.",
+      "tags": ["data-model", "middleware"],
+      "complexity": "complex",
+      "languageNotes": "Uses a hysteresis-aware _recompute_goal method to derive ConversationGoal from slot/lock state, keeping goal transitions predictable."
+    },
+    {
+      "id": "class:backend/app/voice/conversation_state.py:ConversationState",
+      "type": "class",
+      "name": "ConversationState",
+      "filePath": "backend/app/voice/conversation_state.py",
+      "lineRange": [138, 413],
+      "summary": "Central mutable state for a live call: tracks selected property, guest slots (dates, guests, location, budget), conversation goal, escalation status, closing/farewell state, quoted price, and per-entity salience scores for attention-aware ranking.",
+      "tags": ["data-model", "middleware"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:backend/app/voice/conversation_style.py",
+      "type": "file",
+      "name": "conversation_style.py",
+      "filePath": "backend/app/voice/conversation_style.py",
+      "summary": "Implements the ConversationStyle data model and StyleEngine — a hysteresis-smoothed language/tone tracker that analyzes each guest turn's character ratios to determine whether Mira should respond in English, Hindi (Devanagari), or Hinglish, plus a pipecat ConversationStyleProcessor to wire it into the pipeline.",
+      "tags": ["middleware", "service"],
+      "complexity": "complex",
+      "languageNotes": "Weighted exponential decay over a rolling window of TurnSignal entries prevents rapid language oscillation caused by code-switching in individual turns."
+    },
+    {
+      "id": "class:backend/app/voice/conversation_style.py:StyleEngine",
+      "type": "class",
+      "name": "StyleEngine",
+      "filePath": "backend/app/voice/conversation_style.py",
+      "lineRange": [230, 315],
+      "summary": "Core hysteresis algorithm: consumes per-turn TurnSignal entries and produces a new ConversationStyle by computing weighted English/Devanagari ratios, applying lock-in thresholds, and carrying forward previous_style to smooth rapid switches.",
+      "tags": ["service", "middleware"],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:backend/app/voice/conversation_style.py:ConversationStyleProcessor",
+      "type": "class",
+      "name": "ConversationStyleProcessor",
+      "filePath": "backend/app/voice/conversation_style.py",
+      "lineRange": [373, 416],
+      "summary": "Pipecat frame processor that intercepts TranscriptionFrames, feeds them through ConversationAnalyzer and StyleEngine, and advances ConversationState.turn_index each turn.",
+      "tags": ["middleware", "event-handler"],
+      "complexity": "moderate"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:backend/app/services/call_classification_service.py",
+      "target": "file:backend/app/config.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/services/call_classification_service.py",
+      "target": "file:backend/app/schemas/call_classification.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/schemas/call_classification.py",
+      "target": "class:backend/app/schemas/call_classification.py:ClassificationResult",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/schemas/call_classification.py",
+      "target": "class:backend/app/schemas/call_classification.py:ClassificationResult",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/services/call_classification_service.py",
+      "target": "function:backend/app/services/call_classification_service.py:classify_call",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/services/call_classification_service.py",
+      "target": "function:backend/app/services/call_classification_service.py:classify_call",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/services/call_classification_service.py",
+      "target": "function:backend/app/services/call_classification_service.py:_call_llm_with_fallback",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/voice/conversation_quality.py",
+      "target": "class:backend/app/voice/conversation_quality.py:ConversationQuality",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/voice/conversation_quality.py",
+      "target": "class:backend/app/voice/conversation_quality.py:ConversationQuality",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/voice/conversation_quality.py",
+      "target": "class:backend/app/voice/conversation_quality.py:ValidationResult",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/voice/conversation_quality.py",
+      "target": "class:backend/app/voice/conversation_quality.py:ValidationResult",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/voice/conversation_state.py",
+      "target": "class:backend/app/voice/conversation_state.py:ConversationState",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/voice/conversation_state.py",
+      "target": "class:backend/app/voice/conversation_state.py:ConversationState",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/voice/conversation_style.py",
+      "target": "file:backend/app/voice/conversation_state.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/voice/conversation_style.py",
+      "target": "file:backend/app/voice/language_heuristics.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/voice/conversation_style.py",
+      "target": "class:backend/app/voice/conversation_style.py:StyleEngine",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/voice/conversation_style.py",
+      "target": "class:backend/app/voice/conversation_style.py:StyleEngine",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/voice/conversation_style.py",
+      "target": "class:backend/app/voice/conversation_style.py:ConversationStyleProcessor",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/voice/conversation_style.py",
+      "target": "class:backend/app/voice/conversation_style.py:ConversationStyleProcessor",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/voice/end_call_reliability_guard.py",
+      "target": "file:backend/app/prompts/system_prompt.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/voice/end_call_reliability_guard.py",
+      "target": "file:backend/app/voice/silence_watchdog.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/voice/language_sync.py",
+      "target": "file:backend/app/voice/conversation_state.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    }
+  ]
+}

@@ -1,0 +1,124 @@
+{
+  "_readme": "Template for Properties > 'Import from file (advanced)'. One file = one property. The FILENAME (minus .json) is the property's unique import id: re-uploading a file with the same name UPDATES that property instead of creating a duplicate, so give each property its own filename (e.g. sea-breeze-villa-goa.json). Keys starting with '_' are ignored. The nested shape mirrors an Airbnb listing scrape -- keep the structure, just change the values.",
+
+  "photos": [
+    "https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1700000000/mira/properties/sea-breeze-villa/cover.jpg",
+    "https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1700000000/mira/properties/sea-breeze-villa/living-room.jpg",
+    "https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1700000000/mira/properties/sea-breeze-villa/bedroom-1.jpg",
+    "https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1700000000/mira/properties/sea-breeze-villa/pool.jpg"
+  ],
+
+  "node": {
+    "description": {
+      "name": { "localizedString": "Sea Breeze Villa - 2BHK with Private Pool" }
+    },
+    "personCapacity": 6,
+    "contextualizedGuestFavorites": { "isGuestFavorite": true },
+    "listingRatingStats": {
+      "overallRatingStats": { "ratingCount": 48 }
+    },
+    "pdpPresentation": {
+      "localizedLocation": "Siolim",
+      "descriptions": {
+        "longDescriptionHtml": {
+          "localizedString": "A bright 2-bedroom villa with a private plunge pool, 10 minutes from Morjim beach.<br/>The open-plan living room opens onto the pool deck, and the kitchen is fully equipped for longer stays.<br/><br/>Other things to note<br/>Anything after 'Other things to note' is dropped from the description FAQ."
+        }
+      },
+      "overview": {
+        "items": ["6 guests", "2 bedrooms", "3 beds", "2 bathrooms"]
+      },
+      "amenities": {
+        "seeAllAmenitiesGroups": [
+          {
+            "title": "Essentials",
+            "amenities": [
+              { "title": "Wifi", "available": true },
+              { "title": "Kitchen", "available": true },
+              { "title": "Air conditioning", "available": true },
+              { "title": "Free parking on premises", "available": true }
+            ]
+          },
+          {
+            "title": "Outdoor",
+            "amenities": [
+              { "title": "Private pool", "available": true },
+              { "title": "Patio or balcony", "available": true },
+              { "title": "TV", "available": false }
+            ]
+          }
+        ]
+      }
+    }
+  },
+
+  "presentation": {
+    "stayProductDetailPage": {
+      "sections": {
+        "metadata": {
+          "bookingPrefetchData": {
+            "cancellationPolicies": [
+              { "localized_cancellation_policy_name": "Moderate" }
+            ]
+          }
+        },
+        "sections": [
+          {
+            "sectionId": "LOCATION_DEFAULT",
+            "section": {
+              "subtitle": "Siolim, Goa, India",
+              "previewLocationDetails": [
+                {
+                  "content": {
+                    "htmlText": "Quiet residential lane in Siolim, North Goa. Morjim beach is a 10-minute drive, Thalassa and Anjuna nightlife about 15 minutes. Dabolim airport is ~1h15m, Mopa airport ~30 minutes."
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "sectionId": "POLICIES_DEFAULT",
+            "section": {
+              "houseRules": [
+                { "title": "Check-in after 2:00 pm" },
+                { "title": "Checkout before 11:00 am" },
+                { "title": "6 guests maximum" }
+              ],
+              "houseRulesSections": [
+                {
+                  "title": "Checking in and out",
+                  "items": [
+                    { "title": "Check-in after 2:00 pm" },
+                    { "title": "Checkout before 11:00 am" },
+                    { "title": "Self check-in with keypad" }
+                  ]
+                },
+                {
+                  "title": "During your stay",
+                  "items": [
+                    { "title": "No parties or events" },
+                    { "title": "Pets allowed" },
+                    { "title": "Quiet hours 10:00 pm - 7:00 am" }
+                  ]
+                }
+              ],
+              "previewSafetyAndProperties": [
+                { "title": "Carbon monoxide alarm" },
+                { "title": "Smoke alarm" },
+                { "title": "Pool without a gate or lock" }
+              ]
+            }
+          },
+          {
+            "sectionId": "SLEEPING_ARRANGEMENT_WITH_IMAGES",
+            "section": {
+              "arrangementDetails": [
+                { "title": "Bedroom 1", "subtitle": "1 king bed" },
+                { "title": "Bedroom 2", "subtitle": "1 queen bed, 1 sofa bed" }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  }
+}

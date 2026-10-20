@@ -1,0 +1,4687 @@
+{
+  "name": "mira-prod",
+  "description": "MIRA is an AI-powered property-management assistant for short-term rental hosts in India, handling guest calls via Exotel telephony, lead qualification, booking and calendar management, rule-based pricing and negotiation, and a real-time voice-test dashboard. Note: this project has over 100 source files; consider scoping analysis to a subdirectory for faster results.",
+  "languages": [
+    "config",
+    "css",
+    "dockerfile",
+    "ics",
+    "javascript",
+    "json",
+    "mako",
+    "markdown",
+    "python",
+    "txt",
+    "typescript",
+    "unknown",
+    "wav",
+    "yaml"
+  ],
+  "frameworks": [
+    "FastAPI",
+    "Next.js",
+    "React",
+    "Tailwind CSS",
+    "pipecat-ai",
+    "SQLAlchemy",
+    "Alembic",
+    "uvicorn",
+    "pytest",
+    "pydantic",
+    "Docker"
+  ],
+  "files": [
+    {
+      "path": ".claude/launch.json",
+      "language": "json",
+      "sizeLines": 18,
+      "fileCategory": "config"
+    },
+    {
+      "path": ".mex/AGENTS.md",
+      "language": "markdown",
+      "sizeLines": 51,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".mex/ROUTER.md",
+      "language": "markdown",
+      "sizeLines": 82,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".mex/SETUP.md",
+      "language": "markdown",
+      "sizeLines": 228,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".mex/SYNC.md",
+      "language": "markdown",
+      "sizeLines": 62,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".mex/config.json",
+      "language": "json",
+      "sizeLines": 9,
+      "fileCategory": "config"
+    },
+    {
+      "path": ".mex/context/architecture.md",
+      "language": "markdown",
+      "sizeLines": 82,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".mex/context/conventions.md",
+      "language": "markdown",
+      "sizeLines": 121,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".mex/context/decisions.md",
+      "language": "markdown",
+      "sizeLines": 81,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".mex/context/setup.md",
+      "language": "markdown",
+      "sizeLines": 93,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".mex/context/stack.md",
+      "language": "markdown",
+      "sizeLines": 60,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".mex/context/voice-pipeline.md",
+      "language": "markdown",
+      "sizeLines": 156,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".mex/patterns/INDEX.md",
+      "language": "markdown",
+      "sizeLines": 12,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".mex/patterns/README.md",
+      "language": "markdown",
+      "sizeLines": 170,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".mex/patterns/add-endpoint.md",
+      "language": "markdown",
+      "sizeLines": 95,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".mex/patterns/add-model.md",
+      "language": "markdown",
+      "sizeLines": 132,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".mex/patterns/debug-voice-call.md",
+      "language": "markdown",
+      "sizeLines": 138,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".mex/patterns/voice-pipeline-changes.md",
+      "language": "markdown",
+      "sizeLines": 170,
+      "fileCategory": "docs"
+    },
+    {
+      "path": ".ua/.understandignore",
+      "language": "unknown",
+      "sizeLines": 74,
+      "fileCategory": "code"
+    },
+    {
+      "path": "CLAUDE.md",
+      "language": "markdown",
+      "sizeLines": 183,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "backend/.dockerignore",
+      "language": "unknown",
+      "sizeLines": 7,
+      "fileCategory": "infra"
+    },
+    {
+      "path": "backend/Dockerfile",
+      "language": "dockerfile",
+      "sizeLines": 30,
+      "fileCategory": "infra"
+    },
+    {
+      "path": "backend/alembic.ini",
+      "language": "config",
+      "sizeLines": 38,
+      "fileCategory": "config"
+    },
+    {
+      "path": "backend/alembic/env.py",
+      "language": "python",
+      "sizeLines": 51,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/script.py.mako",
+      "language": "mako",
+      "sizeLines": 26,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/054ea268d326_add_index_on_notification_property_id.py",
+      "language": "python",
+      "sizeLines": 57,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/08b6a6949f77_drop_vapi_columns.py",
+      "language": "python",
+      "sizeLines": 42,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/0a8ae066bf5c_add_is_premium_to_properties.py",
+      "language": "python",
+      "sizeLines": 30,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/0c9b52d0cbd8_add_host_banner_url.py",
+      "language": "python",
+      "sizeLines": 30,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/356d5c923c77_add_lead_recovery_metadata.py",
+      "language": "python",
+      "sizeLines": 46,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/3fae82f7b3d0_add_notification_lead_id_and_responded_.py",
+      "language": "python",
+      "sizeLines": 57,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/44fd2130051e_merge_saturday_minimum_stay_and_.py",
+      "language": "python",
+      "sizeLines": 26,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/50f60d900d25_add_clerk_user_id_to_users.py",
+      "language": "python",
+      "sizeLines": 30,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/5161e38a221b_add_minimum_nights_to_properties.py",
+      "language": "python",
+      "sizeLines": 26,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/5e62da6e4f7d_merge_host_profile_and_voice_gender_.py",
+      "language": "python",
+      "sizeLines": 26,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/6384600c83f2_add_call_leases.py",
+      "language": "python",
+      "sizeLines": 77,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/66f90a703525_add_property_pricing_rules.py",
+      "language": "python",
+      "sizeLines": 46,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/6aa03c77c36f_add_airbnb_coordinates_to_properties.py",
+      "language": "python",
+      "sizeLines": 28,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/750ff224edb7_add_airbnb_listing_id_to_properties.py",
+      "language": "python",
+      "sizeLines": 32,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/7a236ad1ffd1_index_notification_lead_id_and_channel.py",
+      "language": "python",
+      "sizeLines": 39,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/7a7297081aaa_migrate_legacy_property_faq_to_faq_.py",
+      "language": "python",
+      "sizeLines": 64,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/810e248aba2c_add_bedroom_count_to_properties.py",
+      "language": "python",
+      "sizeLines": 26,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/833b55b32b84_add_canonical_name_fields_to_properties.py",
+      "language": "python",
+      "sizeLines": 37,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/8818413a6d0a_add_exact_airbnb_pricing_to_properties.py",
+      "language": "python",
+      "sizeLines": 28,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/896a916936e2_add_usp_to_properties_agent_.py",
+      "language": "python",
+      "sizeLines": 36,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/8d937521de4c_initial_schema.py",
+      "language": "python",
+      "sizeLines": 167,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/8f1c4b9e2a67_add_lead_busy_recovery_availability_.py",
+      "language": "python",
+      "sizeLines": 94,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/96046254326b_scope_airbnb_listing_id_uniqueness_to_.py",
+      "language": "python",
+      "sizeLines": 34,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/9c3f2a7e5d41_merge_discount_and_pricing_rules_into_.py",
+      "language": "python",
+      "sizeLines": 260,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/9fd5d655d830_add_call_handling_schedule_to_.py",
+      "language": "python",
+      "sizeLines": 75,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/a1b2c3d4e5f6_add_host_registration_fields_to_users.py",
+      "language": "python",
+      "sizeLines": 37,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/a1c4e8f7b2d3_add_agent_language_policy_to_users.py",
+      "language": "python",
+      "sizeLines": 29,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/a1c9e6f4d2b7_convert_call_sessions_ai_summary_to_.py",
+      "language": "python",
+      "sizeLines": 39,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/a1c9f4e2b6d3_add_twilio_voice_number_columns.py",
+      "language": "python",
+      "sizeLines": 36,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/a1e3085944c1_add_user_id_to_call_sessions_for_lead_.py",
+      "language": "python",
+      "sizeLines": 48,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/b2d7f5a1e3c9_add_call_sessions_dismissed_at.py",
+      "language": "python",
+      "sizeLines": 29,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/b3f6a1d8c9e2_add_call_type_classification_to_call_.py",
+      "language": "python",
+      "sizeLines": 32,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/b7d4e6f2a913_add_photos_to_properties.py",
+      "language": "python",
+      "sizeLines": 35,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/b7e3a9c1f4d6_add_saturday_minimum_stay_to_properties.py",
+      "language": "python",
+      "sizeLines": 28,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/baf955ef4370_add_smart_pricing_fields_to_properties.py",
+      "language": "python",
+      "sizeLines": 32,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/c09a22f820ff_make_hashed_password_nullable_for_clerk_.py",
+      "language": "python",
+      "sizeLines": 32,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/c22483e0853a_add_host_intelligence_fields.py",
+      "language": "python",
+      "sizeLines": 38,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/c4147f84e6a1_add_neighborhood_info_to_properties.py",
+      "language": "python",
+      "sizeLines": 30,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/c8e1f4a02b7d_add_host_memory_discount_policy.py",
+      "language": "python",
+      "sizeLines": 60,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/cc04e38bed6f_add_agent_voice_gender_to_users.py",
+      "language": "python",
+      "sizeLines": 29,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/d16066a213c6_add_landmarks_and_amenity_tags_to_properties.py",
+      "language": "python",
+      "sizeLines": 29,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/d3a9f5c1b2e4_add_notification_email_to_users.py",
+      "language": "python",
+      "sizeLines": 26,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/d4f7a91c3e5b_add_guest_memory_fields.py",
+      "language": "python",
+      "sizeLines": 80,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/d65ddc51db7f_add_property_chunks.py",
+      "language": "python",
+      "sizeLines": 40,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/d8a1f47c2b6e_add_lead_id_to_call_sessions.py",
+      "language": "python",
+      "sizeLines": 50,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/df8097774c5d_add_leads_and_faq_entries.py",
+      "language": "python",
+      "sizeLines": 78,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/e7c2a4f8d9b1_enable_pg_trgm_for_faq_search.py",
+      "language": "python",
+      "sizeLines": 25,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/e91a3f5c8d2b_add_faq_question_embeddings.py",
+      "language": "python",
+      "sizeLines": 29,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/f3a8c1d7e4b6_add_seasonal_notes_to_properties.py",
+      "language": "python",
+      "sizeLines": 29,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/f3cebf679a80_add_lead_status_occasion_and_unanswered_.py",
+      "language": "python",
+      "sizeLines": 54,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/alembic/versions/fb704d3f696c_add_host_photo_and_whatsapp_assist_.py",
+      "language": "python",
+      "sizeLines": 32,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/api/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/api/v1/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/api/v1/analytics.py",
+      "language": "python",
+      "sizeLines": 432,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/api/v1/auth.py",
+      "language": "python",
+      "sizeLines": 148,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/api/v1/bookings.py",
+      "language": "python",
+      "sizeLines": 76,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/api/v1/calls.py",
+      "language": "python",
+      "sizeLines": 85,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/api/v1/common.py",
+      "language": "python",
+      "sizeLines": 54,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/api/v1/faq.py",
+      "language": "python",
+      "sizeLines": 138,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/api/v1/guests.py",
+      "language": "python",
+      "sizeLines": 126,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/api/v1/leads.py",
+      "language": "python",
+      "sizeLines": 116,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/api/v1/negotiation_rules.py",
+      "language": "python",
+      "sizeLines": 126,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/api/v1/notifications.py",
+      "language": "python",
+      "sizeLines": 68,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/api/v1/pricing.py",
+      "language": "python",
+      "sizeLines": 66,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/api/v1/properties.py",
+      "language": "python",
+      "sizeLines": 494,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/api/v1/take_call.py",
+      "language": "python",
+      "sizeLines": 315,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/api/v1/technicians.py",
+      "language": "python",
+      "sizeLines": 48,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/api/v1/voice.py",
+      "language": "python",
+      "sizeLines": 521,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/api/v1/webhooks/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/api/v1/webhooks/exotel.py",
+      "language": "python",
+      "sizeLines": 451,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/api/v1/webhooks/whatsapp.py",
+      "language": "python",
+      "sizeLines": 46,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/auth/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/auth/dependencies.py",
+      "language": "python",
+      "sizeLines": 113,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/config.py",
+      "language": "python",
+      "sizeLines": 343,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/database.py",
+      "language": "python",
+      "sizeLines": 24,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/integrations/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/integrations/bright_data_client.py",
+      "language": "python",
+      "sizeLines": 85,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/integrations/clerk_client.py",
+      "language": "python",
+      "sizeLines": 42,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/integrations/cloudinary_client.py",
+      "language": "python",
+      "sizeLines": 96,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/integrations/email_client.py",
+      "language": "python",
+      "sizeLines": 53,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/integrations/email_templates.py",
+      "language": "python",
+      "sizeLines": 142,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/integrations/exotel_client.py",
+      "language": "python",
+      "sizeLines": 81,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/integrations/ical_client.py",
+      "language": "python",
+      "sizeLines": 62,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/integrations/redis_client.py",
+      "language": "python",
+      "sizeLines": 97,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/integrations/redis_lease_client.py",
+      "language": "python",
+      "sizeLines": 238,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/integrations/searchapi_client.py",
+      "language": "python",
+      "sizeLines": 285,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/integrations/twilio_client.py",
+      "language": "python",
+      "sizeLines": 196,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/integrations/twilio_voice.py",
+      "language": "python",
+      "sizeLines": 71,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/main.py",
+      "language": "python",
+      "sizeLines": 271,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/models/__init__.py",
+      "language": "python",
+      "sizeLines": 31,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/models/booking.py",
+      "language": "python",
+      "sizeLines": 27,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/models/call_lease.py",
+      "language": "python",
+      "sizeLines": 98,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/models/call_session.py",
+      "language": "python",
+      "sizeLines": 135,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/models/faq_entry.py",
+      "language": "python",
+      "sizeLines": 35,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/models/guest_profile.py",
+      "language": "python",
+      "sizeLines": 62,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/models/lead.py",
+      "language": "python",
+      "sizeLines": 112,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/models/mixins.py",
+      "language": "python",
+      "sizeLines": 17,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/models/negotiation_rule.py",
+      "language": "python",
+      "sizeLines": 53,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/models/notification.py",
+      "language": "python",
+      "sizeLines": 69,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/models/pricing_rule.py",
+      "language": "python",
+      "sizeLines": 22,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/models/property.py",
+      "language": "python",
+      "sizeLines": 283,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/models/property_chunk.py",
+      "language": "python",
+      "sizeLines": 46,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/models/technician.py",
+      "language": "python",
+      "sizeLines": 22,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/models/unanswered_question.py",
+      "language": "python",
+      "sizeLines": 47,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/models/user.py",
+      "language": "python",
+      "sizeLines": 116,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/prompts/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/prompts/system_prompt.py",
+      "language": "python",
+      "sizeLines": 1046,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/schemas/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/schemas/booking.py",
+      "language": "python",
+      "sizeLines": 34,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/schemas/call_classification.py",
+      "language": "python",
+      "sizeLines": 31,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/schemas/call_session.py",
+      "language": "python",
+      "sizeLines": 48,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/schemas/call_summary.py",
+      "language": "python",
+      "sizeLines": 40,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/schemas/faq_entry.py",
+      "language": "python",
+      "sizeLines": 40,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/schemas/faq_gap.py",
+      "language": "python",
+      "sizeLines": 26,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/schemas/guest_profile.py",
+      "language": "python",
+      "sizeLines": 60,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/schemas/lead.py",
+      "language": "python",
+      "sizeLines": 65,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/schemas/negotiation_rule.py",
+      "language": "python",
+      "sizeLines": 62,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/schemas/notification.py",
+      "language": "python",
+      "sizeLines": 18,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/schemas/pricing_rule.py",
+      "language": "python",
+      "sizeLines": 24,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/schemas/property.py",
+      "language": "python",
+      "sizeLines": 289,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/schemas/service_request.py",
+      "language": "python",
+      "sizeLines": 27,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/schemas/technician.py",
+      "language": "python",
+      "sizeLines": 27,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/schemas/tool.py",
+      "language": "python",
+      "sizeLines": 174,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/schemas/user.py",
+      "language": "python",
+      "sizeLines": 146,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/services/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/services/airbnb_import.py",
+      "language": "python",
+      "sizeLines": 405,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/services/amenity_taxonomy.py",
+      "language": "python",
+      "sizeLines": 83,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/services/calendar_service.py",
+      "language": "python",
+      "sizeLines": 132,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/services/call_classification_service.py",
+      "language": "python",
+      "sizeLines": 168,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/services/call_coordinator.py",
+      "language": "python",
+      "sizeLines": 417,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/services/call_ownership.py",
+      "language": "python",
+      "sizeLines": 192,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/services/call_service.py",
+      "language": "python",
+      "sizeLines": 211,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/services/call_summary_service.py",
+      "language": "python",
+      "sizeLines": 232,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/services/embedding_service.py",
+      "language": "python",
+      "sizeLines": 136,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/services/faq_service.py",
+      "language": "python",
+      "sizeLines": 504,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/services/guest_calling_notification.py",
+      "language": "python",
+      "sizeLines": 186,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/services/guest_memory_service.py",
+      "language": "python",
+      "sizeLines": 111,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/services/lead_service.py",
+      "language": "python",
+      "sizeLines": 345,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/services/negotiation_policy_service.py",
+      "language": "python",
+      "sizeLines": 199,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/services/notification_service.py",
+      "language": "python",
+      "sizeLines": 103,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/services/pricing_engine.py",
+      "language": "python",
+      "sizeLines": 527,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/services/property/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/services/property/card.py",
+      "language": "python",
+      "sizeLines": 291,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/services/property/chunking.py",
+      "language": "python",
+      "sizeLines": 113,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/services/property/pitch_formatter.py",
+      "language": "python",
+      "sizeLines": 149,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/services/property/retrieval/__init__.py",
+      "language": "python",
+      "sizeLines": 10,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/services/property/retrieval/context_builder.py",
+      "language": "python",
+      "sizeLines": 72,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/services/property/retrieval/filter_builder.py",
+      "language": "python",
+      "sizeLines": 219,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/services/property/retrieval/formatter.py",
+      "language": "python",
+      "sizeLines": 10,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/services/property/retrieval/orchestrator.py",
+      "language": "python",
+      "sizeLines": 126,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/services/property/retrieval/ranking.py",
+      "language": "python",
+      "sizeLines": 104,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/services/property/retrieval/semantic_search.py",
+      "language": "python",
+      "sizeLines": 106,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/services/property/retrieval/sql_search.py",
+      "language": "python",
+      "sizeLines": 72,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/services/property_normalizer.py",
+      "language": "python",
+      "sizeLines": 380,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/services/recovery_service.py",
+      "language": "python",
+      "sizeLines": 607,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/services/request_feed_service.py",
+      "language": "python",
+      "sizeLines": 127,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/services/smart_pricing_service.py",
+      "language": "python",
+      "sizeLines": 172,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/services/take_call_token.py",
+      "language": "python",
+      "sizeLines": 99,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/services/technician_service.py",
+      "language": "python",
+      "sizeLines": 34,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/services/tool_handlers.py",
+      "language": "python",
+      "sizeLines": 806,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/services/whatsapp_reply_service.py",
+      "language": "python",
+      "sizeLines": 349,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/utils/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/utils/phone.py",
+      "language": "python",
+      "sizeLines": 15,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/utils/webhook_auth.py",
+      "language": "python",
+      "sizeLines": 15,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/assets/busy_message_8000.wav",
+      "language": "wav",
+      "sizeLines": 3,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/assets/busy_message_speech_8000.wav",
+      "language": "wav",
+      "sizeLines": 2381,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/assets/ringing_tone_8000.wav",
+      "language": "wav",
+      "sizeLines": 2,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/conversation_quality.py",
+      "language": "python",
+      "sizeLines": 83,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/conversation_state.py",
+      "language": "python",
+      "sizeLines": 413,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/conversation_style.py",
+      "language": "python",
+      "sizeLines": 416,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/end_call_reliability_guard.py",
+      "language": "python",
+      "sizeLines": 115,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/escalation_phrase_guard.py",
+      "language": "python",
+      "sizeLines": 114,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/handoff_signal.py",
+      "language": "python",
+      "sizeLines": 87,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/language_heuristics.py",
+      "language": "python",
+      "sizeLines": 83,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/language_sync.py",
+      "language": "python",
+      "sizeLines": 84,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/meta_commentary_guard.py",
+      "language": "python",
+      "sizeLines": 126,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/pipeline.py",
+      "language": "python",
+      "sizeLines": 1902,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/premature_end_call_guard.py",
+      "language": "python",
+      "sizeLines": 80,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/property_recommendation_guard.py",
+      "language": "python",
+      "sizeLines": 385,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/redundant_context_guard.py",
+      "language": "python",
+      "sizeLines": 93,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/repetition_guard.py",
+      "language": "python",
+      "sizeLines": 241,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/response_shape_guard.py",
+      "language": "python",
+      "sizeLines": 378,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/ringing_audio.py",
+      "language": "python",
+      "sizeLines": 414,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/silence_watchdog.py",
+      "language": "python",
+      "sizeLines": 243,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/slow_tool_filler.py",
+      "language": "python",
+      "sizeLines": 144,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/state_prompt_sync.py",
+      "language": "python",
+      "sizeLines": 286,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/style_compliance_monitor.py",
+      "language": "python",
+      "sizeLines": 231,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/tools.py",
+      "language": "python",
+      "sizeLines": 865,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/turn_strategies.py",
+      "language": "python",
+      "sizeLines": 297,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/app/voice/vad.py",
+      "language": "python",
+      "sizeLines": 59,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/backfill_guest_names_to_english.py",
+      "language": "python",
+      "sizeLines": 111,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/pytest.ini",
+      "language": "config",
+      "sizeLines": 5,
+      "fileCategory": "config"
+    },
+    {
+      "path": "backend/railway.json",
+      "language": "json",
+      "sizeLines": 13,
+      "fileCategory": "config"
+    },
+    {
+      "path": "backend/requirements.txt",
+      "language": "txt",
+      "sizeLines": 34,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "backend/scripts/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/scripts/create_availability_template.py",
+      "language": "python",
+      "sizeLines": 32,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/scripts/create_busy_recovery_template.py",
+      "language": "python",
+      "sizeLines": 45,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/scripts/create_escalation_template.py",
+      "language": "python",
+      "sizeLines": 47,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/scripts/create_guest_calling_template.py",
+      "language": "python",
+      "sizeLines": 57,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/scripts/generate_busy_message_speech.py",
+      "language": "python",
+      "sizeLines": 113,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/scripts/generate_busy_message_tone.py",
+      "language": "python",
+      "sizeLines": 75,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/scripts/generate_ringing_tone.py",
+      "language": "python",
+      "sizeLines": 74,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/scripts/seed_demo_data.py",
+      "language": "python",
+      "sizeLines": 174,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/seed_demo.py",
+      "language": "python",
+      "sizeLines": 509,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/seed_faq_updates.py",
+      "language": "python",
+      "sizeLines": 185,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/__init__.py",
+      "language": "python",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/conftest.py",
+      "language": "python",
+      "sizeLines": 163,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/fixtures/airbnb_listing_sample.json",
+      "language": "json",
+      "sizeLines": 9645,
+      "fileCategory": "config"
+    },
+    {
+      "path": "backend/tests/fixtures/sample.ics",
+      "language": "ics",
+      "sizeLines": 17,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_airbnb_import.py",
+      "language": "python",
+      "sizeLines": 354,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_amenity_taxonomy.py",
+      "language": "python",
+      "sizeLines": 49,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_analytics_api.py",
+      "language": "python",
+      "sizeLines": 77,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_analytics_recovery.py",
+      "language": "python",
+      "sizeLines": 183,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_auth.py",
+      "language": "python",
+      "sizeLines": 175,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_availability_recovery.py",
+      "language": "python",
+      "sizeLines": 467,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_bookings_api.py",
+      "language": "python",
+      "sizeLines": 65,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_calendar_service.py",
+      "language": "python",
+      "sizeLines": 109,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_call_classification_service.py",
+      "language": "python",
+      "sizeLines": 107,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_call_coordinator.py",
+      "language": "python",
+      "sizeLines": 488,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_call_ownership.py",
+      "language": "python",
+      "sizeLines": 406,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_call_service.py",
+      "language": "python",
+      "sizeLines": 45,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_call_session_handoff_status.py",
+      "language": "python",
+      "sizeLines": 55,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_call_summary_service.py",
+      "language": "python",
+      "sizeLines": 70,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_calls_api.py",
+      "language": "python",
+      "sizeLines": 170,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_conversation_quality.py",
+      "language": "python",
+      "sizeLines": 89,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_conversation_state.py",
+      "language": "python",
+      "sizeLines": 231,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_conversation_state_attention.py",
+      "language": "python",
+      "sizeLines": 119,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_conversation_state_slot_wiring.py",
+      "language": "python",
+      "sizeLines": 290,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_conversation_style.py",
+      "language": "python",
+      "sizeLines": 279,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_database.py",
+      "language": "python",
+      "sizeLines": 42,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_email_client.py",
+      "language": "python",
+      "sizeLines": 52,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_embedding_service.py",
+      "language": "python",
+      "sizeLines": 150,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_end_call_reliability_guard.py",
+      "language": "python",
+      "sizeLines": 127,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_escalation_phrase_guard.py",
+      "language": "python",
+      "sizeLines": 152,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_exotel_call_routing.py",
+      "language": "python",
+      "sizeLines": 376,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_exotel_client.py",
+      "language": "python",
+      "sizeLines": 170,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_exotel_connect_routing.py",
+      "language": "python",
+      "sizeLines": 558,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_exotel_webhook.py",
+      "language": "python",
+      "sizeLines": 29,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_explicit_language_preference.py",
+      "language": "python",
+      "sizeLines": 90,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_faq_api.py",
+      "language": "python",
+      "sizeLines": 131,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_faq_gaps.py",
+      "language": "python",
+      "sizeLines": 109,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_faq_knowledge_memory.py",
+      "language": "python",
+      "sizeLines": 223,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_guest_calling_notification.py",
+      "language": "python",
+      "sizeLines": 349,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_guest_detail_api.py",
+      "language": "python",
+      "sizeLines": 67,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_guest_memory.py",
+      "language": "python",
+      "sizeLines": 188,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_host_handoff.py",
+      "language": "python",
+      "sizeLines": 386,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_ical_sync.py",
+      "language": "python",
+      "sizeLines": 77,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_language_heuristics.py",
+      "language": "python",
+      "sizeLines": 100,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_language_sync.py",
+      "language": "python",
+      "sizeLines": 81,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_lead_service.py",
+      "language": "python",
+      "sizeLines": 315,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_leads_api.py",
+      "language": "python",
+      "sizeLines": 80,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_main.py",
+      "language": "python",
+      "sizeLines": 33,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_meta_commentary_guard.py",
+      "language": "python",
+      "sizeLines": 89,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_negotiate_rate_guest_memory.py",
+      "language": "python",
+      "sizeLines": 135,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_negotiate_rate_host_policy.py",
+      "language": "python",
+      "sizeLines": 183,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_negotiation_rules.py",
+      "language": "python",
+      "sizeLines": 281,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_notifications_api.py",
+      "language": "python",
+      "sizeLines": 22,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_phone_utils.py",
+      "language": "python",
+      "sizeLines": 28,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_pipeline_background_tasks.py",
+      "language": "python",
+      "sizeLines": 69,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_pipeline_llm.py",
+      "language": "python",
+      "sizeLines": 155,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_premature_end_call_guard.py",
+      "language": "python",
+      "sizeLines": 92,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_pricing_engine.py",
+      "language": "python",
+      "sizeLines": 474,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_properties_api.py",
+      "language": "python",
+      "sizeLines": 530,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_property_card_amenity_checklist.py",
+      "language": "python",
+      "sizeLines": 55,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_property_card_and_pitch_formatter.py",
+      "language": "python",
+      "sizeLines": 337,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_property_card_comparison_notes.py",
+      "language": "python",
+      "sizeLines": 192,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_property_card_match_reasons.py",
+      "language": "python",
+      "sizeLines": 134,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_property_chunking.py",
+      "language": "python",
+      "sizeLines": 70,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_property_display_name_backfill.py",
+      "language": "python",
+      "sizeLines": 153,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_property_lock.py",
+      "language": "python",
+      "sizeLines": 182,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_property_normalizer.py",
+      "language": "python",
+      "sizeLines": 91,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_property_recommendation_guard.py",
+      "language": "python",
+      "sizeLines": 501,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_property_retrieval_filter_builder.py",
+      "language": "python",
+      "sizeLines": 165,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_property_retrieval_orchestrator.py",
+      "language": "python",
+      "sizeLines": 270,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_property_retrieval_ranking.py",
+      "language": "python",
+      "sizeLines": 117,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_property_retrieval_semantic_search.py",
+      "language": "python",
+      "sizeLines": 126,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_property_retrieval_sql_search.py",
+      "language": "python",
+      "sizeLines": 183,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_recommend_properties_refinement.py",
+      "language": "python",
+      "sizeLines": 302,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_recovery_service.py",
+      "language": "python",
+      "sizeLines": 254,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_redis_client.py",
+      "language": "python",
+      "sizeLines": 92,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_redundant_context_guard.py",
+      "language": "python",
+      "sizeLines": 100,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_repetition_guard.py",
+      "language": "python",
+      "sizeLines": 286,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_response_shape_guard.py",
+      "language": "python",
+      "sizeLines": 336,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_ringing_audio.py",
+      "language": "python",
+      "sizeLines": 388,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_run_voice_pipeline_ringing.py",
+      "language": "python",
+      "sizeLines": 586,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_service_requests_api.py",
+      "language": "python",
+      "sizeLines": 151,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_silence_watchdog.py",
+      "language": "python",
+      "sizeLines": 249,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_slow_tool_filler.py",
+      "language": "python",
+      "sizeLines": 150,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_smart_pricing_service.py",
+      "language": "python",
+      "sizeLines": 175,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_state_prompt_sync.py",
+      "language": "python",
+      "sizeLines": 462,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_style_compliance_monitor.py",
+      "language": "python",
+      "sizeLines": 225,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_system_prompt.py",
+      "language": "python",
+      "sizeLines": 960,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_take_call.py",
+      "language": "python",
+      "sizeLines": 485,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_tool_handlers.py",
+      "language": "python",
+      "sizeLines": 825,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_turn_strategies.py",
+      "language": "python",
+      "sizeLines": 48,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_twilio_client.py",
+      "language": "python",
+      "sizeLines": 89,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_twilio_voice.py",
+      "language": "python",
+      "sizeLines": 48,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_user_schemas.py",
+      "language": "python",
+      "sizeLines": 45,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_voice_ice_servers.py",
+      "language": "python",
+      "sizeLines": 28,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_voice_tools.py",
+      "language": "python",
+      "sizeLines": 312,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_whatsapp_reply_service.py",
+      "language": "python",
+      "sizeLines": 259,
+      "fileCategory": "code"
+    },
+    {
+      "path": "backend/tests/test_whatsapp_webhook.py",
+      "language": "python",
+      "sizeLines": 76,
+      "fileCategory": "code"
+    },
+    {
+      "path": "docs/agents.md",
+      "language": "markdown",
+      "sizeLines": 226,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "docs/api.md",
+      "language": "markdown",
+      "sizeLines": 153,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "docs/architecture.md",
+      "language": "markdown",
+      "sizeLines": 104,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "docs/database.md",
+      "language": "markdown",
+      "sizeLines": 302,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "docs/how-it-works.md",
+      "language": "markdown",
+      "sizeLines": 424,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "docs/research-flow.md",
+      "language": "markdown",
+      "sizeLines": 114,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "docs/tasks/call-qualification.md",
+      "language": "markdown",
+      "sizeLines": 166,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "documentation/agent-conversation-improvement.md",
+      "language": "markdown",
+      "sizeLines": 1573,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "documentation/current_architecture.md",
+      "language": "markdown",
+      "sizeLines": 290,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "documentation/handoff.md",
+      "language": "markdown",
+      "sizeLines": 48,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "documentation/memory-architecture-plan.md",
+      "language": "markdown",
+      "sizeLines": 922,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "documentation/project_state.md",
+      "language": "markdown",
+      "sizeLines": 685,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "documentation/restructure.md",
+      "language": "markdown",
+      "sizeLines": 396,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "documentation/tasks.md",
+      "language": "markdown",
+      "sizeLines": 614,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "founder-console/.env.example",
+      "language": "config",
+      "sizeLines": 6,
+      "fileCategory": "config"
+    },
+    {
+      "path": "founder-console/README.md",
+      "language": "markdown",
+      "sizeLines": 30,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "founder-console/next-env.d.ts",
+      "language": "typescript",
+      "sizeLines": 6,
+      "fileCategory": "code"
+    },
+    {
+      "path": "founder-console/next.config.ts",
+      "language": "typescript",
+      "sizeLines": 5,
+      "fileCategory": "code"
+    },
+    {
+      "path": "founder-console/package.json",
+      "language": "json",
+      "sizeLines": 20,
+      "fileCategory": "config"
+    },
+    {
+      "path": "founder-console/src/app/api/login/route.ts",
+      "language": "typescript",
+      "sizeLines": 28,
+      "fileCategory": "code"
+    },
+    {
+      "path": "founder-console/src/app/layout.tsx",
+      "language": "typescript",
+      "sizeLines": 25,
+      "fileCategory": "code"
+    },
+    {
+      "path": "founder-console/src/app/login/page.tsx",
+      "language": "typescript",
+      "sizeLines": 96,
+      "fileCategory": "code"
+    },
+    {
+      "path": "founder-console/src/app/page.tsx",
+      "language": "typescript",
+      "sizeLines": 138,
+      "fileCategory": "code"
+    },
+    {
+      "path": "founder-console/src/middleware.ts",
+      "language": "typescript",
+      "sizeLines": 24,
+      "fileCategory": "code"
+    },
+    {
+      "path": "founder-console/tsconfig.json",
+      "language": "json",
+      "sizeLines": 21,
+      "fileCategory": "config"
+    },
+    {
+      "path": "frontend/AGENTS.md",
+      "language": "markdown",
+      "sizeLines": 5,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "frontend/CLAUDE.md",
+      "language": "markdown",
+      "sizeLines": 1,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "frontend/README.md",
+      "language": "markdown",
+      "sizeLines": 36,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "frontend/components.json",
+      "language": "json",
+      "sizeLines": 25,
+      "fileCategory": "config"
+    },
+    {
+      "path": "frontend/eslint.config.mjs",
+      "language": "javascript",
+      "sizeLines": 18,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/next.config.ts",
+      "language": "typescript",
+      "sizeLines": 7,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/package.json",
+      "language": "json",
+      "sizeLines": 39,
+      "fileCategory": "config"
+    },
+    {
+      "path": "frontend/postcss.config.mjs",
+      "language": "javascript",
+      "sizeLines": 7,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/dashboard/calendar/page.tsx",
+      "language": "typescript",
+      "sizeLines": 405,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/dashboard/calls/[id]/page.tsx",
+      "language": "typescript",
+      "sizeLines": 173,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/dashboard/calls/page.tsx",
+      "language": "typescript",
+      "sizeLines": 121,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/dashboard/faq/page.tsx",
+      "language": "typescript",
+      "sizeLines": 216,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/dashboard/guests/[id]/page.tsx",
+      "language": "typescript",
+      "sizeLines": 308,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/dashboard/guests/page.tsx",
+      "language": "typescript",
+      "sizeLines": 97,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/dashboard/layout.tsx",
+      "language": "typescript",
+      "sizeLines": 46,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/dashboard/leads/page.tsx",
+      "language": "typescript",
+      "sizeLines": 608,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/dashboard/onboarding/page.tsx",
+      "language": "typescript",
+      "sizeLines": 320,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/dashboard/opportunities/page.tsx",
+      "language": "typescript",
+      "sizeLines": 138,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/dashboard/page.tsx",
+      "language": "typescript",
+      "sizeLines": 219,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/dashboard/pricing/page.tsx",
+      "language": "typescript",
+      "sizeLines": 217,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/dashboard/profile/page.tsx",
+      "language": "typescript",
+      "sizeLines": 356,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/dashboard/properties/ai-training/page.tsx",
+      "language": "typescript",
+      "sizeLines": 150,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/dashboard/properties/page.tsx",
+      "language": "typescript",
+      "sizeLines": 584,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/dashboard/settings/page.tsx",
+      "language": "typescript",
+      "sizeLines": 284,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/globals.css",
+      "language": "css",
+      "sizeLines": 318,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "frontend/src/app/layout.tsx",
+      "language": "typescript",
+      "sizeLines": 84,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/login/[[...login]]/page.tsx",
+      "language": "typescript",
+      "sizeLines": 11,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/p/[propertyId]/photos/page.tsx",
+      "language": "typescript",
+      "sizeLines": 64,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/page.tsx",
+      "language": "typescript",
+      "sizeLines": 23,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/app/sign-up/[[...sign-up]]/page.tsx",
+      "language": "typescript",
+      "sizeLines": 11,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/actionable-card.tsx",
+      "language": "typescript",
+      "sizeLines": 105,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/call-summary-card.tsx",
+      "language": "typescript",
+      "sizeLines": 115,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/calls-table.tsx",
+      "language": "typescript",
+      "sizeLines": 168,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/close-lead-dialog.tsx",
+      "language": "typescript",
+      "sizeLines": 165,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/date-range-context.tsx",
+      "language": "typescript",
+      "sizeLines": 46,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/date-range-picker.tsx",
+      "language": "typescript",
+      "sizeLines": 71,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/expandable-text.tsx",
+      "language": "typescript",
+      "sizeLines": 35,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/guest-combobox.tsx",
+      "language": "typescript",
+      "sizeLines": 86,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/hero/call-flow-showcase.tsx",
+      "language": "typescript",
+      "sizeLines": 171,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/hero/dashboard-mockup.tsx",
+      "language": "typescript",
+      "sizeLines": 43,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/hero/landing-hero.tsx",
+      "language": "typescript",
+      "sizeLines": 107,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/hero/scroll-cue.tsx",
+      "language": "typescript",
+      "sizeLines": 28,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/image-lightbox.tsx",
+      "language": "typescript",
+      "sizeLines": 133,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/lead-detail-panel.tsx",
+      "language": "typescript",
+      "sizeLines": 225,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/live-requests-card.tsx",
+      "language": "typescript",
+      "sizeLines": 136,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/opportunities-card.tsx",
+      "language": "typescript",
+      "sizeLines": 67,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/opportunity-list.tsx",
+      "language": "typescript",
+      "sizeLines": 80,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/pending-import-banner.tsx",
+      "language": "typescript",
+      "sizeLines": 120,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/property-combobox.tsx",
+      "language": "typescript",
+      "sizeLines": 90,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/property-faq-manager.tsx",
+      "language": "typescript",
+      "sizeLines": 125,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/property-form-fields.tsx",
+      "language": "typescript",
+      "sizeLines": 437,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/property-form-section.tsx",
+      "language": "typescript",
+      "sizeLines": 45,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/property-photo-carousel.tsx",
+      "language": "typescript",
+      "sizeLines": 92,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/property-photos-manager.tsx",
+      "language": "typescript",
+      "sizeLines": 183,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/recovery-analytics-card.tsx",
+      "language": "typescript",
+      "sizeLines": 121,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/service-requests-table.tsx",
+      "language": "typescript",
+      "sizeLines": 164,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/settings/ai-training-section.tsx",
+      "language": "typescript",
+      "sizeLines": 424,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/settings/call-ownership-card.tsx",
+      "language": "typescript",
+      "sizeLines": 296,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/settings/technicians-section.tsx",
+      "language": "typescript",
+      "sizeLines": 163,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/sidebar-nav.tsx",
+      "language": "typescript",
+      "sizeLines": 203,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/sparkline.tsx",
+      "language": "typescript",
+      "sizeLines": 42,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/stat-card.tsx",
+      "language": "typescript",
+      "sizeLines": 58,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/status-chip.tsx",
+      "language": "typescript",
+      "sizeLines": 20,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/talk-to-mira-dialog.tsx",
+      "language": "typescript",
+      "sizeLines": 80,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/ui/avatar.tsx",
+      "language": "typescript",
+      "sizeLines": 109,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/ui/badge.tsx",
+      "language": "typescript",
+      "sizeLines": 52,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/ui/button.tsx",
+      "language": "typescript",
+      "sizeLines": 58,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/ui/calendar.tsx",
+      "language": "typescript",
+      "sizeLines": 221,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/ui/card.tsx",
+      "language": "typescript",
+      "sizeLines": 103,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/ui/checkbox.tsx",
+      "language": "typescript",
+      "sizeLines": 28,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/ui/definition-row.tsx",
+      "language": "typescript",
+      "sizeLines": 26,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/ui/dialog.tsx",
+      "language": "typescript",
+      "sizeLines": 160,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/ui/dictation-input.tsx",
+      "language": "typescript",
+      "sizeLines": 56,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/ui/dictation-textarea.tsx",
+      "language": "typescript",
+      "sizeLines": 69,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/ui/dropdown-menu.tsx",
+      "language": "typescript",
+      "sizeLines": 268,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/ui/input.tsx",
+      "language": "typescript",
+      "sizeLines": 67,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/ui/label.tsx",
+      "language": "typescript",
+      "sizeLines": 35,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/ui/list-row.tsx",
+      "language": "typescript",
+      "sizeLines": 67,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/ui/popover.tsx",
+      "language": "typescript",
+      "sizeLines": 90,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/ui/right-panel.tsx",
+      "language": "typescript",
+      "sizeLines": 106,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/ui/select.tsx",
+      "language": "typescript",
+      "sizeLines": 201,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/ui/separator.tsx",
+      "language": "typescript",
+      "sizeLines": 25,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/ui/skeleton.tsx",
+      "language": "typescript",
+      "sizeLines": 26,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/ui/sonner.tsx",
+      "language": "typescript",
+      "sizeLines": 49,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/ui/switch.tsx",
+      "language": "typescript",
+      "sizeLines": 32,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/ui/table.tsx",
+      "language": "typescript",
+      "sizeLines": 138,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/ui/tabs.tsx",
+      "language": "typescript",
+      "sizeLines": 82,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/ui/textarea.tsx",
+      "language": "typescript",
+      "sizeLines": 36,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/components/unanswered-questions-card.tsx",
+      "language": "typescript",
+      "sizeLines": 280,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/hooks/use-async.ts",
+      "language": "typescript",
+      "sizeLines": 35,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/hooks/use-date-range.ts",
+      "language": "typescript",
+      "sizeLines": 10,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/hooks/use-dictation.ts",
+      "language": "typescript",
+      "sizeLines": 92,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/hooks/use-notification-stream.ts",
+      "language": "typescript",
+      "sizeLines": 144,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/lib/api.ts",
+      "language": "typescript",
+      "sizeLines": 346,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/lib/auth-context.tsx",
+      "language": "typescript",
+      "sizeLines": 105,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/lib/leads.ts",
+      "language": "typescript",
+      "sizeLines": 19,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/lib/opportunities.ts",
+      "language": "typescript",
+      "sizeLines": 45,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/lib/tone.ts",
+      "language": "typescript",
+      "sizeLines": 60,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/lib/transcript.ts",
+      "language": "typescript",
+      "sizeLines": 38,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/lib/types.ts",
+      "language": "typescript",
+      "sizeLines": 581,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/lib/utils.ts",
+      "language": "typescript",
+      "sizeLines": 45,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/src/proxy.ts",
+      "language": "typescript",
+      "sizeLines": 16,
+      "fileCategory": "code"
+    },
+    {
+      "path": "frontend/tsconfig.json",
+      "language": "json",
+      "sizeLines": 34,
+      "fileCategory": "config"
+    },
+    {
+      "path": "render.yaml",
+      "language": "yaml",
+      "sizeLines": 99,
+      "fileCategory": "config"
+    }
+  ],
+  "totalFiles": 458,
+  "filteredByIgnore": 0,
+  "estimatedComplexity": "large",
+  "importMap": {
+    ".claude/launch.json": [],
+    ".mex/AGENTS.md": [],
+    ".mex/ROUTER.md": [],
+    ".mex/SETUP.md": [],
+    ".mex/SYNC.md": [],
+    ".mex/config.json": [],
+    ".mex/context/architecture.md": [],
+    ".mex/context/conventions.md": [],
+    ".mex/context/decisions.md": [],
+    ".mex/context/setup.md": [],
+    ".mex/context/stack.md": [],
+    ".mex/context/voice-pipeline.md": [],
+    ".mex/patterns/INDEX.md": [],
+    ".mex/patterns/README.md": [],
+    ".mex/patterns/add-endpoint.md": [],
+    ".mex/patterns/add-model.md": [],
+    ".mex/patterns/debug-voice-call.md": [],
+    ".mex/patterns/voice-pipeline-changes.md": [],
+    ".ua/.understandignore": [],
+    "CLAUDE.md": [],
+    "backend/.dockerignore": [],
+    "backend/Dockerfile": [],
+    "backend/alembic.ini": [],
+    "backend/alembic/env.py": [
+      "backend/app/config.py",
+      "backend/app/database.py",
+      "backend/app/models/__init__.py"
+    ],
+    "backend/alembic/script.py.mako": [],
+    "backend/alembic/versions/054ea268d326_add_index_on_notification_property_id.py": [],
+    "backend/alembic/versions/08b6a6949f77_drop_vapi_columns.py": [],
+    "backend/alembic/versions/0a8ae066bf5c_add_is_premium_to_properties.py": [],
+    "backend/alembic/versions/0c9b52d0cbd8_add_host_banner_url.py": [],
+    "backend/alembic/versions/356d5c923c77_add_lead_recovery_metadata.py": [],
+    "backend/alembic/versions/3fae82f7b3d0_add_notification_lead_id_and_responded_.py": [],
+    "backend/alembic/versions/44fd2130051e_merge_saturday_minimum_stay_and_.py": [],
+    "backend/alembic/versions/50f60d900d25_add_clerk_user_id_to_users.py": [],
+    "backend/alembic/versions/5161e38a221b_add_minimum_nights_to_properties.py": [],
+    "backend/alembic/versions/5e62da6e4f7d_merge_host_profile_and_voice_gender_.py": [],
+    "backend/alembic/versions/6384600c83f2_add_call_leases.py": [],
+    "backend/alembic/versions/66f90a703525_add_property_pricing_rules.py": [],
+    "backend/alembic/versions/6aa03c77c36f_add_airbnb_coordinates_to_properties.py": [],
+    "backend/alembic/versions/750ff224edb7_add_airbnb_listing_id_to_properties.py": [],
+    "backend/alembic/versions/7a236ad1ffd1_index_notification_lead_id_and_channel.py": [],
+    "backend/alembic/versions/7a7297081aaa_migrate_legacy_property_faq_to_faq_.py": [],
+    "backend/alembic/versions/810e248aba2c_add_bedroom_count_to_properties.py": [],
+    "backend/alembic/versions/833b55b32b84_add_canonical_name_fields_to_properties.py": [],
+    "backend/alembic/versions/8818413a6d0a_add_exact_airbnb_pricing_to_properties.py": [],
+    "backend/alembic/versions/896a916936e2_add_usp_to_properties_agent_.py": [],
+    "backend/alembic/versions/8d937521de4c_initial_schema.py": [],
+    "backend/alembic/versions/8f1c4b9e2a67_add_lead_busy_recovery_availability_.py": [],
+    "backend/alembic/versions/96046254326b_scope_airbnb_listing_id_uniqueness_to_.py": [],
+    "backend/alembic/versions/9c3f2a7e5d41_merge_discount_and_pricing_rules_into_.py": [],
+    "backend/alembic/versions/9fd5d655d830_add_call_handling_schedule_to_.py": [],
+    "backend/alembic/versions/a1b2c3d4e5f6_add_host_registration_fields_to_users.py": [],
+    "backend/alembic/versions/a1c4e8f7b2d3_add_agent_language_policy_to_users.py": [],
+    "backend/alembic/versions/a1c9e6f4d2b7_convert_call_sessions_ai_summary_to_.py": [],
+    "backend/alembic/versions/a1c9f4e2b6d3_add_twilio_voice_number_columns.py": [],
+    "backend/alembic/versions/a1e3085944c1_add_user_id_to_call_sessions_for_lead_.py": [],
+    "backend/alembic/versions/b2d7f5a1e3c9_add_call_sessions_dismissed_at.py": [],
+    "backend/alembic/versions/b3f6a1d8c9e2_add_call_type_classification_to_call_.py": [],
+    "backend/alembic/versions/b7d4e6f2a913_add_photos_to_properties.py": [],
+    "backend/alembic/versions/b7e3a9c1f4d6_add_saturday_minimum_stay_to_properties.py": [],
+    "backend/alembic/versions/baf955ef4370_add_smart_pricing_fields_to_properties.py": [],
+    "backend/alembic/versions/c09a22f820ff_make_hashed_password_nullable_for_clerk_.py": [],
+    "backend/alembic/versions/c22483e0853a_add_host_intelligence_fields.py": [],
+    "backend/alembic/versions/c4147f84e6a1_add_neighborhood_info_to_properties.py": [],
+    "backend/alembic/versions/c8e1f4a02b7d_add_host_memory_discount_policy.py": [],
+    "backend/alembic/versions/cc04e38bed6f_add_agent_voice_gender_to_users.py": [],
+    "backend/alembic/versions/d16066a213c6_add_landmarks_and_amenity_tags_to_properties.py": [],
+    "backend/alembic/versions/d3a9f5c1b2e4_add_notification_email_to_users.py": [],
+    "backend/alembic/versions/d4f7a91c3e5b_add_guest_memory_fields.py": [],
+    "backend/alembic/versions/d65ddc51db7f_add_property_chunks.py": [],
+    "backend/alembic/versions/d8a1f47c2b6e_add_lead_id_to_call_sessions.py": [],
+    "backend/alembic/versions/df8097774c5d_add_leads_and_faq_entries.py": [],
+    "backend/alembic/versions/e7c2a4f8d9b1_enable_pg_trgm_for_faq_search.py": [],
+    "backend/alembic/versions/e91a3f5c8d2b_add_faq_question_embeddings.py": [],
+    "backend/alembic/versions/f3a8c1d7e4b6_add_seasonal_notes_to_properties.py": [],
+    "backend/alembic/versions/f3cebf679a80_add_lead_status_occasion_and_unanswered_.py": [],
+    "backend/alembic/versions/fb704d3f696c_add_host_photo_and_whatsapp_assist_.py": [],
+    "backend/app/__init__.py": [],
+    "backend/app/api/__init__.py": [],
+    "backend/app/api/v1/__init__.py": [],
+    "backend/app/api/v1/analytics.py": [
+      "backend/app/api/v1/common.py",
+      "backend/app/auth/dependencies.py",
+      "backend/app/database.py",
+      "backend/app/models/call_session.py",
+      "backend/app/models/lead.py",
+      "backend/app/models/notification.py",
+      "backend/app/models/user.py",
+      "backend/app/schemas/call_classification.py",
+      "backend/app/services/call_service.py",
+      "backend/app/services/recovery_service.py",
+      "backend/app/services/whatsapp_reply_service.py"
+    ],
+    "backend/app/api/v1/auth.py": [
+      "backend/app/auth/dependencies.py",
+      "backend/app/database.py",
+      "backend/app/integrations/__init__.py",
+      "backend/app/integrations/bright_data_client.py",
+      "backend/app/integrations/cloudinary_client.py",
+      "backend/app/models/user.py",
+      "backend/app/schemas/user.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/faq_service.py"
+    ],
+    "backend/app/api/v1/bookings.py": [
+      "backend/app/api/v1/common.py",
+      "backend/app/auth/dependencies.py",
+      "backend/app/database.py",
+      "backend/app/models/booking.py",
+      "backend/app/models/user.py",
+      "backend/app/schemas/booking.py",
+      "backend/app/services/calendar_service.py"
+    ],
+    "backend/app/api/v1/calls.py": [
+      "backend/app/api/v1/common.py",
+      "backend/app/auth/dependencies.py",
+      "backend/app/database.py",
+      "backend/app/models/call_session.py",
+      "backend/app/models/notification.py",
+      "backend/app/models/user.py",
+      "backend/app/schemas/call_session.py",
+      "backend/app/schemas/notification.py",
+      "backend/app/services/call_service.py"
+    ],
+    "backend/app/api/v1/common.py": [
+      "backend/app/models/property.py",
+      "backend/app/models/user.py"
+    ],
+    "backend/app/api/v1/faq.py": [
+      "backend/app/api/v1/common.py",
+      "backend/app/auth/dependencies.py",
+      "backend/app/database.py",
+      "backend/app/models/faq_entry.py",
+      "backend/app/models/user.py",
+      "backend/app/schemas/faq_entry.py",
+      "backend/app/schemas/faq_gap.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/faq_service.py"
+    ],
+    "backend/app/api/v1/guests.py": [
+      "backend/app/api/v1/common.py",
+      "backend/app/auth/dependencies.py",
+      "backend/app/database.py",
+      "backend/app/models/call_session.py",
+      "backend/app/models/guest_profile.py",
+      "backend/app/models/property.py",
+      "backend/app/models/user.py",
+      "backend/app/schemas/guest_profile.py"
+    ],
+    "backend/app/api/v1/leads.py": [
+      "backend/app/api/v1/common.py",
+      "backend/app/auth/dependencies.py",
+      "backend/app/database.py",
+      "backend/app/models/lead.py",
+      "backend/app/models/notification.py",
+      "backend/app/models/user.py",
+      "backend/app/schemas/lead.py",
+      "backend/app/schemas/service_request.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/lead_service.py",
+      "backend/app/services/request_feed_service.py"
+    ],
+    "backend/app/api/v1/negotiation_rules.py": [
+      "backend/app/api/v1/common.py",
+      "backend/app/auth/dependencies.py",
+      "backend/app/database.py",
+      "backend/app/models/negotiation_rule.py",
+      "backend/app/models/user.py",
+      "backend/app/schemas/negotiation_rule.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/negotiation_policy_service.py"
+    ],
+    "backend/app/api/v1/notifications.py": [
+      "backend/app/api/v1/common.py",
+      "backend/app/auth/dependencies.py",
+      "backend/app/database.py",
+      "backend/app/models/user.py",
+      "backend/app/schemas/notification.py",
+      "backend/app/services/notification_service.py"
+    ],
+    "backend/app/api/v1/pricing.py": [
+      "backend/app/api/v1/common.py",
+      "backend/app/auth/dependencies.py",
+      "backend/app/database.py",
+      "backend/app/models/pricing_rule.py",
+      "backend/app/models/user.py",
+      "backend/app/schemas/booking.py",
+      "backend/app/schemas/pricing_rule.py",
+      "backend/app/services/pricing_engine.py"
+    ],
+    "backend/app/api/v1/properties.py": [
+      "backend/app/api/v1/common.py",
+      "backend/app/auth/dependencies.py",
+      "backend/app/database.py",
+      "backend/app/integrations/__init__.py",
+      "backend/app/integrations/bright_data_client.py",
+      "backend/app/integrations/cloudinary_client.py",
+      "backend/app/models/property.py",
+      "backend/app/models/user.py",
+      "backend/app/schemas/property.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/airbnb_import.py",
+      "backend/app/services/amenity_taxonomy.py",
+      "backend/app/services/calendar_service.py",
+      "backend/app/services/faq_service.py",
+      "backend/app/services/property/chunking.py",
+      "backend/app/services/property_normalizer.py"
+    ],
+    "backend/app/api/v1/take_call.py": [
+      "backend/app/database.py",
+      "backend/app/models/call_session.py",
+      "backend/app/models/property.py",
+      "backend/app/services/take_call_token.py",
+      "backend/app/voice/__init__.py",
+      "backend/app/voice/handoff_signal.py"
+    ],
+    "backend/app/api/v1/technicians.py": [
+      "backend/app/api/v1/common.py",
+      "backend/app/auth/dependencies.py",
+      "backend/app/database.py",
+      "backend/app/models/technician.py",
+      "backend/app/models/user.py",
+      "backend/app/schemas/technician.py"
+    ],
+    "backend/app/api/v1/voice.py": [
+      "backend/app/api/v1/common.py",
+      "backend/app/auth/dependencies.py",
+      "backend/app/config.py",
+      "backend/app/database.py",
+      "backend/app/integrations/exotel_client.py",
+      "backend/app/integrations/twilio_voice.py",
+      "backend/app/models/user.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/faq_service.py",
+      "backend/app/voice/pipeline.py"
+    ],
+    "backend/app/api/v1/webhooks/__init__.py": [],
+    "backend/app/api/v1/webhooks/exotel.py": [
+      "backend/app/database.py",
+      "backend/app/integrations/exotel_client.py",
+      "backend/app/models/call_session.py",
+      "backend/app/models/property.py",
+      "backend/app/models/user.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/call_ownership.py",
+      "backend/app/services/call_service.py"
+    ],
+    "backend/app/api/v1/webhooks/whatsapp.py": [
+      "backend/app/database.py",
+      "backend/app/integrations/twilio_client.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/whatsapp_reply_service.py"
+    ],
+    "backend/app/auth/__init__.py": [],
+    "backend/app/auth/dependencies.py": [
+      "backend/app/config.py",
+      "backend/app/database.py",
+      "backend/app/integrations/clerk_client.py",
+      "backend/app/models/user.py"
+    ],
+    "backend/app/config.py": [],
+    "backend/app/database.py": [
+      "backend/app/config.py"
+    ],
+    "backend/app/integrations/__init__.py": [],
+    "backend/app/integrations/bright_data_client.py": [
+      "backend/app/config.py"
+    ],
+    "backend/app/integrations/clerk_client.py": [
+      "backend/app/config.py"
+    ],
+    "backend/app/integrations/cloudinary_client.py": [
+      "backend/app/config.py"
+    ],
+    "backend/app/integrations/email_client.py": [
+      "backend/app/config.py"
+    ],
+    "backend/app/integrations/email_templates.py": [
+      "backend/app/config.py"
+    ],
+    "backend/app/integrations/exotel_client.py": [
+      "backend/app/config.py",
+      "backend/app/utils/webhook_auth.py"
+    ],
+    "backend/app/integrations/ical_client.py": [],
+    "backend/app/integrations/redis_client.py": [
+      "backend/app/config.py"
+    ],
+    "backend/app/integrations/redis_lease_client.py": [
+      "backend/app/integrations/__init__.py",
+      "backend/app/integrations/redis_client.py"
+    ],
+    "backend/app/integrations/searchapi_client.py": [
+      "backend/app/config.py",
+      "backend/app/integrations/__init__.py",
+      "backend/app/integrations/redis_client.py"
+    ],
+    "backend/app/integrations/twilio_client.py": [
+      "backend/app/config.py",
+      "backend/app/utils/webhook_auth.py"
+    ],
+    "backend/app/integrations/twilio_voice.py": [
+      "backend/app/config.py",
+      "backend/app/utils/webhook_auth.py"
+    ],
+    "backend/app/main.py": [
+      "backend/app/api/v1/__init__.py",
+      "backend/app/api/v1/analytics.py",
+      "backend/app/api/v1/auth.py",
+      "backend/app/api/v1/bookings.py",
+      "backend/app/api/v1/calls.py",
+      "backend/app/api/v1/faq.py",
+      "backend/app/api/v1/guests.py",
+      "backend/app/api/v1/leads.py",
+      "backend/app/api/v1/negotiation_rules.py",
+      "backend/app/api/v1/notifications.py",
+      "backend/app/api/v1/pricing.py",
+      "backend/app/api/v1/properties.py",
+      "backend/app/api/v1/take_call.py",
+      "backend/app/api/v1/technicians.py",
+      "backend/app/api/v1/voice.py",
+      "backend/app/api/v1/webhooks/__init__.py",
+      "backend/app/api/v1/webhooks/exotel.py",
+      "backend/app/api/v1/webhooks/whatsapp.py",
+      "backend/app/config.py",
+      "backend/app/database.py",
+      "backend/app/services/calendar_service.py",
+      "backend/app/services/smart_pricing_service.py"
+    ],
+    "backend/app/models/__init__.py": [
+      "backend/app/models/booking.py",
+      "backend/app/models/call_lease.py",
+      "backend/app/models/call_session.py",
+      "backend/app/models/faq_entry.py",
+      "backend/app/models/guest_profile.py",
+      "backend/app/models/lead.py",
+      "backend/app/models/negotiation_rule.py",
+      "backend/app/models/notification.py",
+      "backend/app/models/pricing_rule.py",
+      "backend/app/models/property.py",
+      "backend/app/models/property_chunk.py",
+      "backend/app/models/technician.py",
+      "backend/app/models/unanswered_question.py",
+      "backend/app/models/user.py"
+    ],
+    "backend/app/models/booking.py": [
+      "backend/app/database.py",
+      "backend/app/models/mixins.py"
+    ],
+    "backend/app/models/call_lease.py": [
+      "backend/app/database.py",
+      "backend/app/models/mixins.py"
+    ],
+    "backend/app/models/call_session.py": [
+      "backend/app/database.py",
+      "backend/app/models/mixins.py"
+    ],
+    "backend/app/models/faq_entry.py": [
+      "backend/app/database.py",
+      "backend/app/models/mixins.py"
+    ],
+    "backend/app/models/guest_profile.py": [
+      "backend/app/database.py",
+      "backend/app/models/mixins.py"
+    ],
+    "backend/app/models/lead.py": [
+      "backend/app/database.py",
+      "backend/app/models/mixins.py"
+    ],
+    "backend/app/models/mixins.py": [],
+    "backend/app/models/negotiation_rule.py": [
+      "backend/app/database.py",
+      "backend/app/models/mixins.py"
+    ],
+    "backend/app/models/notification.py": [
+      "backend/app/database.py",
+      "backend/app/models/mixins.py"
+    ],
+    "backend/app/models/pricing_rule.py": [
+      "backend/app/database.py",
+      "backend/app/models/mixins.py"
+    ],
+    "backend/app/models/property.py": [
+      "backend/app/database.py",
+      "backend/app/models/mixins.py"
+    ],
+    "backend/app/models/property_chunk.py": [
+      "backend/app/database.py",
+      "backend/app/models/mixins.py"
+    ],
+    "backend/app/models/technician.py": [
+      "backend/app/database.py",
+      "backend/app/models/mixins.py"
+    ],
+    "backend/app/models/unanswered_question.py": [
+      "backend/app/database.py",
+      "backend/app/models/mixins.py"
+    ],
+    "backend/app/models/user.py": [
+      "backend/app/database.py",
+      "backend/app/models/mixins.py"
+    ],
+    "backend/app/prompts/__init__.py": [],
+    "backend/app/prompts/system_prompt.py": [
+      "backend/app/models/guest_profile.py",
+      "backend/app/models/lead.py",
+      "backend/app/models/property.py",
+      "backend/app/models/user.py",
+      "backend/app/services/call_service.py"
+    ],
+    "backend/app/schemas/__init__.py": [],
+    "backend/app/schemas/booking.py": [],
+    "backend/app/schemas/call_classification.py": [],
+    "backend/app/schemas/call_session.py": [
+      "backend/app/schemas/call_summary.py",
+      "backend/app/schemas/notification.py"
+    ],
+    "backend/app/schemas/call_summary.py": [],
+    "backend/app/schemas/faq_entry.py": [],
+    "backend/app/schemas/faq_gap.py": [],
+    "backend/app/schemas/guest_profile.py": [
+      "backend/app/schemas/call_summary.py"
+    ],
+    "backend/app/schemas/lead.py": [],
+    "backend/app/schemas/negotiation_rule.py": [],
+    "backend/app/schemas/notification.py": [],
+    "backend/app/schemas/pricing_rule.py": [],
+    "backend/app/schemas/property.py": [],
+    "backend/app/schemas/service_request.py": [],
+    "backend/app/schemas/technician.py": [],
+    "backend/app/schemas/tool.py": [],
+    "backend/app/schemas/user.py": [],
+    "backend/app/services/__init__.py": [],
+    "backend/app/services/airbnb_import.py": [
+      "backend/app/integrations/__init__.py",
+      "backend/app/integrations/cloudinary_client.py",
+      "backend/app/services/amenity_taxonomy.py",
+      "backend/app/services/property_normalizer.py"
+    ],
+    "backend/app/services/amenity_taxonomy.py": [],
+    "backend/app/services/calendar_service.py": [
+      "backend/app/integrations/ical_client.py",
+      "backend/app/models/booking.py",
+      "backend/app/models/property.py"
+    ],
+    "backend/app/services/call_classification_service.py": [
+      "backend/app/config.py",
+      "backend/app/schemas/call_classification.py"
+    ],
+    "backend/app/services/call_coordinator.py": [
+      "backend/app/integrations/__init__.py",
+      "backend/app/integrations/redis_lease_client.py"
+    ],
+    "backend/app/services/call_ownership.py": [
+      "backend/app/models/property.py"
+    ],
+    "backend/app/services/call_service.py": [
+      "backend/app/models/call_session.py",
+      "backend/app/models/guest_profile.py",
+      "backend/app/models/property.py",
+      "backend/app/models/user.py",
+      "backend/app/schemas/call_classification.py",
+      "backend/app/schemas/call_summary.py"
+    ],
+    "backend/app/services/call_summary_service.py": [
+      "backend/app/config.py",
+      "backend/app/schemas/call_summary.py"
+    ],
+    "backend/app/services/embedding_service.py": [
+      "backend/app/config.py"
+    ],
+    "backend/app/services/faq_service.py": [
+      "backend/app/api/v1/common.py",
+      "backend/app/config.py",
+      "backend/app/models/faq_entry.py",
+      "backend/app/models/property.py",
+      "backend/app/models/unanswered_question.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/airbnb_import.py",
+      "backend/app/services/embedding_service.py"
+    ],
+    "backend/app/services/guest_calling_notification.py": [
+      "backend/app/config.py",
+      "backend/app/database.py",
+      "backend/app/integrations/__init__.py",
+      "backend/app/integrations/twilio_client.py",
+      "backend/app/models/notification.py",
+      "backend/app/models/property.py",
+      "backend/app/models/user.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/call_ownership.py",
+      "backend/app/services/notification_service.py",
+      "backend/app/services/take_call_token.py"
+    ],
+    "backend/app/services/guest_memory_service.py": [
+      "backend/app/models/guest_profile.py",
+      "backend/app/models/lead.py"
+    ],
+    "backend/app/services/lead_service.py": [
+      "backend/app/api/v1/common.py",
+      "backend/app/models/call_session.py",
+      "backend/app/models/lead.py"
+    ],
+    "backend/app/services/negotiation_policy_service.py": [
+      "backend/app/config.py",
+      "backend/app/models/negotiation_rule.py"
+    ],
+    "backend/app/services/notification_service.py": [
+      "backend/app/models/lead.py",
+      "backend/app/models/notification.py"
+    ],
+    "backend/app/services/pricing_engine.py": [
+      "backend/app/integrations/__init__.py",
+      "backend/app/integrations/redis_client.py",
+      "backend/app/integrations/searchapi_client.py",
+      "backend/app/models/guest_profile.py",
+      "backend/app/models/negotiation_rule.py",
+      "backend/app/models/pricing_rule.py",
+      "backend/app/models/property.py",
+      "backend/app/models/user.py"
+    ],
+    "backend/app/services/property/__init__.py": [],
+    "backend/app/services/property/card.py": [
+      "backend/app/services/amenity_taxonomy.py"
+    ],
+    "backend/app/services/property/chunking.py": [],
+    "backend/app/services/property/pitch_formatter.py": [
+      "backend/app/services/property/card.py"
+    ],
+    "backend/app/services/property/retrieval/__init__.py": [
+      "backend/app/services/property/retrieval/orchestrator.py"
+    ],
+    "backend/app/services/property/retrieval/context_builder.py": [
+      "backend/app/models/property.py",
+      "backend/app/schemas/tool.py",
+      "backend/app/services/property/card.py",
+      "backend/app/services/property/pitch_formatter.py"
+    ],
+    "backend/app/services/property/retrieval/filter_builder.py": [
+      "backend/app/models/property.py",
+      "backend/app/schemas/tool.py",
+      "backend/app/services/amenity_taxonomy.py"
+    ],
+    "backend/app/services/property/retrieval/formatter.py": [
+      "backend/app/services/property/pitch_formatter.py"
+    ],
+    "backend/app/services/property/retrieval/orchestrator.py": [
+      "backend/app/models/property.py",
+      "backend/app/schemas/tool.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/calendar_service.py",
+      "backend/app/services/property/pitch_formatter.py",
+      "backend/app/services/property/retrieval/__init__.py",
+      "backend/app/services/property/retrieval/context_builder.py",
+      "backend/app/services/property/retrieval/filter_builder.py",
+      "backend/app/services/property/retrieval/ranking.py",
+      "backend/app/services/property/retrieval/semantic_search.py",
+      "backend/app/services/property/retrieval/sql_search.py"
+    ],
+    "backend/app/services/property/retrieval/ranking.py": [
+      "backend/app/models/property.py"
+    ],
+    "backend/app/services/property/retrieval/semantic_search.py": [
+      "backend/app/config.py",
+      "backend/app/models/property.py",
+      "backend/app/models/property_chunk.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/embedding_service.py"
+    ],
+    "backend/app/services/property/retrieval/sql_search.py": [
+      "backend/app/models/property.py",
+      "backend/app/schemas/tool.py",
+      "backend/app/services/property/retrieval/filter_builder.py"
+    ],
+    "backend/app/services/property_normalizer.py": [
+      "backend/app/config.py"
+    ],
+    "backend/app/services/recovery_service.py": [
+      "backend/app/config.py",
+      "backend/app/database.py",
+      "backend/app/integrations/__init__.py",
+      "backend/app/integrations/twilio_client.py",
+      "backend/app/models/lead.py",
+      "backend/app/models/property.py",
+      "backend/app/models/user.py",
+      "backend/app/schemas/lead.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/call_service.py",
+      "backend/app/services/guest_memory_service.py",
+      "backend/app/services/lead_service.py",
+      "backend/app/services/notification_service.py",
+      "backend/app/services/whatsapp_reply_service.py"
+    ],
+    "backend/app/services/request_feed_service.py": [
+      "backend/app/models/call_session.py",
+      "backend/app/models/notification.py",
+      "backend/app/schemas/service_request.py"
+    ],
+    "backend/app/services/smart_pricing_service.py": [
+      "backend/app/config.py",
+      "backend/app/integrations/searchapi_client.py",
+      "backend/app/models/property.py"
+    ],
+    "backend/app/services/take_call_token.py": [
+      "backend/app/config.py"
+    ],
+    "backend/app/services/technician_service.py": [
+      "backend/app/models/technician.py"
+    ],
+    "backend/app/services/tool_handlers.py": [
+      "backend/app/config.py",
+      "backend/app/integrations/__init__.py",
+      "backend/app/integrations/email_client.py",
+      "backend/app/integrations/email_templates.py",
+      "backend/app/integrations/twilio_client.py",
+      "backend/app/models/property.py",
+      "backend/app/models/unanswered_question.py",
+      "backend/app/models/user.py",
+      "backend/app/schemas/tool.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/calendar_service.py",
+      "backend/app/services/embedding_service.py",
+      "backend/app/services/faq_service.py",
+      "backend/app/services/lead_service.py",
+      "backend/app/services/notification_service.py",
+      "backend/app/services/pricing_engine.py",
+      "backend/app/services/property/pitch_formatter.py",
+      "backend/app/services/property/retrieval/__init__.py",
+      "backend/app/services/technician_service.py"
+    ],
+    "backend/app/services/whatsapp_reply_service.py": [
+      "backend/app/config.py",
+      "backend/app/integrations/__init__.py",
+      "backend/app/integrations/twilio_client.py",
+      "backend/app/models/guest_profile.py",
+      "backend/app/models/lead.py",
+      "backend/app/models/property.py",
+      "backend/app/models/user.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/faq_service.py",
+      "backend/app/services/lead_service.py",
+      "backend/app/services/notification_service.py"
+    ],
+    "backend/app/utils/__init__.py": [],
+    "backend/app/utils/phone.py": [],
+    "backend/app/utils/webhook_auth.py": [],
+    "backend/app/voice/__init__.py": [],
+    "backend/app/voice/assets/busy_message_8000.wav": [],
+    "backend/app/voice/assets/busy_message_speech_8000.wav": [],
+    "backend/app/voice/assets/ringing_tone_8000.wav": [],
+    "backend/app/voice/conversation_quality.py": [],
+    "backend/app/voice/conversation_state.py": [],
+    "backend/app/voice/conversation_style.py": [
+      "backend/app/voice/conversation_state.py",
+      "backend/app/voice/language_heuristics.py"
+    ],
+    "backend/app/voice/end_call_reliability_guard.py": [
+      "backend/app/prompts/system_prompt.py",
+      "backend/app/voice/silence_watchdog.py"
+    ],
+    "backend/app/voice/escalation_phrase_guard.py": [],
+    "backend/app/voice/handoff_signal.py": [],
+    "backend/app/voice/language_heuristics.py": [],
+    "backend/app/voice/language_sync.py": [
+      "backend/app/voice/conversation_state.py"
+    ],
+    "backend/app/voice/meta_commentary_guard.py": [],
+    "backend/app/voice/pipeline.py": [
+      "backend/app/config.py",
+      "backend/app/database.py",
+      "backend/app/integrations/__init__.py",
+      "backend/app/integrations/exotel_client.py",
+      "backend/app/models/property.py",
+      "backend/app/models/user.py",
+      "backend/app/prompts/system_prompt.py",
+      "backend/app/schemas/call_classification.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/call_classification_service.py",
+      "backend/app/services/call_coordinator.py",
+      "backend/app/services/call_service.py",
+      "backend/app/services/call_summary_service.py",
+      "backend/app/services/faq_service.py",
+      "backend/app/services/guest_calling_notification.py",
+      "backend/app/services/guest_memory_service.py",
+      "backend/app/services/lead_service.py",
+      "backend/app/services/recovery_service.py",
+      "backend/app/voice/conversation_quality.py",
+      "backend/app/voice/conversation_state.py",
+      "backend/app/voice/conversation_style.py",
+      "backend/app/voice/end_call_reliability_guard.py",
+      "backend/app/voice/escalation_phrase_guard.py",
+      "backend/app/voice/handoff_signal.py",
+      "backend/app/voice/language_sync.py",
+      "backend/app/voice/meta_commentary_guard.py",
+      "backend/app/voice/premature_end_call_guard.py",
+      "backend/app/voice/property_recommendation_guard.py",
+      "backend/app/voice/redundant_context_guard.py",
+      "backend/app/voice/repetition_guard.py",
+      "backend/app/voice/response_shape_guard.py",
+      "backend/app/voice/ringing_audio.py",
+      "backend/app/voice/silence_watchdog.py",
+      "backend/app/voice/slow_tool_filler.py",
+      "backend/app/voice/state_prompt_sync.py",
+      "backend/app/voice/style_compliance_monitor.py",
+      "backend/app/voice/tools.py",
+      "backend/app/voice/turn_strategies.py",
+      "backend/app/voice/vad.py"
+    ],
+    "backend/app/voice/premature_end_call_guard.py": [
+      "backend/app/voice/silence_watchdog.py"
+    ],
+    "backend/app/voice/property_recommendation_guard.py": [
+      "backend/app/services/amenity_taxonomy.py",
+      "backend/app/services/property/pitch_formatter.py"
+    ],
+    "backend/app/voice/redundant_context_guard.py": [
+      "backend/app/voice/silence_watchdog.py"
+    ],
+    "backend/app/voice/repetition_guard.py": [
+      "backend/app/voice/conversation_state.py"
+    ],
+    "backend/app/voice/response_shape_guard.py": [
+      "backend/app/services/property/pitch_formatter.py",
+      "backend/app/voice/conversation_quality.py",
+      "backend/app/voice/escalation_phrase_guard.py"
+    ],
+    "backend/app/voice/ringing_audio.py": [],
+    "backend/app/voice/silence_watchdog.py": [],
+    "backend/app/voice/slow_tool_filler.py": [],
+    "backend/app/voice/state_prompt_sync.py": [
+      "backend/app/voice/conversation_quality.py",
+      "backend/app/voice/conversation_state.py",
+      "backend/app/voice/conversation_style.py"
+    ],
+    "backend/app/voice/style_compliance_monitor.py": [
+      "backend/app/voice/conversation_quality.py",
+      "backend/app/voice/language_heuristics.py"
+    ],
+    "backend/app/voice/tools.py": [
+      "backend/app/database.py",
+      "backend/app/schemas/tool.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/amenity_taxonomy.py",
+      "backend/app/services/property/pitch_formatter.py",
+      "backend/app/services/tool_handlers.py",
+      "backend/app/voice/conversation_state.py",
+      "backend/app/voice/property_recommendation_guard.py",
+      "backend/app/voice/silence_watchdog.py"
+    ],
+    "backend/app/voice/turn_strategies.py": [],
+    "backend/app/voice/vad.py": [],
+    "backend/backfill_guest_names_to_english.py": [
+      "backend/app/database.py",
+      "backend/app/models/guest_profile.py",
+      "backend/app/models/lead.py"
+    ],
+    "backend/pytest.ini": [],
+    "backend/railway.json": [],
+    "backend/requirements.txt": [],
+    "backend/scripts/__init__.py": [],
+    "backend/scripts/create_availability_template.py": [
+      "backend/app/integrations/twilio_client.py"
+    ],
+    "backend/scripts/create_busy_recovery_template.py": [
+      "backend/app/integrations/twilio_client.py",
+      "backend/app/services/whatsapp_reply_service.py"
+    ],
+    "backend/scripts/create_escalation_template.py": [
+      "backend/app/config.py",
+      "backend/app/integrations/twilio_client.py"
+    ],
+    "backend/scripts/create_guest_calling_template.py": [
+      "backend/app/config.py",
+      "backend/app/integrations/twilio_client.py"
+    ],
+    "backend/scripts/generate_busy_message_speech.py": [
+      "backend/app/config.py"
+    ],
+    "backend/scripts/generate_busy_message_tone.py": [],
+    "backend/scripts/generate_ringing_tone.py": [],
+    "backend/scripts/seed_demo_data.py": [
+      "backend/app/database.py",
+      "backend/app/models/booking.py",
+      "backend/app/models/notification.py",
+      "backend/app/models/property.py",
+      "backend/app/models/technician.py",
+      "backend/app/models/user.py"
+    ],
+    "backend/seed_demo.py": [
+      "backend/app/config.py",
+      "backend/app/models/property.py",
+      "backend/app/models/user.py"
+    ],
+    "backend/seed_faq_updates.py": [
+      "backend/app/config.py",
+      "backend/app/models/faq_entry.py",
+      "backend/app/models/property.py",
+      "backend/app/models/user.py"
+    ],
+    "backend/tests/__init__.py": [],
+    "backend/tests/conftest.py": [
+      "backend/app/auth/dependencies.py",
+      "backend/app/database.py",
+      "backend/app/integrations/__init__.py",
+      "backend/app/integrations/redis_client.py",
+      "backend/app/main.py",
+      "backend/app/models/call_session.py",
+      "backend/app/models/property.py",
+      "backend/app/models/user.py"
+    ],
+    "backend/tests/fixtures/airbnb_listing_sample.json": [],
+    "backend/tests/fixtures/sample.ics": [],
+    "backend/tests/test_airbnb_import.py": [
+      "backend/app/integrations/__init__.py",
+      "backend/app/integrations/bright_data_client.py",
+      "backend/app/services/airbnb_import.py"
+    ],
+    "backend/tests/test_amenity_taxonomy.py": [
+      "backend/app/services/amenity_taxonomy.py"
+    ],
+    "backend/tests/test_analytics_api.py": [
+      "backend/app/models/call_session.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/call_service.py",
+      "backend/app/services/lead_service.py"
+    ],
+    "backend/tests/test_analytics_recovery.py": [
+      "backend/app/models/notification.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/lead_service.py",
+      "backend/app/services/notification_service.py",
+      "backend/app/services/recovery_service.py",
+      "backend/app/services/whatsapp_reply_service.py"
+    ],
+    "backend/tests/test_auth.py": [],
+    "backend/tests/test_availability_recovery.py": [
+      "backend/app/config.py",
+      "backend/app/models/guest_profile.py",
+      "backend/app/models/lead.py",
+      "backend/app/models/property.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/call_coordinator.py",
+      "backend/app/services/lead_service.py",
+      "backend/app/services/recovery_service.py"
+    ],
+    "backend/tests/test_bookings_api.py": [
+      "backend/app/models/booking.py"
+    ],
+    "backend/tests/test_calendar_service.py": [
+      "backend/app/models/booking.py",
+      "backend/app/services/calendar_service.py"
+    ],
+    "backend/tests/test_call_classification_service.py": [
+      "backend/app/services/__init__.py"
+    ],
+    "backend/tests/test_call_coordinator.py": [
+      "backend/app/integrations/__init__.py",
+      "backend/app/integrations/redis_lease_client.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/call_coordinator.py"
+    ],
+    "backend/tests/test_call_ownership.py": [
+      "backend/app/models/property.py",
+      "backend/app/services/call_ownership.py"
+    ],
+    "backend/tests/test_call_service.py": [
+      "backend/app/services/__init__.py",
+      "backend/app/services/call_service.py"
+    ],
+    "backend/tests/test_call_session_handoff_status.py": [
+      "backend/app/models/call_session.py"
+    ],
+    "backend/tests/test_call_summary_service.py": [
+      "backend/app/services/__init__.py",
+      "backend/app/services/call_summary_service.py"
+    ],
+    "backend/tests/test_calls_api.py": [
+      "backend/app/models/call_session.py",
+      "backend/app/models/guest_profile.py",
+      "backend/app/models/lead.py",
+      "backend/app/schemas/call_summary.py"
+    ],
+    "backend/tests/test_conversation_quality.py": [
+      "backend/app/voice/conversation_quality.py"
+    ],
+    "backend/tests/test_conversation_state.py": [
+      "backend/app/voice/conversation_state.py"
+    ],
+    "backend/tests/test_conversation_state_attention.py": [
+      "backend/app/voice/conversation_state.py"
+    ],
+    "backend/tests/test_conversation_state_slot_wiring.py": [
+      "backend/app/models/property.py",
+      "backend/app/voice/conversation_state.py",
+      "backend/app/voice/tools.py"
+    ],
+    "backend/tests/test_conversation_style.py": [
+      "backend/app/voice/conversation_state.py",
+      "backend/app/voice/conversation_style.py"
+    ],
+    "backend/tests/test_database.py": [
+      "backend/app/config.py",
+      "backend/app/database.py"
+    ],
+    "backend/tests/test_email_client.py": [
+      "backend/app/integrations/__init__.py",
+      "backend/app/integrations/email_client.py"
+    ],
+    "backend/tests/test_embedding_service.py": [
+      "backend/app/integrations/__init__.py",
+      "backend/app/integrations/redis_client.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/embedding_service.py"
+    ],
+    "backend/tests/test_end_call_reliability_guard.py": [
+      "backend/app/prompts/system_prompt.py",
+      "backend/app/voice/end_call_reliability_guard.py",
+      "backend/app/voice/silence_watchdog.py"
+    ],
+    "backend/tests/test_escalation_phrase_guard.py": [
+      "backend/app/voice/escalation_phrase_guard.py"
+    ],
+    "backend/tests/test_exotel_call_routing.py": [
+      "backend/app/api/v1/webhooks/__init__.py",
+      "backend/app/api/v1/webhooks/exotel.py",
+      "backend/app/models/property.py"
+    ],
+    "backend/tests/test_exotel_client.py": [
+      "backend/app/config.py",
+      "backend/app/integrations/__init__.py",
+      "backend/app/integrations/exotel_client.py"
+    ],
+    "backend/tests/test_exotel_connect_routing.py": [
+      "backend/app/api/v1/webhooks/__init__.py",
+      "backend/app/api/v1/webhooks/exotel.py",
+      "backend/app/models/call_session.py",
+      "backend/app/models/property.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/call_service.py"
+    ],
+    "backend/tests/test_exotel_webhook.py": [],
+    "backend/tests/test_explicit_language_preference.py": [
+      "backend/app/voice/conversation_state.py",
+      "backend/app/voice/tools.py"
+    ],
+    "backend/tests/test_faq_api.py": [],
+    "backend/tests/test_faq_gaps.py": [
+      "backend/app/models/unanswered_question.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/faq_service.py"
+    ],
+    "backend/tests/test_faq_knowledge_memory.py": [
+      "backend/app/models/faq_entry.py",
+      "backend/app/models/unanswered_question.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/embedding_service.py",
+      "backend/app/services/faq_service.py"
+    ],
+    "backend/tests/test_guest_calling_notification.py": [
+      "backend/app/integrations/__init__.py",
+      "backend/app/integrations/twilio_client.py",
+      "backend/app/models/call_session.py",
+      "backend/app/models/property.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/guest_calling_notification.py",
+      "backend/app/services/notification_service.py"
+    ],
+    "backend/tests/test_guest_detail_api.py": [
+      "backend/app/models/call_session.py",
+      "backend/app/models/guest_profile.py",
+      "backend/app/schemas/call_summary.py"
+    ],
+    "backend/tests/test_guest_memory.py": [
+      "backend/app/models/guest_profile.py",
+      "backend/app/models/lead.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/call_service.py",
+      "backend/app/services/guest_memory_service.py"
+    ],
+    "backend/tests/test_host_handoff.py": [
+      "backend/app/config.py",
+      "backend/app/integrations/__init__.py",
+      "backend/app/integrations/exotel_client.py",
+      "backend/app/voice/__init__.py",
+      "backend/app/voice/handoff_signal.py",
+      "backend/app/voice/pipeline.py"
+    ],
+    "backend/tests/test_ical_sync.py": [
+      "backend/app/integrations/ical_client.py",
+      "backend/app/models/booking.py",
+      "backend/app/services/calendar_service.py"
+    ],
+    "backend/tests/test_language_heuristics.py": [
+      "backend/app/voice/language_heuristics.py"
+    ],
+    "backend/tests/test_language_sync.py": [
+      "backend/app/voice/conversation_state.py",
+      "backend/app/voice/language_sync.py"
+    ],
+    "backend/tests/test_lead_service.py": [
+      "backend/app/models/call_session.py",
+      "backend/app/models/guest_profile.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/lead_service.py"
+    ],
+    "backend/tests/test_leads_api.py": [
+      "backend/app/services/__init__.py",
+      "backend/app/services/lead_service.py",
+      "backend/app/services/recovery_service.py",
+      "backend/tests/conftest.py"
+    ],
+    "backend/tests/test_main.py": [
+      "backend/app/main.py"
+    ],
+    "backend/tests/test_meta_commentary_guard.py": [
+      "backend/app/voice/meta_commentary_guard.py"
+    ],
+    "backend/tests/test_negotiate_rate_guest_memory.py": [
+      "backend/app/models/guest_profile.py",
+      "backend/app/models/negotiation_rule.py",
+      "backend/app/services/pricing_engine.py"
+    ],
+    "backend/tests/test_negotiate_rate_host_policy.py": [
+      "backend/app/models/negotiation_rule.py",
+      "backend/app/services/pricing_engine.py"
+    ],
+    "backend/tests/test_negotiation_rules.py": [
+      "backend/app/services/__init__.py",
+      "backend/app/services/negotiation_policy_service.py"
+    ],
+    "backend/tests/test_notifications_api.py": [
+      "backend/app/services/__init__.py",
+      "backend/app/services/recovery_service.py"
+    ],
+    "backend/tests/test_phone_utils.py": [
+      "backend/app/utils/phone.py"
+    ],
+    "backend/tests/test_pipeline_background_tasks.py": [
+      "backend/app/voice/__init__.py",
+      "backend/app/voice/pipeline.py"
+    ],
+    "backend/tests/test_pipeline_llm.py": [
+      "backend/app/__init__.py",
+      "backend/app/voice/__init__.py",
+      "backend/app/voice/pipeline.py"
+    ],
+    "backend/tests/test_premature_end_call_guard.py": [
+      "backend/app/voice/premature_end_call_guard.py",
+      "backend/app/voice/silence_watchdog.py"
+    ],
+    "backend/tests/test_pricing_engine.py": [
+      "backend/app/integrations/__init__.py",
+      "backend/app/integrations/redis_client.py",
+      "backend/app/integrations/searchapi_client.py",
+      "backend/app/models/negotiation_rule.py",
+      "backend/app/models/pricing_rule.py",
+      "backend/app/services/pricing_engine.py"
+    ],
+    "backend/tests/test_properties_api.py": [],
+    "backend/tests/test_property_card_amenity_checklist.py": [
+      "backend/app/services/property/card.py"
+    ],
+    "backend/tests/test_property_card_and_pitch_formatter.py": [
+      "backend/app/models/property.py",
+      "backend/app/services/property/card.py",
+      "backend/app/services/property/pitch_formatter.py",
+      "backend/app/services/property/retrieval/context_builder.py"
+    ],
+    "backend/tests/test_property_card_comparison_notes.py": [
+      "backend/app/services/property/card.py"
+    ],
+    "backend/tests/test_property_card_match_reasons.py": [
+      "backend/app/schemas/tool.py",
+      "backend/app/services/property/card.py"
+    ],
+    "backend/tests/test_property_chunking.py": [
+      "backend/app/models/property.py",
+      "backend/app/services/property/chunking.py"
+    ],
+    "backend/tests/test_property_display_name_backfill.py": [
+      "backend/app/api/v1/properties.py",
+      "backend/app/models/property.py"
+    ],
+    "backend/tests/test_property_lock.py": [
+      "backend/app/models/faq_entry.py",
+      "backend/app/models/property.py",
+      "backend/app/voice/conversation_state.py",
+      "backend/app/voice/tools.py"
+    ],
+    "backend/tests/test_property_normalizer.py": [
+      "backend/app/services/property_normalizer.py"
+    ],
+    "backend/tests/test_property_recommendation_guard.py": [
+      "backend/app/services/property/card.py",
+      "backend/app/services/property/pitch_formatter.py",
+      "backend/app/voice/property_recommendation_guard.py"
+    ],
+    "backend/tests/test_property_retrieval_filter_builder.py": [
+      "backend/app/models/property.py",
+      "backend/app/schemas/tool.py",
+      "backend/app/services/property/retrieval/filter_builder.py"
+    ],
+    "backend/tests/test_property_retrieval_orchestrator.py": [
+      "backend/app/models/booking.py",
+      "backend/app/models/property.py",
+      "backend/app/models/property_chunk.py",
+      "backend/app/schemas/tool.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/embedding_service.py",
+      "backend/app/services/property/retrieval/__init__.py",
+      "backend/app/services/property/retrieval/orchestrator.py"
+    ],
+    "backend/tests/test_property_retrieval_ranking.py": [
+      "backend/app/models/property.py",
+      "backend/app/services/property/retrieval/ranking.py"
+    ],
+    "backend/tests/test_property_retrieval_semantic_search.py": [
+      "backend/app/models/property.py",
+      "backend/app/models/property_chunk.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/embedding_service.py",
+      "backend/app/services/property/retrieval/__init__.py",
+      "backend/app/services/property/retrieval/semantic_search.py"
+    ],
+    "backend/tests/test_property_retrieval_sql_search.py": [
+      "backend/app/models/property.py",
+      "backend/app/schemas/tool.py",
+      "backend/app/services/property/retrieval/__init__.py",
+      "backend/app/services/property/retrieval/filter_builder.py",
+      "backend/app/services/property/retrieval/sql_search.py"
+    ],
+    "backend/tests/test_recommend_properties_refinement.py": [
+      "backend/app/models/property.py",
+      "backend/app/voice/conversation_state.py",
+      "backend/app/voice/tools.py"
+    ],
+    "backend/tests/test_recovery_service.py": [
+      "backend/app/models/guest_profile.py",
+      "backend/app/models/user.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/lead_service.py",
+      "backend/app/services/notification_service.py",
+      "backend/app/services/recovery_service.py"
+    ],
+    "backend/tests/test_redis_client.py": [
+      "backend/app/integrations/__init__.py",
+      "backend/app/integrations/redis_client.py"
+    ],
+    "backend/tests/test_redundant_context_guard.py": [
+      "backend/app/voice/redundant_context_guard.py"
+    ],
+    "backend/tests/test_repetition_guard.py": [
+      "backend/app/voice/conversation_state.py",
+      "backend/app/voice/repetition_guard.py"
+    ],
+    "backend/tests/test_response_shape_guard.py": [
+      "backend/app/voice/conversation_quality.py",
+      "backend/app/voice/response_shape_guard.py"
+    ],
+    "backend/tests/test_ringing_audio.py": [
+      "backend/app/voice/__init__.py",
+      "backend/app/voice/ringing_audio.py"
+    ],
+    "backend/tests/test_run_voice_pipeline_ringing.py": [
+      "backend/app/config.py",
+      "backend/app/integrations/__init__.py",
+      "backend/app/integrations/exotel_client.py",
+      "backend/app/models/call_session.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/call_coordinator.py",
+      "backend/app/services/lead_service.py",
+      "backend/app/services/notification_service.py",
+      "backend/app/services/recovery_service.py",
+      "backend/app/voice/__init__.py",
+      "backend/app/voice/pipeline.py"
+    ],
+    "backend/tests/test_service_requests_api.py": [
+      "backend/app/models/call_session.py",
+      "backend/app/models/notification.py"
+    ],
+    "backend/tests/test_silence_watchdog.py": [
+      "backend/app/voice/conversation_state.py",
+      "backend/app/voice/silence_watchdog.py"
+    ],
+    "backend/tests/test_slow_tool_filler.py": [
+      "backend/app/voice/slow_tool_filler.py"
+    ],
+    "backend/tests/test_smart_pricing_service.py": [
+      "backend/app/services/__init__.py"
+    ],
+    "backend/tests/test_state_prompt_sync.py": [
+      "backend/app/voice/conversation_quality.py",
+      "backend/app/voice/conversation_state.py",
+      "backend/app/voice/conversation_style.py",
+      "backend/app/voice/state_prompt_sync.py"
+    ],
+    "backend/tests/test_style_compliance_monitor.py": [
+      "backend/app/voice/conversation_quality.py",
+      "backend/app/voice/conversation_state.py",
+      "backend/app/voice/conversation_style.py",
+      "backend/app/voice/style_compliance_monitor.py"
+    ],
+    "backend/tests/test_system_prompt.py": [
+      "backend/app/models/faq_entry.py",
+      "backend/app/models/guest_profile.py",
+      "backend/app/models/lead.py",
+      "backend/app/models/property.py",
+      "backend/app/models/user.py",
+      "backend/app/prompts/__init__.py",
+      "backend/app/prompts/system_prompt.py"
+    ],
+    "backend/tests/test_take_call.py": [
+      "backend/app/config.py",
+      "backend/app/models/call_session.py",
+      "backend/app/models/property.py",
+      "backend/app/models/user.py",
+      "backend/app/services/take_call_token.py"
+    ],
+    "backend/tests/test_tool_handlers.py": [
+      "backend/app/models/property.py",
+      "backend/app/models/technician.py",
+      "backend/app/models/unanswered_question.py",
+      "backend/app/schemas/tool.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/lead_service.py",
+      "backend/app/services/notification_service.py",
+      "backend/app/services/property/pitch_formatter.py",
+      "backend/app/services/tool_handlers.py"
+    ],
+    "backend/tests/test_turn_strategies.py": [
+      "backend/app/voice/turn_strategies.py"
+    ],
+    "backend/tests/test_twilio_client.py": [
+      "backend/app/config.py",
+      "backend/app/integrations/__init__.py",
+      "backend/app/integrations/twilio_client.py"
+    ],
+    "backend/tests/test_twilio_voice.py": [
+      "backend/app/config.py",
+      "backend/app/integrations/__init__.py",
+      "backend/app/integrations/twilio_voice.py"
+    ],
+    "backend/tests/test_user_schemas.py": [
+      "backend/app/schemas/user.py"
+    ],
+    "backend/tests/test_voice_ice_servers.py": [
+      "backend/app/api/v1/__init__.py",
+      "backend/app/api/v1/voice.py"
+    ],
+    "backend/tests/test_voice_tools.py": [
+      "backend/app/models/technician.py",
+      "backend/app/services/notification_service.py",
+      "backend/app/voice/silence_watchdog.py",
+      "backend/app/voice/tools.py"
+    ],
+    "backend/tests/test_whatsapp_reply_service.py": [
+      "backend/app/models/faq_entry.py",
+      "backend/app/models/lead.py",
+      "backend/app/models/notification.py",
+      "backend/app/services/__init__.py",
+      "backend/app/services/recovery_service.py",
+      "backend/app/services/whatsapp_reply_service.py"
+    ],
+    "backend/tests/test_whatsapp_webhook.py": [
+      "backend/app/services/__init__.py",
+      "backend/app/services/recovery_service.py",
+      "backend/app/services/whatsapp_reply_service.py"
+    ],
+    "docs/agents.md": [],
+    "docs/api.md": [],
+    "docs/architecture.md": [],
+    "docs/database.md": [],
+    "docs/how-it-works.md": [],
+    "docs/research-flow.md": [],
+    "docs/tasks/call-qualification.md": [],
+    "documentation/agent-conversation-improvement.md": [],
+    "documentation/current_architecture.md": [],
+    "documentation/handoff.md": [],
+    "documentation/memory-architecture-plan.md": [],
+    "documentation/project_state.md": [],
+    "documentation/restructure.md": [],
+    "documentation/tasks.md": [],
+    "founder-console/.env.example": [],
+    "founder-console/README.md": [],
+    "founder-console/next-env.d.ts": [],
+    "founder-console/next.config.ts": [],
+    "founder-console/package.json": [],
+    "founder-console/src/app/api/login/route.ts": [],
+    "founder-console/src/app/layout.tsx": [],
+    "founder-console/src/app/login/page.tsx": [],
+    "founder-console/src/app/page.tsx": [],
+    "founder-console/src/middleware.ts": [],
+    "founder-console/tsconfig.json": [],
+    "frontend/AGENTS.md": [],
+    "frontend/CLAUDE.md": [],
+    "frontend/README.md": [],
+    "frontend/components.json": [],
+    "frontend/eslint.config.mjs": [],
+    "frontend/next.config.ts": [],
+    "frontend/package.json": [],
+    "frontend/postcss.config.mjs": [],
+    "frontend/src/app/dashboard/calendar/page.tsx": [
+      "frontend/src/components/guest-combobox.tsx",
+      "frontend/src/components/ui/button.tsx",
+      "frontend/src/components/ui/input.tsx",
+      "frontend/src/components/ui/label.tsx",
+      "frontend/src/components/ui/right-panel.tsx",
+      "frontend/src/components/ui/select.tsx",
+      "frontend/src/components/ui/skeleton.tsx",
+      "frontend/src/hooks/use-async.ts",
+      "frontend/src/lib/api.ts",
+      "frontend/src/lib/types.ts",
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/app/dashboard/calls/[id]/page.tsx": [
+      "frontend/src/components/call-summary-card.tsx",
+      "frontend/src/components/status-chip.tsx",
+      "frontend/src/components/ui/badge.tsx",
+      "frontend/src/components/ui/button.tsx",
+      "frontend/src/components/ui/card.tsx",
+      "frontend/src/components/ui/skeleton.tsx",
+      "frontend/src/hooks/use-async.ts",
+      "frontend/src/lib/api.ts",
+      "frontend/src/lib/transcript.ts",
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/app/dashboard/calls/page.tsx": [
+      "frontend/src/components/calls-table.tsx",
+      "frontend/src/components/date-range-picker.tsx",
+      "frontend/src/components/ui/input.tsx",
+      "frontend/src/components/ui/label.tsx",
+      "frontend/src/components/ui/select.tsx",
+      "frontend/src/components/ui/skeleton.tsx",
+      "frontend/src/components/ui/switch.tsx",
+      "frontend/src/hooks/use-async.ts",
+      "frontend/src/hooks/use-date-range.ts",
+      "frontend/src/lib/api.ts",
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/app/dashboard/faq/page.tsx": [
+      "frontend/src/components/expandable-text.tsx",
+      "frontend/src/components/status-chip.tsx",
+      "frontend/src/components/ui/button.tsx",
+      "frontend/src/components/ui/card.tsx",
+      "frontend/src/components/ui/dictation-textarea.tsx",
+      "frontend/src/components/ui/input.tsx",
+      "frontend/src/components/ui/label.tsx",
+      "frontend/src/components/ui/right-panel.tsx",
+      "frontend/src/components/ui/select.tsx",
+      "frontend/src/components/ui/skeleton.tsx",
+      "frontend/src/components/ui/table.tsx",
+      "frontend/src/components/unanswered-questions-card.tsx",
+      "frontend/src/hooks/use-async.ts",
+      "frontend/src/lib/api.ts",
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/app/dashboard/guests/[id]/page.tsx": [
+      "frontend/src/components/stat-card.tsx",
+      "frontend/src/components/status-chip.tsx",
+      "frontend/src/components/ui/avatar.tsx",
+      "frontend/src/components/ui/badge.tsx",
+      "frontend/src/components/ui/button.tsx",
+      "frontend/src/components/ui/card.tsx",
+      "frontend/src/components/ui/dictation-textarea.tsx",
+      "frontend/src/components/ui/input.tsx",
+      "frontend/src/components/ui/label.tsx",
+      "frontend/src/components/ui/list-row.tsx",
+      "frontend/src/components/ui/skeleton.tsx",
+      "frontend/src/hooks/use-async.ts",
+      "frontend/src/lib/api.ts",
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/app/dashboard/guests/page.tsx": [
+      "frontend/src/components/date-range-picker.tsx",
+      "frontend/src/components/ui/avatar.tsx",
+      "frontend/src/components/ui/badge.tsx",
+      "frontend/src/components/ui/button.tsx",
+      "frontend/src/components/ui/skeleton.tsx",
+      "frontend/src/components/ui/table.tsx",
+      "frontend/src/hooks/use-async.ts",
+      "frontend/src/hooks/use-date-range.ts",
+      "frontend/src/lib/api.ts",
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/app/dashboard/layout.tsx": [
+      "frontend/src/components/date-range-context.tsx",
+      "frontend/src/components/pending-import-banner.tsx",
+      "frontend/src/components/sidebar-nav.tsx",
+      "frontend/src/lib/auth-context.tsx"
+    ],
+    "frontend/src/app/dashboard/leads/page.tsx": [
+      "frontend/src/components/close-lead-dialog.tsx",
+      "frontend/src/components/date-range-picker.tsx",
+      "frontend/src/components/lead-detail-panel.tsx",
+      "frontend/src/components/service-requests-table.tsx",
+      "frontend/src/components/status-chip.tsx",
+      "frontend/src/components/ui/button.tsx",
+      "frontend/src/components/ui/card.tsx",
+      "frontend/src/components/ui/input.tsx",
+      "frontend/src/components/ui/label.tsx",
+      "frontend/src/components/ui/select.tsx",
+      "frontend/src/components/ui/skeleton.tsx",
+      "frontend/src/components/ui/switch.tsx",
+      "frontend/src/components/ui/table.tsx",
+      "frontend/src/components/ui/tabs.tsx",
+      "frontend/src/hooks/use-async.ts",
+      "frontend/src/hooks/use-date-range.ts",
+      "frontend/src/lib/api.ts",
+      "frontend/src/lib/leads.ts",
+      "frontend/src/lib/types.ts",
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/app/dashboard/onboarding/page.tsx": [
+      "frontend/src/components/ui/button.tsx",
+      "frontend/src/components/ui/card.tsx",
+      "frontend/src/components/ui/input.tsx",
+      "frontend/src/components/ui/label.tsx",
+      "frontend/src/components/ui/select.tsx",
+      "frontend/src/components/ui/textarea.tsx",
+      "frontend/src/lib/api.ts",
+      "frontend/src/lib/auth-context.tsx",
+      "frontend/src/lib/types.ts"
+    ],
+    "frontend/src/app/dashboard/opportunities/page.tsx": [
+      "frontend/src/components/date-range-picker.tsx",
+      "frontend/src/components/lead-detail-panel.tsx",
+      "frontend/src/components/opportunity-list.tsx",
+      "frontend/src/components/recovery-analytics-card.tsx",
+      "frontend/src/components/ui/input.tsx",
+      "frontend/src/components/ui/skeleton.tsx",
+      "frontend/src/components/ui/tabs.tsx",
+      "frontend/src/hooks/use-async.ts",
+      "frontend/src/hooks/use-notification-stream.ts",
+      "frontend/src/lib/api.ts",
+      "frontend/src/lib/opportunities.ts",
+      "frontend/src/lib/types.ts",
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/app/dashboard/page.tsx": [
+      "frontend/src/components/calls-table.tsx",
+      "frontend/src/components/date-range-picker.tsx",
+      "frontend/src/components/lead-detail-panel.tsx",
+      "frontend/src/components/live-requests-card.tsx",
+      "frontend/src/components/opportunities-card.tsx",
+      "frontend/src/components/stat-card.tsx",
+      "frontend/src/components/ui/card.tsx",
+      "frontend/src/components/ui/label.tsx",
+      "frontend/src/components/ui/skeleton.tsx",
+      "frontend/src/components/ui/switch.tsx",
+      "frontend/src/components/unanswered-questions-card.tsx",
+      "frontend/src/hooks/use-async.ts",
+      "frontend/src/hooks/use-date-range.ts",
+      "frontend/src/lib/api.ts",
+      "frontend/src/lib/types.ts",
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/app/dashboard/pricing/page.tsx": [
+      "frontend/src/components/settings/ai-training-section.tsx",
+      "frontend/src/components/ui/badge.tsx",
+      "frontend/src/components/ui/button.tsx",
+      "frontend/src/components/ui/card.tsx",
+      "frontend/src/components/ui/definition-row.tsx",
+      "frontend/src/components/ui/input.tsx",
+      "frontend/src/components/ui/label.tsx",
+      "frontend/src/components/ui/select.tsx",
+      "frontend/src/components/ui/skeleton.tsx",
+      "frontend/src/components/ui/table.tsx",
+      "frontend/src/hooks/use-async.ts",
+      "frontend/src/lib/api.ts",
+      "frontend/src/lib/types.ts"
+    ],
+    "frontend/src/app/dashboard/profile/page.tsx": [
+      "frontend/src/components/ui/avatar.tsx",
+      "frontend/src/components/ui/button.tsx",
+      "frontend/src/components/ui/input.tsx",
+      "frontend/src/components/ui/label.tsx",
+      "frontend/src/components/ui/right-panel.tsx",
+      "frontend/src/components/ui/switch.tsx",
+      "frontend/src/lib/api.ts",
+      "frontend/src/lib/auth-context.tsx"
+    ],
+    "frontend/src/app/dashboard/properties/ai-training/page.tsx": [
+      "frontend/src/components/settings/ai-training-section.tsx",
+      "frontend/src/components/ui/button.tsx",
+      "frontend/src/components/ui/card.tsx",
+      "frontend/src/components/ui/dictation-textarea.tsx",
+      "frontend/src/components/ui/label.tsx",
+      "frontend/src/components/ui/skeleton.tsx",
+      "frontend/src/lib/api.ts",
+      "frontend/src/lib/auth-context.tsx",
+      "frontend/src/lib/types.ts",
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/app/dashboard/properties/page.tsx": [
+      "frontend/src/components/property-faq-manager.tsx",
+      "frontend/src/components/property-form-fields.tsx",
+      "frontend/src/components/property-photo-carousel.tsx",
+      "frontend/src/components/property-photos-manager.tsx",
+      "frontend/src/components/status-chip.tsx",
+      "frontend/src/components/talk-to-mira-dialog.tsx",
+      "frontend/src/components/ui/button.tsx",
+      "frontend/src/components/ui/card.tsx",
+      "frontend/src/components/ui/dropdown-menu.tsx",
+      "frontend/src/components/ui/input.tsx",
+      "frontend/src/components/ui/list-row.tsx",
+      "frontend/src/components/ui/right-panel.tsx",
+      "frontend/src/components/ui/skeleton.tsx",
+      "frontend/src/components/ui/textarea.tsx",
+      "frontend/src/hooks/use-async.ts",
+      "frontend/src/lib/api.ts",
+      "frontend/src/lib/auth-context.tsx",
+      "frontend/src/lib/types.ts",
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/app/dashboard/settings/page.tsx": [
+      "frontend/src/components/settings/call-ownership-card.tsx",
+      "frontend/src/components/settings/technicians-section.tsx",
+      "frontend/src/components/ui/badge.tsx",
+      "frontend/src/components/ui/button.tsx",
+      "frontend/src/components/ui/card.tsx",
+      "frontend/src/components/ui/definition-row.tsx",
+      "frontend/src/components/ui/input.tsx",
+      "frontend/src/components/ui/skeleton.tsx",
+      "frontend/src/components/ui/tabs.tsx",
+      "frontend/src/lib/api.ts",
+      "frontend/src/lib/auth-context.tsx"
+    ],
+    "frontend/src/app/globals.css": [],
+    "frontend/src/app/layout.tsx": [
+      "frontend/src/app/globals.css",
+      "frontend/src/components/ui/sonner.tsx",
+      "frontend/src/lib/auth-context.tsx"
+    ],
+    "frontend/src/app/login/[[...login]]/page.tsx": [],
+    "frontend/src/app/p/[propertyId]/photos/page.tsx": [],
+    "frontend/src/app/page.tsx": [
+      "frontend/src/components/hero/landing-hero.tsx",
+      "frontend/src/lib/auth-context.tsx"
+    ],
+    "frontend/src/app/sign-up/[[...sign-up]]/page.tsx": [],
+    "frontend/src/components/actionable-card.tsx": [
+      "frontend/src/components/expandable-text.tsx",
+      "frontend/src/components/ui/badge.tsx",
+      "frontend/src/components/ui/list-row.tsx",
+      "frontend/src/lib/tone.ts",
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/components/call-summary-card.tsx": [
+      "frontend/src/components/status-chip.tsx",
+      "frontend/src/components/ui/card.tsx",
+      "frontend/src/lib/types.ts"
+    ],
+    "frontend/src/components/calls-table.tsx": [
+      "frontend/src/components/status-chip.tsx",
+      "frontend/src/components/ui/badge.tsx",
+      "frontend/src/components/ui/table.tsx",
+      "frontend/src/lib/types.ts",
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/components/close-lead-dialog.tsx": [
+      "frontend/src/components/ui/button.tsx",
+      "frontend/src/components/ui/dialog.tsx",
+      "frontend/src/components/ui/label.tsx",
+      "frontend/src/components/ui/select.tsx",
+      "frontend/src/hooks/use-async.ts",
+      "frontend/src/lib/api.ts",
+      "frontend/src/lib/types.ts"
+    ],
+    "frontend/src/components/date-range-context.tsx": [],
+    "frontend/src/components/date-range-picker.tsx": [
+      "frontend/src/components/ui/button.tsx",
+      "frontend/src/components/ui/calendar.tsx",
+      "frontend/src/components/ui/popover.tsx",
+      "frontend/src/hooks/use-date-range.ts"
+    ],
+    "frontend/src/components/expandable-text.tsx": [
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/components/guest-combobox.tsx": [
+      "frontend/src/components/ui/input.tsx",
+      "frontend/src/lib/types.ts",
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/components/hero/call-flow-showcase.tsx": [
+      "frontend/src/components/hero/dashboard-mockup.tsx"
+    ],
+    "frontend/src/components/hero/dashboard-mockup.tsx": [],
+    "frontend/src/components/hero/landing-hero.tsx": [
+      "frontend/src/components/hero/call-flow-showcase.tsx",
+      "frontend/src/components/hero/scroll-cue.tsx",
+      "frontend/src/components/ui/button.tsx",
+      "frontend/src/lib/types.ts"
+    ],
+    "frontend/src/components/hero/scroll-cue.tsx": [],
+    "frontend/src/components/image-lightbox.tsx": [
+      "frontend/src/components/ui/dialog.tsx",
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/components/lead-detail-panel.tsx": [
+      "frontend/src/components/call-summary-card.tsx",
+      "frontend/src/components/close-lead-dialog.tsx",
+      "frontend/src/components/status-chip.tsx",
+      "frontend/src/components/ui/button.tsx",
+      "frontend/src/components/ui/dictation-textarea.tsx",
+      "frontend/src/components/ui/input.tsx",
+      "frontend/src/components/ui/label.tsx",
+      "frontend/src/components/ui/right-panel.tsx",
+      "frontend/src/components/ui/select.tsx",
+      "frontend/src/hooks/use-async.ts",
+      "frontend/src/lib/api.ts",
+      "frontend/src/lib/types.ts",
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/components/live-requests-card.tsx": [
+      "frontend/src/components/lead-detail-panel.tsx",
+      "frontend/src/components/status-chip.tsx",
+      "frontend/src/components/ui/badge.tsx",
+      "frontend/src/components/ui/card.tsx",
+      "frontend/src/components/ui/checkbox.tsx",
+      "frontend/src/components/ui/list-row.tsx",
+      "frontend/src/hooks/use-notification-stream.ts",
+      "frontend/src/lib/api.ts",
+      "frontend/src/lib/leads.ts",
+      "frontend/src/lib/types.ts",
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/components/opportunities-card.tsx": [
+      "frontend/src/components/opportunity-list.tsx",
+      "frontend/src/components/ui/badge.tsx",
+      "frontend/src/components/ui/card.tsx",
+      "frontend/src/hooks/use-notification-stream.ts",
+      "frontend/src/lib/opportunities.ts",
+      "frontend/src/lib/types.ts",
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/components/opportunity-list.tsx": [
+      "frontend/src/components/status-chip.tsx",
+      "frontend/src/components/ui/badge.tsx",
+      "frontend/src/components/ui/list-row.tsx",
+      "frontend/src/lib/leads.ts",
+      "frontend/src/lib/opportunities.ts",
+      "frontend/src/lib/types.ts"
+    ],
+    "frontend/src/components/pending-import-banner.tsx": [
+      "frontend/src/components/ui/card.tsx",
+      "frontend/src/lib/api.ts",
+      "frontend/src/lib/auth-context.tsx",
+      "frontend/src/lib/tone.ts"
+    ],
+    "frontend/src/components/property-combobox.tsx": [
+      "frontend/src/components/ui/input.tsx",
+      "frontend/src/lib/types.ts",
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/components/property-faq-manager.tsx": [
+      "frontend/src/components/property-form-section.tsx",
+      "frontend/src/components/ui/button.tsx",
+      "frontend/src/components/ui/dictation-textarea.tsx",
+      "frontend/src/components/ui/input.tsx",
+      "frontend/src/lib/api.ts",
+      "frontend/src/lib/types.ts"
+    ],
+    "frontend/src/components/property-form-fields.tsx": [
+      "frontend/src/components/property-form-section.tsx",
+      "frontend/src/components/ui/button.tsx",
+      "frontend/src/components/ui/dictation-input.tsx",
+      "frontend/src/components/ui/dictation-textarea.tsx",
+      "frontend/src/components/ui/input.tsx",
+      "frontend/src/components/ui/label.tsx",
+      "frontend/src/components/ui/select.tsx",
+      "frontend/src/components/ui/switch.tsx",
+      "frontend/src/lib/types.ts",
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/components/property-form-section.tsx": [
+      "frontend/src/components/ui/badge.tsx",
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/components/property-photo-carousel.tsx": [
+      "frontend/src/components/image-lightbox.tsx",
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/components/property-photos-manager.tsx": [
+      "frontend/src/components/image-lightbox.tsx",
+      "frontend/src/components/ui/button.tsx",
+      "frontend/src/lib/api.ts",
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/components/recovery-analytics-card.tsx": [
+      "frontend/src/components/stat-card.tsx",
+      "frontend/src/components/ui/card.tsx",
+      "frontend/src/components/ui/skeleton.tsx",
+      "frontend/src/hooks/use-async.ts",
+      "frontend/src/hooks/use-date-range.ts",
+      "frontend/src/hooks/use-notification-stream.ts",
+      "frontend/src/lib/api.ts"
+    ],
+    "frontend/src/components/service-requests-table.tsx": [
+      "frontend/src/components/expandable-text.tsx",
+      "frontend/src/components/status-chip.tsx",
+      "frontend/src/components/ui/button.tsx",
+      "frontend/src/components/ui/checkbox.tsx",
+      "frontend/src/components/ui/right-panel.tsx",
+      "frontend/src/components/ui/table.tsx",
+      "frontend/src/hooks/use-async.ts",
+      "frontend/src/lib/api.ts",
+      "frontend/src/lib/types.ts"
+    ],
+    "frontend/src/components/settings/ai-training-section.tsx": [
+      "frontend/src/components/status-chip.tsx",
+      "frontend/src/components/ui/button.tsx",
+      "frontend/src/components/ui/card.tsx",
+      "frontend/src/components/ui/checkbox.tsx",
+      "frontend/src/components/ui/dictation-textarea.tsx",
+      "frontend/src/components/ui/input.tsx",
+      "frontend/src/components/ui/label.tsx",
+      "frontend/src/components/ui/list-row.tsx",
+      "frontend/src/components/ui/skeleton.tsx",
+      "frontend/src/hooks/use-async.ts",
+      "frontend/src/lib/api.ts",
+      "frontend/src/lib/auth-context.tsx",
+      "frontend/src/lib/types.ts"
+    ],
+    "frontend/src/components/settings/call-ownership-card.tsx": [
+      "frontend/src/components/property-combobox.tsx",
+      "frontend/src/components/ui/button.tsx",
+      "frontend/src/components/ui/card.tsx",
+      "frontend/src/components/ui/input.tsx",
+      "frontend/src/components/ui/label.tsx",
+      "frontend/src/components/ui/select.tsx",
+      "frontend/src/components/ui/skeleton.tsx",
+      "frontend/src/hooks/use-async.ts",
+      "frontend/src/lib/api.ts",
+      "frontend/src/lib/types.ts",
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/components/settings/technicians-section.tsx": [
+      "frontend/src/components/property-combobox.tsx",
+      "frontend/src/components/ui/button.tsx",
+      "frontend/src/components/ui/card.tsx",
+      "frontend/src/components/ui/input.tsx",
+      "frontend/src/components/ui/label.tsx",
+      "frontend/src/components/ui/select.tsx",
+      "frontend/src/components/ui/skeleton.tsx",
+      "frontend/src/hooks/use-async.ts",
+      "frontend/src/lib/api.ts"
+    ],
+    "frontend/src/components/sidebar-nav.tsx": [
+      "frontend/src/components/talk-to-mira-dialog.tsx",
+      "frontend/src/components/ui/avatar.tsx",
+      "frontend/src/components/ui/button.tsx",
+      "frontend/src/lib/auth-context.tsx",
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/components/sparkline.tsx": [],
+    "frontend/src/components/stat-card.tsx": [
+      "frontend/src/components/ui/card.tsx",
+      "frontend/src/components/ui/skeleton.tsx",
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/components/status-chip.tsx": [
+      "frontend/src/components/ui/badge.tsx",
+      "frontend/src/lib/tone.ts",
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/components/talk-to-mira-dialog.tsx": [
+      "frontend/src/components/ui/button.tsx",
+      "frontend/src/components/ui/label.tsx",
+      "frontend/src/components/ui/right-panel.tsx",
+      "frontend/src/components/ui/select.tsx",
+      "frontend/src/hooks/use-async.ts",
+      "frontend/src/lib/api.ts"
+    ],
+    "frontend/src/components/ui/avatar.tsx": [
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/components/ui/badge.tsx": [
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/components/ui/button.tsx": [
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/components/ui/calendar.tsx": [
+      "frontend/src/components/ui/button.tsx",
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/components/ui/card.tsx": [
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/components/ui/checkbox.tsx": [
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/components/ui/definition-row.tsx": [
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/components/ui/dialog.tsx": [
+      "frontend/src/components/ui/button.tsx",
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/components/ui/dictation-input.tsx": [
+      "frontend/src/components/ui/input.tsx",
+      "frontend/src/hooks/use-dictation.ts"
+    ],
+    "frontend/src/components/ui/dictation-textarea.tsx": [
+      "frontend/src/components/ui/textarea.tsx",
+      "frontend/src/hooks/use-dictation.ts",
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/components/ui/dropdown-menu.tsx": [
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/components/ui/input.tsx": [
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/components/ui/label.tsx": [
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/components/ui/list-row.tsx": [
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/components/ui/popover.tsx": [
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/components/ui/right-panel.tsx": [
+      "frontend/src/components/ui/button.tsx",
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/components/ui/select.tsx": [
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/components/ui/separator.tsx": [
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/components/ui/skeleton.tsx": [
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/components/ui/sonner.tsx": [],
+    "frontend/src/components/ui/switch.tsx": [
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/components/ui/table.tsx": [
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/components/ui/tabs.tsx": [
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/components/ui/textarea.tsx": [
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/components/unanswered-questions-card.tsx": [
+      "frontend/src/components/ui/badge.tsx",
+      "frontend/src/components/ui/button.tsx",
+      "frontend/src/components/ui/card.tsx",
+      "frontend/src/components/ui/label.tsx",
+      "frontend/src/components/ui/list-row.tsx",
+      "frontend/src/components/ui/right-panel.tsx",
+      "frontend/src/components/ui/skeleton.tsx",
+      "frontend/src/components/ui/switch.tsx",
+      "frontend/src/components/ui/textarea.tsx",
+      "frontend/src/hooks/use-async.ts",
+      "frontend/src/lib/api.ts",
+      "frontend/src/lib/types.ts",
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/hooks/use-async.ts": [],
+    "frontend/src/hooks/use-date-range.ts": [
+      "frontend/src/components/date-range-context.tsx"
+    ],
+    "frontend/src/hooks/use-dictation.ts": [
+      "frontend/src/lib/api.ts"
+    ],
+    "frontend/src/hooks/use-notification-stream.ts": [
+      "frontend/src/lib/api.ts",
+      "frontend/src/lib/types.ts"
+    ],
+    "frontend/src/lib/api.ts": [
+      "frontend/src/lib/types.ts"
+    ],
+    "frontend/src/lib/auth-context.tsx": [
+      "frontend/src/lib/api.ts",
+      "frontend/src/lib/types.ts"
+    ],
+    "frontend/src/lib/leads.ts": [
+      "frontend/src/lib/types.ts",
+      "frontend/src/lib/utils.ts"
+    ],
+    "frontend/src/lib/opportunities.ts": [
+      "frontend/src/lib/types.ts"
+    ],
+    "frontend/src/lib/tone.ts": [],
+    "frontend/src/lib/transcript.ts": [],
+    "frontend/src/lib/types.ts": [],
+    "frontend/src/lib/utils.ts": [],
+    "frontend/src/proxy.ts": [],
+    "frontend/tsconfig.json": [],
+    "render.yaml": []
+  }
+}

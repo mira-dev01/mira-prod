@@ -1,0 +1,625 @@
+{
+  "nodes": [
+    {
+      "id": "file:backend/app/voice/end_call_reliability_guard.py",
+      "type": "file",
+      "name": "end_call_reliability_guard.py",
+      "filePath": "backend/app/voice/end_call_reliability_guard.py",
+      "summary": "Pipecat guard processor that buffers LLM output tokens and, when it detects that Mira has spoken an end-call phrase from the allowed-phrase list, reliably triggers SilenceWatchdog.request_end_after_current_turn instead of relying on the LLM to call the end_call tool.",
+      "tags": ["middleware", "event-handler"],
+      "complexity": "moderate",
+      "languageNotes": "Uses a compile-time regex-normalized phrase list to avoid missed matches from punctuation/whitespace variation in streamed token output."
+    },
+    {
+      "id": "class:backend/app/voice/end_call_reliability_guard.py:EndCallReliabilityGuardProcessor",
+      "type": "class",
+      "name": "EndCallReliabilityGuardProcessor",
+      "filePath": "backend/app/voice/end_call_reliability_guard.py",
+      "lineRange": [70, 115],
+      "summary": "Streams LLM text frames into a buffer; on LLMFullResponseEndFrame it normalizes the full response text and, if any system-approved farewell phrase is present, requests an end-of-call via the SilenceWatchdog.",
+      "tags": ["middleware", "event-handler"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:backend/app/voice/escalation_phrase_guard.py",
+      "type": "file",
+      "name": "escalation_phrase_guard.py",
+      "filePath": "backend/app/voice/escalation_phrase_guard.py",
+      "summary": "Pipecat guard that unconditionally replaces Mira's full LLM response with a fixed escalation acknowledgement when the conversation state is escalated, eliminating whack-a-mole regex matching of specific bad phrasings.",
+      "tags": ["middleware", "event-handler"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:backend/app/voice/escalation_phrase_guard.py:EscalationPhraseGuardProcessor",
+      "type": "class",
+      "name": "EscalationPhraseGuardProcessor",
+      "filePath": "backend/app/voice/escalation_phrase_guard.py",
+      "lineRange": [55, 114],
+      "summary": "When escalation is active, discards the buffered LLM output and emits a fixed, context-appropriate acknowledgement phrase instead — making coverage complete regardless of LLM phrasing variation.",
+      "tags": ["middleware", "event-handler"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:backend/app/voice/handoff_signal.py",
+      "type": "file",
+      "name": "handoff_signal.py",
+      "filePath": "backend/app/voice/handoff_signal.py",
+      "summary": "Module-level asyncio.Event registry for in-process host-handoff signaling: pipeline registers/unregisters a call, the LLM tool calls request_handoff, and a background task in the pipeline waits via wait_for_handoff_request.",
+      "tags": ["event-handler", "service"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:backend/app/voice/language_heuristics.py",
+      "type": "file",
+      "name": "language_heuristics.py",
+      "filePath": "backend/app/voice/language_heuristics.py",
+      "summary": "Pure utility functions for per-turn language detection: devanagari_ratio computes Unicode-block ratio, has_hinglish_token checks against a known Hinglish token set, and english_word_ratio computes ASCII-word fraction.",
+      "tags": ["utility"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:backend/app/voice/language_sync.py",
+      "type": "file",
+      "name": "language_sync.py",
+      "filePath": "backend/app/voice/language_sync.py",
+      "summary": "Pipecat processor that intercepts language-change events from ConversationState and updates SarvamTTSService settings in real time so TTS voice and language track the detected conversation language.",
+      "tags": ["middleware", "event-handler"],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:backend/app/voice/language_sync.py:LanguageSyncProcessor",
+      "type": "class",
+      "name": "LanguageSyncProcessor",
+      "filePath": "backend/app/voice/language_sync.py",
+      "lineRange": [49, 84],
+      "summary": "Watches for language transitions in ConversationState and emits TTSUpdateSettingsFrame with the new language code to keep Sarvam TTS in sync with the detected guest language.",
+      "tags": ["middleware", "event-handler"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:backend/app/voice/meta_commentary_guard.py",
+      "type": "file",
+      "name": "meta_commentary_guard.py",
+      "filePath": "backend/app/voice/meta_commentary_guard.py",
+      "summary": "Pipecat guard that strips LLM meta-commentary (parenthetical stage directions, bracketed notes) from token streams in real time by buffering around sentinel patterns and passing through clean text.",
+      "tags": ["middleware", "event-handler"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:backend/app/voice/meta_commentary_guard.py:MetaCommentaryGuardProcessor",
+      "type": "class",
+      "name": "MetaCommentaryGuardProcessor",
+      "filePath": "backend/app/voice/meta_commentary_guard.py",
+      "lineRange": [47, 126],
+      "summary": "Streams LLM tokens, holds text matching meta-commentary patterns (e.g. '(thinking)', '[Note:]') in a buffer, and drops or rewrites the held portion before passing clean frames downstream.",
+      "tags": ["middleware", "event-handler"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:backend/app/voice/pipeline.py",
+      "type": "file",
+      "name": "pipeline.py",
+      "filePath": "backend/app/voice/pipeline.py",
+      "summary": "The central voice pipeline orchestrator: wires all pipecat stages (STT, LLM with multi-model fallback, TTS, 7+ guard processors, VAD) into a Pipeline, handles Exotel and Twilio call entry points, manages call lease renewal, busy-call rejection, host handoff signaling, and post-call finalization (classification, summarization, lead backfill, guest memory update).",
+      "tags": ["entry-point", "service", "middleware", "event-handler"],
+      "complexity": "complex",
+      "languageNotes": "Maintains a clear separation: run_voice_pipeline/run_voice_pipeline_twilio/run_browser_voice_pipeline are public entry points; _run_pipeline owns lease lifecycle; _run_pipeline_inner builds the actual pipecat Pipeline object."
+    },
+    {
+      "id": "function:backend/app/voice/pipeline.py:run_voice_pipeline",
+      "type": "function",
+      "name": "run_voice_pipeline",
+      "filePath": "backend/app/voice/pipeline.py",
+      "lineRange": [1373, 1591],
+      "summary": "Primary Exotel call entry point: resolves property/user, runs CallCoordinator.acquire_or_reject, routes to busy recovery or full pipeline, and creates the FastAPI WebSocket transport.",
+      "tags": ["entry-point", "api-handler"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:backend/app/voice/pipeline.py:run_voice_pipeline_twilio",
+      "type": "function",
+      "name": "run_voice_pipeline_twilio",
+      "filePath": "backend/app/voice/pipeline.py",
+      "lineRange": [1594, 1809],
+      "summary": "Twilio call entry point mirroring run_voice_pipeline but using TwilioFrameSerializer and Twilio-specific number resolution — intended for real-call testing when Exotel credits run out.",
+      "tags": ["entry-point", "api-handler"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:backend/app/voice/pipeline.py:_run_pipeline_inner",
+      "type": "function",
+      "name": "_run_pipeline_inner",
+      "filePath": "backend/app/voice/pipeline.py",
+      "lineRange": [766, 1334],
+      "summary": "Constructs the full pipecat Pipeline: instantiates all processors (STT, style, guards, LLM, TTS, VAD), wires them in order, registers the on_finished and on_connected callbacks, and runs the WorkerRunner.",
+      "tags": ["service", "middleware"],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:backend/app/voice/pipeline.py:_renew_call_lease_periodically",
+      "type": "function",
+      "name": "_renew_call_lease_periodically",
+      "filePath": "backend/app/voice/pipeline.py",
+      "lineRange": [503, 542],
+      "summary": "Background asyncio task that renews the Redis call lease at half the TTL interval to prevent false BUSY_RECOVERY decisions on long calls.",
+      "tags": ["service"],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:backend/app/voice/pipeline.py:run_browser_voice_pipeline",
+      "type": "function",
+      "name": "run_browser_voice_pipeline",
+      "filePath": "backend/app/voice/pipeline.py",
+      "lineRange": [1812, 1859],
+      "summary": "WebRTC entry point for the dashboard 'talk to Mira' test UI, using SmallWebRTCTransport and the same underlying pipeline as production calls.",
+      "tags": ["entry-point", "api-handler"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:backend/app/voice/pipeline.py:_build_llm",
+      "type": "function",
+      "name": "_build_llm",
+      "filePath": "backend/app/voice/pipeline.py",
+      "lineRange": [324, 391],
+      "summary": "Factory that selects and configures the LLM service based on LLM_PROVIDER: Anthropic, OpenRouter, or a Groq fallback chain that health-checks each model and promotes _FallbackGroqLLMService for rate-limited models.",
+      "tags": ["factory", "service"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:backend/app/voice/premature_end_call_guard.py",
+      "type": "file",
+      "name": "premature_end_call_guard.py",
+      "filePath": "backend/app/voice/premature_end_call_guard.py",
+      "summary": "Pipecat guard that detects when a silence-watchdog end-call request was triggered by the LLM but the guest is actually still speaking, cancelling the request to prevent premature call termination.",
+      "tags": ["middleware", "event-handler"],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:backend/app/voice/premature_end_call_guard.py:PrematureEndCallGuardProcessor",
+      "type": "class",
+      "name": "PrematureEndCallGuardProcessor",
+      "filePath": "backend/app/voice/premature_end_call_guard.py",
+      "lineRange": [40, 80],
+      "summary": "If an end-call request is pending and a new user speech frame arrives, calls SilenceWatchdog.cancel_end_request before forwarding the frame, keeping the conversation alive.",
+      "tags": ["middleware", "event-handler"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:backend/app/voice/redundant_context_guard.py",
+      "type": "file",
+      "name": "redundant_context_guard.py",
+      "filePath": "backend/app/voice/redundant_context_guard.py",
+      "summary": "Pipecat guard that detects and warns about LLM responses that repeat property context already said in the same turn, reducing redundant context repetition in voice responses.",
+      "tags": ["middleware", "event-handler"],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:backend/app/voice/redundant_context_guard.py:RedundantContextGuardProcessor",
+      "type": "class",
+      "name": "RedundantContextGuardProcessor",
+      "filePath": "backend/app/voice/redundant_context_guard.py",
+      "lineRange": [61, 93],
+      "summary": "Intercepts LLM text frames and logs a warning when the response contains redundant context about a property already discussed in the current turn.",
+      "tags": ["middleware", "event-handler"],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:backend/app/voice/repetition_guard.py",
+      "type": "file",
+      "name": "repetition_guard.py",
+      "filePath": "backend/app/voice/repetition_guard.py",
+      "summary": "Pipecat guard that tracks sentence-level content across turns and drops LLM output sentences with high word overlap to already-spoken content, also suppressing unprompted structured repetitions of property names and prices.",
+      "tags": ["middleware", "event-handler"],
+      "complexity": "moderate"
+    },
+    {
+      "id": "class:backend/app/voice/repetition_guard.py:RepetitionGuardProcessor",
+      "type": "class",
+      "name": "RepetitionGuardProcessor",
+      "filePath": "backend/app/voice/repetition_guard.py",
+      "lineRange": [102, 241],
+      "summary": "Maintains a rolling buffer of seen sentences across turns; uses word-overlap scoring and a structured-repeat heuristic to suppress price/name repetitions the guest didn't ask for.",
+      "tags": ["middleware", "event-handler"],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:backend/app/voice/response_shape_guard.py",
+      "type": "file",
+      "name": "response_shape_guard.py",
+      "filePath": "backend/app/voice/response_shape_guard.py",
+      "summary": "Comprehensive response shape validator: defines pure detection functions (multiple questions, duplicate greetings, truncated clauses, multiple recommendation blocks) plus a streaming ResponseShapeValidatorProcessor that records violations to ConversationQuality and truncates badly-shaped sentences.",
+      "tags": ["middleware", "validation"],
+      "complexity": "complex"
+    },
+    {
+      "id": "class:backend/app/voice/response_shape_guard.py:ResponseShapeValidatorProcessor",
+      "type": "class",
+      "name": "ResponseShapeValidatorProcessor",
+      "filePath": "backend/app/voice/response_shape_guard.py",
+      "lineRange": [247, 378],
+      "summary": "Streaming pipecat processor that splits LLM output into sentences, runs each through the violation checkers in _incremental_violations, records findings to ConversationQuality, and truncates or drops malformed sentences before forwarding.",
+      "tags": ["middleware", "validation"],
+      "complexity": "complex"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:backend/app/voice/end_call_reliability_guard.py",
+      "target": "class:backend/app/voice/end_call_reliability_guard.py:EndCallReliabilityGuardProcessor",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/voice/end_call_reliability_guard.py",
+      "target": "class:backend/app/voice/end_call_reliability_guard.py:EndCallReliabilityGuardProcessor",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/voice/escalation_phrase_guard.py",
+      "target": "class:backend/app/voice/escalation_phrase_guard.py:EscalationPhraseGuardProcessor",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/voice/escalation_phrase_guard.py",
+      "target": "class:backend/app/voice/escalation_phrase_guard.py:EscalationPhraseGuardProcessor",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/voice/language_sync.py",
+      "target": "class:backend/app/voice/language_sync.py:LanguageSyncProcessor",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/voice/language_sync.py",
+      "target": "class:backend/app/voice/language_sync.py:LanguageSyncProcessor",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/voice/meta_commentary_guard.py",
+      "target": "class:backend/app/voice/meta_commentary_guard.py:MetaCommentaryGuardProcessor",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/voice/meta_commentary_guard.py",
+      "target": "class:backend/app/voice/meta_commentary_guard.py:MetaCommentaryGuardProcessor",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/voice/pipeline.py",
+      "target": "file:backend/app/config.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/voice/pipeline.py",
+      "target": "file:backend/app/database.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/voice/pipeline.py",
+      "target": "file:backend/app/models/property.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/voice/pipeline.py",
+      "target": "file:backend/app/models/user.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/voice/pipeline.py",
+      "target": "file:backend/app/prompts/system_prompt.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/voice/pipeline.py",
+      "target": "file:backend/app/schemas/call_classification.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/voice/pipeline.py",
+      "target": "file:backend/app/services/call_classification_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/voice/pipeline.py",
+      "target": "file:backend/app/services/call_coordinator.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/voice/pipeline.py",
+      "target": "file:backend/app/services/recovery_service.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/voice/pipeline.py",
+      "target": "file:backend/app/voice/conversation_quality.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/voice/pipeline.py",
+      "target": "file:backend/app/voice/conversation_state.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/voice/pipeline.py",
+      "target": "file:backend/app/voice/conversation_style.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/voice/pipeline.py",
+      "target": "file:backend/app/voice/end_call_reliability_guard.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/voice/pipeline.py",
+      "target": "file:backend/app/voice/escalation_phrase_guard.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/voice/pipeline.py",
+      "target": "file:backend/app/voice/handoff_signal.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/voice/pipeline.py",
+      "target": "file:backend/app/voice/language_sync.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/voice/pipeline.py",
+      "target": "file:backend/app/voice/meta_commentary_guard.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/voice/pipeline.py",
+      "target": "file:backend/app/voice/premature_end_call_guard.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/voice/pipeline.py",
+      "target": "file:backend/app/voice/redundant_context_guard.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/voice/pipeline.py",
+      "target": "file:backend/app/voice/repetition_guard.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/voice/pipeline.py",
+      "target": "file:backend/app/voice/response_shape_guard.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/voice/pipeline.py",
+      "target": "file:backend/app/voice/ringing_audio.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/voice/pipeline.py",
+      "target": "file:backend/app/voice/silence_watchdog.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/voice/pipeline.py",
+      "target": "file:backend/app/voice/slow_tool_filler.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/voice/pipeline.py",
+      "target": "file:backend/app/voice/state_prompt_sync.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/voice/pipeline.py",
+      "target": "file:backend/app/voice/style_compliance_monitor.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/voice/pipeline.py",
+      "target": "file:backend/app/voice/tools.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/voice/pipeline.py",
+      "target": "file:backend/app/voice/turn_strategies.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/voice/pipeline.py",
+      "target": "file:backend/app/voice/vad.py",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:backend/app/voice/pipeline.py",
+      "target": "function:backend/app/voice/pipeline.py:run_voice_pipeline",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/voice/pipeline.py",
+      "target": "function:backend/app/voice/pipeline.py:run_voice_pipeline",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/voice/pipeline.py",
+      "target": "function:backend/app/voice/pipeline.py:run_voice_pipeline_twilio",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/voice/pipeline.py",
+      "target": "function:backend/app/voice/pipeline.py:run_voice_pipeline_twilio",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/voice/pipeline.py",
+      "target": "function:backend/app/voice/pipeline.py:_run_pipeline_inner",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/voice/pipeline.py",
+      "target": "function:backend/app/voice/pipeline.py:_renew_call_lease_periodically",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/voice/pipeline.py",
+      "target": "function:backend/app/voice/pipeline.py:run_browser_voice_pipeline",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/voice/pipeline.py",
+      "target": "function:backend/app/voice/pipeline.py:run_browser_voice_pipeline",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/voice/pipeline.py",
+      "target": "function:backend/app/voice/pipeline.py:_build_llm",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/voice/premature_end_call_guard.py",
+      "target": "class:backend/app/voice/premature_end_call_guard.py:PrematureEndCallGuardProcessor",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/voice/premature_end_call_guard.py",
+      "target": "class:backend/app/voice/premature_end_call_guard.py:PrematureEndCallGuardProcessor",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/voice/redundant_context_guard.py",
+      "target": "class:backend/app/voice/redundant_context_guard.py:RedundantContextGuardProcessor",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/voice/redundant_context_guard.py",
+      "target": "class:backend/app/voice/redundant_context_guard.py:RedundantContextGuardProcessor",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/voice/repetition_guard.py",
+      "target": "class:backend/app/voice/repetition_guard.py:RepetitionGuardProcessor",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/voice/repetition_guard.py",
+      "target": "class:backend/app/voice/repetition_guard.py:RepetitionGuardProcessor",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:backend/app/voice/response_shape_guard.py",
+      "target": "class:backend/app/voice/response_shape_guard.py:ResponseShapeValidatorProcessor",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:backend/app/voice/response_shape_guard.py",
+      "target": "class:backend/app/voice/response_shape_guard.py:ResponseShapeValidatorProcessor",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    }
+  ]
+}

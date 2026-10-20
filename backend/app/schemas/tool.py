@@ -1,0 +1,309 @@
+"""Pydantic argument models for the LLM tool functions, matching the
+parameter names/types app/voice/tools.py's DirectFunction wrappers expose to
+the LLM, so the wrappers and our handlers in app/services/tool_handlers.py
+stay in lockstep.
+"""
+
+import re
+from datetime import date
+from typing import Literal
+
+from pydantic import BaseModel, field_validator, model_validator
+
+from app.services.property.budget import BudgetBasis, BudgetConstraint, coerce_budget_basis, normalize_budget
+
+Urgency = Literal["low", "medium", "high", "emergency"]
+IssueType = Literal["plumbing", "electrical", "ac", "wifi", "lock", "general"]
+GuestLoyalty = Literal["new", "returning", "frequent"]
+# very_hot = explicit booking intent -- see app/services/lead_temperature.py.
+LeadTemperature = Literal["very_hot", "hot", "warm", "cold"]
+
+
+class ToolBusinessError(str):
+    """A tool result that is a valid call's business-level failure (property
+    not found, invalid date order, no price on file, ...) rather than a
+    normal answer. Still a plain str -- every existing caller/test comparing
+    the text keeps working -- but app/voice/tool_contract.py reports it to
+    the LLM as status "business_error" instead of "ok"."""
+
+
+def _normalize_phone(value: str) -> str:
+    """Keep only digits, then the last 10.
+
+    Confirmed live: a guest self-correcting mid-dictation ("93263... [pause]
+    9326359081") gets captured as one turn (the whole point of the
+    turn-detection extension in app/voice/turn_strategies.py -- it's meant
+    to wait through exactly this pause instead of splitting it in two), but
+    the model then has no instruction on which fragment is the real
+    answer and just concatenates both: "932639326359081". The complete,
+    corrected number is always the LAST digits spoken, never the first --
+    a guest restarts by speaking the whole number again, not by resuming
+    mid-digit. Taking the last 10 also incidentally strips a leading
+    "91"/"+91" country code. Left permissive (no length/format rejection)
+    since a guest can legitimately still be mid-dictation when this runs.
+    """
+    digits = re.sub(r"\D", "", value)
+    if not digits:
+        return value
+    return digits[-10:] if len(digits) > 10 else digits
+
+
+class CheckCalendarArgs(BaseModel):
+    property_id: str
+    check_in: date
+    check_out: date
+    num_guests: int | None = None
+
+
+class GetPricingArgs(BaseModel):
+    property_id: str
+    # Exact dates OR nights (never both, never neither -- see the validator
+    # below) -- a guest with only a vague/approximate timeline ("first week
+    # of October") has a real stay length before they have finalized dates;
+    # pass that as nights so get_pricing can still quote instead of the
+    # model having to keep pressing for an exact check-in date it doesn't
+    # have yet. See GOLDEN_RULES' vague-timeline pricing rule and
+    # pricing_engine.calculate_price's own docstring for how nights-only
+    # quotes differ (estimate-only, no live Airbnb fetch, no weekend-minimum
+    # check) from an exact-dates quote.
+    check_in: date | None = None
+    check_out: date | None = None
+    nights: int | None = None
+    num_guests: int
+    apply_discounts: bool = True
+    # Phase 6 (Negotiation engine): only True if the GUEST explicitly asked
+    # about early check-in / late checkout -- never set proactively just
+    # because a property happens to have a fee configured for it. Quoting a
+    # fee the guest never asked about would be exactly the kind of
+    # unprompted upsell GOLDEN_RULES' pricing-order discipline already
+    # forbids for discounts; the same "only when asked" rule applies here.
+    requested_early_checkin: bool = False
+    requested_late_checkout: bool = False
+
+    @model_validator(mode="after")
+    def _check_dates_xor_nights(self) -> "GetPricingArgs":
+        has_dates = self.check_in is not None and self.check_out is not None
+        has_one_date = (self.check_in is not None) != (self.check_out is not None)
+        if has_one_date:
+            raise ValueError("check_in and check_out must both be set, or both left unset")
+        if not has_dates and self.nights is None:
+            raise ValueError("either check_in/check_out or nights is required")
+        if has_dates and self.nights is not None:
+            raise ValueError("pass either check_in/check_out or nights, not both")
+        if self.nights is not None and self.nights <= 0:
+            raise ValueError("nights must be positive")
+        return self
+
+
+class DispatchTechnicianArgs(BaseModel):
+    property_id: str
+    issue_type: IssueType
+    urgency: Urgency
+    guest_phone: str | None = None
+
+    @field_validator("guest_phone")
+    @classmethod
+    def _clean_guest_phone(cls, value: str | None) -> str | None:
+        return _normalize_phone(value) if value else value
+
+
+class SendWhatsappArgs(BaseModel):
+    phone: str
+    message: str
+    template_name: str | None = None
+
+    @field_validator("phone")
+    @classmethod
+    def _clean_phone(cls, value: str) -> str:
+        return _normalize_phone(value)
+
+
+class EscalateToHostArgs(BaseModel):
+    # Optional: escalation only needs to reach the right host, not a specific
+    # property -- a guest can ask to be transferred/escalated before ever
+    # locking onto one property (e.g. a portfolio-wide Lead Agent call where
+    # the guest just says "let me talk to the host"). host_user_id (passed
+    # separately to handle_escalate_to_host, not part of this schema) is
+    # what actually routes the notification/email/WhatsApp; property_id here
+    # is only used to name which property the escalation is about, when known.
+    property_id: str | None = None
+    reason: str
+    urgency: Urgency
+    guest_phone: str | None = None
+    call_summary: str | None = None
+
+    @field_validator("guest_phone")
+    @classmethod
+    def _clean_guest_phone(cls, value: str | None) -> str | None:
+        return _normalize_phone(value) if value else value
+
+
+class RequestHostTransferArgs(BaseModel):
+    # No property_id/guest_phone -- unlike escalation, a live transfer is
+    # scoped to THIS call itself; call_session_id/property_id/host_user_id
+    # are already in closure scope inside voice/tools.py's tool-building
+    # function, same as every other tool there. Distinct from
+    # EscalateToHostArgs: this is for a guest's EXPLICIT "transfer me" /
+    # "let me talk to a human" request, which attempts a real live call
+    # transfer (see handle_request_host_transfer) -- not the general
+    # escalation-and-notify path.
+    reason: str | None = None
+
+
+class LookupBookingArgs(BaseModel):
+    # At least one identifier the booking was made under; property_name is
+    # an optional narrowing hint ("I booked Alpine Ridge under Priya").
+    name: str | None = None
+    phone: str | None = None
+    property_name: str | None = None
+
+    @field_validator("phone")
+    @classmethod
+    def _clean_phone(cls, value: str | None) -> str | None:
+        return _normalize_phone(value) if value else value
+
+    @model_validator(mode="after")
+    def _require_identifier(self) -> "LookupBookingArgs":
+        if not (self.name or self.phone):
+            raise ValueError("name or phone is required")
+        return self
+
+
+class NegotiateRateArgs(BaseModel):
+    property_id: str
+    # Same exact-dates-or-nights shape as GetPricingArgs -- see that class's
+    # own docstring/validator. A guest can push back on price ("any
+    # discount?") before finalizing dates just as easily as after.
+    check_in: date | None = None
+    check_out: date | None = None
+    nights: int | None = None
+    guest_offer: float | None = None
+    num_guests: int | None = None
+    guest_loyalty: GuestLoyalty = "new"
+
+    @model_validator(mode="after")
+    def _check_dates_xor_nights(self) -> "NegotiateRateArgs":
+        has_dates = self.check_in is not None and self.check_out is not None
+        has_one_date = (self.check_in is not None) != (self.check_out is not None)
+        if has_one_date:
+            raise ValueError("check_in and check_out must both be set, or both left unset")
+        if not has_dates and self.nights is None:
+            raise ValueError("either check_in/check_out or nights is required")
+        if has_dates and self.nights is not None:
+            raise ValueError("pass either check_in/check_out or nights, not both")
+        if self.nights is not None and self.nights <= 0:
+            raise ValueError("nights must be positive")
+        return self
+
+
+class RecommendPropertiesArgs(BaseModel):
+    # Explicit budget semantics (app/services/property/budget.py): an amount
+    # is meaningless without its basis -- "₹7000 per night" and "₹7000 for
+    # the whole stay" are different ceilings. budget_basis stays "unspecified"
+    # unless the guest's words established it; normalize_budget turns
+    # amount+basis+nights into the actual filter, never the LLM.
+    budget_amount: float | None = None
+    budget_basis: BudgetBasis = "unspecified"
+    budget_currency: str = "INR"
+    # Stay length, used to convert a total-stay budget to a nightly ceiling
+    # (and vice versa for logging/rendering). Confirmed live 2026-09-25: the
+    # LLM passed nights= to recommend_properties when it wasn't part of the
+    # tool's signature, and the call died with a TypeError before any code
+    # ran. Non-positive values mean "unknown", never an error mid-call.
+    nights: int | None = None
+    num_guests: int | None = None
+    preferred_location: str | None = None
+    purpose_of_stay: str | None = None
+    required_amenities: list[str] | None = None
+    near_landmark: str | None = None
+    # Recommendation conversations ("Phase X"): a guest saying "something
+    # cheaper"/"larger"/"more premium" is a RELATIVE instruction, not a new
+    # absolute number -- the model signals which direction, never invents a
+    # rupee/guest-count figure itself (that would be exactly the kind of
+    # LLM-guessed fact this codebase's tool-arg schemas otherwise avoid).
+    # cheaper_than_shown/larger_than_shown are turned into a real budget/
+    # num_guests ceiling by ConversationState.resolve_cheaper_budget/
+    # resolve_larger_num_guests (app/voice/conversation_state.py), derived
+    # from ConversationState.recommendations_shown -- the same "hand it a
+    # fact, don't make it guess" discipline _today_anchor() and
+    # comparison_notes already use elsewhere. more_premium_than_shown has no
+    # equivalent resolver -- it's a ranking signal, not a threshold, consumed
+    # directly by filter_builder.apply_premium_boost. Only ever set True when
+    # the guest actually asked for a change in that direction; never set
+    # alongside an explicit budget/num_guests in the SAME call (that would
+    # be a real, absolute value already -- no resolution needed).
+    cheaper_than_shown: bool = False
+    larger_than_shown: bool = False
+    more_premium_than_shown: bool = False
+
+    @field_validator("budget_basis", mode="before")
+    @classmethod
+    def _coerce_budget_basis(cls, value: str | None) -> BudgetBasis:
+        return coerce_budget_basis(value)
+
+    @field_validator("nights", mode="before")
+    @classmethod
+    def _unknown_nights(cls, value) -> int | None:
+        try:
+            nights = int(value)
+        except (TypeError, ValueError):
+            return None
+        return nights if nights > 0 else None
+
+    def budget_constraint(self, assume_per_night: bool = False) -> BudgetConstraint | None:
+        return normalize_budget(
+            self.budget_amount, self.budget_basis, self.nights, self.budget_currency, assume_per_night=assume_per_night
+        )
+
+
+class UpdateLeadArgs(BaseModel):
+    guest_name: str | None = None
+    phone: str | None = None
+    email: str | None = None
+
+    @field_validator("phone")
+    @classmethod
+    def _clean_phone(cls, value: str | None) -> str | None:
+        return _normalize_phone(value) if value else value
+    check_in: date | None = None
+    check_out: date | None = None
+    # Call-local only, deliberately not a Lead column -- popped out of
+    # handle_update_lead's updates dict before upsert_lead(**updates), same
+    # "no matching DB column, don't let it silently setattr" reasoning as
+    # preferred_language's own exclusion in tools.py's wrapper.
+    nights: int | None = None
+    # Availability-first recommendations, Implementation 3: a LOOSE outer
+    # window distinct from nights itself -- e.g. "3 nights, sometime in the
+    # first week of October" needs both the window (window_start=Oct 1,
+    # window_end=Oct 7) AND the stay length (nights=3). Also call-local only,
+    # same non-persistence reasoning as nights above -- popped alongside it.
+    window_start: date | None = None
+    window_end: date | None = None
+    num_guests: int | None = None
+    purpose_of_stay: str | None = None
+    budget: float | None = None
+    preferred_location: str | None = None
+    lead_temperature: LeadTemperature | None = None
+    properties_discussed: list[str] | None = None
+    questions_asked: list[str] | None = None
+    support_requests: list[str] | None = None
+    conversation_summary: str | None = None
+    next_follow_up: str | None = None
+    escalated: bool | None = None
+    transferred_to_host: bool | None = None
+    occasion: str | None = None
+
+
+class SearchFaqArgs(BaseModel):
+    query: str
+    property_id: str | None = None
+
+
+class SendPhotosArgs(BaseModel):
+    property_id: str
+    guest_phone: str
+
+    @field_validator("guest_phone")
+    @classmethod
+    def _clean_guest_phone(cls, value: str) -> str:
+        return _normalize_phone(value)

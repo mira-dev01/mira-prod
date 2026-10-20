@@ -1,0 +1,1049 @@
+// Self-reported only -- MIRA has no Airbnb API access to verify this.
+export type AirbnbHostStatus =
+  | "new_host"
+  | "individual_host"
+  | "superhost"
+  | "guest_favorite"
+  | "professional_host"
+  | "prefer_not_to_say";
+
+// Maps to a specific Sarvam bulbul:v3 speaker name server-side
+// (app/voice/pipeline.py's VOICE_BY_GENDER) -- not a Sarvam-native concept.
+export type AgentVoiceGender = "female" | "male";
+
+export type UserOut = {
+  id: string;
+  email: string;
+  name: string | null;
+  phone: string | null;
+  tier: string;
+  status: string;
+  lead_exophone: string | null;
+  // Twilio equivalent of lead_exophone (call intake number).
+  twilio_lead_number: string | null;
+  business_name: string | null;
+  airbnb_host_status: AirbnbHostStatus | null;
+  property_count_estimate: number | null;
+  timezone: string;
+  terms_accepted_at: string | null;
+  agent_first_message: string | null;
+  agent_persona: string | null;
+  agent_escalation_phrase: string | null;
+  // Spoken when a live call is transferred to the host after they tap
+  // "Take Call" -- distinct from agent_escalation_phrase (host follows up
+  // later). null = server default.
+  agent_handoff_phrase: string | null;
+  agent_voice_gender: AgentVoiceGender;
+  notification_email: string | null;
+  // Account-global host call hours -- one window, common to every property,
+  // during which inbound guest calls route to the host's phone instead of
+  // Mira. See documentation/host-call-hours-and-handoff.md.
+  host_call_hours_enabled: boolean;
+  host_call_hours_start: string | null; // "HH:MM"
+  host_call_hours_end: string | null; // "HH:MM"
+  host_call_hours_timezone: string; // IANA identifier
+  discount_policy_text: string | null;
+  negotiation_allowed: boolean;
+  max_discount_percent_override: number | null;
+  allow_pets: boolean | null;
+  allow_early_checkin: boolean | null;
+  photo_url: string | null;
+  banner_url: string | null;
+  // Resolved with defaults (backend app/schemas/notification_preferences.py).
+  notification_preferences: NotificationPreferences;
+  // Whether the request's active Clerk org matches the configured dev org --
+  // gates dev-only features (currently just "Talk to Mira").
+  is_internal_org: boolean;
+};
+
+export type UserUpdate = {
+  name?: string | null;
+  phone?: string | null;
+  lead_exophone?: string | null;
+  business_name?: string | null;
+  airbnb_host_status?: AirbnbHostStatus | null;
+  property_count_estimate?: number | null;
+  timezone?: string | null;
+  agent_first_message?: string | null;
+  agent_persona?: string | null;
+  agent_escalation_phrase?: string | null;
+  agent_handoff_phrase?: string | null;
+  agent_voice_gender?: AgentVoiceGender;
+  notification_email?: string | null;
+  host_call_hours_enabled?: boolean | null;
+  host_call_hours_start?: string | null;
+  host_call_hours_end?: string | null;
+  host_call_hours_timezone?: string | null;
+  discount_policy_text?: string | null;
+  negotiation_allowed?: boolean | null;
+  max_discount_percent_override?: number | null;
+  allow_pets?: boolean | null;
+  allow_early_checkin?: boolean | null;
+};
+
+// GET /auth/me/call-hours-status -- the account's live routing decision
+// right now, computed by the same backend resolver the Exotel call-routing
+// webhook uses on a real inbound call. Distinct from the saved
+// host_call_hours_* config on UserOut: that's what was last saved, this is
+// what it currently resolves to (e.g. "enabled, but outside the window
+// right now -> MIRA").
+export type CallHoursStatus = {
+  enabled: boolean;
+  current_owner: "HOST" | "MIRA";
+  checked_at: string;
+};
+
+// Unified negotiation/pricing training rule -- replaces what used to be two
+// separate types (HostDiscountRule's host-wide discount triggers,
+// PropertyPricingRule's stay-pricing rules). The three discount_* rule
+// types are host-wide by definition (property_ids stays [] for them); the
+// other five require an explicit, host-picked property_ids selection
+// before they take effect. See backend NegotiationRule's docstring.
+export type NegotiationRuleType =
+  | "discount_no_ask"
+  | "discount_guest_requests"
+  | "discount_repeat_guest"
+  | "length_of_stay"
+  | "minimum_stay_nights"
+  | "early_checkin_fee"
+  | "late_checkout_fee"
+  | "custom";
+export type NegotiationRuleStatus = "pending_validation" | "approved" | "rejected";
+
+// One entry in an OPTIONAL, host-defined negotiation ladder (backend
+// NegotiationStage, app/schemas/negotiation_rule.py). order is the
+// host-defined sequence position (0-based); value is that stage's
+// authorized percent -- same unit as discount_percent, just one of an
+// ordered list instead of a single scalar. No fixed count/value assumed
+// anywhere this type is used.
+export type NegotiationStage = {
+  order: number;
+  value: number;
+};
+
+export type NegotiationRuleOut = {
+  id: string;
+  host_id: string;
+  rule_type: string;
+  // unknown, not number -- a "custom" rule's condition is freeform (LLM
+  // extraction is instructed to produce "whatever the host described, in
+  // your own best structured guess"), so it can legitimately hold
+  // non-numeric values. Matches PricingRuleOut.condition's own typing below.
+  condition: Record<string, unknown>;
+  discount_percent: number | null;
+  // null for every rule authored before this field existed and for any
+  // host who never describes a multi-step pushback progression -- see
+  // NegotiationStage's own comment. When populated (length >= 2), this
+  // takes precedence over discount_percent for the same rule (backend
+  // ratified decision: staged supersedes flat).
+  stages: NegotiationStage[] | null;
+  label: string | null;
+  property_ids: string[];
+  source: string;
+  status: string;
+  raw_source_text: string | null;
+  created_at: string;
+};
+
+export type NegotiationPolicyParseResponse = {
+  rules: NegotiationRuleOut[];
+};
+
+export type NegotiationRuleUpdate = {
+  rule_type?: NegotiationRuleType;
+  condition?: Record<string, unknown>;
+  discount_percent?: number | null;
+  stages?: NegotiationStage[] | null;
+  label?: string | null;
+  property_ids?: string[];
+  status?: NegotiationRuleStatus;
+};
+
+export type HostOnboarding = {
+  name: string;
+  phone?: string | null;
+  business_name?: string | null;
+  business_phone: string;
+  airbnb_host_status?: AirbnbHostStatus | null;
+  property_count_estimate?: number | null;
+  airbnb_url: string;
+  ical_url?: string | null;
+  agent_first_message?: string | null;
+};
+
+export type HostOnboardingResponse = {
+  snapshot_id: string | null;
+  import_error: string | null;
+};
+
+export type FAQItem = { question: string; answer: string };
+
+export type SeasonalNote = { note: string; start_month: number; end_month: number };
+
+// DEPRECATED -- superseded by the account-global host call hours window on
+// the user (host_call_hours_*, edited on the Settings page). These
+// per-property columns still exist in the DB and are still returned by
+// PropertyOut, but the resolver no longer reads them and no UI writes them.
+// See documentation/host-call-hours-and-handoff.md.
+export type CallHandlingMode = "MIRA" | "HOST" | "SCHEDULED";
+
+export type PropertyOut = {
+  id: string;
+  user_id: string;
+  name: string;
+  city: string | null;
+  exophone: string | null;
+  base_price: number;
+  ical_url: string | null;
+  usp: string | null;
+  house_rules: string | null;
+  neighborhood_info: string | null;
+  faq: FAQItem[];
+  amenities: string[];
+  photos: string[];
+  seasonal_notes: SeasonalNote[];
+  check_in_time: string;
+  check_out_time: string;
+  max_guests: number;
+  minimum_nights: number;
+  saturday_minimum_stay_enabled: boolean;
+  airbnb_listing_id: string | null;
+  smart_price_estimate: number | null;
+  smart_price_sample_size: number;
+  smart_price_updated_at: string | null;
+  exact_airbnb_pricing: boolean;
+  is_premium: boolean;
+  // Live transfers/alerts for this property go here when the host uses a
+  // number per group of properties; null = the account number.
+  host_transfer_phone: string | null;
+  call_handling_mode: CallHandlingMode;
+  call_handling_schedule_start: string | null;
+  call_handling_schedule_end: string | null;
+  timezone: string;
+  created_at: string;
+};
+
+export type PropertyImportResult = {
+  filename: string;
+  status: "created" | "updated" | "error";
+  property: PropertyOut | null;
+  faq_entries_created: number;
+  error: string | null;
+};
+
+export type AirbnbUrlImportStatus = {
+  status: "running" | "ready" | "failed";
+  results: PropertyImportResult[];
+  error: string | null;
+};
+
+export type PropertyCreate = {
+  name: string;
+  city?: string | null;
+  exophone?: string | null;
+  base_price: number;
+  ical_url?: string | null;
+  usp?: string | null;
+  house_rules?: string | null;
+  neighborhood_info?: string | null;
+  faq?: FAQItem[];
+  amenities?: string[];
+  photos?: string[];
+  seasonal_notes?: SeasonalNote[];
+  check_in_time?: string;
+  check_out_time?: string;
+  max_guests?: number;
+  minimum_nights?: number;
+  saturday_minimum_stay_enabled?: boolean;
+  exact_airbnb_pricing?: boolean;
+  is_premium?: boolean;
+  // DEPRECATED -- superseded by the account-global Host call hours window
+  // on the user. Still on the backend's PropertyUpdate schema and returned
+  // by PropertyOut (the columns exist), but no UI writes them and the
+  // resolver ignores them. Kept optional here only so PropertyOut ->
+  // PropertyCreate round-trips still typecheck.
+  call_handling_mode?: CallHandlingMode;
+  call_handling_schedule_start?: string | null;
+  call_handling_schedule_end?: string | null;
+  timezone?: string;
+};
+
+export type PropertyUpdate = Partial<PropertyCreate>;
+
+// Set by call_classification_service (backend) via on_pipeline_finished once
+// the call ends. "Qualified" is never itself a value here -- it's the
+// grouping of BOOKING_LEAD/GUEST_SUPPORT/EXISTING_BOOKING/GENERAL_QUERY,
+// computed wherever needed (see QUALIFIED_CALL_TYPES usage in calls page).
+//
+// The six values below UNKNOWN are outcome labels, not content categories --
+// they describe HOW/WHY a call ended (silence timeout, rejected busy, a
+// crash, a live host transfer, an escalation with no transfer) rather than
+// what it was about, and are never produced by the LLM transcript classifier
+// -- see backend/app/schemas/call_classification.py's OUTCOME_CALL_TYPES
+// comment for the full reasoning. Mirrors that Literal exactly.
+export type CallType =
+  | "BOOKING_LEAD"
+  | "GUEST_SUPPORT"
+  | "EXISTING_BOOKING"
+  | "GENERAL_QUERY"
+  | "JUNK"
+  | "INCOMPLETE"
+  | "UNKNOWN"
+  | "UNRESPONSIVE"
+  | "MISSED_AGENT_BUSY"
+  | "MISSED_SYSTEM_FAILURE"
+  | "TRANSFERRED_TO_HOST"
+  | "TRANSFERRED_TO_HOST_MISSED"
+  | "ESCALATED_NO_TRANSFER";
+
+export type CallSummary = {
+  booking_snapshot: {
+    guest_name: string;
+    intent: string;
+    check_in: string;
+    check_out: string;
+    nights: string;
+    guests: string;
+    property: string[];
+    budget: string;
+    occasion: string;
+    language: string;
+    room_number: string;
+  };
+  conversation_summary: string;
+  outcome: {
+    status: string;
+    reason: string;
+  };
+  host_action: string[];
+  key_details: string[];
+  missing_information: string[];
+  objection_tags: string[];
+};
+
+export type CallSessionOut = {
+  id: string;
+  exotel_call_id: string | null;
+  property_id: string | null;
+  guest_profile_id: string | null;
+  caller_number: string | null;
+  guest_name: string | null;
+  guest_phone: string | null;
+  duration_minutes: number | null;
+  recording_url: string | null;
+  transcript: string | null;
+  ai_summary: CallSummary | null;
+  status: string;
+  urgency: string | null;
+  call_type: CallType;
+  classification_confidence: number | null;
+  classification_reason: string | null;
+  revenue_attributed: number;
+  started_at: string | null;
+  ended_at: string | null;
+  created_at: string;
+};
+
+export type CallSessionDetailOut = CallSessionOut & {
+  escalations: NotificationOut[];
+};
+
+export type ConversationSummaryEntry = {
+  call_session_id: string;
+  property_id: string | null;
+  property_name: string | null;
+  date: string;
+  summary: string;
+  lead_temperature: string | null;
+};
+
+export type GuestProfileOut = {
+  id: string;
+  phone: string;
+  name: string | null;
+  total_stays: number;
+  preferences: Record<string, unknown>;
+  notes: string | null;
+  last_property_id: string | null;
+  preferred_language: string | null;
+  last_outcome: string | null;
+  last_follow_up: string | null;
+  last_call_at: string | null;
+  conversation_summaries: ConversationSummaryEntry[];
+  created_at: string;
+};
+
+export type GuestRecentCall = {
+  id: string;
+  property_id: string | null;
+  property_name: string | null;
+  status: string;
+  ai_summary: CallSummary | null;
+  started_at: string | null;
+};
+
+export type GuestProfileDetailOut = GuestProfileOut & {
+  lifetime_revenue: number;
+  recent_calls: GuestRecentCall[];
+};
+
+export type GuestProfileUpdate = {
+  name?: string | null;
+  preferences?: Record<string, unknown> | null;
+  notes?: string | null;
+};
+
+// Mirrors backend/app/schemas/booking.py -- see app/services/
+// booking_reconciliation_service.py for what each status means.
+export type BookingKind = "reservation" | "blocked";
+export type PriceSource = "mira_conversation" | "host_confirmed" | "host_entered" | "external_pms" | "unknown";
+export type PriceStatus = "confirmed" | "pending_confirmation" | "unknown";
+export type AttributionStatus = "confirmed" | "probable" | "not_attributed" | "unknown";
+export type PriceChoice = "mira_conversation" | "outside_mira" | "not_confirmed_yet";
+
+export type BookingOut = {
+  id: string;
+  property_id: string;
+  guest_phone: string | null;
+  guest_phone_last4: string | null;
+  guest_name: string | null;
+  check_in: string;
+  check_out: string;
+  platform: string;
+  status: string;
+  kind: BookingKind;
+  created_at: string;
+  initial_price: number | null;
+  negotiated_price: number | null;
+  final_booking_price: number | null;
+  currency: string;
+  price_source: PriceSource;
+  price_status: PriceStatus;
+  price_confirmed_at: string | null;
+  price_confirmed_by: string | null;
+  mira_attribution_status: AttributionStatus;
+  mira_attribution_call_session_id: string | null;
+  mira_attribution_lead_id: string | null;
+  mira_attribution_signals: string[];
+  // Derived server-side -- the single definition of "does this need the host?".
+  needs_price_confirmation: boolean;
+  needs_attribution_review: boolean;
+  detected_price: number | null;
+};
+
+export type BookingCreate = {
+  property_id: string;
+  guest_phone?: string | null;
+  guest_name?: string | null;
+  check_in: string;
+  check_out: string;
+  platform?: string;
+  kind?: BookingKind;
+  final_booking_price?: number | null;
+  lead_id?: string | null;
+};
+
+export type MatchedConversation = {
+  lead_id: string;
+  call_session_id: string | null;
+  guest_name: string | null;
+  guest_phone: string | null;
+  lead_temperature: string | null;
+  conversation_at: string | null;
+  summary: string | null;
+};
+
+export type BookingReconciliation = {
+  booking: BookingOut;
+  property_name: string;
+  conversation: MatchedConversation | null;
+};
+
+export type ReconciliationQueue = {
+  items: BookingReconciliation[];
+  total: number;
+  price_missing: number;
+  attribution_pending: number;
+};
+
+export type PricingRuleOut = {
+  id: string;
+  property_id: string;
+  rule_type: string;
+  condition: Record<string, unknown>;
+  discount_percent: number;
+  active: boolean;
+  created_at: string;
+};
+
+export type PricingRuleCreate = {
+  property_id: string;
+  rule_type: string;
+  condition?: Record<string, unknown>;
+  discount_percent: number;
+  active?: boolean;
+};
+
+export type TechnicianOut = {
+  id: string;
+  property_id: string;
+  name: string;
+  specialty: string;
+  phone: string;
+  rating: number;
+  created_at: string;
+};
+
+export type TechnicianCreate = {
+  property_id: string;
+  name: string;
+  specialty: string;
+  phone: string;
+  rating?: number;
+};
+
+export type NotificationOut = {
+  id: string;
+  property_id: string | null;
+  property_name: string | null;
+  call_session_id: string | null;
+  channel: string;
+  urgency: string;
+  message: string;
+  status: string;
+  created_at: string;
+};
+
+// Mirrors app/services/pricing_engine.PriceBreakdown exactly -- no synthetic
+// markup (weekend surge/cleaning fee/tax) exists on any property, on or off
+// exact_airbnb_pricing; every property quotes its stored rate (or a live
+// SearchApi fetch for exact_airbnb_pricing properties) as-is. Don't add
+// fields here the backend dataclass doesn't actually have.
+export type PriceBreakdown = {
+  nights: number;
+  base_total: number;
+  discount_percent: number;
+  discount_amount: number;
+  total: number;
+  per_night_avg: number;
+};
+
+export type AnalyticsSummary = {
+  window_days: number;
+  start_date: string | null;
+  end_date: string | null;
+  total_calls: number;
+  completed_calls: number;
+  escalated_calls: number;
+  open_notifications: number;
+  pipeline_value: number;
+  open_leads: number;
+  answer_rate: number | null;
+};
+
+export type AnalyticsTimeseriesMetric =
+  | "total_calls"
+  | "completed_calls"
+  | "escalated_calls"
+  | "pipeline_value"
+  | "open_leads";
+
+export type AnalyticsTimeseriesPoint = {
+  date: string;
+  value: number;
+};
+
+export type AnalyticsTimeseries = {
+  metric: AnalyticsTimeseriesMetric;
+  points: AnalyticsTimeseriesPoint[];
+};
+
+export type RecoveryFunnelStage = {
+  stage: "busy_calls" | "recovered" | "converted";
+  label: string;
+  value: number;
+};
+
+export type RecoveryAnalytics = {
+  window_days: number;
+  start_date: string | null;
+  end_date: string | null;
+  busy_calls: number;
+  recovered: number;
+  converted: number;
+  lost: number;
+  avg_recovery_time_seconds: number | null;
+  avg_host_response_seconds: number | null;
+  recovery_rate: number | null;
+  conversion_rate: number | null;
+  funnel: RecoveryFunnelStage[];
+};
+
+export type LeadOut = {
+  id: string;
+  user_id: string;
+  call_session_id: string | null;
+  guest_name: string | null;
+  phone: string | null;
+  email: string | null;
+  check_in: string | null;
+  check_out: string | null;
+  num_guests: number | null;
+  purpose_of_stay: string | null;
+  budget: number | null;
+  preferred_location: string | null;
+  properties_discussed: string[];
+  questions_asked: string[];
+  support_requests: string[];
+  lead_temperature: string | null;
+  lead_source: string;
+  // How the guest reached Mira (phone_call today; a future WhatsApp-inbound
+  // or web-widget lead would use a different value here).
+  entry_channel: string;
+  // Why this lead needed system-driven recovery instead of coming from a
+  // normal completed conversation -- null for the common case. See
+  // backend/app/models/lead.py's own comment for the full lead_source/
+  // entry_channel/recovery_reason split (deliberately not a Lead.status
+  // value). "BUSY_CALL" | "AFTER_HOURS" | "HOST_CALLBACK" | "GUEST_CALLBACK"
+  // when set, kept as `string` here (not a union) to match how this file
+  // already treats every other enum-like Lead field (status, lead_temperature).
+  recovery_reason: string | null;
+  conversation_summary: string | null;
+  next_follow_up: string | null;
+  escalated: boolean;
+  transferred_to_host: boolean;
+  status: string;
+  occasion: string | null;
+  created_at: string;
+  updated_at: string;
+  // Not a Lead column -- backfilled from the most recent linked Notification
+  // (see backend/app/api/v1/leads.py::_with_urgency). null for a lead with
+  // no escalation.
+  urgency: string | null;
+};
+
+export type LeadStatus = "open" | "contacted" | "booked" | "closed";
+
+// Backs the Service Requests tab (dashboard/leads/page.tsx, "Live
+// Requests") -- one row per GUEST_SUPPORT-classified CallSession, not a
+// stored table of its own. See backend/app/schemas/service_request.py.
+export type ServiceRequestOut = {
+  call_session_id: string;
+  property_id: string | null;
+  property_name: string | null;
+  room_number: string | null;
+  message: string;
+  urgency: string;
+  created_at: string;
+  dismissed_at: string | null;
+};
+
+// very_hot = explicit booking intent -- see backend/app/services/lead_temperature.py.
+export type LeadTemperature = "very_hot" | "hot" | "warm" | "cold";
+
+export type LeadUpdate = {
+  guest_name?: string | null;
+  lead_temperature?: LeadTemperature | null;
+  next_follow_up?: string | null;
+  conversation_summary?: string | null;
+  transferred_to_host?: boolean | null;
+  status?: LeadStatus | null;
+};
+
+export type FaqEntryOut = {
+  id: string;
+  user_id: string;
+  property_id: string | null;
+  question: string;
+  answer: string;
+  category: string | null;
+  status: "pending" | "verified";
+  verified_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type FaqEntryCreate = {
+  property_id?: string | null;
+  question: string;
+  answer: string;
+  category?: string | null;
+  status?: "pending" | "verified";
+  verified_by?: string | null;
+};
+
+export type FaqEntryUpdate = Partial<FaqEntryCreate>;
+
+export type FaqGapOut = {
+  sample_id: string;
+  question: string;
+  count: number;
+  property_id: string | null;
+  last_asked_at: string;
+  suggested_faq_entry_id: string | null;
+  suggested_answer: string | null;
+  match_score: number | null;
+};
+
+export type FaqGapAnswer = {
+  answer: string;
+  apply_to_property?: boolean;
+  // The host's wording for the question; omitted = the guest's.
+  question?: string;
+};
+
+export type FaqGapAnalytics = {
+  most_frequent: { question: string; count: number }[];
+  by_property: { property_id: string | null; count: number }[];
+  over_time: { bucket: string; count: number }[];
+};
+
+export type ObjectionTagStats = {
+  tag: string;
+  total_calls: number;
+  resolved_count: number;
+  unresolved_count: number;
+  conversion_rate: number | null;
+};
+
+export type BaselineStats = {
+  total_calls: number;
+  resolved_count: number;
+  unresolved_count: number;
+  conversion_rate: number | null;
+};
+
+export type ObjectionInsights = {
+  by_tag: ObjectionTagStats[];
+  baseline: BaselineStats;
+};
+
+// GET /analytics/dashboard -- definitions live on each function in
+// backend/app/services/analytics_service.py.
+export type Completeness = {
+  bookings_total: number;
+  bookings_priced: number;
+  bookings_missing_price: number;
+  is_complete: boolean;
+};
+
+export type SampledMetric = {
+  value: number | null;
+  sample_size: number;
+  sufficient: boolean;
+  min_sample_size: number;
+};
+
+export type PortfolioMetricKey = "occupancy" | "revenue" | "adr" | "revpar";
+
+export type PortfolioPerformance = {
+  occupancy: number | null;
+  revenue: number | null;
+  adr: number | null;
+  revpar: number | null;
+  upcoming_revenue: number | null;
+  booked_nights: number;
+  available_nights: number;
+  blocked_nights: number;
+  currency: string;
+  completeness: Completeness;
+  upcoming_completeness: Completeness;
+  comparison: {
+    start_date: string;
+    end_date: string;
+    change: Record<PortfolioMetricKey, number | null>;
+  } & Record<PortfolioMetricKey, number | null> | null;
+};
+
+export type FunnelStage = {
+  key: string;
+  label: string;
+  value: number;
+  unit: "conversations" | "guests";
+  rate_from_previous: number | null;
+};
+
+export type MiraImpact = {
+  attributed_bookings: number;
+  attributed_revenue: number | null;
+  attributed_completeness: Completeness;
+  awaiting_confirmation: number;
+  after_hours_opportunities: { configured: boolean; value: number | null; share: number | null };
+  revenue_recovered: number | null;
+  recovery: { busy_calls: number; recovered: number; converted: number };
+  resolved_by_mira: number;
+  resolved_by_mira_rate: number | null;
+  host_escalations: number;
+  conversations: number;
+};
+
+export type GuestIntentCategory = { key: string; label: string; count: number; share: number | null };
+
+export type PricingAnalytics = {
+  avg_initial_quote_per_night: SampledMetric;
+  avg_negotiated_price_per_night: SampledMetric;
+  avg_final_price_per_night: SampledMetric;
+  negotiations: number;
+  negotiation_conversion: SampledMetric;
+  avg_discount: SampledMetric;
+  price_objections: number;
+  price_objection_rate: SampledMetric;
+  currency: string;
+};
+
+export type AnalyticsDashboard = {
+  start_date: string;
+  end_date: string;
+  property_ids: string[];
+  portfolio: PortfolioPerformance;
+  funnel: { stages: FunnelStage[] };
+  impact: MiraImpact;
+  guest_intent: { conversations_with_data: number; categories: GuestIntentCategory[] };
+  pricing: PricingAnalytics;
+  needs_confirmation: { total: number; price_missing: number; attribution_pending: number };
+};
+
+// GET /analytics/overview -- see analytics_service.overview for which
+// numbers follow the selected dates and which are current-state.
+export type OverviewData = {
+  start_date: string;
+  end_date: string;
+  has_properties: boolean;
+  portfolio: {
+    occupancy: number | null;
+    revenue: number | null;
+    adr: number | null;
+    revpar: number | null;
+    upcoming_revenue: number | null;
+    booked_nights: number;
+    available_nights: number;
+    completeness: Completeness;
+    upcoming_completeness: Completeness;
+    currency: string;
+  };
+  opportunities: { booking_opportunities: number; high_intent: number; booking_intent: number };
+  mira_attributed_bookings: number;
+  activity: {
+    total_calls: number;
+    completed_calls: number;
+    qualified_calls: number;
+    escalated_calls: number;
+    answer_rate: number | null;
+  };
+  attention: {
+    price_confirmations: number;
+    attribution_confirmations: number;
+    high_intent_unconverted: { count: number; potential_value: number | null; valued_count: number };
+  };
+};
+
+// ── Capabilities (backend app/services/capability_registry.py) ─────────
+// A capability is a functionality, not a sidebar tab -- several share
+// routes. See backend/app/schemas/capability.py for field semantics.
+export type CapabilityActivation = "core" | "bound" | "preference";
+export type CapabilityEnforcement = "always_on" | "enforced" | "advisory";
+export type CapabilityState = "available" | "disabled" | "needs_setup" | "ready" | "unavailable";
+export type CapabilitySetupState = "not_started" | "in_progress" | "complete" | "deferred";
+
+export type CapabilityGroup = { id: string; name: string; description: string };
+
+export type CapabilityRequirement = {
+  id: string;
+  label: string;
+  hard: boolean;
+  met: boolean;
+  action_label: string;
+  action_route: string;
+};
+
+export type CapabilityIntegration = { id: string; label: string; required: boolean; connected: boolean };
+
+export type CapabilityStatus = {
+  id: string;
+  name: string;
+  description: string;
+  benefit: string;
+  group: string;
+  activation: CapabilityActivation;
+  enforcement: CapabilityEnforcement;
+  selectable: boolean;
+  available: boolean;
+  enabled: boolean;
+  state: CapabilityState;
+  setup_state: CapabilitySetupState;
+  live_in_backend: boolean | null;
+  requirements: CapabilityRequirement[];
+  missing_dependencies: string[];
+  integrations: CapabilityIntegration[];
+  can_enable: boolean;
+  enable_blocked_reason: string | null;
+  can_disable: boolean;
+  disable_blocked_reason: string | null;
+  effect: string;
+  on_effect: string;
+  off_effect: string;
+  routes: string[];
+  onboarding_setup: string | null;
+  config: Record<string, unknown>;
+  updated_at: string | null;
+};
+
+export type HostCapabilities = { groups: CapabilityGroup[]; capabilities: CapabilityStatus[] };
+
+export type CapabilityUpdate = {
+  enabled?: boolean;
+  setup_state?: CapabilitySetupState;
+  config?: Record<string, unknown>;
+};
+
+// ── Onboarding (backend app/schemas/onboarding.py) ───────────────────
+export type OnboardingStep = "profile" | "capabilities" | "setup" | "review";
+
+export type FirstPropertyImport = {
+  airbnb_url: string;
+  ical_url: string | null;
+  live_pricing: boolean;
+  status: "importing" | "completed" | "failed";
+  property_id: string | null;
+  property_name: string | null;
+  error: string | null;
+  requested_at: string | null;
+  finished_at: string | null;
+};
+
+export type OnboardingState = {
+  status: "not_started" | "in_progress" | "completed";
+  source: "onboarding" | "legacy" | null;
+  current_step: string;
+  completed_steps: OnboardingStep[];
+  selected_capabilities: string[];
+  first_property: FirstPropertyImport | null;
+  completed_at: string | null;
+  selection_notes: string[];
+};
+
+export type OnboardingProgressUpdate = {
+  current_step?: OnboardingStep;
+  completed_steps?: OnboardingStep[];
+  selected_capabilities?: string[];
+};
+
+// ── Dashboard layout preferences (backend app/schemas/ui_preferences.py) ──
+// Layout only: hiding something here never disables a capability.
+export type NavPlacement = "pinned_top" | "movable" | "pinned_bottom";
+
+export type NavItem = {
+  id: string;
+  label: string;
+  href: string;
+  placement: NavPlacement;
+  hideable: boolean;
+  available: boolean;
+  hidden: boolean;
+  capabilities: string[];
+  unavailable_reason: string | null;
+};
+
+export type NavigationPreferences = {
+  items: NavItem[];
+  revision: number;
+  is_default: boolean;
+  updated_at: string | null;
+};
+
+export type NavigationPreferencesUpdate = { order: string[]; hidden: string[]; expected_revision: number };
+
+export type WidgetSize = "half" | "full";
+
+export type OverviewWidget = {
+  id: string;
+  name: string;
+  description: string;
+  capabilities: string[];
+  sizes: WidgetSize[];
+  size: WidgetSize;
+  hidden: boolean;
+  hideable: boolean;
+  default_visible: boolean;
+  available: boolean;
+  section: "summary" | "live" | "details";
+  unavailable_reason: string | null;
+};
+
+export type OverviewLayout = {
+  widgets: OverviewWidget[];
+  revision: number;
+  is_default: boolean;
+  updated_at: string | null;
+};
+
+export type OverviewLayoutUpdate = {
+  widgets: { id: string; size: WidgetSize; hidden: boolean }[];
+  expected_revision: number;
+};
+
+// ── Notifications & escalations (backend app/schemas/notification_preferences.py) ──
+// The dashboard's four lead tiers. "hot" also covers the internal very_hot
+// level; "not_qualified" is a lead with no temperature yet.
+export type LeadBucket = "hot" | "warm" | "cold" | "not_qualified";
+export type LeadLabels = Record<LeadBucket, string>;
+
+export type NotificationPreferences = {
+  transfer_number_mode: "single" | "per_property";
+  call_summary_email: boolean;
+  escalation_email: boolean;
+  call_summary_subject: string | null;
+  call_summary_body: string | null;
+  stay_request_handling: "whatsapp" | "live_transfer";
+  connect_request_handling: "live_transfer" | "whatsapp";
+  busy_call_alert: boolean;
+  guest_calling_alert: boolean;
+  guest_reply_alert: boolean;
+  lead_labels: LeadLabels;
+};
+
+export type NotificationSettings = {
+  preferences: NotificationPreferences;
+  placeholders: string[];
+  default_subject: string;
+  default_body: string;
+};
+
+export type NotificationPreferencesUpdate = Partial<NotificationPreferences>;
+
+export type TransferNumberGroup = { phone: string; property_ids: string[] };
+
+// ── Analytics layout (backend app/schemas/ui_preferences.py) ──
+export type AnalyticsSize = "sm" | "md" | "half" | "full";
+
+export type AnalyticsEntry = {
+  type: "metric" | "heading";
+  id: string;
+  title: string | null;
+  subtitle: string | null;
+  label: string | null;
+  description: string | null;
+  formula: string | null;
+  kind: "tile" | "panel" | null;
+  sizes: AnalyticsSize[];
+  size: AnalyticsSize | null;
+  hidden: boolean;
+  available: boolean;
+  unavailable_reason: string | null;
+};
+
+export type AnalyticsLayout = {
+  entries: AnalyticsEntry[];
+  revision: number;
+  is_default: boolean;
+  updated_at: string | null;
+};
+
+export type AnalyticsEntryInput = {
+  type: "metric" | "heading";
+  id: string;
+  size?: AnalyticsSize | null;
+  hidden?: boolean;
+  title?: string | null;
+  subtitle?: string | null;
+};
