@@ -1,15 +1,17 @@
 "use client";
 
-import Link from "next/link";
 import { useRef, useState } from "react";
-import { Camera, Link2, MessageCircle, Pencil, Phone, Send } from "lucide-react";
+import { Camera, Compass, Link2, Pencil, Phone, Send } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RightPanel, RightPanelFooterButton } from "@/components/ui/right-panel";
+import { UseCasePicker } from "@/components/use-case-picker";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import type { UseCaseKey } from "@/lib/types";
 
 // Step-by-step profile completion -- deliberately separate from the more
 // exhaustive Settings page. A host doesn't have to fill everything in at
@@ -36,6 +38,9 @@ export default function ProfilePage() {
   const [notificationEmail, setNotificationEmail] = useState(user?.notification_email ?? "");
   const [savingNotificationEmail, setSavingNotificationEmail] = useState(false);
 
+  const [interestsOpen, setInterestsOpen] = useState(false);
+  const [interests, setInterests] = useState<UseCaseKey[]>(user?.interests ?? []);
+  const [savingInterests, setSavingInterests] = useState(false);
 
   if (loading || !user) {
     return <div className="text-sm text-muted-foreground">Loading…</div>;
@@ -47,7 +52,7 @@ export default function ProfilePage() {
     !!user.business_name,
     !!user.lead_exophone,
     !!user.notification_email,
-    !!user.phone,
+    user.interests.length > 0,
   ];
   const doneCount = steps.filter(Boolean).length;
 
@@ -125,6 +130,25 @@ export default function ProfilePage() {
       toast.error(err instanceof ApiError ? err.message : "Failed to save");
     } finally {
       setSavingNotificationEmail(false);
+    }
+  }
+
+  function toggleInterest(key: UseCaseKey) {
+    setInterests((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
+  }
+
+  async function handleSaveInterests(e: React.FormEvent) {
+    e.preventDefault();
+    setSavingInterests(true);
+    try {
+      await api.auth.updateMe({ interests });
+      await refreshUser();
+      toast.success("Saved");
+      setInterestsOpen(false);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Failed to save");
+    } finally {
+      setSavingInterests(false);
     }
   }
 
@@ -214,7 +238,7 @@ export default function ProfilePage() {
           </div>
           <p className="mt-1 text-xs text-muted-foreground">{doneCount} of {steps.length} steps complete</p>
 
-          {/* Three boxes */}
+          {/* Four boxes */}
           <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
             <button
               type="button"
@@ -224,7 +248,7 @@ export default function ProfilePage() {
               <span className="flex size-9 items-center justify-center rounded-full bg-accent-warm-bg text-[var(--accent-warm)]">
                 <Phone className="size-4" />
               </span>
-              <span className="text-sm font-medium">Call intake number</span>
+              <span className="text-sm font-medium">Guest Call Number</span>
               <span className="text-xs text-muted-foreground">{user.lead_exophone || "Not set"}</span>
             </button>
 
@@ -242,18 +266,22 @@ export default function ProfilePage() {
               </span>
             </button>
 
-            <Link
-              href="/dashboard/settings#notifications"
+            <button
+              type="button"
+              onClick={() => {
+                setInterests(user.interests);
+                setInterestsOpen(true);
+              }}
               className="flex flex-col items-start gap-2 rounded-xl border p-4 text-left transition-colors hover:bg-accent"
             >
               <span className="flex size-9 items-center justify-center rounded-full bg-accent-warm-bg text-[var(--accent-warm)]">
-                <MessageCircle className="size-4" />
+                <Compass className="size-4" />
               </span>
-              <span className="text-sm font-medium">Notifications &amp; escalations</span>
+              <span className="text-sm font-medium">What matters to you</span>
               <span className="text-xs text-muted-foreground">
-                {user.phone ? `WhatsApp alerts to ${user.phone}` : "Add a transfer number for WhatsApp alerts"}
+                {user.interests.length > 0 ? `${user.interests.length} selected` : "Not set"}
               </span>
-            </Link>
+            </button>
           </div>
         </div>
       </div>
@@ -331,6 +359,25 @@ export default function ProfilePage() {
             />
             <p className="text-xs text-muted-foreground">Leave blank to use your login email.</p>
           </div>
+        </form>
+      </RightPanel>
+
+      <RightPanel
+        open={interestsOpen}
+        onOpenChange={setInterestsOpen}
+        title="What matters to you"
+        size="lg"
+        footer={
+          <RightPanelFooterButton type="submit" form="profile-interests-form" disabled={savingInterests}>
+            {savingInterests ? "Saving…" : "Save"}
+          </RightPanelFooterButton>
+        }
+      >
+        <form id="profile-interests-form" onSubmit={handleSaveInterests} className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Pick as many as apply — nothing here turns a feature off, it just decides what we show you first.
+          </p>
+          <UseCasePicker selected={interests} onToggle={toggleInterest} />
         </form>
       </RightPanel>
     </div>

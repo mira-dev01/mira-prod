@@ -65,6 +65,7 @@ async def onboard_host(
     current_user.airbnb_host_status = payload.airbnb_host_status
     current_user.property_count_estimate = payload.property_count_estimate
     current_user.agent_first_message = payload.agent_first_message
+    current_user.interests = payload.interests
     await db.commit()
 
     snapshot_id: str | None = None

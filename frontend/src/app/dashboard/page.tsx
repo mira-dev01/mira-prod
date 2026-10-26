@@ -1,40 +1,55 @@
 "use client";
 
-import { Suspense, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { LayoutGrid } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { useState } from "react";
+import { ArrowRight } from "lucide-react";
+import Link from "next/link";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { useAsync } from "@/hooks/use-async";
 import { useDateRange } from "@/hooks/use-date-range";
 import { api } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
+import { CallsTable } from "@/components/calls-table";
 import { LeadDetailPanel } from "@/components/lead-detail-panel";
-import { DateRangePicker } from "@/components/date-range-picker";
+import { LiveRequestsCard } from "@/components/live-requests-card";
+import { OpportunitiesCard } from "@/components/opportunities-card";
+import { FirstRunChecklist } from "@/components/overview/first-run-checklist";
+import { NeedsAttentionCard } from "@/components/overview/needs-attention";
 import {
-  OverviewCustomizer,
-  draftFromLayout,
-  type OverviewDraft,
-} from "@/components/overview/overview-customizer";
-import { FALLBACK_WIDGETS, OverviewWidgetGrid, type OverviewWidgetData } from "@/components/overview/widgets";
+  PortfolioSnapshot,
+  PortfolioSnapshotError,
+  PortfolioSnapshotSkeleton,
+} from "@/components/overview/portfolio-snapshot";
+import { DateRangePicker } from "@/components/date-range-picker";
+import { UnansweredQuestionsCard } from "@/components/unanswered-questions-card";
+import { USE_CASES } from "@/lib/use-cases";
 import { cn, glassCardClassName } from "@/lib/utils";
-import type { LeadOut, OverviewWidget } from "@/lib/types";
+import type { LeadOut } from "@/lib/types";
 
-export default function OverviewPage() {
-  // useSearchParams (?customize=1 from Settings) needs a Suspense boundary.
+/** Quiet tier label -- groups cards without adding another card. */
+function SectionLabel({ id, children }: { id: string; children: React.ReactNode }) {
   return (
-    <Suspense fallback={<Skeleton className="h-64 w-full" />}>
-      <OverviewPageContent />
-    </Suspense>
+    <h2 id={id} className="px-1 text-sm font-medium text-muted-foreground">
+      {children}
+    </h2>
   );
 }
 
-function OverviewPageContent() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
+export default function OverviewPage() {
   const [includeTestCalls, setIncludeTestCalls] = useState(false);
   const { startDateISO, endDateISO } = useDateRange();
+  const { user } = useAuth();
+  const interests = user?.interests ?? [];
+  // "Live operations" renders Live Requests before Opportunities by
+  // default; swap when the host picked whatsapp_automation (Opportunities'
+  // use case) ahead of inbound_leads (Live Requests') in onboarding --
+  // same pick-order convention sidebar-nav.tsx uses for "Your focus".
+  const opportunitiesFirst =
+    interests.includes("whatsapp_automation") &&
+    (!interests.includes("inbound_leads") ||
+      interests.indexOf("whatsapp_automation") < interests.indexOf("inbound_leads"));
 
   // One request for the snapshot + attention items. Reporting-period
   // numbers follow the date picker; attention items are current-state (see
@@ -58,46 +73,7 @@ function OverviewPageContent() {
   const { data: leads, loading: leadsLoading, refetch: refetchLeads } = useAsync(() => api.leads.list({}), []);
   const [editingLead, setEditingLead] = useState<LeadOut | null>(null);
 
-  // Saved widget layout (GET /preferences/overview-widgets), already
-  // reconciled server-side against the host's capabilities. If it can't
-  // load, the recommended layout renders -- the Overview never goes blank.
-  const {
-    data: layout,
-    loading: layoutLoading,
-    error: layoutError,
-    refetch: refetchLayout,
-    setData: setLayout,
-  } = useAsync(() => api.preferences.overviewWidgets(), []);
-  const [editing, setEditing] = useState(() => searchParams.get("customize") === "1");
-  const [draft, setDraft] = useState<OverviewDraft | null>(null);
-  const activeDraft = editing && layout ? (draft ?? draftFromLayout(layout)) : null;
-
-  function closeEditor() {
-    setEditing(false);
-    setDraft(null);
-    if (searchParams.get("customize")) router.replace("/dashboard", { scroll: false });
-  }
-
-  const widgets: OverviewWidget[] | null = activeDraft
-    ? activeDraft.shown
-    : layout
-      ? layout.widgets.filter((w) => w.available && !w.hidden)
-      : layoutError
-        ? FALLBACK_WIDGETS.filter((w) => !w.hidden)
-        : null;
-
-  const widgetData: OverviewWidgetData = {
-    overview,
-    overviewLoading,
-    overviewError,
-    refetchOverview,
-    calls,
-    callsLoading,
-    leads,
-    leadsLoading,
-    refetchLeads,
-    onLeadClick: setEditingLead,
-  };
+  const recentCalls = calls ?? [];
 
   return (
     // One unified glass panel, not a decorative background layer plus
@@ -170,45 +146,135 @@ function OverviewPageContent() {
               Include browser test calls
             </Label>
           </div>
-          {layout && !activeDraft && (
-            <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
-              <LayoutGrid className="size-3.5" />
-              Customize
-            </Button>
-          )}
         </div>
       </div>
 
-      {activeDraft && layout && (
-        <OverviewCustomizer
-          layout={layout}
-          draft={activeDraft}
-          onDraftChange={setDraft}
-          onSaved={(saved) => {
-            setLayout(saved);
-            closeEditor();
-          }}
-          onCancel={closeEditor}
-          onReload={() => {
-            setDraft(null);
-            refetchLayout();
-          }}
-        />
-      )}
-
-      {widgets === null || (layoutLoading && !layout && !layoutError) ? (
-        <Skeleton className="h-40 w-full" />
-      ) : widgets.length === 0 ? (
-        <div className={cn("rounded-2xl px-5 py-8 text-center text-sm text-muted-foreground", glassCardClassName)}>
-          Your Overview is empty.{" "}
-          {!activeDraft && layout && (
-            <button type="button" className="font-medium text-primary hover:underline" onClick={() => setEditing(true)}>
-              Add widgets
-            </button>
-          )}
-        </div>
+      {overview?.has_properties === false ? (
+        // True first-run: every widget below has its own soft empty state
+        // ("--", "nothing pending", "you're all caught up"), so rendering
+        // all of them for a host with zero properties is five empty cards,
+        // not a simpler page. Swap the whole grid for a short, personalized
+        // checklist instead -- see components/overview/first-run-checklist.tsx.
+        <FirstRunChecklist name={user?.name} interests={interests} />
       ) : (
-        <OverviewWidgetGrid widgets={widgets} data={widgetData} />
+        <>
+          {interests.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 px-1">
+              <span className="text-sm font-medium text-muted-foreground">Your focus</span>
+              {USE_CASES.filter((useCase) => interests.includes(useCase.key)).map((useCase) => (
+                <Link
+                  key={useCase.key}
+                  href={useCase.navHref}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium text-foreground transition-colors duration-150 hover:bg-accent",
+                    glassCardClassName
+                  )}
+                >
+                  <useCase.icon className="size-3.5" />
+                  {useCase.label}
+                </Link>
+              ))}
+            </div>
+          )}
+
+          {overviewError && !overview ? (
+            <PortfolioSnapshotError onRetry={refetchOverview} />
+          ) : overviewLoading && !overview ? (
+            <PortfolioSnapshotSkeleton />
+          ) : overview ? (
+            <PortfolioSnapshot data={overview} />
+          ) : null}
+
+          {/* Hierarchy, top to bottom: snapshot (above) -> what needs the host
+              -> live operations -> supporting details. Each tier is visually
+              lighter than the one before; only the snapshot carries headline
+              numbers. */}
+          {overviewError && !overview ? (
+            <p className={cn("rounded-2xl px-5 py-3.5 text-sm text-muted-foreground", glassCardClassName)}>
+              <span className="font-medium text-foreground">Needs your attention</span> · Couldn&apos;t load this
+              right now.
+            </p>
+          ) : (
+            <NeedsAttentionCard data={overview} loading={overviewLoading && !overview} onChanged={refetchOverview} />
+          )}
+
+          <section aria-labelledby="overview-live" className="space-y-3 pt-2">
+            <SectionLabel id="overview-live">Live operations</SectionLabel>
+            <div className="grid items-stretch gap-4 lg:grid-cols-2">
+              {leadsLoading ? (
+                <>
+                  <Skeleton className="h-40 w-full" />
+                  <Skeleton className="h-40 w-full" />
+                </>
+              ) : (
+                // Default order is Live Requests then Opportunities; swap
+                // only when the host's picks say Opportunities' use case
+                // (whatsapp_automation) matters more to them -- see
+                // opportunitiesFirst above.
+                (() => {
+                  const liveRequestsCard = (
+                    <LiveRequestsCard
+                      key="leads"
+                      glass
+                      leads={leads ?? []}
+                      onRefetch={refetchLeads}
+                      onCardClick={setEditingLead}
+                      limit={3}
+                    />
+                  );
+                  const opportunitiesCard = (
+                    <OpportunitiesCard
+                      key="opportunities"
+                      glass
+                      leads={leads ?? []}
+                      onRefetch={refetchLeads}
+                      onCardClick={setEditingLead}
+                      limit={3}
+                    />
+                  );
+                  return opportunitiesFirst
+                    ? [opportunitiesCard, liveRequestsCard]
+                    : [liveRequestsCard, opportunitiesCard];
+                })()
+              )}
+            </div>
+          </section>
+
+          <section aria-labelledby="overview-details" className="space-y-3 pt-2">
+            <SectionLabel id="overview-details">Details</SectionLabel>
+            {/* Recent calls follow the selected period; unanswered questions
+                are current-state. */}
+            <div className="grid items-stretch gap-4 lg:grid-cols-2">
+              <Card className={cn("h-full", glassCardClassName)}>
+                <CardHeader>
+                  <CardTitle>Recent calls</CardTitle>
+                </CardHeader>
+                <CardContent className="flex-1">
+                  {callsLoading ? (
+                    <Skeleton className="h-40 w-full" />
+                  ) : recentCalls.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No calls in this period.</p>
+                  ) : (
+                    <CallsTable calls={recentCalls} compact />
+                  )}
+                </CardContent>
+                <div className="border-t px-4 py-3">
+                  <Link
+                    href="/dashboard/calls"
+                    className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+                  >
+                    View all calls
+                    <ArrowRight className="size-3.5" />
+                  </Link>
+                </div>
+              </Card>
+
+              <div className="flex min-w-0">
+                <UnansweredQuestionsCard glass limit={2} linkToFaqPage hideDescription />
+              </div>
+            </div>
+          </section>
+        </>
       )}
 
       <LeadDetailPanel

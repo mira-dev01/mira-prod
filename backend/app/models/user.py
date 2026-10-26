@@ -66,6 +66,19 @@ class User(UUIDPkMixin, TimestampMixin, Base):
     # earlier: main's code still selects them).
     notification_preferences: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")
 
+    # Dashboard/onboarding personalization (UX redesign, 2026-10-26 --
+    # documentation/plans/generic-splashing-star.md). Self-reported,
+    # multi-select use-case interests from onboarding Step 0 (or edited
+    # later from the Profile page) -- see app/schemas/user.py's
+    # VALID_INTEREST_KEYS for the fixed key set. Purely a UI emphasis/
+    # ordering signal (which sidebar nav items get promoted to "Your
+    # focus", which Overview sections surface first) -- it never gates or
+    # disables any feature. Empty list (every existing host, and any host
+    # who skips the Step 0 picker) means "no personalization" -- the
+    # sidebar/Overview render exactly as they did before this column
+    # existed.
+    interests: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
+
     # Where escalation summaries (app/integrations/email_client.py, fired
     # from handle_escalate_to_host) get sent. None -- the common case -- means
     # "use the login email above"; set this when the host wants escalations
