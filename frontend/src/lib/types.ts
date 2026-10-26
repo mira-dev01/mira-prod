@@ -11,6 +11,19 @@ export type AirbnbHostStatus =
 // (app/voice/pipeline.py's VOICE_BY_GENDER) -- not a Sarvam-native concept.
 export type AgentVoiceGender = "female" | "male";
 
+// Dashboard/onboarding personalization -- the fixed set a host picks from
+// in onboarding Step 0 (or edits later on the Profile page). Must match
+// backend VALID_INTEREST_KEYS (app/schemas/user.py) exactly; see
+// src/lib/use-cases.ts for the label/description/nav-promotion config
+// keyed by these same values.
+export type UseCaseKey =
+  | "inbound_leads"
+  | "whatsapp_automation"
+  | "pricing_negotiation"
+  | "calendar_management"
+  | "guest_relationships"
+  | "portfolio_analytics";
+
 export type UserOut = {
   id: string;
   email: string;
@@ -52,6 +65,11 @@ export type UserOut = {
   // Whether the request's active Clerk org matches the configured dev org --
   // gates dev-only features (currently just "Talk to Mira").
   is_internal_org: boolean;
+  // Dashboard/onboarding personalization -- see UseCaseKey in
+  // src/lib/use-cases.ts. Pure UI emphasis/ordering signal, never a
+  // feature gate; [] (every host who hasn't opted in) means "no
+  // personalization", sidebar/Overview render unchanged.
+  interests: UseCaseKey[];
 };
 
 export type UserUpdate = {
@@ -79,6 +97,7 @@ export type UserUpdate = {
   allow_early_checkin?: boolean | null;
   follow_up_channel_preference?: string | null;
   whatsapp_assist_enabled?: boolean | null;
+  interests?: UseCaseKey[] | null;
 };
 
 // GET /auth/me/call-hours-status -- the account's live routing decision
@@ -169,6 +188,9 @@ export type HostOnboarding = {
   airbnb_url: string;
   ical_url?: string | null;
   agent_first_message?: string | null;
+  // New Step 0 of onboarding -- see src/lib/use-cases.ts. Omitted/[] when
+  // the host skips the picker.
+  interests?: UseCaseKey[];
 };
 
 export type HostOnboardingResponse = {

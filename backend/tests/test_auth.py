@@ -187,6 +187,73 @@ async def test_onboarding_requires_airbnb_url(client, auth_headers):
     assert resp.status_code == 422
 
 
+async def test_onboarding_without_interests_defaults_to_empty_list(client, auth_headers):
+    """Skipping the new Step 0 picker (the common case until hosts adopt
+    it) must still submit cleanly -- interests omitted entirely, not an
+    empty list explicitly sent."""
+    payload = _onboarding_payload()
+    assert "interests" not in payload
+    resp = await client.post("/api/v1/auth/onboarding", json=payload, headers=auth_headers)
+    assert resp.status_code == 200
+
+    me = (await client.get("/api/v1/auth/me", headers=auth_headers)).json()
+    assert me["interests"] == []
+
+
+async def test_onboarding_saves_selected_interests(client, auth_headers):
+    resp = await client.post(
+        "/api/v1/auth/onboarding",
+        json=_onboarding_payload(interests=["whatsapp_automation", "calendar_management"]),
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+
+    me = (await client.get("/api/v1/auth/me", headers=auth_headers)).json()
+    assert me["interests"] == ["whatsapp_automation", "calendar_management"]
+
+
+async def test_onboarding_drops_unknown_interest_keys():
+    """Regression guard for VALID_INTEREST_KEYS drift: an interest key that
+    doesn't match the frontend's fixed set (frontend/src/lib/use-cases.ts)
+    is silently dropped rather than rejecting the whole onboarding
+    submission -- same defensive stance as self-reported/imported data
+    elsewhere in this codebase (see app/services/airbnb_import.py)."""
+    from app.schemas.user import HostOnboarding
+
+    parsed = HostOnboarding(**_onboarding_payload(interests=["whatsapp_automation", "not_a_real_interest"]))
+    assert parsed.interests == ["whatsapp_automation"]
+
+
+async def test_update_me_sets_interests(client, auth_headers):
+    """Interests aren't onboarding-only -- Flow 4 (Profile page) edits them
+    later via the same PATCH /auth/me -> UserUpdate path every other
+    self-service setting already uses."""
+    resp = await client.patch(
+        "/api/v1/auth/me", json={"interests": ["pricing_negotiation", "guest_relationships"]}, headers=auth_headers
+    )
+    assert resp.status_code == 200
+    assert resp.json()["interests"] == ["pricing_negotiation", "guest_relationships"]
+
+
+async def test_update_me_omitting_interests_leaves_them_untouched(client, auth_headers):
+    """exclude_unset semantics (app/api/v1/auth.py's update_me) -- a PATCH
+    that doesn't mention interests at all (e.g. editing an unrelated field)
+    must not silently wipe a previously-saved selection."""
+    await client.patch("/api/v1/auth/me", json={"interests": ["portfolio_analytics"]}, headers=auth_headers)
+
+    resp = await client.patch("/api/v1/auth/me", json={"phone": "+919800000000"}, headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["interests"] == ["portfolio_analytics"]
+
+
+async def test_update_me_drops_unknown_interest_keys(client, auth_headers):
+    resp = await client.patch(
+        "/api/v1/auth/me", json={"interests": ["inbound_leads", "bogus_key"]}, headers=auth_headers
+    )
+    assert resp.status_code == 200
+    assert resp.json()["interests"] == ["inbound_leads"]
+
+
 async def test_update_me_sets_host_phone(client, auth_headers):
     """Phase 5: User.phone is the canonical host contact number, reused
     (not duplicated) for escalation, call ownership routing, and future

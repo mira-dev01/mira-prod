@@ -46,6 +46,28 @@ AgentVoiceGender = Literal["female", "male"]
 # app/models/user.py's agent_language_policy column docstring.
 AgentLanguagePolicy = Literal["hindi_first", "english_first"]
 
+# Dashboard/onboarding personalization -- see app/models/user.py's
+# `interests` column docstring. Fixed set (not freeform) so the frontend's
+# sidebar/Overview-promotion config (frontend/src/lib/use-cases.ts) and
+# this backend stay in sync by construction; _drop_unknown_interests below
+# silently drops anything outside this set rather than rejecting the
+# request, matching this codebase's established defensive stance for
+# imported/self-reported data (see app/services/airbnb_import.py).
+VALID_INTEREST_KEYS = {
+    "inbound_leads",
+    "whatsapp_automation",
+    "pricing_negotiation",
+    "calendar_management",
+    "guest_relationships",
+    "portfolio_analytics",
+}
+
+
+def _drop_unknown_interests(value: list[str] | None) -> list[str]:
+    if not value:
+        return []
+    return [key for key in value if key in VALID_INTEREST_KEYS]
+
 
 class HostOnboarding(BaseModel):
     """Business/Airbnb-import data collected on the post-signup onboarding
@@ -63,6 +85,14 @@ class HostOnboarding(BaseModel):
     airbnb_url: str = Field(min_length=1)
     ical_url: str | None = None
     agent_first_message: str | None = None
+    # Onboarding Step 0 -- see VALID_INTEREST_KEYS above. Optional and
+    # defaults to empty: skipping the picker must still submit cleanly.
+    interests: list[str] = Field(default_factory=list)
+
+    @field_validator("interests")
+    @classmethod
+    def _validate_interests(cls, value: list[str]) -> list[str]:
+        return _drop_unknown_interests(value)
 
 
 class UserUpdate(BaseModel):
@@ -102,6 +132,16 @@ class UserUpdate(BaseModel):
     allow_early_checkin: bool | None = None
     follow_up_channel_preference: str | None = None
     whatsapp_assist_enabled: bool | None = None
+    # Editable later from the Profile page -- None (the default, "this
+    # field wasn't in the request") leaves the stored list untouched; an
+    # explicit list (including []) replaces it outright, same semantics as
+    # every other optional field on this PATCH schema.
+    interests: list[str] | None = None
+
+    @field_validator("interests")
+    @classmethod
+    def _validate_interests(cls, value: list[str] | None) -> list[str] | None:
+        return _drop_unknown_interests(value) if value is not None else None
 
     @field_validator("agent_escalation_phrase", "agent_handoff_phrase")
     @classmethod
@@ -213,6 +253,7 @@ class UserOut(BaseModel):
     photo_url: str | None
     banner_url: str | None
     whatsapp_assist_enabled: bool
+    interests: list[str]
 
     model_config = {"from_attributes": True}
 

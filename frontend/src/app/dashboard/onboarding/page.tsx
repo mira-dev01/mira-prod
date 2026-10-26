@@ -9,10 +9,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { UseCasePicker } from "@/components/use-case-picker";
 import { useAuth } from "@/lib/auth-context";
 import { PENDING_IMPORT_KEY } from "@/lib/auth-context";
 import { api, ApiError } from "@/lib/api";
-import type { AirbnbHostStatus } from "@/lib/types";
+import type { AirbnbHostStatus, UseCaseKey } from "@/lib/types";
 
 const HOST_STATUS_OPTIONS: { value: AirbnbHostStatus; label: string }[] = [
   { value: "new_host", label: "New host" },
@@ -23,7 +24,7 @@ const HOST_STATUS_OPTIONS: { value: AirbnbHostStatus; label: string }[] = [
   { value: "prefer_not_to_say", label: "Prefer not to say" },
 ];
 
-const STEPS = ["Your details", "Hosting profile", "Voice agent intro", "First property"] as const;
+const STEPS = ["What matters to you", "Your details", "Hosting profile", "Voice agent intro", "First property"] as const;
 
 // Post-signup onboarding: collects the business/Airbnb-import fields Clerk's
 // own sign-up form doesn't know about (see app/api/v1/auth.py onboard_host).
@@ -52,6 +53,16 @@ export default function OnboardingPage() {
 
   const [airbnbUrl, setAirbnbUrl] = useState("");
   const [icalUrl, setIcalUrl] = useState("");
+
+  // Step 0 -- dashboard/onboarding personalization (see
+  // frontend/src/lib/use-cases.ts). Multi-select, nothing exclusive;
+  // skipping leaves this []. Purely a UI-emphasis signal downstream
+  // (sidebar-nav.tsx, dashboard/page.tsx) -- never gates a feature.
+  const [interests, setInterests] = useState<UseCaseKey[]>([]);
+
+  function toggleInterest(key: UseCaseKey) {
+    setInterests((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
+  }
 
   function goNext(e: React.FormEvent) {
     e.preventDefault();
@@ -111,6 +122,7 @@ export default function OnboardingPage() {
         agent_first_message: firstMessage || undefined,
         airbnb_url: airbnbUrl,
         ical_url: icalUrl || undefined,
+        interests,
       });
       await refreshUser();
       if (snapshot_id) {
@@ -156,6 +168,23 @@ export default function OnboardingPage() {
 
           {step === 0 && (
             <form onSubmit={goNext} className="space-y-4 pt-2">
+              <p className="text-sm text-muted-foreground">
+                Pick as many as apply — nothing here turns a feature off, it just decides what we show you first.
+              </p>
+              <UseCasePicker selected={interests} onToggle={toggleInterest} />
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" className="min-w-0 flex-1" onClick={() => setStep(1)}>
+                  Skip for now
+                </Button>
+                <Button type="submit" className="min-w-0 flex-1">
+                  Continue
+                </Button>
+              </div>
+            </form>
+          )}
+
+          {step === 1 && (
+            <form onSubmit={goNext} className="space-y-4 pt-2">
               <div className="space-y-2">
                 <Label htmlFor="ob-name">Your name</Label>
                 <Input id="ob-name" required value={name} onChange={(e) => setName(e.target.value)} />
@@ -168,13 +197,18 @@ export default function OnboardingPage() {
                 <Label htmlFor="ob-phone">Personal phone (optional)</Label>
                 <Input id="ob-phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
               </div>
-              <Button type="submit" className="w-full">
-                Continue
-              </Button>
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" className="min-w-0 flex-1" onClick={goBack}>
+                  Back
+                </Button>
+                <Button type="submit" className="min-w-0 flex-1">
+                  Continue
+                </Button>
+              </div>
             </form>
           )}
 
-          {step === 1 && (
+          {step === 2 && (
             <form onSubmit={goNext} className="space-y-4 pt-2">
               <div className="space-y-2">
                 <Label htmlFor="ob-business-phone">Business number</Label>
@@ -225,7 +259,7 @@ export default function OnboardingPage() {
             </form>
           )}
 
-          {step === 2 && (
+          {step === 3 && (
             <form onSubmit={goNext} className="space-y-4 pt-2">
               <div className="space-y-2">
                 <Label htmlFor="ob-first-message">Add your voice agent&apos;s intro</Label>
@@ -284,7 +318,7 @@ export default function OnboardingPage() {
             </form>
           )}
 
-          {step === 3 && (
+          {step === 4 && (
             <form onSubmit={handleSubmit} className="space-y-4 pt-2">
               <div className="space-y-2">
                 <Label htmlFor="ob-airbnb-url">Airbnb listing URL</Label>

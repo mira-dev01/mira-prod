@@ -10,6 +10,7 @@ import {
   BrainCircuit,
   Calendar,
   ChartColumn,
+  IndianRupee,
   Phone,
   Users,
   UserRound,
@@ -25,18 +26,23 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { TalkToMiraDialog } from "@/components/talk-to-mira-dialog";
 import { useAuth } from "@/lib/auth-context";
+import { hrefsForInterests } from "@/lib/use-cases";
 
 // Technicians stayed a Settings tab (see app/dashboard/settings/page.tsx) --
 // host configuration, same category as the rest of Settings, not something
 // checked day-to-day like Calls/Leads. AI Training (formerly the "Voice AI"
 // + "AI Training" Settings tabs, merged) instead gets its own top-level nav
 // entry right after Properties, since it configures the voice agent that
-// serves those properties.
+// serves those properties. Pricing (added alongside dashboard
+// personalization, 2026-10-26) previously had NO sidebar entry at all --
+// the page existed and worked, it just wasn't reachable except by typing
+// the URL -- found while mapping use-case interests to nav items.
 const links: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/dashboard", label: "Overview", icon: Home },
   { href: "/dashboard/analytics", label: "Analytics", icon: ChartColumn },
   { href: "/dashboard/properties", label: "Properties", icon: Building2 },
   { href: "/dashboard/properties/ai-training", label: "AI Training", icon: BrainCircuit },
+  { href: "/dashboard/pricing", label: "Pricing", icon: IndianRupee },
   { href: "/dashboard/calendar", label: "Calendar", icon: Calendar },
   { href: "/dashboard/calls", label: "Calls", icon: Phone },
   { href: "/dashboard/leads", label: "Live Requests", icon: Users },
@@ -62,6 +68,47 @@ function NavLinks({ onNavigate, onTalkToMira }: { onNavigate?: () => void; onTal
   const pathname = usePathname();
   const { user, logout, isInternalOrg } = useAuth();
 
+  function renderLink(link: (typeof links)[number]) {
+    const active =
+      link.href === "/dashboard"
+        ? pathname === link.href
+        : link.href === "/dashboard/properties"
+          ? pathname === link.href || (pathname.startsWith(link.href) && !pathname.startsWith("/dashboard/properties/ai-training"))
+          : pathname.startsWith(link.href);
+    const Icon = link.icon;
+    return (
+      <Link
+        key={link.href}
+        href={link.href}
+        onClick={onNavigate}
+        className={cn(
+          "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors duration-150 hover:bg-accent hover:text-accent-foreground",
+          active ? "bg-accent font-medium text-accent-foreground" : "font-normal text-muted-foreground"
+        )}
+      >
+        <Icon className="size-4 shrink-0" />
+        {link.label}
+      </Link>
+    );
+  }
+
+  // Dashboard personalization (2026-10-26): a host's onboarding-Step-0 (or
+  // Profile-edited) interests promote matching nav items into a "Your
+  // focus" group above everything else, which stays fully intact below as
+  // "Workspace" -- nothing is removed or hidden, items only move. A host
+  // with no interests recorded (hasn't opted in yet, or signed up before
+  // this existed) falls through to the exact original flat "Main" list --
+  // pixel-identical to pre-personalization behavior, not just
+  // conceptually equivalent, so this is a strictly additive change.
+  const interests = user?.interests ?? [];
+  const promotedHrefs = hrefsForInterests(interests);
+  const overviewLink = links.find((link) => link.href === "/dashboard")!;
+  const restLinks = links.filter((link) => link.href !== "/dashboard");
+  const focusLinks = promotedHrefs
+    .map((href) => restLinks.find((link) => link.href === href))
+    .filter((link): link is (typeof links)[number] => link !== undefined);
+  const workspaceLinks = restLinks.filter((link) => !promotedHrefs.includes(link.href));
+
   return (
     <>
       <nav className="flex flex-1 flex-col gap-1">
@@ -78,32 +125,20 @@ function NavLinks({ onNavigate, onTalkToMira }: { onNavigate?: () => void; onTal
             Talk to Mira
           </button>
         )}
-        <span className="text-micro px-2 pb-1 pt-2">Main</span>
-        {links.map((link) => {
-          const active =
-            link.href === "/dashboard"
-              ? pathname === link.href
-              : link.href === "/dashboard/properties"
-                ? pathname === link.href || (pathname.startsWith(link.href) && !pathname.startsWith("/dashboard/properties/ai-training"))
-                : pathname.startsWith(link.href);
-          const Icon = link.icon;
-          return (
-            <Link
-              key={link.href}
-              href={link.href}
-              onClick={onNavigate}
-              className={cn(
-                "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors duration-150 hover:bg-accent hover:text-accent-foreground",
-                active
-                  ? "bg-accent font-medium text-accent-foreground"
-                  : "font-normal text-muted-foreground"
-              )}
-            >
-              <Icon className="size-4 shrink-0" />
-              {link.label}
-            </Link>
-          );
-        })}
+        {focusLinks.length === 0 ? (
+          <>
+            <span className="text-micro px-2 pb-1 pt-2">Main</span>
+            {links.map(renderLink)}
+          </>
+        ) : (
+          <>
+            {renderLink(overviewLink)}
+            <span className="text-micro px-2 pb-1 pt-2">Your focus</span>
+            {focusLinks.map(renderLink)}
+            <span className="text-micro px-2 pb-1 pt-2">Workspace</span>
+            {workspaceLinks.map(renderLink)}
+          </>
+        )}
       </nav>
       <div className="space-y-2 border-t pt-4">
         <Link
