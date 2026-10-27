@@ -13,7 +13,19 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# Config.set_main_option stores the value through Python's own configparser,
+# whose BasicInterpolation treats a literal '%' as the start of its own
+# %(...)s-style interpolation syntax -- unrelated to URL percent-encoding,
+# but a DATABASE_URL with a %-encoded character in it (e.g. a password
+# containing '@', encoded as %40) raises
+# "ValueError: invalid interpolation syntax" here otherwise. Doubling '%' to
+# '%%' is configparser's own documented escape for a literal '%' and is the
+# fix Alembic's own FAQ gives for this exact issue -- no prior DATABASE_URL
+# ever contained a '%' character, so this was never hit until now. Confirmed
+# live 2026-10-27: a Supabase DB password with '@' in it, correctly
+# URL-encoded to %40 per asyncpg's own requirements, crashed every
+# `alembic upgrade head` on deploy with exactly this error.
+config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
 
 target_metadata = Base.metadata
 
