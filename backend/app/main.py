@@ -316,7 +316,14 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(_check_db_health())       # pre-warm the DB connection so the first caller doesn't wait
     asyncio.create_task(_backfill_property_display_names())  # self-heal any pre-existing NULL display_name rows
     asyncio.create_task(_reconcile_stuck_call_sessions())    # self-heal any CallSession stuck at in_progress from before this deploy
-    logger.info("MIRA backend started (env=%s)", settings.environment)
+    try:
+        from importlib.metadata import version as _pkg_version
+
+        logger.info(
+            "MIRA backend started (env=%s, pipecat-ai=%s)", settings.environment, _pkg_version("pipecat-ai")
+        )
+    except Exception:
+        logger.info("MIRA backend started (env=%s)", settings.environment)
     yield
     scheduler.shutdown(wait=False)
 

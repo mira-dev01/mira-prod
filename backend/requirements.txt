@@ -15,8 +15,12 @@ redis>=5.2,<6.0
 python-multipart>=0.0.12
 python-dotenv>=1.0
 cloudinary>=1.41,<2.0
-pipecat-ai[websocket,webrtc,anthropic,groq,sarvam]>=1.5.0,<2.0
-# Pinned to a floor + capped major (was unbounded >=0.0.60) after Railway
+pipecat-ai[websocket,webrtc,anthropic,groq,sarvam]==1.6.0
+# Pinned exactly to 1.6.0 (2026-10-27): the >=1.5.0,<2.0 range let Railway
+# rebuild onto a much newer release whose Silero VAD/Exotel serializer
+# internals differ from what this code was written and tested against
+# (VAD crashed on every frame, greeting garbled, stream dropped). Bump
+# deliberately and test a real call. Earlier note: was a floor + capped major (was unbounded >=0.0.60) after Railway
 # silently rebuilt onto 1.5.0 while local dev was still on 1.4.0 -- an
 # unpinned range like that means every fresh `pip install` (i.e. every
 # Railway deploy) can land on a different pipecat-ai release than whatever
