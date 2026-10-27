@@ -45,6 +45,10 @@ from pipecat.workers.runner import WorkerRunner
 from sqlalchemy import select
 
 from app.config import settings
+<<<<<<< HEAD
+=======
+from app.observability import health
+>>>>>>> 368377a (20th October)
 from app.database import AsyncSessionLocal
 from app.integrations import exotel_client
 from app.models.call_session import CallSession
@@ -63,6 +67,7 @@ from app.services import (
     call_classification_service,
     call_coordinator,
     call_service,
+<<<<<<< HEAD
     call_summary_service,
     faq_service,
     guest_calling_notification,
@@ -70,6 +75,21 @@ from app.services import (
     lead_service,
     recovery_service,
 )
+=======
+    call_summary_email,
+    call_summary_service,
+    faq_service,
+    guest_booking_service,
+    guest_calling_notification,
+    guest_memory_service,
+    lead_service,
+    pricing_engine,
+    recovery_service,
+    usage_meter,
+)
+from app.voice.audio_input_observer import AudioInputContext, AudioInputObserver, BotSpeechTap
+from app.voice.call_metrics import CallMetricsCollector
+>>>>>>> 368377a (20th October)
 from app.voice.conversation_quality import ConversationQuality
 from app.voice.conversation_state import ConversationState
 from app.voice.conversation_style import ConversationStyleProcessor
@@ -77,6 +97,10 @@ from app.voice.end_call_reliability_guard import EndCallReliabilityGuardProcesso
 from app.voice.escalation_phrase_guard import EscalationPhraseGuardProcessor
 from app.voice.handoff_signal import register_call, unregister_call, wait_for_handoff_request
 from app.voice.language_sync import DEFAULT_TTS_LANGUAGE, LanguageSyncProcessor
+<<<<<<< HEAD
+=======
+from app.voice.low_confidence_transcript_guard import LowConfidenceTranscriptGuardProcessor
+>>>>>>> 368377a (20th October)
 from app.voice.meta_commentary_guard import MetaCommentaryGuardProcessor
 from app.voice.premature_end_call_guard import PrematureEndCallGuardProcessor
 from app.voice.property_recommendation_guard import PropertyRecommendationGuardProcessor
@@ -350,10 +374,34 @@ class _ReconnectingSarvamSTTService(SarvamSTTService):
 
     _RECONNECT_COOLDOWN_SECONDS = 3.0
 
+<<<<<<< HEAD
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._stt_reconnecting = False
         self._stt_last_reconnect_attempt = 0.0
+=======
+    def __init__(self, *args, audio_input_context: AudioInputContext | None = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._stt_reconnecting = False
+        self._stt_last_reconnect_attempt = 0.0
+        self._audio_input_context = audio_input_context
+
+    async def _handle_message(self, message):
+        # Phase 1A telemetry, observation only: counts Sarvam's server-side
+        # VAD events (START_SPEECH/END_SPEECH) before the parent handles them
+        # unchanged. The parent logs these at DEBUG only, so without this
+        # there is no production-visible way to tell whether Sarvam's own VAD
+        # is active and broadcasting interruptions (vad_signals is unset, so
+        # it's whatever Sarvam's server defaults to).
+        if self._audio_input_context is not None:
+            try:
+                if getattr(message, "type", None) == "events":
+                    signal = getattr(getattr(message, "data", None), "signal_type", None)
+                    self._audio_input_context.note_sarvam_vad_event(signal)
+            except Exception:
+                logger.exception("sarvam_vad_event_telemetry_failed")
+        await super()._handle_message(message)
+>>>>>>> 368377a (20th October)
 
     async def run_stt(self, audio: bytes):
         import time
@@ -368,12 +416,24 @@ class _ReconnectingSarvamSTTService(SarvamSTTService):
                     self._stt_reconnecting = True
                     self._stt_last_reconnect_attempt = now
                     logger.warning("Sarvam STT connection appears dead -- reconnecting: %s", frame.error)
+<<<<<<< HEAD
+=======
+                    # A recovered drop is a warning (3+ in 5 min = degraded);
+                    # a failed reconnect is a real failure.
+                    health.record("sarvam_stt", "warn", error=frame.error, kind="connection_dropped", op="reconnect")
+>>>>>>> 368377a (20th October)
                     try:
                         await self._disconnect()
                         await self._connect()
                         logger.info("Sarvam STT reconnected successfully")
+<<<<<<< HEAD
                     except Exception:
                         logger.exception("Failed to reconnect Sarvam STT")
+=======
+                    except Exception as exc:
+                        logger.exception("Failed to reconnect Sarvam STT")
+                        health.record("sarvam_stt", "error", error=exc, kind="reconnect_failed", op="reconnect")
+>>>>>>> 368377a (20th October)
                     finally:
                         self._stt_reconnecting = False
                 # Swallow this specific error frame instead of forwarding it --
@@ -663,6 +723,12 @@ async def _run_pipeline(
         else None
     )
     handoff_outcome = _HandoffOutcome()
+<<<<<<< HEAD
+=======
+    # Services that already failed during this call (health is counted per
+    # call, not per error -- see _run_pipeline_inner's on_error handlers).
+    failed_services: set[str] = set()
+>>>>>>> 368377a (20th October)
     try:
         await _run_pipeline_inner(
             transport,
@@ -680,6 +746,10 @@ async def _run_pipeline(
             voice_gender=voice_gender,
             handoff_outcome=handoff_outcome,
             host_handoff_phrase=host_handoff_phrase,
+<<<<<<< HEAD
+=======
+            failed_services=failed_services,
+>>>>>>> 368377a (20th October)
         )
     except asyncio.CancelledError:
         # Not a system failure -- normal shutdown path (e.g. worker restart,
@@ -688,7 +758,11 @@ async def _run_pipeline(
         # this module; the CallSession is left exactly as on_pipeline_
         # finished (if it ran) or CancelFrame handling already left it.
         raise
+<<<<<<< HEAD
     except Exception:
+=======
+    except Exception as pipeline_exc:
+>>>>>>> 368377a (20th October)
         # A genuine mid-call crash (STT/LLM/TTS/Pipeline construction
         # failure, an unhandled exception inside a frame processor) never
         # reaches on_pipeline_finished at all -- see that handler's own
@@ -716,6 +790,10 @@ async def _run_pipeline(
         # real exception, which is always re-raised regardless of whether
         # this bookkeeping succeeds -- the finally block below still runs its
         # own hangup/lease-release safety net either way.
+<<<<<<< HEAD
+=======
+        health.record("voice_pipeline", "error", error=pipeline_exc, kind="pipeline_crash", op="call")
+>>>>>>> 368377a (20th October)
         if call_session_id is not None:
             try:
                 async with AsyncSessionLocal() as crash_db:
@@ -742,6 +820,17 @@ async def _run_pipeline(
                     "Failed to record MISSED_SYSTEM_FAILURE for call_session_id=%s", call_session_id
                 )
         raise
+<<<<<<< HEAD
+=======
+    else:
+        # A call that ran to its normal end is the success signal for the
+        # pipeline, and -- if they didn't fail during it -- for the Sarvam
+        # websockets (which have no per-request success event to observe).
+        health.record("voice_pipeline", "ok", op="call")
+        for service in ("sarvam_stt", "sarvam_tts"):
+            if service not in failed_services:
+                health.record(service, "ok", op="call")
+>>>>>>> 368377a (20th October)
     finally:
         if renewal_task is not None and not renewal_task.done():
             renewal_task.cancel()
@@ -981,6 +1070,45 @@ async def _enforce_max_call_duration(worker: PipelineWorker, call_session_id: uu
     await worker.queue_frame(EndFrame(reason=_MAX_CALL_DURATION_END_REASON))
 
 
+<<<<<<< HEAD
+=======
+async def _persist_call_telemetry(
+    db,
+    *,
+    call_session_id: uuid.UUID | None,
+    host_user_id: uuid.UUID | None,
+    conversation_quality: ConversationQuality,
+    audio_input_observer: AudioInputObserver | None,
+    call_metrics: CallMetricsCollector,
+    end_frame,
+    duration_seconds: float | None,
+) -> None:
+    """End-of-call persistence of everything observational, called once from
+    on_pipeline_finished: this call's guard/validator firings plus the two
+    internal telemetry records (Phase 1A audio, per-call usage/performance)
+    into call_quality_events, and metered usage into service_usage_events.
+    Never raises -- every step is fail-open (finalize() methods,
+    record_quality_events, record_call_usage), so call teardown can't be
+    broken by telemetry. Sarvam STT is metered on the guest audio actually
+    streamed to it (falls back to call duration only when audio telemetry is
+    switched off)."""
+    if audio_input_observer is not None:
+        audio_input_observer.finalize()
+    metrics_record, usage_rows = call_metrics.finalize(
+        end_frame=type(end_frame).__name__,
+        end_reason=getattr(end_frame, "reason", None),
+        stt_audio_seconds=(
+            audio_input_observer.input_audio_seconds if audio_input_observer is not None else duration_seconds
+        ),
+        stt_model=settings.sarvam_stt_model,
+    )
+    if metrics_record is not None:
+        conversation_quality.record(metrics_record)
+    await call_service.record_quality_events(db, call_session_id, conversation_quality)
+    await usage_meter.record_call_usage(db, call_session_id, host_user_id, usage_rows)
+
+
+>>>>>>> 368377a (20th October)
 async def _run_pipeline_inner(
     transport: BaseTransport,
     property_id: uuid.UUID | None,
@@ -997,8 +1125,24 @@ async def _run_pipeline_inner(
     voice_gender: str = "female",
     handoff_outcome: _HandoffOutcome | None = None,
     host_handoff_phrase: str = _HOST_HANDOFF_PHRASE,
+<<<<<<< HEAD
 ) -> None:
     stt = _ReconnectingSarvamSTTService(
+=======
+    failed_services: set[str] | None = None,
+) -> None:
+    # Attributes every out-of-pipeline paid request made during/after this
+    # call (tool-triggered WhatsApp/SearchApi, post-call summary LLM, ...) to
+    # this call and host -- see usage_meter.bind_usage_context.
+    usage_meter.bind_usage_context(call_session_id, host_user_id)
+    # Phase 1A audio-input telemetry -- observation only; see
+    # app/voice/audio_input_observer.py. Built before stt so the STT subclass
+    # can count Sarvam's server-side VAD events into the same per-call
+    # context the observer/tap share.
+    audio_input_context = AudioInputContext() if settings.audio_input_telemetry_enabled else None
+    stt = _ReconnectingSarvamSTTService(
+        audio_input_context=audio_input_context,
+>>>>>>> 368377a (20th October)
         api_key=settings.sarvam_api_key,
         mode="codemix",  # transcribe Hindi/English/Hinglish as spoken, no translation
         # settings= (not the deprecated bare model= kwarg) so the server-side
@@ -1037,6 +1181,21 @@ async def _run_pipeline_inner(
     # one narrow pending_style_correction bridge. See
     # app/voice/conversation_quality.py for the full architecture boundary.
     conversation_quality = ConversationQuality()
+<<<<<<< HEAD
+=======
+    audio_input_observer = (
+        AudioInputObserver(audio_input_context, conversation_quality) if audio_input_context is not None else None
+    )
+    bot_speech_tap = BotSpeechTap(audio_input_context) if audio_input_context is not None else None
+    # Per-call usage (LLM tokens, TTS characters) + performance (tool calls,
+    # response latency, TTFB) for the internal admin panel -- observation
+    # only, see app/voice/call_metrics.py. Sits after tts with the tap.
+    call_metrics = CallMetricsCollector(
+        groq_models=settings.groq_models,
+        openrouter_model=settings.openrouter_model,
+        tts_model=settings.sarvam_tts_model,
+    )
+>>>>>>> 368377a (20th October)
     # Phase 3.1: passes conversation_state so the guest's detected spoken
     # language (the same signal that already drives the TTS switch) is also
     # fed back into state for the prompt layer to read -- see
@@ -1044,6 +1203,24 @@ async def _run_pipeline_inner(
     # Conversation Style Engine below -- this still owns the live TTS switch
     # and ConversationState.current_spoken_language/explicit_language_preference
     # exactly as before.
+<<<<<<< HEAD
+=======
+    # Catches a transcript Sarvam itself was unsure about (low
+    # language_probability on the raw response attached to the
+    # TranscriptionFrame) and substitutes a clarification request before it
+    # reaches language_sync/the LLM -- confirmed live: a guest's city name
+    # was dropped entirely by STT on a hi-IN utterance Sarvam itself only
+    # tagged with language_probability=0.843, and nothing previously
+    # inspected that signal, so the garbled transcript reached the LLM as if
+    # it were a genuine complete answer. See
+    # app/voice/low_confidence_transcript_guard.py for the full reasoning,
+    # including why language_probability is an imprecise but usable proxy
+    # here despite config.py's sarvam_vad_* comment declining to use the same
+    # field as a noise-rejection signal (a different concern -- that guards
+    # against non-speech audio being transcribed at all, this guards against
+    # genuine speech being transcribed wrong).
+    low_confidence_transcript_guard = LowConfidenceTranscriptGuardProcessor()
+>>>>>>> 368377a (20th October)
     language_sync = LanguageSyncProcessor(conversation_state)
     # Conversation Style Engine: computes ConversationState.conversation_style
     # from a rolling, hysteresis-smoothed window of the guest's own turns --
@@ -1179,6 +1356,33 @@ async def _run_pipeline_inner(
         )
         llm = _build_llm()
 
+<<<<<<< HEAD
+=======
+        # Service health (app/observability/health.py) -- observation only.
+        # Counted per CALL: the first STT/TTS error in a call is recorded
+        # immediately (an outage shows up mid-call), later ones in the same
+        # call aren't -- one noisy call must not read as an outage. A call
+        # with no error records a success at its end (_run_pipeline). LLM
+        # errors are already recorded at the HTTP layer.
+        call_failures = failed_services if failed_services is not None else set()
+
+        def _record_call_failure(service: str, error_frame) -> None:
+            if service in call_failures:
+                return
+            call_failures.add(service)
+            health.record(
+                service, "error", error=error_frame.error, kind="fatal" if error_frame.fatal else "stream_error", op="stream"
+            )
+
+        @stt.event_handler("on_error")
+        async def _on_stt_error(_processor, error_frame):
+            _record_call_failure("sarvam_stt", error_frame)
+
+        @tts.event_handler("on_error")
+        async def _on_tts_error(_processor, error_frame):
+            _record_call_failure("sarvam_tts", error_frame)
+
+>>>>>>> 368377a (20th October)
         # Browser test calls use a fixed placeholder identity (no real phone
         # number exists) -- never let that string flow through to tools as
         # if it were a real number to message/save.
@@ -1260,10 +1464,28 @@ async def _run_pipeline_inner(
             ),
         )
 
+<<<<<<< HEAD
+=======
+        # Phase 1A telemetry processors (observation only -- forward every
+        # frame unchanged). The observer sits directly after stt so it sees
+        # Sarvam's raw transcript before low_confidence_transcript_guard can
+        # substitute it, and so an interruption's direction identifies who
+        # broadcast it (downstream = stt itself, upstream = the user
+        # aggregator's turn controller). The tap sits after tts because the
+        # text Mira actually speaks only ever flows downstream from there.
+        telemetry_in = [audio_input_observer] if audio_input_observer is not None else []
+        telemetry_out = ([bot_speech_tap] if bot_speech_tap is not None else []) + [call_metrics]
+
+>>>>>>> 368377a (20th October)
         pipeline = Pipeline(
             [
                 transport.input(),
                 stt,
+<<<<<<< HEAD
+=======
+                *telemetry_in,
+                low_confidence_transcript_guard,
+>>>>>>> 368377a (20th October)
                 silence_watchdog,
                 language_sync,
                 conversation_style_engine,
@@ -1281,6 +1503,10 @@ async def _run_pipeline_inner(
                 response_shape_guard,
                 end_call_reliability_guard,
                 tts,
+<<<<<<< HEAD
+=======
+                *telemetry_out,
+>>>>>>> 368377a (20th October)
                 transport.output(),
                 assistant_aggregator,
             ]
@@ -1485,6 +1711,7 @@ async def _run_pipeline_inner(
                 summary = await call_summary_service.summarize_call(transcript, duration_seconds)
                 await call_service.set_call_summary(finalize_db, call_session_id, summary)
 
+<<<<<<< HEAD
                 # Persists this call's guard/validator firings (see
                 # app/voice/conversation_quality.py's own docstring) purely
                 # for cross-call analytics -- record_quality_events never
@@ -1492,6 +1719,23 @@ async def _run_pipeline_inner(
                 # conversation_quality itself is read here only, never
                 # written to from this handler.
                 await call_service.record_quality_events(finalize_db, call_session_id, conversation_quality)
+=======
+                # Persists this call's guard/validator firings plus the two
+                # internal telemetry records and metered usage -- purely for
+                # cross-call analytics / the admin panel, never read back
+                # into a live call. Never raises (see the helper), so it
+                # can't crash on_pipeline_finished.
+                await _persist_call_telemetry(
+                    finalize_db,
+                    call_session_id=call_session_id,
+                    host_user_id=host_user_id,
+                    conversation_quality=conversation_quality,
+                    audio_input_observer=audio_input_observer,
+                    call_metrics=call_metrics,
+                    end_frame=frame,
+                    duration_seconds=duration_seconds,
+                )
+>>>>>>> 368377a (20th October)
 
                 if any(m.get("role") == "user" for m in context.messages):
                     # Backfill the real caller's phone (from Exotel) and the
@@ -1592,6 +1836,28 @@ async def _run_pipeline_inner(
 
             asyncio.create_task(_update_guest_memory())
 
+<<<<<<< HEAD
+=======
+            # Host-facing call summary email -- one per call that reaches
+            # this handler normally, independent of whether it was
+            # escalated (see app/services/call_summary_email.py). Skipped
+            # for a host handoff: the guest isn't actually done talking to
+            # someone yet (Exotel's Connect applet is about to bridge them
+            # to the host), so a "call summary" email would be premature --
+            # send it (if ever) once the Connect leg's own outcome is known,
+            # which nothing reports back yet (same TRANSFERRED_TO_HOST_MISSED
+            # gap noted above). Own session + detached task, same pattern as
+            # _update_guest_memory above, so a slow/misconfigured SMTP
+            # server can't add latency to call teardown.
+            if not is_host_handoff:
+
+                async def _send_call_summary_email():
+                    async with AsyncSessionLocal() as summary_email_db:
+                        await call_summary_email.send_call_summary_email(summary_email_db, call_session_id)
+
+                asyncio.create_task(_send_call_summary_email())
+
+>>>>>>> 368377a (20th October)
         greeting_sent = False
 
         @transport.event_handler("on_client_connected")
@@ -1658,6 +1924,7 @@ async def _run_pipeline_inner(
             except asyncio.CancelledError:
                 pass
 
+<<<<<<< HEAD
         # Phase 7: only real property calls are ever reachable via Take
         # Call (a Lead Agent call has no single property_id -- Phase 5's
         # guest_calling_notification is scoped the same way, never fired
@@ -1667,6 +1934,25 @@ async def _run_pipeline_inner(
         # -- not harmful, but not reused elsewhere in this codebase's
         # pattern of only allocating state a call can actually use.
         handoff_registered = property_id is not None
+=======
+        # Phase 7/9: registered for every call, property-scoped or not.
+        # guest_calling_notification (Phase 5, the WhatsApp "Take Call"
+        # card) stays scoped to property_id is not None -- that's a real
+        # product constraint on that specific notification's content, not
+        # on the handoff machinery itself. But request_host_transfer (the
+        # guest-initiated, in-call trigger) has no property dependency:
+        # _wait_and_trigger_handoff only needs call_session_id, and
+        # exotel_connect_routing's live-handoff branch already resolves
+        # the transfer destination via CallSession.user_id, not
+        # property_id, specifically so a portfolio-wide (Lead Agent) call
+        # can be handed off too. Registering unconditionally is what makes
+        # that reachable -- previously a Lead Agent call's guest asking to
+        # be transferred fell through to handle_request_host_transfer's
+        # property_id-is-None escalation fallback instead of a real
+        # transfer, and even removing that fallback alone would have left
+        # request_handoff() signaling into a call with no listener here.
+        handoff_registered = True
+>>>>>>> 368377a (20th October)
         handoff_listener_task: asyncio.Task | None = None
         if handoff_registered:
             register_call(call_session_id)
@@ -1826,10 +2112,19 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
         # this `db` session, at all.
         busy_recovery_property_id = property_.id if property_ is not None else None
         # Resolved once here from the host row loaded below, threaded into
+<<<<<<< HEAD
         # _run_pipeline, never re-fetched mid-call. Stays at the default
         # until the property branch sets it; a Lead Agent call never
         # reaches a handoff (handoff_registered is False when property_id is
         # None) so the default is harmless there.
+=======
+        # _run_pipeline, never re-fetched mid-call. Overwritten below by
+        # whichever branch (property or Lead Agent) actually runs -- both
+        # now call resolve_host_handoff_phrase on their own host, since a
+        # Lead Agent call can reach a real handoff too (see
+        # handoff_registered above). This default is only ever seen if
+        # neither branch runs (e.g. BUSY_RECOVERY exits first).
+>>>>>>> 368377a (20th October)
         host_handoff_phrase = _HOST_HANDOFF_PHRASE
 
         # CallCoordinator is the single authority on "is this host/property
@@ -1912,7 +2207,14 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
             )
         else:
             guest = await call_service.get_or_create_guest_profile(db, caller_number, host_user_id)
+<<<<<<< HEAD
             active_booking = await lead_service.get_active_booking(db, guest.id if guest else None, host_user_id)
+=======
+            active_booking = await guest_booking_service.find_active_booking(
+                db, host_user_id, guest.id if guest else None, caller_number
+            )
+            repeat_guest_discount = await pricing_engine.has_repeat_guest_discount(db, host_user_id)
+>>>>>>> 368377a (20th October)
 
             if property_ is not None:
                 host = await db.get(User, property_.user_id)
@@ -1939,7 +2241,11 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
                 verified_faq_entries = await faq_service.list_verified_property_faq(db, property_.id)
                 system_prompt = build_system_prompt(
                     property_, guest, host, active_booking, caller_phone=caller_number,
+<<<<<<< HEAD
                     verified_faq_entries=verified_faq_entries,
+=======
+                    verified_faq_entries=verified_faq_entries, repeat_guest_discount=repeat_guest_discount,
+>>>>>>> 368377a (20th October)
                 )
                 first_message = first_message_for(property_, guest, host)
                 property_id = property_.id
@@ -1959,12 +2265,25 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
                     user_id=lead_user.id,
                 )
                 system_prompt = build_lead_system_prompt(
+<<<<<<< HEAD
                     lead_user, properties, guest, active_booking, caller_phone=caller_number
+=======
+                    lead_user, properties, guest, active_booking, caller_phone=caller_number,
+                    repeat_guest_discount=repeat_guest_discount,
+>>>>>>> 368377a (20th October)
                 )
                 first_message = lead_first_message_for(lead_user)
                 property_id = None
                 property_name = None
                 voice_gender = lead_user.agent_voice_gender
+<<<<<<< HEAD
+=======
+                # A Lead Agent call can now reach a real handoff too (see
+                # handoff_registered above) -- resolve the host's own
+                # phrase the same way the property branch does, instead of
+                # silently leaving the module default in place.
+                host_handoff_phrase = resolve_host_handoff_phrase(lead_user)
+>>>>>>> 368377a (20th October)
 
             call_session_id = session.id
 
@@ -2106,7 +2425,11 @@ async def run_voice_pipeline_twilio(websocket: WebSocket, call_data: CallData) -
         else:
             host_user_id = lead_user.id
         busy_recovery_property_id = property_.id if property_ is not None else None
+<<<<<<< HEAD
         host_handoff_phrase = _HOST_HANDOFF_PHRASE  # set in the property branch below
+=======
+        host_handoff_phrase = _HOST_HANDOFF_PHRASE  # overwritten below by whichever branch runs
+>>>>>>> 368377a (20th October)
 
         try:
             decision, lease = await call_coordinator.acquire_or_reject(
@@ -2154,7 +2477,14 @@ async def run_voice_pipeline_twilio(websocket: WebSocket, call_data: CallData) -
             )
         else:
             guest = await call_service.get_or_create_guest_profile(db, caller_number, host_user_id)
+<<<<<<< HEAD
             active_booking = await lead_service.get_active_booking(db, guest.id if guest else None, host_user_id)
+=======
+            active_booking = await guest_booking_service.find_active_booking(
+                db, host_user_id, guest.id if guest else None, caller_number
+            )
+            repeat_guest_discount = await pricing_engine.has_repeat_guest_discount(db, host_user_id)
+>>>>>>> 368377a (20th October)
 
             if property_ is not None:
                 host = await db.get(User, property_.user_id)
@@ -2176,7 +2506,11 @@ async def run_voice_pipeline_twilio(websocket: WebSocket, call_data: CallData) -
                 verified_faq_entries = await faq_service.list_verified_property_faq(db, property_.id)
                 system_prompt = build_system_prompt(
                     property_, guest, host, active_booking, caller_phone=caller_number,
+<<<<<<< HEAD
                     verified_faq_entries=verified_faq_entries,
+=======
+                    verified_faq_entries=verified_faq_entries, repeat_guest_discount=repeat_guest_discount,
+>>>>>>> 368377a (20th October)
                 )
                 first_message = first_message_for(property_, guest, host)
                 property_id = property_.id
@@ -2196,12 +2530,25 @@ async def run_voice_pipeline_twilio(websocket: WebSocket, call_data: CallData) -
                     user_id=lead_user.id,
                 )
                 system_prompt = build_lead_system_prompt(
+<<<<<<< HEAD
                     lead_user, properties, guest, active_booking, caller_phone=caller_number
+=======
+                    lead_user, properties, guest, active_booking, caller_phone=caller_number,
+                    repeat_guest_discount=repeat_guest_discount,
+>>>>>>> 368377a (20th October)
                 )
                 first_message = lead_first_message_for(lead_user)
                 property_id = None
                 property_name = None
                 voice_gender = lead_user.agent_voice_gender
+<<<<<<< HEAD
+=======
+                # A Lead Agent call can now reach a real handoff too (see
+                # handoff_registered above) -- resolve the host's own
+                # phrase the same way the property branch does, instead of
+                # silently leaving the module default in place.
+                host_handoff_phrase = resolve_host_handoff_phrase(lead_user)
+>>>>>>> 368377a (20th October)
 
             call_session_id = session.id
 
@@ -2301,7 +2648,12 @@ async def run_browser_lead_pipeline(connection: SmallWebRTCConnection, user: Use
         guest = await call_service.get_or_create_guest_profile(
             db, call_service.BROWSER_TEST_CALLER_NUMBER, user.id, name="Browser test guest"
         )
+<<<<<<< HEAD
         active_booking = await lead_service.get_active_booking(db, guest.id if guest else None, user.id)
+=======
+        active_booking = await guest_booking_service.find_active_booking(db, user.id, guest.id if guest else None, None)
+        repeat_guest_discount = await pricing_engine.has_repeat_guest_discount(db, user.id)
+>>>>>>> 368377a (20th October)
         session = await call_service.get_or_create_call_session(
             db,
             exotel_call_id=None,
@@ -2310,7 +2662,13 @@ async def run_browser_lead_pipeline(connection: SmallWebRTCConnection, user: Use
             caller_number=call_service.BROWSER_TEST_CALLER_NUMBER,
             user_id=user.id,
         )
+<<<<<<< HEAD
         system_prompt = build_lead_system_prompt(user, properties, guest, active_booking)
+=======
+        system_prompt = build_lead_system_prompt(
+            user, properties, guest, active_booking, repeat_guest_discount=repeat_guest_discount
+        )
+>>>>>>> 368377a (20th October)
         first_message = lead_first_message_for(user)
         call_session_id = session.id
         guest_profile_id = guest.id if guest else None

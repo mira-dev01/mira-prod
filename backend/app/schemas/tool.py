@@ -10,10 +10,28 @@ from typing import Literal
 
 from pydantic import BaseModel, field_validator, model_validator
 
+<<<<<<< HEAD
 Urgency = Literal["low", "medium", "high", "emergency"]
 IssueType = Literal["plumbing", "electrical", "ac", "wifi", "lock", "general"]
 GuestLoyalty = Literal["new", "returning", "frequent"]
 LeadTemperature = Literal["hot", "warm", "cold"]
+=======
+from app.services.property.budget import BudgetBasis, BudgetConstraint, coerce_budget_basis, normalize_budget
+
+Urgency = Literal["low", "medium", "high", "emergency"]
+IssueType = Literal["plumbing", "electrical", "ac", "wifi", "lock", "general"]
+GuestLoyalty = Literal["new", "returning", "frequent"]
+# very_hot = explicit booking intent -- see app/services/lead_temperature.py.
+LeadTemperature = Literal["very_hot", "hot", "warm", "cold"]
+
+
+class ToolBusinessError(str):
+    """A tool result that is a valid call's business-level failure (property
+    not found, invalid date order, no price on file, ...) rather than a
+    normal answer. Still a plain str -- every existing caller/test comparing
+    the text keeps working -- but app/voice/tool_contract.py reports it to
+    the LLM as status "business_error" instead of "ok"."""
+>>>>>>> 368377a (20th October)
 
 
 def _normalize_phone(value: str) -> str:
@@ -127,6 +145,40 @@ class EscalateToHostArgs(BaseModel):
         return _normalize_phone(value) if value else value
 
 
+<<<<<<< HEAD
+=======
+class RequestHostTransferArgs(BaseModel):
+    # No property_id/guest_phone -- unlike escalation, a live transfer is
+    # scoped to THIS call itself; call_session_id/property_id/host_user_id
+    # are already in closure scope inside voice/tools.py's tool-building
+    # function, same as every other tool there. Distinct from
+    # EscalateToHostArgs: this is for a guest's EXPLICIT "transfer me" /
+    # "let me talk to a human" request, which attempts a real live call
+    # transfer (see handle_request_host_transfer) -- not the general
+    # escalation-and-notify path.
+    reason: str | None = None
+
+
+class LookupBookingArgs(BaseModel):
+    # At least one identifier the booking was made under; property_name is
+    # an optional narrowing hint ("I booked Alpine Ridge under Priya").
+    name: str | None = None
+    phone: str | None = None
+    property_name: str | None = None
+
+    @field_validator("phone")
+    @classmethod
+    def _clean_phone(cls, value: str | None) -> str | None:
+        return _normalize_phone(value) if value else value
+
+    @model_validator(mode="after")
+    def _require_identifier(self) -> "LookupBookingArgs":
+        if not (self.name or self.phone):
+            raise ValueError("name or phone is required")
+        return self
+
+
+>>>>>>> 368377a (20th October)
 class NegotiateRateArgs(BaseModel):
     property_id: str
     # Same exact-dates-or-nights shape as GetPricingArgs -- see that class's
@@ -155,7 +207,24 @@ class NegotiateRateArgs(BaseModel):
 
 
 class RecommendPropertiesArgs(BaseModel):
+<<<<<<< HEAD
     budget: float | None = None
+=======
+    # Explicit budget semantics (app/services/property/budget.py): an amount
+    # is meaningless without its basis -- "₹7000 per night" and "₹7000 for
+    # the whole stay" are different ceilings. budget_basis stays "unspecified"
+    # unless the guest's words established it; normalize_budget turns
+    # amount+basis+nights into the actual filter, never the LLM.
+    budget_amount: float | None = None
+    budget_basis: BudgetBasis = "unspecified"
+    budget_currency: str = "INR"
+    # Stay length, used to convert a total-stay budget to a nightly ceiling
+    # (and vice versa for logging/rendering). Confirmed live 2026-09-25: the
+    # LLM passed nights= to recommend_properties when it wasn't part of the
+    # tool's signature, and the call died with a TypeError before any code
+    # ran. Non-positive values mean "unknown", never an error mid-call.
+    nights: int | None = None
+>>>>>>> 368377a (20th October)
     num_guests: int | None = None
     preferred_location: str | None = None
     purpose_of_stay: str | None = None
@@ -181,6 +250,28 @@ class RecommendPropertiesArgs(BaseModel):
     larger_than_shown: bool = False
     more_premium_than_shown: bool = False
 
+<<<<<<< HEAD
+=======
+    @field_validator("budget_basis", mode="before")
+    @classmethod
+    def _coerce_budget_basis(cls, value: str | None) -> BudgetBasis:
+        return coerce_budget_basis(value)
+
+    @field_validator("nights", mode="before")
+    @classmethod
+    def _unknown_nights(cls, value) -> int | None:
+        try:
+            nights = int(value)
+        except (TypeError, ValueError):
+            return None
+        return nights if nights > 0 else None
+
+    def budget_constraint(self, assume_per_night: bool = False) -> BudgetConstraint | None:
+        return normalize_budget(
+            self.budget_amount, self.budget_basis, self.nights, self.budget_currency, assume_per_night=assume_per_night
+        )
+
+>>>>>>> 368377a (20th October)
 
 class UpdateLeadArgs(BaseModel):
     guest_name: str | None = None

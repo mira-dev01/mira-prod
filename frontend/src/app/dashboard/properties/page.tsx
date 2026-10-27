@@ -1,6 +1,10 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+<<<<<<< HEAD
+=======
+import Link from "next/link";
+>>>>>>> 368377a (20th October)
 import { MoreHorizontal, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -89,7 +93,12 @@ function propertyToForm(property: PropertyOut): PropertyCreate {
 }
 
 export default function PropertiesPage() {
+<<<<<<< HEAD
   const { isInternalOrg } = useAuth();
+=======
+  const { isInternalOrg, user } = useAuth();
+  const perPropertyTransfer = user?.notification_preferences.transfer_number_mode === "per_property";
+>>>>>>> 368377a (20th October)
   const { data: properties, loading, refetch } = useAsync(() => api.properties.list(), []);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<PropertyCreate>(emptyForm);
@@ -312,9 +321,20 @@ export default function PropertiesPage() {
             className="hidden"
             onChange={handleImportFiles}
           />
+<<<<<<< HEAD
           <Button variant="outline" onClick={() => setAirbnbUrlDialogOpen(true)}>
             Import from Airbnb
           </Button>
+=======
+          {/* Hidden 2026-10-09 -- Bright Data's "Customer is not active" account
+              issue made this unreliable for hosts to hit live. Commented out,
+              not deleted: the dialog/polling flow below is untouched, so this
+              is a one-line revert once Bright Data's account status is
+              confirmed stable again. */}
+          {/* <Button variant="outline" onClick={() => setAirbnbUrlDialogOpen(true)}>
+            Import from Airbnb
+          </Button> */}
+>>>>>>> 368377a (20th October)
           <Button variant="ghost" disabled={importing} onClick={() => importInputRef.current?.click()}>
             {importing ? "Importing…" : "Import from file (advanced)"}
           </Button>
@@ -417,6 +437,7 @@ export default function PropertiesPage() {
         </div>
       </div>
 
+<<<<<<< HEAD
       {!loading && properties && properties.some((p) => !p.exophone) && !phoneBannerDismissed && (
         <div className="flex items-center justify-between gap-3 rounded-[var(--radius)] border bg-muted px-4 py-3 text-sm">
           <p>
@@ -431,6 +452,18 @@ export default function PropertiesPage() {
             >
               Connect ExoPhone
             </button>
+=======
+      {/* Only about the call intake number -- the one number guests dial to
+          reach Mira. Gone as soon as one is saved (Exotel or Twilio). */}
+      {user && !user.lead_exophone && !user.twilio_lead_number && !phoneBannerDismissed && (
+        <div className="flex items-center justify-between gap-3 rounded-[var(--radius)] border bg-muted px-4 py-3 text-sm">
+          <p>
+            Your call intake number isn&apos;t set — guests can&apos;t reach Mira until it is. Set it in{" "}
+            <Link href="/dashboard/settings" className="font-medium underline underline-offset-2">
+              Settings › Your account
+            </Link>
+            .
+>>>>>>> 368377a (20th October)
           </p>
           <button
             type="button"
@@ -484,6 +517,17 @@ export default function PropertiesPage() {
                 <p className="text-muted-foreground">{property.city ?? "No city set"}</p>
                 <p>₹{property.base_price.toLocaleString("en-IN")} / night · {property.max_guests} guests</p>
                 {property.exophone && <p className="text-muted-foreground">{property.exophone}</p>}
+<<<<<<< HEAD
+=======
+                {perPropertyTransfer && !property.host_transfer_phone && (
+                  <p className="text-xs text-(--status-pending-strong)" onClick={(e) => e.stopPropagation()}>
+                    No transfer number — transfers go to your main number.{" "}
+                    <Link href="/dashboard/settings#transfer-numbers" className="font-medium underline underline-offset-2">
+                      Set one
+                    </Link>
+                  </p>
+                )}
+>>>>>>> 368377a (20th October)
                 <div className="flex items-center gap-2 pt-2" onClick={(e) => e.stopPropagation()}>
                   <Button
                     size="sm"

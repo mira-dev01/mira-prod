@@ -42,6 +42,55 @@ def _goa_region_localities(preferred_location: str) -> list[str] | None:
     return None
 
 
+<<<<<<< HEAD
+=======
+# Common India-wide anglicized/official city-name pairs. Confirmed live
+# 2026-09-30: a guest asked for "Bangalore," a real property's own `city`
+# is stored as "Bengaluru," and the guest was told no matching property
+# existed at all -- "bangalore" and "bengaluru" share no substring either
+# direction ("ban.../...ore" vs "ben.../...uru"), so a raw ILIKE match
+# structurally cannot bridge them, the same root cause as the Goa-locality
+# fix above (_GOA_NORTH_LOCALITIES/_GOA_SOUTH_LOCALITIES), just at the
+# city level instead of the neighborhood level. Deliberately a flat,
+# hand-maintained synonym set (same shape as
+# app/services/amenity_taxonomy.py's _AMENITY_SYNONYMS), not a geocoding
+# service -- extended as real gaps are found, not meant to be exhaustive.
+_CITY_SYNONYMS: dict[str, list[str]] = {
+    "bangalore": ["bengaluru"],
+    "bengaluru": ["bangalore"],
+    "bombay": ["mumbai"],
+    "mumbai": ["bombay"],
+    "calcutta": ["kolkata"],
+    "kolkata": ["calcutta"],
+    "madras": ["chennai"],
+    "chennai": ["madras"],
+    "poona": ["pune"],
+    "pune": ["poona"],
+    "baroda": ["vadodara"],
+    "vadodara": ["baroda"],
+    "mysore": ["mysuru"],
+    "mysuru": ["mysore"],
+    "cochin": ["kochi"],
+    "kochi": ["cochin"],
+    "trivandrum": ["thiruvananthapuram"],
+    "thiruvananthapuram": ["trivandrum"],
+    "gurgaon": ["gurugram"],
+    "gurugram": ["gurgaon"],
+    "allahabad": ["prayagraj"],
+    "prayagraj": ["allahabad"],
+}
+
+
+def _city_synonyms(preferred_location: str) -> list[str]:
+    """Returns any known alternate name(s) for preferred_location -- empty
+    if it isn't one of the mapped city names (the overwhelming majority of
+    queries: a locality, a state, or a city with no anglicized/official
+    split). Only ever ADDS extra terms to match against; never replaces or
+    narrows the guest's own original phrase."""
+    return _CITY_SYNONYMS.get(preferred_location.strip().lower(), [])
+
+
+>>>>>>> 368377a (20th October)
 def build_base_filters(args: RecommendPropertiesArgs, host_user_id: uuid.UUID) -> Select:
     """Budget/location/amenity filters only -- deliberately excludes the
     guest-count filter (see build_guest_count_filter below), so callers can
@@ -68,8 +117,17 @@ def build_base_filters(args: RecommendPropertiesArgs, host_user_id: uuid.UUID) -
     # unconditional clause.
     stmt = stmt.where(or_(Property.exact_airbnb_pricing.is_(True), Property.base_price > 0))
 
+<<<<<<< HEAD
     if args.budget is not None:
         stmt = stmt.where(Property.base_price <= args.budget * 1.15)
+=======
+    # No budget/price clause here, deliberately: stored base_price is not
+    # the applicable price (a cached live Airbnb rate or the host's automatic
+    # length-of-stay offer can move a property either side of the guest's
+    # budget), so narrowing on it could wrongly drop an eligible property.
+    # Budget eligibility is decided after pricing, in
+    # orchestrator.recommend_properties (pricing_engine.evaluate_stay_prices).
+>>>>>>> 368377a (20th October)
 
     if args.preferred_location:
         # Match against city name OR neighborhood_info so state-level queries
@@ -94,8 +152,18 @@ def build_base_filters(args: RecommendPropertiesArgs, host_user_id: uuid.UUID) -
                 ]
             )
         else:
+<<<<<<< HEAD
             loc = f"%{args.preferred_location}%"
             location_filter = or_(Property.city.ilike(loc), Property.neighborhood_info.ilike(loc))
+=======
+            # Match the guest's own phrase AND any known alternate city name
+            # for it (see _city_synonyms above) -- a property stored under
+            # either name is found regardless of which one the guest used.
+            terms = [args.preferred_location, *_city_synonyms(args.preferred_location)]
+            location_filter = or_(
+                *[or_(Property.city.ilike(f"%{term}%"), Property.neighborhood_info.ilike(f"%{term}%")) for term in terms]
+            )
+>>>>>>> 368377a (20th October)
         stmt = stmt.where(location_filter)
 
     # required_amenities is a SOFT ranking preference (see apply_amenity_boost

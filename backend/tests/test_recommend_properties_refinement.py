@@ -22,7 +22,14 @@ class _FakeFunctionCallParams:
         self.result = None
 
     async def result_callback(self, result):
+<<<<<<< HEAD
         self.result = result
+=======
+        # Tools return app/voice/tool_contract.py's envelope; keep it whole
+        # and expose its text for the existing content assertions.
+        self.envelope = result
+        self.result = result.get("result", result.get("message")) if isinstance(result, dict) else result
+>>>>>>> 368377a (20th October)
 
 
 async def _property(db_session, test_user, **overrides):
@@ -264,7 +271,11 @@ async def test_explicit_budget_wins_over_cheaper_than_shown_flag(db_session, tes
     recommend_properties = next(t for t in tools if t.__name__ == "recommend_properties")
 
     params = _FakeFunctionCallParams()
+<<<<<<< HEAD
     await recommend_properties(params, cheaper_than_shown=True, budget=9999)
+=======
+    await recommend_properties(params, cheaper_than_shown=True, budget_amount=9999, budget_basis="per_night")
+>>>>>>> 368377a (20th October)
     assert state.slots["budget"] == 9999
 
 

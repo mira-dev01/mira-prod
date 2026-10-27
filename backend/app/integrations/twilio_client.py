@@ -11,6 +11,10 @@ import re
 import httpx
 
 from app.config import settings
+<<<<<<< HEAD
+=======
+from app.services import usage_meter
+>>>>>>> 368377a (20th October)
 from app.utils.webhook_auth import verify_shared_secret_token
 
 logger = logging.getLogger(__name__)
@@ -57,6 +61,11 @@ def _sender_identity() -> dict[str, str] | None:
 
 
 async def send_whatsapp_message(to_phone: str, body: str, timeout: float = 15.0) -> dict:
+<<<<<<< HEAD
+=======
+    if not settings.twilio_enabled:
+        return {"status": "skipped", "reason": "Twilio is disabled (TWILIO_ENABLED=false)"}
+>>>>>>> 368377a (20th October)
     if not (settings.twilio_account_sid and settings.twilio_auth_token):
         return {"status": "skipped", "reason": "Twilio is not configured"}
     sender = _sender_identity()
@@ -81,6 +90,10 @@ async def send_whatsapp_message(to_phone: str, body: str, timeout: float = 15.0)
             raise TwilioError(f"send failed ({response.status_code}): {response.text}")
         data = response.json()
 
+<<<<<<< HEAD
+=======
+    usage_meter.record_usage_detached("twilio_whatsapp", "messages", 1, metadata={"kind": "freeform"})
+>>>>>>> 368377a (20th October)
     return {"status": "sent", "sid": data.get("sid"), "twilio_status": data.get("status")}
 
 
@@ -109,6 +122,11 @@ async def send_whatsapp_template(
     button (custom label, no raw URL text, no link-preview card) rather than
     an auto-linkified URL. content_variables keys are the template's "{{N}}"
     placeholders as strings, e.g. {"1": "🔴", "2": "HIGH"}."""
+<<<<<<< HEAD
+=======
+    if not settings.twilio_enabled:
+        return {"status": "skipped", "reason": "Twilio is disabled (TWILIO_ENABLED=false)"}
+>>>>>>> 368377a (20th October)
     if not (settings.twilio_account_sid and settings.twilio_auth_token):
         return {"status": "skipped", "reason": "Twilio is not configured"}
     sender = _sender_identity()
@@ -130,6 +148,10 @@ async def send_whatsapp_template(
             raise TwilioError(f"template send failed ({response.status_code}): {response.text}")
         data = response.json()
 
+<<<<<<< HEAD
+=======
+    usage_meter.record_usage_detached("twilio_whatsapp", "messages", 1, metadata={"kind": "template"})
+>>>>>>> 368377a (20th October)
     return {"status": "sent", "sid": data.get("sid"), "twilio_status": data.get("status")}
 
 

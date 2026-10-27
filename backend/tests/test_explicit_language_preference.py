@@ -18,7 +18,14 @@ class _FakeFunctionCallParams:
         self.result = None
 
     async def result_callback(self, result, **kwargs):
+<<<<<<< HEAD
         self.result = result
+=======
+        # Tools return app/voice/tool_contract.py's envelope; keep it whole
+        # and expose its text for the existing content assertions.
+        self.envelope = result
+        self.result = result.get("result", result.get("message")) if isinstance(result, dict) else result
+>>>>>>> 368377a (20th October)
 
 
 async def test_update_lead_sets_explicit_language_preference_hindi(test_property, db_session, test_user):

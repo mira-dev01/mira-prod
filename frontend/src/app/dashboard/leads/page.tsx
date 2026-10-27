@@ -22,7 +22,11 @@ import { WhatsAppButton } from "@/components/whatsapp-button";
 import { useAsync } from "@/hooks/use-async";
 import { useDateRange } from "@/hooks/use-date-range";
 import { api, ApiError } from "@/lib/api";
+<<<<<<< HEAD
 import { leadGuestLabel, leadPhoneLabel } from "@/lib/leads";
+=======
+import { leadGuestLabel, leadPhoneLabel, useLeadLabels } from "@/lib/leads";
+>>>>>>> 368377a (20th October)
 import { cn, isBrowserTestIdentity, matchesSearch } from "@/lib/utils";
 import type { LeadOut, LeadStatus } from "@/lib/types";
 
@@ -36,11 +40,14 @@ const urgencyTone = leadUrgencyTone;
 // amber (warming up), neutral gray (not yet) -- reusing the same tones the
 // Calls/Overview pages use for status, so "what does this color mean"
 // stays answerable from one system instead of a lead-specific palette.
+<<<<<<< HEAD
 const temperatureTone: Record<string, StatusTone> = {
   hot: "destructive",
   warm: "pending",
   cold: "neutral",
 };
+=======
+>>>>>>> 368377a (20th October)
 
 // status is the host's own follow-up lifecycle, separate from temperature
 // (see CLAUDE.md) -- open needs attention (pending/amber), contacted is in
@@ -90,6 +97,10 @@ function LeadsTable({
   onRowClick: (lead: LeadOut) => void;
   muted?: boolean;
 }) {
+<<<<<<< HEAD
+=======
+  const leadLabels = useLeadLabels();
+>>>>>>> 368377a (20th October)
   return (
     <div className={cn("overflow-x-auto", muted && "opacity-60")}>
       <Table>
@@ -117,11 +128,15 @@ function LeadsTable({
               <TableCell>{leadDatesLabel(lead)}</TableCell>
               <TableCell>{lead.num_guests ?? "—"}</TableCell>
               <TableCell>
+<<<<<<< HEAD
                 {lead.lead_temperature ? (
                   <StatusChip status={lead.lead_temperature} tone={temperatureTone[lead.lead_temperature]} />
                 ) : (
                   "—"
                 )}
+=======
+                <StatusChip status={leadLabels.label(lead.lead_temperature)} tone={leadLabels.tone(lead.lead_temperature)} className="normal-case" />
+>>>>>>> 368377a (20th October)
               </TableCell>
               <TableCell>
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -181,6 +196,10 @@ function LeadCard({
   onDragStart: (e: React.DragEvent) => void;
   onMarkHot?: (lead: LeadOut) => void;
 }) {
+<<<<<<< HEAD
+=======
+  const leadLabels = useLeadLabels();
+>>>>>>> 368377a (20th October)
   const closed = lead.status === "closed";
   return (
     <Card
@@ -194,9 +213,13 @@ function LeadCard({
           <span className="min-w-0 truncate font-medium">{leadGuestLabel(lead)}</span>
           <div className="flex shrink-0 items-center gap-1.5">
             <WhatsAppButton phone={lead.phone} size="icon-sm" stopPropagation />
+<<<<<<< HEAD
             {lead.lead_temperature && (
               <StatusChip status={lead.lead_temperature} tone={temperatureTone[lead.lead_temperature]} />
             )}
+=======
+            <StatusChip status={leadLabels.label(lead.lead_temperature)} tone={leadLabels.tone(lead.lead_temperature)} className="normal-case" />
+>>>>>>> 368377a (20th October)
           </div>
         </div>
         <p className="text-xs text-muted-foreground">
@@ -223,7 +246,11 @@ function LeadCard({
               onMarkHot(lead);
             }}
           >
+<<<<<<< HEAD
             Mark as Hot Lead
+=======
+            Mark as {leadLabels.labels.hot} lead
+>>>>>>> 368377a (20th October)
           </Button>
         )}
       </CardContent>
@@ -348,6 +375,10 @@ function ServiceRequestsTabContent() {
 }
 
 function BookingRequestsTabContent() {
+<<<<<<< HEAD
+=======
+  const leadLabels = useLeadLabels();
+>>>>>>> 368377a (20th October)
   const searchParams = useSearchParams();
   const initialStatus = searchParams.get("status") ?? "all";
 
@@ -443,7 +474,11 @@ function BookingRequestsTabContent() {
   async function handleMarkHot(lead: LeadOut) {
     try {
       await api.leads.update(lead.id, { status: "booked" });
+<<<<<<< HEAD
       toast.success("Marked as Hot Lead");
+=======
+      toast.success(`Marked as ${leadLabels.labels.hot} lead`);
+>>>>>>> 368377a (20th October)
       refetch();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Failed to update lead");
@@ -510,7 +545,11 @@ function BookingRequestsTabContent() {
       ) : view === "board" ? (
         (leads ?? []).length === 0 ? (
           <p className="text-sm text-muted-foreground">
+<<<<<<< HEAD
             No leads yet — they appear here once your portfolio&rsquo;s lead intake number starts receiving calls.
+=======
+            No leads yet — they appear here once your portfolio&rsquo;s call intake number starts receiving calls.
+>>>>>>> 368377a (20th October)
           </p>
         ) : searchFilteredLeads.length === 0 ? (
           <p className="text-sm text-muted-foreground">No leads match your search.</p>
@@ -526,7 +565,11 @@ function BookingRequestsTabContent() {
         <p className="text-sm text-muted-foreground">
           {leads && leads.length > 0
             ? "No leads match this status filter."
+<<<<<<< HEAD
             : "No leads yet — they appear here once your portfolio's lead intake number starts receiving calls."}
+=======
+            : "No leads yet — they appear here once your portfolio's call intake number starts receiving calls."}
+>>>>>>> 368377a (20th October)
         </p>
       ) : searchFilteredLeads.length === 0 ? (
         <p className="text-sm text-muted-foreground">No leads match your search.</p>

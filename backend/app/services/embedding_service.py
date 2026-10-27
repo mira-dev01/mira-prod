@@ -19,6 +19,10 @@ import logging
 import math
 
 from app.config import settings
+<<<<<<< HEAD
+=======
+from app.services import usage_meter
+>>>>>>> 368377a (20th October)
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +56,10 @@ async def get_embedding(text: str) -> list[float] | None:
 
         client = AsyncOpenAI(api_key=settings.openrouter_api_key, base_url="https://openrouter.ai/api/v1")
         response = await client.embeddings.create(model=EMBEDDING_MODEL, input=text)
+<<<<<<< HEAD
+=======
+        usage_meter.record_llm_response_usage("openrouter", response, model=EMBEDDING_MODEL, purpose="embedding")
+>>>>>>> 368377a (20th October)
         return response.data[0].embedding
     except Exception:
         logger.exception("Embedding request failed for text=%r -- semantic dedup will skip this item", text[:80])

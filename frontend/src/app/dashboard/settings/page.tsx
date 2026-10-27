@@ -12,11 +12,24 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TechniciansSection } from "@/components/settings/technicians-section";
+<<<<<<< HEAD
 import { HostCallHoursCard } from "@/components/settings/host-call-hours-card";
 import { API_BASE_URL, ApiError, api, getToken } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 
 const VALID_TABS = ["your account", "technicians", "billing", "api", "team"] as const;
+=======
+import { FeaturesSection } from "@/components/settings/features-section";
+import { DashboardSection } from "@/components/settings/dashboard-section";
+import { CapabilityNotice } from "@/components/capability-notice";
+import { HostCallHoursCard } from "@/components/settings/host-call-hours-card";
+import { NotificationsCard } from "@/components/settings/notifications-card";
+import { TransferNumbersCard } from "@/components/settings/transfer-numbers-card";
+import { API_BASE_URL, ApiError, api, getToken } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
+
+const VALID_TABS = ["your account", "features", "dashboard", "technicians", "billing", "api", "team"] as const;
+>>>>>>> 368377a (20th October)
 type SettingsTab = (typeof VALID_TABS)[number];
 
 function ComingSoonTab({ icon: Icon, label }: { icon: React.ComponentType<{ className?: string }>; label: string }) {
@@ -39,6 +52,7 @@ function SettingsPageContent() {
   const { user, loading, refreshUser } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
+<<<<<<< HEAD
   const initialTab = searchParams.get("tab");
   const [tab, setTab] = useState<SettingsTab>(
     VALID_TABS.includes(initialTab as SettingsTab) ? (initialTab as SettingsTab) : "your account"
@@ -47,6 +61,16 @@ function SettingsPageContent() {
   function handleTabChange(value: unknown) {
     if (typeof value !== "string" || !VALID_TABS.includes(value as SettingsTab)) return;
     setTab(value as SettingsTab);
+=======
+  // Derived from the URL rather than held in state, so in-page links (e.g.
+  // Features & modules' "Add a technician" -> ?tab=technicians) switch tabs
+  // too, not just the initial deep link.
+  const tabParam = searchParams.get("tab");
+  const tab: SettingsTab = VALID_TABS.includes(tabParam as SettingsTab) ? (tabParam as SettingsTab) : "your account";
+
+  function handleTabChange(value: unknown) {
+    if (typeof value !== "string" || !VALID_TABS.includes(value as SettingsTab)) return;
+>>>>>>> 368377a (20th October)
     // Keeps the URL deep-linkable without adding a history entry for every
     // tab click.
     router.replace(`/dashboard/settings?tab=${value}`, { scroll: false });
@@ -55,11 +79,14 @@ function SettingsPageContent() {
   const [leadExophone, setLeadExophone] = useState(user?.lead_exophone ?? "");
   const [submitting, setSubmitting] = useState(false);
 
+<<<<<<< HEAD
   const [phone, setPhone] = useState(user?.phone ?? "");
   const [savingPhone, setSavingPhone] = useState(false);
 
   const [notificationEmail, setNotificationEmail] = useState(user?.notification_email ?? "");
   const [savingNotificationEmail, setSavingNotificationEmail] = useState(false);
+=======
+>>>>>>> 368377a (20th October)
 
   async function handleSaveLeadExophone(e: React.FormEvent) {
     e.preventDefault();
@@ -67,14 +94,21 @@ function SettingsPageContent() {
     try {
       await api.auth.updateMe({ lead_exophone: leadExophone || null });
       await refreshUser();
+<<<<<<< HEAD
       toast.success("Lead intake number saved");
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Failed to save lead intake number");
+=======
+      toast.success("Call intake number saved");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Failed to save call intake number");
+>>>>>>> 368377a (20th October)
     } finally {
       setSubmitting(false);
     }
   }
 
+<<<<<<< HEAD
   async function handleSavePhone(e: React.FormEvent) {
     e.preventDefault();
     setSavingPhone(true);
@@ -103,6 +137,8 @@ function SettingsPageContent() {
     }
   }
 
+=======
+>>>>>>> 368377a (20th October)
   async function handleTestLeadAgent() {
     const token = await getToken();
     if (!token) {
@@ -147,6 +183,11 @@ function SettingsPageContent() {
       <Tabs value={tab} onValueChange={handleTabChange}>
         <TabsList>
           <TabsTrigger value="your account">Your account</TabsTrigger>
+<<<<<<< HEAD
+=======
+          <TabsTrigger value="features">Features &amp; modules</TabsTrigger>
+          <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
+>>>>>>> 368377a (20th October)
           <TabsTrigger value="technicians">Technicians</TabsTrigger>
           <TabsTrigger value="billing">Billing</TabsTrigger>
           <TabsTrigger value="api">API</TabsTrigger>
@@ -178,6 +219,7 @@ function SettingsPageContent() {
               </CardContent>
             </Card>
 
+<<<<<<< HEAD
             <Card>
               <CardHeader>
                 <CardTitle>Host transfer number</CardTitle>
@@ -201,11 +243,15 @@ function SettingsPageContent() {
                 </form>
               </CardContent>
             </Card>
+=======
+            <TransferNumbersCard />
+>>>>>>> 368377a (20th October)
 
             <HostCallHoursCard />
 
             <Card>
               <CardHeader>
+<<<<<<< HEAD
                 <CardTitle>Email Summaries</CardTitle>
               </CardHeader>
               <CardContent>
@@ -235,6 +281,19 @@ function SettingsPageContent() {
                 <p className="mb-3 text-sm text-muted-foreground">
                   Calls to this number run the Lead Agent across your full property portfolio instead of one
                   property — for booking enquiries, not existing-guest support. This is also your general
+=======
+                <CardTitle>Call intake number</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <CapabilityNotice
+                  capabilityId="lead_agent"
+                  className="mb-3"
+                  whenOff="The Portfolio Lead Agent is off in your features. Saving a number here turns it back on -- Mira answers whenever a call intake number is saved."
+                />
+                <p className="mb-3 text-sm text-muted-foreground">
+                  The number guests call to reach Mira. Calls to it run the Lead Agent across your whole
+                  portfolio — for booking enquiries, not existing-guest support. This is also your general
+>>>>>>> 368377a (20th October)
                   testing link: it asks the caller which property they mean instead of testing just one.
                 </p>
                 <form onSubmit={handleSaveLeadExophone} className="flex gap-2">
@@ -252,9 +311,25 @@ function SettingsPageContent() {
                 </Button>
               </CardContent>
             </Card>
+<<<<<<< HEAD
           </div>
         </TabsContent>
 
+=======
+
+            <NotificationsCard />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="features" className="pt-4">
+          <FeaturesSection />
+        </TabsContent>
+
+        <TabsContent value="dashboard" className="pt-4">
+          <DashboardSection />
+        </TabsContent>
+
+>>>>>>> 368377a (20th October)
         <TabsContent value="technicians" className="pt-4">
           <TechniciansSection />
         </TabsContent>

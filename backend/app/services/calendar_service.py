@@ -171,7 +171,19 @@ async def next_available_window(
 
 async def sync_property_ical(db: AsyncSession, property_: Property) -> int:
     """Fetch the property's iCal feed and upsert events into bookings,
+<<<<<<< HEAD
     keyed by iCal UID for idempotency. Returns count of events processed."""
+=======
+    keyed by iCal UID for idempotency. Returns count of events processed.
+
+    Each NEWLY seen event is classified (reservation vs no-guest block) and
+    run through booking reconciliation (find the matching Mira conversation,
+    detect its price -- see booking_reconciliation_service). Reconciliation
+    is best-effort: it runs in a savepoint per booking, and a failure there
+    is logged and leaves the booking created as pending_confirmation, so it
+    can never break or roll back the sync itself."""
+    from app.services import booking_reconciliation_service as reconciliation
+>>>>>>> 368377a (20th October)
     if not property_.ical_url:
         return 0
 
@@ -187,12 +199,17 @@ async def sync_property_ical(db: AsyncSession, property_: Property) -> int:
         ).all()
     }
 
+<<<<<<< HEAD
+=======
+    new_bookings: list[Booking] = []
+>>>>>>> 368377a (20th October)
     for event in events:
         existing = existing_by_uid.get(event.uid)
         if existing:
             existing.check_in = event.check_in
             existing.check_out = event.check_out
             existing.status = "confirmed"
+<<<<<<< HEAD
         else:
             db.add(
                 Booking(
@@ -205,6 +222,24 @@ async def sync_property_ical(db: AsyncSession, property_: Property) -> int:
                     guest_name=event.summary,
                 )
             )
+=======
+            if event.phone_last4 and not existing.guest_phone_last4:
+                existing.guest_phone_last4 = event.phone_last4
+        else:
+            booking = Booking(
+                property_id=property_.id,
+                check_in=event.check_in,
+                check_out=event.check_out,
+                platform="airbnb",
+                source_uid=event.uid,
+                status="confirmed",
+                guest_name=event.summary,
+                guest_phone_last4=event.phone_last4,
+                kind=reconciliation.classify_ical_kind(event.summary),
+            )
+            db.add(booking)
+            new_bookings.append(booking)
+>>>>>>> 368377a (20th October)
 
     # Remove bookings whose iCal event no longer appears in the feed -- e.g.
     # the guest cancelled on Airbnb. Without this, a cancelled booking's
@@ -215,6 +250,23 @@ async def sync_property_ical(db: AsyncSession, property_: Property) -> int:
         if source_uid not in current_uids:
             await db.delete(existing)
 
+<<<<<<< HEAD
+=======
+    if new_bookings:
+        await db.flush()
+    for booking in new_bookings:
+        # Read before the savepoint: a rolled-back savepoint expires the
+        # object, and an expired attribute can't be lazy-loaded under asyncio.
+        booking_id, is_reservation = booking.id, booking.kind == "reservation"
+        try:
+            async with db.begin_nested():
+                await reconciliation.reconcile_booking(db, booking, property_)
+        except Exception:  # noqa: BLE001 - reconciliation is best-effort, never blocks the sync
+            logger.exception("Booking reconciliation failed for booking %s", booking_id)
+            if is_reservation:
+                booking.price_status = "pending_confirmation"
+
+>>>>>>> 368377a (20th October)
     await db.commit()
     return len(events)
 

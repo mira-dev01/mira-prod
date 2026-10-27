@@ -1,6 +1,10 @@
 from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, Integer, Numeric, String, Text
+<<<<<<< HEAD
+=======
+from sqlalchemy.dialects.postgresql import JSONB
+>>>>>>> 368377a (20th October)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -46,16 +50,35 @@ class User(UUIDPkMixin, TimestampMixin, Base):
     # see POST /auth/me/photo, same Cloudinary upload pattern as property
     # photos). photo_url is the host's own picture, shown in the sidebar and
     # profile page; None means "no photo set", frontend falls back to
+<<<<<<< HEAD
     # initials. whatsapp_assist_enabled is a simple on/off placeholder for
     # now -- deliberately not a richer config shape yet, since which
     # WhatsApp features actually matter is still being worked out from host
     # testing.
+=======
+    # initials.
+>>>>>>> 368377a (20th October)
     photo_url: Mapped[str | None] = mapped_column(String(512))
     # Cover/banner image for the profile page's hero section. Same optional,
     # add-it-whenever pattern as photo_url -- None just means the hero shows
     # an empty placeholder inviting the host to add one later.
     banner_url: Mapped[str | None] = mapped_column(String(512))
+<<<<<<< HEAD
     whatsapp_assist_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+=======
+    # How the host is told about -- and pulled into -- guest calls: email
+    # summaries, escalation/transfer routing, WhatsApp alerts, lead labels.
+    # One validated document (app/schemas/notification_preferences.py, read
+    # via app/services/notification_preferences_service.py) because every
+    # sender already has this User loaded. {} = all defaults = the
+    # behaviour before these settings existed.
+    #
+    # The old whatsapp_assist_enabled / follow_up_channel_preference columns
+    # were never read by any backend code and are no longer mapped; their
+    # DB columns are dropped in the migration that ships this to main (not
+    # earlier: main's code still selects them).
+    notification_preferences: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")
+>>>>>>> 368377a (20th October)
 
     # Where escalation summaries (app/integrations/email_client.py, fired
     # from handle_escalate_to_host) get sent. None -- the common case -- means
@@ -117,7 +140,10 @@ class User(UUIDPkMixin, TimestampMixin, Base):
     max_discount_percent_override: Mapped[float | None] = mapped_column(Numeric(5, 2))
     allow_pets: Mapped[bool | None] = mapped_column(Boolean)
     allow_early_checkin: Mapped[bool | None] = mapped_column(Boolean)
+<<<<<<< HEAD
     follow_up_channel_preference: Mapped[str | None] = mapped_column(String(32))
+=======
+>>>>>>> 368377a (20th October)
 
     # Account-global host call hours (see
     # documentation/host-call-hours-and-handoff.md and

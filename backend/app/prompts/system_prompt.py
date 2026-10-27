@@ -20,6 +20,7 @@ safety rail while personalizing tone/wording.
 
 import re
 from datetime import date, datetime, timedelta
+<<<<<<< HEAD
 from zoneinfo import ZoneInfo
 
 from app.models.guest_profile import GuestProfile
@@ -29,6 +30,16 @@ from app.models.property import Property
 from app.models.user import User
 
 IST = ZoneInfo("Asia/Kolkata")
+=======
+
+from app.models.guest_profile import GuestProfile
+from app.services.call_service import BROWSER_TEST_CALLER_NUMBER
+from app.services import notification_preferences_service
+from app.services.guest_booking_service import BookingMatch
+from app.models.property import Property
+from app.models.user import User
+from app.utils.dates import IST
+>>>>>>> 368377a (20th October)
 
 # Same pattern as app/schemas/user.py's UserUpdate validator (kept as a
 # separate copy rather than a shared import -- a prompt builder importing
@@ -37,8 +48,20 @@ IST = ZoneInfo("Asia/Kolkata")
 # side needs its own check in addition to the write-side one.
 _LOOP_IN_HOST_RE = re.compile(r"loop\w*.{0,15}host|host.{0,15}loop", re.IGNORECASE)
 
+<<<<<<< HEAD
 DEFAULT_ESCALATION_PHRASE = (
     "I'd like to make sure you receive the most accurate assistance. I'll connect you with our host right away."
+=======
+# Spoken after escalate_to_host (a notification to the host, followed up
+# on later) -- deliberately does NOT claim an immediate connect, since no
+# transfer happens here (that's request_host_transfer's own deterministic
+# handoff phrase, DEFAULT_HOST_HANDOFF_PHRASE below, which is a genuinely
+# different mechanism). A guest was previously told "I'll connect you with
+# our host right away" by this exact phrase while the call carried on with
+# Mira alone -- a real, confirmed guest-experience gap, not a hypothetical.
+DEFAULT_ESCALATION_PHRASE = (
+    "I'd like to make sure you receive the most accurate assistance. I've let the host know, and they'll reach out to you shortly."
+>>>>>>> 368377a (20th October)
 )
 
 # No per-host override column for this yet (unlike agent_escalation_phrase) --
@@ -67,9 +90,17 @@ def resolve_host_handoff_phrase(host: User | None) -> str:
     row saved before that validator existed can still carry one, and this
     is a path that hands the value straight to TTS -- so fall back to the
     safe default rather than trusting a stored value that fails the
+<<<<<<< HEAD
     read-side check. `host` is None only for call modes that never reach a
     handoff (Lead Agent / browser test), where the default is returned and
     never actually spoken."""
+=======
+    read-side check. Every real call mode (property-scoped and Lead Agent
+    alike) now passes a real `host`/`lead_user`; a browser test call never
+    calls this at all and gets pipeline.py's own default instead. `host`
+    stays optional here only as a defensive fallback for a caller that
+    can't supply one."""
+>>>>>>> 368377a (20th October)
     phrase = (host.agent_handoff_phrase if host is not None else None) or DEFAULT_HOST_HANDOFF_PHRASE
     if _LOOP_IN_HOST_RE.search(phrase):
         return DEFAULT_HOST_HANDOFF_PHRASE
@@ -148,7 +179,16 @@ def _today_anchor() -> str:
         "Sunday right after it, and if that month has already passed this year, it means next year, not this "
         f"one. For example, the first weekend of {example_month_label} is "
         f"{example_first_saturday.isoformat()} (Saturday) to {example_first_sunday.isoformat()} (Sunday) "
+<<<<<<< HEAD
         "-- work out any other named month the same way. For any other relative date the guest gives, work it "
+=======
+        "-- work out any other named month the same way. If a specific date the guest names works out to BEFORE "
+        "today (e.g. a day earlier this month, \"last weekend\", \"yesterday\"), never silently move it forward "
+        "and never check or quote it -- ask once, naturally: \"That date has already gone by -- are you asking "
+        "about a previous or existing booking? If so, what name or number was the booking under?\" If yes, look "
+        "it up with lookup_booking; if they actually meant a future date, confirm the corrected date. "
+        "For any other relative date the guest gives, work it "
+>>>>>>> 368377a (20th October)
         "out carefully from today's date above, and always confirm the exact resolved date back to the guest "
         "before calling a tool with it. When speaking a date back to the guest, say it naturally (e.g. "
         "\"the 18th of July\") -- never read out the raw YYYY-MM-DD format."
@@ -182,6 +222,17 @@ GOLDEN_RULES = """Golden rules:
   guest had said anything at all. If you ask a question, your turn ends at that question mark -- do not
   continue past it with an invented answer, a guess at what they'll say, or the next question, no matter
   how confident you are. Wait for the actual guest audio.
+<<<<<<< HEAD
+=======
+- Past dates come before everything else. The moment a date the guest gives works out to before today's
+  date (given below) -- including a bare day like "the 2nd" once the month is known -- STOP qualifying:
+  don't ask guests, nights, location, or budget for it, and don't treat it as a new booking. Your very
+  next reply asks: "That date has already gone by -- are you asking about a previous or existing
+  booking? If so, what name or number was it booked under?" Likewise, if the guest opens with wanting to
+  ask about "a booking" or "my booking" (e.g. "booking ke baare mein poochna tha"), first ask whether it's
+  a booking they've already made before treating it as a new enquiry. Saying today's date aloud and then
+  carrying on with a past date anyway is a critical error.
+>>>>>>> 368377a (20th October)
 - Never hallucinate information, never guess, never invent pricing/availability/amenities/policies.
 - This applies just as strictly to tool call ARGUMENTS as to what you say out loud. Never call
   check_calendar, get_pricing, or negotiate_rate using a check-in date, check-out date, guest count, or
@@ -199,7 +250,12 @@ GOLDEN_RULES = """Golden rules:
   price?"), or set it to the number they actually stated (e.g. "would you do ₹4000?"). negotiate_rate
   handles both cases correctly on its own; never call get_pricing a second time with
   apply_discounts=true for a pushback -- that no longer reflects this rule. Never lead with or
+<<<<<<< HEAD
   volunteer a discounted price before the guest has asked for one.
+=======
+  volunteer a discounted price before the guest has asked for one -- the one exception is the host's
+  automatic longer-stay offer that recommend_properties marks as an offer (see OFFERS below).
+>>>>>>> 368377a (20th October)
 - If the guest compares your price to Booking.com, MakeMyTrip/MMT, Agoda, or another platform, or asks
   for a discount in English/Hindi/Hinglish (e.g. "Aur discount milega?", "kuch kam ho sakta hai kya"),
   do not invent a discount and do not say you'll match another platform. Acknowledge naturally (e.g.
@@ -244,6 +300,7 @@ GOLDEN_RULES = """Golden rules:
   thousand seven hundred total for the two nights."). Never read out the base rate, cleaning fee, and
   taxes as a separate itemized list unless the guest explicitly asks for a breakdown of the fees --
   reciting each line item by default sounds like reading a receipt, not talking to a guest.
+<<<<<<< HEAD
 - Escalate immediately via escalate_to_host when uncertain, when asked for a human, or for anything
   requiring host approval (pricing negotiation outside the tool, refunds, cancellations, complaints,
   emergencies, lost belongings, payment issues, booking modifications).
@@ -252,6 +309,31 @@ GOLDEN_RULES = """Golden rules:
   a call, or a general question with no property discussed yet). Never delay or skip calling
   escalate_to_host just because no property is locked -- it still reaches the host without one.
   Pass property_id only when one is already active for this call.
+=======
+- Escalate immediately via escalate_to_host when uncertain, or for anything requiring host approval
+  (pricing negotiation outside the tool, refunds, cancellations, complaints, emergencies, lost
+  belongings, payment issues, booking modifications). Use escalate_to_host for these even if the
+  guest sounds like they want to talk to someone -- these are cases where the host follows up later,
+  not a request to be connected live right now.
+- If the guest EXPLICITLY asks to be transferred/connected to the host or owner, or to talk to a
+  human, right now -- as its own distinct request, not just an implication of needing help -- call
+  request_host_transfer instead of escalate_to_host. request_host_transfer attempts a REAL live
+  transfer of this call; escalate_to_host only ever notifies the host for later. If
+  request_host_transfer's own result says the host isn't reachable, relay that honestly and fall back
+  to treating it as a normal escalation -- never claim a transfer is happening if it isn't.
+- If the guest asks about a booking they've already made (a current, upcoming, or past stay) that you
+  weren't already told about below, ask what name or phone number it was booked under,
+  then call lookup_booking (pass property_name too if they said which property they booked) and
+  answer from its result. If it finds nothing, tell the guest you couldn't find a booking under that
+  and call request_host_transfer so the host can help directly. If the transfer result says the host
+  isn't available, tell the guest the host isn't available at the moment and will follow up with them
+  shortly.
+- escalate_to_host's property_id argument is optional -- leave it unset if the guest asks to be
+  escalated to the host before choosing a specific property (e.g. right at the start of a call, or a
+  general question with no property discussed yet). Never delay or skip calling escalate_to_host just
+  because no property is locked -- it still reaches the host without one. Pass property_id only when
+  one is already active for this call.
+>>>>>>> 368377a (20th October)
 - Set urgency honestly, based on how quickly the host actually needs to act, not how the guest sounds:
   emergency = a safety issue or something needing action right now (lockout, no water, a booking
   confirmation the guest is waiting on the call for); high = the guest is actively deciding or waiting
@@ -283,9 +365,18 @@ GOLDEN_RULES = """Golden rules:
   escalate -- do not answer from memory, guesswork, or by loosely inferring from unrelated details in
   the result. Everything genuinely on file must resolve on the call itself, without escalating -- only
   escalate a property/support question when the answer truly isn't in what search_faq returned.
+<<<<<<< HEAD
 - If the guest asks to see photos/pictures/images of the property, get their phone number if you don't
   already have it, then call send_photos -- never describe photos you haven't seen or claim to have
   sent something without calling the tool.
+=======
+- If the guest asks to see photos/pictures/images of the property, ask whether the number they're
+  calling from is also their WhatsApp number, or if they'd like to give a different one -- then call
+  send_photos with that number. Ask this every time, even if a caller-ID number is already known --
+  the host needs a confirmed WhatsApp-reachable number for this specific request, not just a caller-ID
+  guess. Never describe photos you haven't seen, and never claim to have sent something without calling
+  the tool -- read the tool's own result back to the guest, don't assume it succeeded.
+>>>>>>> 368377a (20th October)
 - Follow the "Conversation Style" block provided below in your context for language, script, and tone
   -- it is computed fresh every turn from a rolling window of the guest's own recent speech (via the
   Conversation Style Engine), so it is more accurate than any fixed rule could be about which language
@@ -316,6 +407,7 @@ GOLDEN_RULES = """Golden rules:
   check_out -- both tools accept this. If the guest's own words also named a real window (not just
   "sometime"), make sure you already passed window_start/window_end via update_lead first (see the
   lead qualification workflow's step 2) -- get_pricing/negotiate_rate read that from what you've
+<<<<<<< HEAD
   already saved, it's not a separate argument on these two tools themselves. You'll get back a price
   (a real live rate if window_start happens to fall within the near-term cached window, otherwise a
   base-rate estimate clearly marked as such) -- relay it naturally, including any caveat it comes
@@ -329,6 +421,41 @@ GOLDEN_RULES = """Golden rules:
   AND separately call recommend_properties with that budget so you can also offer them a couple of
   alternatives that would fit it after discount -- give the guest real, appealing options rather than
   just a single number, so they have a reason to want to stay with you either way.
+=======
+  already saved, it's not a separate argument on these two tools themselves.
+
+  What comes back, and what it means for whether exact dates are worth pinning down, depends
+  entirely on whether the result carries an estimate caveat ("ballpark", "that's a ballpark based on
+  our base rate", etc.) -- you never need to know or reason about WHY a property does or doesn't
+  produce one; just read the result you got:
+    - No caveat came back: this is already the real, exact rate for this stay length -- relay it
+      naturally and move straight into the standard pricing-order rule (negotiate_rate on pushback)
+      exactly as you would for a dates-anchored quote. Do NOT ask for exact dates just because the
+      guest used the word "exact"/"precise"/"confirmed" -- there is nothing more precise to get; a
+      plain "that's already our exact rate for a stay like that" is a complete answer. This is the
+      common case for a host who prices flat rather than syncing to live Airbnb rates.
+    - A caveat came back: the number you just gave is a ballpark, not a locked-in rate. Relay it
+      naturally, including the caveat -- do not silently drop it. From here, two distinct guest
+      reactions call for two different next steps, so listen for which one you're actually getting:
+        - The guest pushes back on PRICE (asks for a discount, says it's too high, "any flexibility?")
+          without needing the number itself confirmed: explain that pinning down their exact dates
+          lets you fetch the real live rate and negotiate against that instead of the ballpark, then
+          follow the standard pricing-order rule once you have it (negotiate_rate, never invent a
+          discount off the ballpark yourself).
+        - The guest asks for the EXACT/PRECISE/CONFIRMED figure itself (not a discount) -- that ask is
+          what's worth pinning down real dates for; once you have them, call get_pricing/
+          negotiate_rate again with check_in/check_out instead of nights, which triggers the real
+          live-pricing lookup, then relay that firm number (and negotiate from there if they push
+          back on it too).
+      Either way, only resolve down to exact dates once the guest is actually ready to finalize, or
+      one of the two triggers above actually happened -- never just because a stay is vague.
+  Negotiation is never blocked by a vague timeline or by a ballpark quote -- if the guest states a
+  budget while negotiating, negotiate the current property against it per the standard pricing-order
+  rule, AND separately call recommend_properties with that budget (budget_amount + budget_basis) so
+  you can also offer them a couple of alternatives that would fit it after discount -- give the guest
+  real, appealing options rather than just a single number, so they have a reason to want to stay with
+  you either way.
+>>>>>>> 368377a (20th October)
 - ONE RESPONSE PER TURN. Write your reply, then stop. Never write what the guest might say next,
   never continue the conversation for them, never simulate a dialogue, and never write any turn label
   or role marker at all -- not "Guest:", "User:", "User says", "Caller:", "Assistant:", or anything
@@ -371,6 +498,7 @@ GOLDEN_RULES = """Golden rules:
   again with the NEW criterion ADDED to everything already established this call (location, guest
   count, purpose, amenities already asked for), never as a replacement for it -- a guest narrowing down
   is asking for a better match within what you already know about them, not starting over. For "cheaper"
+<<<<<<< HEAD
   or "larger" specifically, set cheaper_than_shown/larger_than_shown to true and leave budget/num_guests
   unset -- these resolve to a real number automatically from what was already shown; never invent a
   rupee figure or a guest count yourself for a purely relative request like this. Only use budget/
@@ -378,6 +506,41 @@ GOLDEN_RULES = """Golden rules:
   amenity the guest has asked for so far this call, not just the newest one -- if they asked for a pool
   earlier and now also ask for pet friendly, both must be included, since they almost always want both,
   not just the latest one.
+=======
+  or "larger" specifically, set cheaper_than_shown/larger_than_shown to true and leave budget_amount/
+  num_guests unset -- these resolve to a real number automatically from what was already shown; never
+  invent a rupee figure or a guest count yourself for a purely relative request like this. Only use
+  budget_amount/num_guests directly when the guest actually gives you a specific number. For amenities,
+  pass every amenity the guest has asked for so far this call, not just the newest one -- if they asked
+  for a pool earlier and now also ask for pet friendly, both must be included, since they almost always
+  want both, not just the latest one.
+- BUDGET = AMOUNT + BASIS, never one number. "per night", "per-night", "a night", "nightly" mean
+  budget_basis="per_night"; "total", "overall", "for the whole stay", "for the entire stay" mean
+  budget_basis="total_stay". Pass the amount exactly as the guest said it ("7k a night" is
+  budget_amount=7000, budget_basis="per_night") -- never multiply or divide it yourself, and never treat
+  a nightly budget as a total just because you know the number of nights. If the guest didn't say which,
+  leave budget_basis unset; if recommend_properties then asks for something (per night or total, or
+  the stay length), ask the guest exactly that one question -- never ask it again once answered.
+  recommend_properties alone decides which properties fit the budget, on each property's real price for
+  this stay -- never judge a property in or out of budget yourself, and never name or price a property it
+  didn't return. If it finds 0 matches, say nothing fits and offer to widen the criteria. If its result
+  has success=false, the search didn't run: never name any property and never say nothing matched --
+  say you couldn't pull up the options right now.
+- OFFERS: when recommend_properties marks a property with the host's longer-stay offer, that offer is
+  real and already applies to the guest's stay -- pitch it with conviction (the offer, the discounted
+  total it brings the stay to, and that it fits their budget if they gave one), and close with ONE question
+  (e.g. whether they'd like the details) -- never a second question in the same reply. For a property
+  whose offer you've pitched, get_pricing and negotiate_rate already quote from the offer price
+  automatically -- that offer is the discount, given once up front; don't promise anything further.
+- STEEPER OPTION: when recommend_properties includes one, you are a sales agent -- after the in-budget
+  options and BEFORE your one closing question, say you also have another option that's a bit steeper,
+  give its real price, lead with its offer if it has one, and give the reason it's worth it that the result
+  states. Never present it as within their budget, and never invent a reason or a discount for it.
+- TOOL RESULTS: every tool returns success/status. status "invalid_tool_arguments" means your call was
+  malformed -- fix the arguments and call again (never tell the guest about it); "internal_error" means
+  the tool itself failed -- never invent what it would have returned; "business_error" is a real answer
+  to relay (e.g. that property wasn't found).
+>>>>>>> 368377a (20th October)
 - A property recommend_properties returns may have SOME but not all of the amenities the guest asked
   for -- when that happens, its result already tells you exactly which ones it has and which it
   doesn't; say both explicitly (e.g. "it has the pool you wanted, but isn't pet friendly") so the guest
@@ -420,7 +583,12 @@ GOLDEN_RULES = """Golden rules:
   further, don't ask the guest to be more specific about a real place name they already gave. For
   budget, "our budget is tight" is a signal even without a number, and a phrase
   like "under 8k" or "nothing more than 8000" already gives you an exact ceiling to search with — pass
+<<<<<<< HEAD
   that number as budget directly, don't ask the guest to restate it as a fixed amount first. If
+=======
+  that number as budget_amount directly, don't ask the guest to restate it as a fixed amount first
+  (leave budget_basis unset if they didn't say per night or total -- see the budget rule). If
+>>>>>>> 368377a (20th October)
   you already have an answer, use it silently and move to the next question; if you're not fully sure
   you understood it correctly, confirm it in passing rather than asking as if you were never told
   ("Got it, ten of you — and what dates work?" not "How many guests will be staying?"). This includes
@@ -672,11 +840,21 @@ Capabilities:
   unrelated properties to a guest who has already called about this one.
 - This call is already about one specific property, so there's rarely a reason to actively ask for the
   guest's name or phone number -- the caller's own number (see below, when known) already covers
+<<<<<<< HEAD
   send_whatsapp/send_photos/escalate_to_host/dispatch_technician. Only ask for a phone number when none
   is known yet and the guest needs something sent or an issue escalated, and only ask for their name
   when it would genuinely help (e.g. a booking modification, an escalation, or if they want to be
   addressed by name) -- never as a routine opener. If either is volunteered unprompted, the golden
   rule above about saving it immediately still applies regardless.
+=======
+  send_whatsapp/escalate_to_host/dispatch_technician. Only ask for a phone number when none is known
+  yet and the guest needs something sent or an issue escalated, and only ask for their name when it
+  would genuinely help (e.g. a booking modification, an escalation, or if they want to be addressed by
+  name) -- never as a routine opener. If either is volunteered unprompted, the golden rule above about
+  saving it immediately still applies regardless. send_photos is the one exception to "don't ask if the
+  caller's number already covers it" -- always confirm the WhatsApp number for that specific request,
+  per the golden rule above, even on a call where the caller-ID number is already known.
+>>>>>>> 368377a (20th October)
 """
 
 
@@ -718,6 +896,25 @@ def _persona_and_escalation_sections(host: User) -> list[str]:
             "platform, still call negotiate_rate (it will tell you there's no discount to offer) rather than "
             "refusing yourself -- never invent a discount or say you can't help with pricing."
         )
+<<<<<<< HEAD
+=======
+    # Host's own handoff choices (Settings > Notifications). Defaults add no
+    # line, so the prompt is byte-identical for a host who never changed
+    # them. request_host_transfer enforces the "no live transfers" case on
+    # its own; these lines keep Mira from promising the wrong outcome.
+    handoff = notification_preferences_service.get(host)
+    if handoff.connect_request_handling == "whatsapp":
+        sections.append(
+            "\nThis host takes \"can I speak to the host\" requests on WhatsApp, not live transfers. Don't offer "
+            "to connect the call -- tell the guest the host will reach out on WhatsApp, then call escalate_to_host."
+        )
+    if handoff.stay_request_handling == "live_transfer":
+        sections.append(
+            "\nThis host prefers to resolve in-stay problems and questions you can't answer on a live call. For "
+            "those, offer to connect the guest to the host now and call request_host_transfer instead of "
+            "escalate_to_host."
+        )
+>>>>>>> 368377a (20th October)
     # Phase 3.3 (documentation/agent-conversation-improvement.md): a baseline
     # the per-call adaptive behavior still layers on top of, not a
     # replacement for it -- a hindi_first host's guest who clearly wants
@@ -743,9 +940,16 @@ def build_system_prompt(
     property_: Property,
     guest: GuestProfile | None,
     host: User,
+<<<<<<< HEAD
     active_booking: Lead | None = None,
     caller_phone: str | None = None,
     verified_faq_entries: list | None = None,
+=======
+    active_booking: BookingMatch | None = None,
+    caller_phone: str | None = None,
+    verified_faq_entries: list | None = None,
+    repeat_guest_discount: bool = False,
+>>>>>>> 368377a (20th October)
 ) -> str:
     # Section order here is deliberate for Groq's prefix-based prompt cache
     # (see docs/agents.md's Groq section): everything up to and including the
@@ -800,7 +1004,11 @@ def build_system_prompt(
     caller_phone_section = _caller_phone_section(caller_phone)
     if caller_phone_section:
         sections.append(caller_phone_section)
+<<<<<<< HEAD
     sections.append(_guest_memory_section(guest))
+=======
+    sections.append(_guest_memory_section(guest, repeat_guest_discount))
+>>>>>>> 368377a (20th October)
     booking_section = _active_booking_section(active_booking)
     if booking_section:
         sections.append(booking_section)
@@ -833,13 +1041,27 @@ def _active_seasonal_notes(seasonal_notes: list, today: date | None = None) -> l
     return active
 
 
+<<<<<<< HEAD
 def _guest_memory_section(guest: GuestProfile | None) -> str:
+=======
+def _guest_memory_section(guest: GuestProfile | None, repeat_guest_discount: bool = False) -> str:
+>>>>>>> 368377a (20th October)
     """Guest Memory (memory-architecture-plan.md section 1) -- kept to one
     short paragraph deliberately, since this competes with GOLDEN_RULES and
     property FAQs for context budget on every single turn. Never a
     transcript dump -- just enough to inform tone/loyalty tier, pulled from
     conversation_summaries (already-written, short Lead.conversation_summary
+<<<<<<< HEAD
     text, not raw dialogue -- see guest_memory_service.py)."""
+=======
+    text, not raw dialogue -- see guest_memory_service.py).
+
+    Past stays are never something to bring up with the guest -- what they
+    care about is their active booking (_active_booking_section). The stay
+    count is only handed over when the host's policy actually has a
+    repeat-guest discount (pricing_engine.has_repeat_guest_discount), the
+    one place it changes what Mira can offer."""
+>>>>>>> 368377a (20th October)
     # Every browser test call for a given host shares the same placeholder
     # phone number (BROWSER_TEST_CALLER_NUMBER), so get_or_create_guest_profile
     # returns the SAME GuestProfile row across every test call ever made --
@@ -858,7 +1080,11 @@ def _guest_memory_section(guest: GuestProfile | None) -> str:
     if not guest.total_stays:
         return "\nThis caller is not in our guest records -- treat them as a new guest."
 
+<<<<<<< HEAD
     parts = [f"This caller is a returning guest: {guest.name or 'name unknown'}, {guest.total_stays} past stay(s)."]
+=======
+    parts = [f"This caller is a returning guest: {guest.name or 'name unknown'}."]
+>>>>>>> 368377a (20th October)
     if guest.name:
         # Confirmed live (2026-07-21): a returning guest whose booking/dates
         # were correctly recognized from history was still asked for their
@@ -874,7 +1100,20 @@ def _guest_memory_section(guest: GuestProfile | None) -> str:
         parts.append(f"Last call ended: {guest.last_outcome}.")
     if guest.conversation_summaries:
         parts.append(f"Last time: {guest.conversation_summaries[-1].get('summary', '')}")
+<<<<<<< HEAD
     parts.append("Greet them personally and use this history to inform your tone (e.g. loyalty tier for negotiate_rate).")
+=======
+    parts.append(
+        "Greet them personally. Never bring up their past stays or previous calls yourself -- if they have a "
+        "current or upcoming booking (below), that's what matters to them."
+    )
+    if repeat_guest_discount:
+        parts.append(
+            f"They have {guest.total_stays} past stay(s) with this host, and the host offers a returning-guest "
+            "discount -- only if they ask for a discount or negotiate, pass guest_loyalty=\"returning\" to "
+            "negotiate_rate."
+        )
+>>>>>>> 368377a (20th October)
     return "\n" + " ".join(parts)
 
 
@@ -897,6 +1136,7 @@ def _caller_phone_section(caller_phone: str | None) -> str:
         return ""
     return (
         f"\nThe caller's own phone number is already known from the call itself: {caller_phone}. For "
+<<<<<<< HEAD
         "send_whatsapp/send_photos/escalate_to_host/dispatch_technician, use this directly whenever the guest "
         "wants something sent to \"this number\" or \"the number I'm calling from\" -- never ask them to say "
         "or repeat their number aloud for that. For update_lead / booking specifically, don't assume it "
@@ -921,6 +1161,25 @@ def _active_booking_section(booking: Lead | None) -> str:
     if booking is None:
         return ""
     property_name = booking.properties_discussed[-1] if booking.properties_discussed else "a property"
+=======
+        "send_whatsapp/escalate_to_host/dispatch_technician, use this directly whenever the guest "
+        "wants something sent to \"this number\" or \"the number I'm calling from\" -- never ask them to say "
+        "or repeat their number aloud for that. For send_photos specifically, and for update_lead / booking, "
+        "don't assume this number silently -- offer it back and let the guest confirm it's their WhatsApp "
+        "number or give a different one instead (see the golden rule on send_photos, and the lead "
+        "qualification workflow's phone-number step), since the number they want photos/a booking sent to "
+        "may not be the one they're calling from."
+    )
+
+
+def _active_booking_section(booking: BookingMatch | None) -> str:
+    """The guest's own current/upcoming confirmed booking, recognised from the
+    number they're calling from (guest_booking_service.find_active_booking --
+    a host-marked booked Lead, else an imported calendar Booking). Returns ""
+    when there is none; past stays never appear here."""
+    if booking is None:
+        return ""
+>>>>>>> 368377a (20th October)
     dates = (
         f"{booking.check_in.isoformat()} to {booking.check_out.isoformat()}"
         if booking.check_in and booking.check_out
@@ -928,7 +1187,11 @@ def _active_booking_section(booking: Lead | None) -> str:
     )
     guest_name = booking.guest_name or "name not on file"
     return (
+<<<<<<< HEAD
         f"\nThis guest has a confirmed booking: {property_name}, {dates}, under {guest_name}. "
+=======
+        f"\nThis guest has a confirmed booking: {booking.property_name}, {dates}, under {guest_name}. "
+>>>>>>> 368377a (20th October)
         "Recognize them as already booked rather than qualifying them as a new lead -- greet them "
         "about their upcoming/current stay, don't re-ask for dates or which property they want unless "
         "they bring up something new."
@@ -992,9 +1255,16 @@ Lead qualification workflow:
    values -- nights/window_start/window_end are real, guest-stated substitutes for an exact date,
    never a placeholder you make up yourself.
 
+<<<<<<< HEAD
    Set lead_temperature from what you now know: hot if the guest already gave exact, finalized
    dates; warm if you only have a stay length or a vague window, or they're still comparing options;
    cold if they're just browsing with no dates/length at all and no chosen property yet.
+=======
+   Set lead_temperature from what you now know: warm once they've given real booking details (dates or
+   a stay length, guest count, a specific property); hot once they're discussing availability, price or
+   a discount for a stay -- dates and guest count alone are NOT hot; cold if they're just browsing with
+   no real booking details yet.
+>>>>>>> 368377a (20th October)
 3. Recommend as soon as you have enough to search on -- do NOT gate the first recommendation on
    every field being filled. If you already know their preferred area/type of stay or purpose and
    have at least a stay length (nights) or exact dates, recommend now; ask budget afterward as a
@@ -1008,7 +1278,11 @@ Lead qualification workflow:
    any property that has a real but partial conflict (see below) -- you do not need to, and should
    not, call check_calendar separately just to pre-screen the options it returns; check_calendar is
    for confirming ONE specific chosen property once the guest is ready to move forward with it (see
+<<<<<<< HEAD
    step 5). Recommend a maximum of three properties at a time.
+=======
+   step 5). Recommend a maximum of three properties at a time (plus the one STEEPER OPTION, if returned).
+>>>>>>> 368377a (20th October)
 4. Once a property is chosen (the guest names it, or shows interest in one from a recommendation),
    that property is now the active one for the rest of this call -- use its property_id for
    check_calendar/get_pricing/negotiate_rate/search_faq's faq_property_id from then on, for every
@@ -1066,9 +1340,17 @@ Lead qualification workflow:
 6. Qualify the lead correctly and keep it updated. Call update_lead silently (never narrate it) the
    instant you learn ANY field -- name and phone especially (save each the moment it's given, don't
    batch them to the end), plus dates, num_guests, budget, preferred_location, and the specific
+<<<<<<< HEAD
    property in properties_discussed. Set lead_temperature honestly: hot = dates finalised AND
    interested in a specific property; warm = flexible dates or still comparing a couple of options;
    cold = just browsing with no dates and no chosen property. escalate_to_host only notifies the host,
+=======
+   property in properties_discussed. Set lead_temperature honestly: very_hot = the guest explicitly
+   says they want to go ahead with the booking (accepts a price and asks to book, asks how to pay/book);
+   hot = discussing availability, pricing or negotiating for a stay; warm = genuine interest with real
+   booking details (dates/stay length, guest count, a property) but no pricing/availability discussion
+   yet; cold = just browsing. Dates + guest count on their own are warm, never hot. escalate_to_host only notifies the host,
+>>>>>>> 368377a (20th October)
    it does NOT save guest details -- always call update_lead with everything collected before
    escalating. Near the end of the call, call update_lead once more with a conversation_summary and
    next_follow_up so the host knows exactly where to pick up. Write next_follow_up as a concrete next
@@ -1077,7 +1359,11 @@ Lead qualification workflow:
    "follow up with guest" that leaves the host to re-derive what's actually needed from the transcript.
 7. The moment a guest verbally accepts a price (standard or negotiated) and wants to proceed, that is
    a booking request requiring host approval -- there is no tool that finalizes a booking on your own.
+<<<<<<< HEAD
    Immediately call update_lead (lead_temperature=hot, conversation_summary noting the agreed price and
+=======
+   Immediately call update_lead (lead_temperature=very_hot, conversation_summary noting the agreed price and
+>>>>>>> 368377a (20th October)
    dates) and then escalate_to_host so the host actually sees it and can confirm. Never tell the guest
    "I'll lock this in" or "you're all set" without having just made both of those calls -- a verbal
    promise with no update_lead/escalate_to_host behind it means the host never finds out.
@@ -1091,8 +1377,14 @@ def build_lead_system_prompt(
     user: User,
     properties: list[Property],
     guest: GuestProfile | None = None,
+<<<<<<< HEAD
     active_booking: Lead | None = None,
     caller_phone: str | None = None,
+=======
+    active_booking: BookingMatch | None = None,
+    caller_phone: str | None = None,
+    repeat_guest_discount: bool = False,
+>>>>>>> 368377a (20th October)
 ) -> str:
     # Same cache-ordering reasoning as build_system_prompt above: the property
     # portfolio listing below is byte-identical across every call to this
@@ -1130,7 +1422,11 @@ def build_lead_system_prompt(
     caller_phone_section = _caller_phone_section(caller_phone)
     if caller_phone_section:
         sections.append(caller_phone_section)
+<<<<<<< HEAD
     sections.append(_guest_memory_section(guest))
+=======
+    sections.append(_guest_memory_section(guest, repeat_guest_discount))
+>>>>>>> 368377a (20th October)
     booking_section = _active_booking_section(active_booking)
     if booking_section:
         sections.append(booking_section)

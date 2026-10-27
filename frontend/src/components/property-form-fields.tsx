@@ -1,5 +1,9 @@
 "use client";
 
+<<<<<<< HEAD
+=======
+import { CapabilityNotice } from "@/components/capability-notice";
+>>>>>>> 368377a (20th October)
 import { Button } from "@/components/ui/button";
 import { DictationInput } from "@/components/ui/dictation-input";
 import { DictationTextarea } from "@/components/ui/dictation-textarea";
@@ -75,6 +79,14 @@ export function PropertyFormFields({
             onChange={(e) => onChange({ ...form, base_price: Number(e.target.value) })}
           />
         </div>
+<<<<<<< HEAD
+=======
+        <CapabilityNotice
+          capabilityId="live_airbnb_pricing"
+          className="col-span-2"
+          whenUnavailable="Live Airbnb prices aren't connected for your workspace yet, so Mira quotes the base price above even with Smart pricing on."
+        />
+>>>>>>> 368377a (20th October)
         <div className="col-span-2 grid grid-cols-3 gap-3">
           <div
             className="flex items-center justify-between gap-2 rounded-lg border p-3"

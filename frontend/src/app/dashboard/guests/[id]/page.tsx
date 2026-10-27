@@ -16,6 +16,10 @@ import { ListRow, ListRowHeader } from "@/components/ui/list-row";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatCard } from "@/components/stat-card";
 import { StatusChip, type StatusTone } from "@/components/status-chip";
+<<<<<<< HEAD
+=======
+import { useLeadLabels } from "@/lib/leads";
+>>>>>>> 368377a (20th October)
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError } from "@/lib/api";
 import { isBrowserTestIdentity } from "@/lib/utils";
@@ -63,6 +67,10 @@ function entriesToPrefs(entries: PrefEntry[]): Record<string, string> {
 }
 
 export default function GuestProfilePage() {
+<<<<<<< HEAD
+=======
+  const leadLabels = useLeadLabels();
+>>>>>>> 368377a (20th October)
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const { data: detail, loading, refetch } = useAsync(() => api.guests.detail(params.id), [params.id]);
@@ -167,11 +175,15 @@ export default function GuestProfilePage() {
                     <ListRow key={i}>
                       <ListRowHeader>
                         <span className="text-sm font-medium">{entry.property_name ?? "Portfolio-wide"}</span>
+<<<<<<< HEAD
                         {entry.lead_temperature && (
                           <Badge variant="outline" className="capitalize">
                             {entry.lead_temperature}
                           </Badge>
                         )}
+=======
+                        <Badge variant="outline">{leadLabels.label(entry.lead_temperature)}</Badge>
+>>>>>>> 368377a (20th October)
                       </ListRowHeader>
                       <p className="text-sm text-muted-foreground">{entry.summary}</p>
                       <p className="text-xs text-muted-foreground">

@@ -19,6 +19,11 @@ export type UserOut = {
   tier: string;
   status: string;
   lead_exophone: string | null;
+<<<<<<< HEAD
+=======
+  // Twilio equivalent of lead_exophone (call intake number).
+  twilio_lead_number: string | null;
+>>>>>>> 368377a (20th October)
   business_name: string | null;
   airbnb_host_status: AirbnbHostStatus | null;
   property_count_estimate: number | null;
@@ -45,10 +50,17 @@ export type UserOut = {
   max_discount_percent_override: number | null;
   allow_pets: boolean | null;
   allow_early_checkin: boolean | null;
+<<<<<<< HEAD
   follow_up_channel_preference: string | null;
   photo_url: string | null;
   banner_url: string | null;
   whatsapp_assist_enabled: boolean;
+=======
+  photo_url: string | null;
+  banner_url: string | null;
+  // Resolved with defaults (backend app/schemas/notification_preferences.py).
+  notification_preferences: NotificationPreferences;
+>>>>>>> 368377a (20th October)
   // Whether the request's active Clerk org matches the configured dev org --
   // gates dev-only features (currently just "Talk to Mira").
   is_internal_org: boolean;
@@ -77,8 +89,11 @@ export type UserUpdate = {
   max_discount_percent_override?: number | null;
   allow_pets?: boolean | null;
   allow_early_checkin?: boolean | null;
+<<<<<<< HEAD
   follow_up_channel_preference?: string | null;
   whatsapp_assist_enabled?: boolean | null;
+=======
+>>>>>>> 368377a (20th October)
 };
 
 // GET /auth/me/call-hours-status -- the account's live routing decision
@@ -213,6 +228,12 @@ export type PropertyOut = {
   smart_price_updated_at: string | null;
   exact_airbnb_pricing: boolean;
   is_premium: boolean;
+<<<<<<< HEAD
+=======
+  // Live transfers/alerts for this property go here when the host uses a
+  // number per group of properties; null = the account number.
+  host_transfer_phone: string | null;
+>>>>>>> 368377a (20th October)
   call_handling_mode: CallHandlingMode;
   call_handling_schedule_start: string | null;
   call_handling_schedule_end: string | null;
@@ -390,16 +411,52 @@ export type GuestProfileUpdate = {
   notes?: string | null;
 };
 
+<<<<<<< HEAD
+=======
+// Mirrors backend/app/schemas/booking.py -- see app/services/
+// booking_reconciliation_service.py for what each status means.
+export type BookingKind = "reservation" | "blocked";
+export type PriceSource = "mira_conversation" | "host_confirmed" | "host_entered" | "external_pms" | "unknown";
+export type PriceStatus = "confirmed" | "pending_confirmation" | "unknown";
+export type AttributionStatus = "confirmed" | "probable" | "not_attributed" | "unknown";
+export type PriceChoice = "mira_conversation" | "outside_mira" | "not_confirmed_yet";
+
+>>>>>>> 368377a (20th October)
 export type BookingOut = {
   id: string;
   property_id: string;
   guest_phone: string | null;
+<<<<<<< HEAD
+=======
+  guest_phone_last4: string | null;
+>>>>>>> 368377a (20th October)
   guest_name: string | null;
   check_in: string;
   check_out: string;
   platform: string;
   status: string;
+<<<<<<< HEAD
   created_at: string;
+=======
+  kind: BookingKind;
+  created_at: string;
+  initial_price: number | null;
+  negotiated_price: number | null;
+  final_booking_price: number | null;
+  currency: string;
+  price_source: PriceSource;
+  price_status: PriceStatus;
+  price_confirmed_at: string | null;
+  price_confirmed_by: string | null;
+  mira_attribution_status: AttributionStatus;
+  mira_attribution_call_session_id: string | null;
+  mira_attribution_lead_id: string | null;
+  mira_attribution_signals: string[];
+  // Derived server-side -- the single definition of "does this need the host?".
+  needs_price_confirmation: boolean;
+  needs_attribution_review: boolean;
+  detected_price: number | null;
+>>>>>>> 368377a (20th October)
 };
 
 export type BookingCreate = {
@@ -409,6 +466,35 @@ export type BookingCreate = {
   check_in: string;
   check_out: string;
   platform?: string;
+<<<<<<< HEAD
+=======
+  kind?: BookingKind;
+  final_booking_price?: number | null;
+  lead_id?: string | null;
+};
+
+export type MatchedConversation = {
+  lead_id: string;
+  call_session_id: string | null;
+  guest_name: string | null;
+  guest_phone: string | null;
+  lead_temperature: string | null;
+  conversation_at: string | null;
+  summary: string | null;
+};
+
+export type BookingReconciliation = {
+  booking: BookingOut;
+  property_name: string;
+  conversation: MatchedConversation | null;
+};
+
+export type ReconciliationQueue = {
+  items: BookingReconciliation[];
+  total: number;
+  price_missing: number;
+  attribution_pending: number;
+>>>>>>> 368377a (20th October)
 };
 
 export type PricingRuleOut = {
@@ -583,9 +669,18 @@ export type ServiceRequestOut = {
   dismissed_at: string | null;
 };
 
+<<<<<<< HEAD
 export type LeadUpdate = {
   guest_name?: string | null;
   lead_temperature?: "hot" | "warm" | "cold" | null;
+=======
+// very_hot = explicit booking intent -- see backend/app/services/lead_temperature.py.
+export type LeadTemperature = "very_hot" | "hot" | "warm" | "cold";
+
+export type LeadUpdate = {
+  guest_name?: string | null;
+  lead_temperature?: LeadTemperature | null;
+>>>>>>> 368377a (20th October)
   next_follow_up?: string | null;
   conversation_summary?: string | null;
   transferred_to_host?: boolean | null;
@@ -630,6 +725,11 @@ export type FaqGapOut = {
 export type FaqGapAnswer = {
   answer: string;
   apply_to_property?: boolean;
+<<<<<<< HEAD
+=======
+  // The host's wording for the question; omitted = the guest's.
+  question?: string;
+>>>>>>> 368377a (20th October)
 };
 
 export type FaqGapAnalytics = {
@@ -657,3 +757,336 @@ export type ObjectionInsights = {
   by_tag: ObjectionTagStats[];
   baseline: BaselineStats;
 };
+<<<<<<< HEAD
+=======
+
+// GET /analytics/dashboard -- definitions live on each function in
+// backend/app/services/analytics_service.py.
+export type Completeness = {
+  bookings_total: number;
+  bookings_priced: number;
+  bookings_missing_price: number;
+  is_complete: boolean;
+};
+
+export type SampledMetric = {
+  value: number | null;
+  sample_size: number;
+  sufficient: boolean;
+  min_sample_size: number;
+};
+
+export type PortfolioMetricKey = "occupancy" | "revenue" | "adr" | "revpar";
+
+export type PortfolioPerformance = {
+  occupancy: number | null;
+  revenue: number | null;
+  adr: number | null;
+  revpar: number | null;
+  upcoming_revenue: number | null;
+  booked_nights: number;
+  available_nights: number;
+  blocked_nights: number;
+  currency: string;
+  completeness: Completeness;
+  upcoming_completeness: Completeness;
+  comparison: {
+    start_date: string;
+    end_date: string;
+    change: Record<PortfolioMetricKey, number | null>;
+  } & Record<PortfolioMetricKey, number | null> | null;
+};
+
+export type FunnelStage = {
+  key: string;
+  label: string;
+  value: number;
+  unit: "conversations" | "guests";
+  rate_from_previous: number | null;
+};
+
+export type MiraImpact = {
+  attributed_bookings: number;
+  attributed_revenue: number | null;
+  attributed_completeness: Completeness;
+  awaiting_confirmation: number;
+  after_hours_opportunities: { configured: boolean; value: number | null; share: number | null };
+  revenue_recovered: number | null;
+  recovery: { busy_calls: number; recovered: number; converted: number };
+  resolved_by_mira: number;
+  resolved_by_mira_rate: number | null;
+  host_escalations: number;
+  conversations: number;
+};
+
+export type GuestIntentCategory = { key: string; label: string; count: number; share: number | null };
+
+export type PricingAnalytics = {
+  avg_initial_quote_per_night: SampledMetric;
+  avg_negotiated_price_per_night: SampledMetric;
+  avg_final_price_per_night: SampledMetric;
+  negotiations: number;
+  negotiation_conversion: SampledMetric;
+  avg_discount: SampledMetric;
+  price_objections: number;
+  price_objection_rate: SampledMetric;
+  currency: string;
+};
+
+export type AnalyticsDashboard = {
+  start_date: string;
+  end_date: string;
+  property_ids: string[];
+  portfolio: PortfolioPerformance;
+  funnel: { stages: FunnelStage[] };
+  impact: MiraImpact;
+  guest_intent: { conversations_with_data: number; categories: GuestIntentCategory[] };
+  pricing: PricingAnalytics;
+  needs_confirmation: { total: number; price_missing: number; attribution_pending: number };
+};
+
+// GET /analytics/overview -- see analytics_service.overview for which
+// numbers follow the selected dates and which are current-state.
+export type OverviewData = {
+  start_date: string;
+  end_date: string;
+  has_properties: boolean;
+  portfolio: {
+    occupancy: number | null;
+    revenue: number | null;
+    adr: number | null;
+    revpar: number | null;
+    upcoming_revenue: number | null;
+    booked_nights: number;
+    available_nights: number;
+    completeness: Completeness;
+    upcoming_completeness: Completeness;
+    currency: string;
+  };
+  opportunities: { booking_opportunities: number; high_intent: number; booking_intent: number };
+  mira_attributed_bookings: number;
+  activity: {
+    total_calls: number;
+    completed_calls: number;
+    qualified_calls: number;
+    escalated_calls: number;
+    answer_rate: number | null;
+  };
+  attention: {
+    price_confirmations: number;
+    attribution_confirmations: number;
+    high_intent_unconverted: { count: number; potential_value: number | null; valued_count: number };
+  };
+};
+
+// ── Capabilities (backend app/services/capability_registry.py) ─────────
+// A capability is a functionality, not a sidebar tab -- several share
+// routes. See backend/app/schemas/capability.py for field semantics.
+export type CapabilityActivation = "core" | "bound" | "preference";
+export type CapabilityEnforcement = "always_on" | "enforced" | "advisory";
+export type CapabilityState = "available" | "disabled" | "needs_setup" | "ready" | "unavailable";
+export type CapabilitySetupState = "not_started" | "in_progress" | "complete" | "deferred";
+
+export type CapabilityGroup = { id: string; name: string; description: string };
+
+export type CapabilityRequirement = {
+  id: string;
+  label: string;
+  hard: boolean;
+  met: boolean;
+  action_label: string;
+  action_route: string;
+};
+
+export type CapabilityIntegration = { id: string; label: string; required: boolean; connected: boolean };
+
+export type CapabilityStatus = {
+  id: string;
+  name: string;
+  description: string;
+  benefit: string;
+  group: string;
+  activation: CapabilityActivation;
+  enforcement: CapabilityEnforcement;
+  selectable: boolean;
+  available: boolean;
+  enabled: boolean;
+  state: CapabilityState;
+  setup_state: CapabilitySetupState;
+  live_in_backend: boolean | null;
+  requirements: CapabilityRequirement[];
+  missing_dependencies: string[];
+  integrations: CapabilityIntegration[];
+  can_enable: boolean;
+  enable_blocked_reason: string | null;
+  can_disable: boolean;
+  disable_blocked_reason: string | null;
+  effect: string;
+  on_effect: string;
+  off_effect: string;
+  routes: string[];
+  onboarding_setup: string | null;
+  config: Record<string, unknown>;
+  updated_at: string | null;
+};
+
+export type HostCapabilities = { groups: CapabilityGroup[]; capabilities: CapabilityStatus[] };
+
+export type CapabilityUpdate = {
+  enabled?: boolean;
+  setup_state?: CapabilitySetupState;
+  config?: Record<string, unknown>;
+};
+
+// ── Onboarding (backend app/schemas/onboarding.py) ───────────────────
+export type OnboardingStep = "profile" | "capabilities" | "setup" | "review";
+
+export type FirstPropertyImport = {
+  airbnb_url: string;
+  ical_url: string | null;
+  live_pricing: boolean;
+  status: "importing" | "completed" | "failed";
+  property_id: string | null;
+  property_name: string | null;
+  error: string | null;
+  requested_at: string | null;
+  finished_at: string | null;
+};
+
+export type OnboardingState = {
+  status: "not_started" | "in_progress" | "completed";
+  source: "onboarding" | "legacy" | null;
+  current_step: string;
+  completed_steps: OnboardingStep[];
+  selected_capabilities: string[];
+  first_property: FirstPropertyImport | null;
+  completed_at: string | null;
+  selection_notes: string[];
+};
+
+export type OnboardingProgressUpdate = {
+  current_step?: OnboardingStep;
+  completed_steps?: OnboardingStep[];
+  selected_capabilities?: string[];
+};
+
+// ── Dashboard layout preferences (backend app/schemas/ui_preferences.py) ──
+// Layout only: hiding something here never disables a capability.
+export type NavPlacement = "pinned_top" | "movable" | "pinned_bottom";
+
+export type NavItem = {
+  id: string;
+  label: string;
+  href: string;
+  placement: NavPlacement;
+  hideable: boolean;
+  available: boolean;
+  hidden: boolean;
+  capabilities: string[];
+  unavailable_reason: string | null;
+};
+
+export type NavigationPreferences = {
+  items: NavItem[];
+  revision: number;
+  is_default: boolean;
+  updated_at: string | null;
+};
+
+export type NavigationPreferencesUpdate = { order: string[]; hidden: string[]; expected_revision: number };
+
+export type WidgetSize = "half" | "full";
+
+export type OverviewWidget = {
+  id: string;
+  name: string;
+  description: string;
+  capabilities: string[];
+  sizes: WidgetSize[];
+  size: WidgetSize;
+  hidden: boolean;
+  hideable: boolean;
+  default_visible: boolean;
+  available: boolean;
+  section: "summary" | "live" | "details";
+  unavailable_reason: string | null;
+};
+
+export type OverviewLayout = {
+  widgets: OverviewWidget[];
+  revision: number;
+  is_default: boolean;
+  updated_at: string | null;
+};
+
+export type OverviewLayoutUpdate = {
+  widgets: { id: string; size: WidgetSize; hidden: boolean }[];
+  expected_revision: number;
+};
+
+// ── Notifications & escalations (backend app/schemas/notification_preferences.py) ──
+// The dashboard's four lead tiers. "hot" also covers the internal very_hot
+// level; "not_qualified" is a lead with no temperature yet.
+export type LeadBucket = "hot" | "warm" | "cold" | "not_qualified";
+export type LeadLabels = Record<LeadBucket, string>;
+
+export type NotificationPreferences = {
+  transfer_number_mode: "single" | "per_property";
+  call_summary_email: boolean;
+  escalation_email: boolean;
+  call_summary_subject: string | null;
+  call_summary_body: string | null;
+  stay_request_handling: "whatsapp" | "live_transfer";
+  connect_request_handling: "live_transfer" | "whatsapp";
+  busy_call_alert: boolean;
+  guest_calling_alert: boolean;
+  guest_reply_alert: boolean;
+  lead_labels: LeadLabels;
+};
+
+export type NotificationSettings = {
+  preferences: NotificationPreferences;
+  placeholders: string[];
+  default_subject: string;
+  default_body: string;
+};
+
+export type NotificationPreferencesUpdate = Partial<NotificationPreferences>;
+
+export type TransferNumberGroup = { phone: string; property_ids: string[] };
+
+// ── Analytics layout (backend app/schemas/ui_preferences.py) ──
+export type AnalyticsSize = "sm" | "md" | "half" | "full";
+
+export type AnalyticsEntry = {
+  type: "metric" | "heading";
+  id: string;
+  title: string | null;
+  subtitle: string | null;
+  label: string | null;
+  description: string | null;
+  formula: string | null;
+  kind: "tile" | "panel" | null;
+  sizes: AnalyticsSize[];
+  size: AnalyticsSize | null;
+  hidden: boolean;
+  available: boolean;
+  unavailable_reason: string | null;
+};
+
+export type AnalyticsLayout = {
+  entries: AnalyticsEntry[];
+  revision: number;
+  is_default: boolean;
+  updated_at: string | null;
+};
+
+export type AnalyticsEntryInput = {
+  type: "metric" | "heading";
+  id: string;
+  size?: AnalyticsSize | null;
+  hidden?: boolean;
+  title?: string | null;
+  subtitle?: string | null;
+};
+>>>>>>> 368377a (20th October)
