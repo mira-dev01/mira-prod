@@ -27,7 +27,6 @@ from pipecat.pipeline.worker import PipelineParams, PipelineWorker
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair, LLMUserAggregatorParams
 from pipecat.runner.types import CallData
-from pipecat.serializers.exotel import ExotelFrameSerializer
 from pipecat.serializers.twilio import TwilioFrameSerializer
 from pipecat.services.anthropic.llm import AnthropicLLMService
 from pipecat.services.groq.llm import GroqLLMService
@@ -82,6 +81,7 @@ from app.voice.conversation_state import ConversationState
 from app.voice.conversation_style import ConversationStyleProcessor
 from app.voice.end_call_reliability_guard import EndCallReliabilityGuardProcessor
 from app.voice.escalation_phrase_guard import EscalationPhraseGuardProcessor
+from app.voice.exotel_serializer import DiagnosticExotelFrameSerializer
 from app.voice.handoff_signal import register_call, unregister_call, wait_for_handoff_request
 from app.voice.language_sync import DEFAULT_TTS_LANGUAGE, LanguageSyncProcessor
 from app.voice.low_confidence_transcript_guard import LowConfidenceTranscriptGuardProcessor
@@ -1817,6 +1817,7 @@ async def _run_pipeline_inner(
         # this case (see its CLI template's event_handlers.jinja2).
         @transport.event_handler("on_client_disconnected")
         async def _on_client_disconnected(transport, client):
+            logger.info("transport_client_disconnected -- cancelling pipeline")
             await worker.cancel()
 
         # The ringing-tone task (see app/voice/ringing_audio.py) writes
@@ -2178,7 +2179,7 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
         asyncio.create_task(recovery_service.handle_busy_recovery(**busy_recovery_args))
         return
 
-    serializer = ExotelFrameSerializer(stream_sid=call_data.stream_id, call_sid=exotel_call_id)
+    serializer = DiagnosticExotelFrameSerializer(stream_sid=call_data.stream_id, call_sid=exotel_call_id)
     transport = FastAPIWebsocketTransport(
         websocket=websocket,
         params=FastAPIWebsocketParams(
