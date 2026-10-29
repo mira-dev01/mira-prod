@@ -42,6 +42,7 @@ from pydantic import ValidationError
 
 from pipecat.frames.frames import FunctionCallResultProperties
 from pipecat.services.llm_service import FunctionCallParams
+from loguru import logger
 from pipecat.transcriptions.language import Language
 
 from app.database import AsyncSessionLocal
@@ -70,6 +71,7 @@ from app.services.property.pitch_formatter import (
 )
 from app.utils.dates import today_ist
 from app.voice.conversation_state import ConversationState
+from app.voice.kb_grounding_guard import KnowledgeGroundingGuardProcessor
 from app.voice.property_recommendation_guard import PropertyRecommendationGuardProcessor
 from app.voice.silence_watchdog import SilenceWatchdogProcessor
 from app.voice.tool_contract import ToolOutcome, voice_tool
@@ -181,6 +183,7 @@ def build_voice_tools(
     caller_number: str | None = None,
     silence_watchdog: SilenceWatchdogProcessor | None = None,
     property_recommendation_guard: PropertyRecommendationGuardProcessor | None = None,
+    kb_grounding_guard: KnowledgeGroundingGuardProcessor | None = None,
 ) -> list:
     """Build the tool functions for one call, bound to its call_session_id/property_id/host_user_id.
 
@@ -200,7 +203,14 @@ def build_voice_tools(
     # validation against its own signature (the same source pipecat builds
     # the LLM schema from), exactly one structured result envelope, and
     # internal errors kept distinct from invalid arguments.
-    tool = functools.partial(voice_tool, call_session_id=call_session_id)
+    def _on_tool_outcome(tool_name: str, outcome: ToolOutcome) -> None:
+        # Tells the knowledge grounding guard what the agent was legitimately
+        # told (prices, dates, recommendations, ...), so a spoken claim that
+        # restates it isn't mistaken for an invented one. Observation only.
+        if kb_grounding_guard is not None and outcome.status in ("ok", "no_results", "needs_clarification"):
+            kb_grounding_guard.record_tool_outcome(tool_name, outcome.text)
+
+    tool = functools.partial(voice_tool, call_session_id=call_session_id, on_outcome=_on_tool_outcome)
 
     def _stay_offer_pitched(property_id: str | None) -> bool:
         """recommend_properties already pitched this property's automatic
@@ -443,6 +453,22 @@ def build_voice_tools(
                 ToolOutcome.needs_clarification("I don't have a phone number for that yet -- could you share one?")
             )
             return
+        if kb_grounding_guard is not None:
+            # A WhatsApp body is model-written text sent straight to a guest:
+            # hold it to the same support-on-file standard as speech.
+            unsupported = kb_grounding_guard.check_outgoing(message)
+            if unsupported:
+                detail = "; ".join(f"{v.kind}={v.detail}" for v in unsupported)
+                logger.warning("kb_guard_would_block_whatsapp violations=[{}] message={!r}", detail, message[:160])
+                if kb_grounding_guard.enforcing:
+                    await params.result_callback(
+                        ToolOutcome.business_error(
+                            "That message states details that are not on file for this property ("
+                            f"{detail}). Do not send it. Resend with only information confirmed by search_faq or "
+                            "your other tools."
+                        )
+                    )
+                    return
         async with AsyncSessionLocal() as db:
             try:
                 args = SendWhatsappArgs(phone=resolved_phone, message=message, template_name=template_name)
@@ -1286,7 +1312,9 @@ def build_voice_tools(
         property/support questions using this tool's results -- never guess.
 
         Args:
-            query: The guest's question, in their own words.
+            query: The guest's question as a short English search phrase (translate
+                Hindi/Hinglish), keeping any place or proper name exactly as the
+                guest said it, capitalized -- e.g. "distance from Delhi", "pets allowed".
             faq_property_id: The property's id, if the question is about a specific property.
         """
         async with AsyncSessionLocal() as db:
@@ -1310,8 +1338,20 @@ def build_voice_tools(
                         "search_faq", {"amenities": property_.amenities}
                     )
 
+            # Tells the knowledge grounding guard exactly which facts the agent
+            # was handed -- everything it then says is checked against them.
+            def _on_result(_property, kb_result):
+                if kb_grounding_guard is not None:
+                    kb_grounding_guard.record_search(kb_result.status, [fact.text for fact in kb_result.facts])
+
             result = await tool_handlers.handle_search_faq(
-                db, args, host_user_id, default_property_id, call_session_id, on_answered=_on_answered
+                db,
+                args,
+                host_user_id,
+                default_property_id,
+                call_session_id,
+                on_answered=_on_answered,
+                on_result=_on_result,
             )
         await params.result_callback(result)
 

@@ -85,6 +85,12 @@ from app.voice.exotel_serializer import DiagnosticExotelFrameSerializer
 from app.voice.handoff_signal import register_call, unregister_call, wait_for_handoff_request
 from app.voice.language_sync import DEFAULT_TTS_LANGUAGE, LanguageSyncProcessor
 from app.voice.low_confidence_transcript_guard import LowConfidenceTranscriptGuardProcessor
+from app.voice.kb_grounding_guard import (
+    KnowledgeGroundingGuardProcessor,
+    build_static_text,
+    guest_text_from_context,
+    last_guest_utterance,
+)
 from app.voice.meta_commentary_guard import MetaCommentaryGuardProcessor
 from app.voice.premature_end_call_guard import PrematureEndCallGuardProcessor
 from app.voice.property_recommendation_guard import PropertyRecommendationGuardProcessor
@@ -413,6 +419,13 @@ class _ReconnectingSarvamSTTService(SarvamSTTService):
             yield frame
 
 
+def _temperature_setting() -> dict:
+    """settings.llm_temperature as Settings kwargs ({} = provider default)."""
+    if settings.llm_temperature is None or settings.llm_temperature < 0:
+        return {}
+    return {"temperature": settings.llm_temperature}
+
+
 def _build_llm():
     if settings.llm_provider == "anthropic":
         return AnthropicLLMService(
@@ -479,7 +492,9 @@ def _build_llm():
         # touched by _FallbackGroqLLMService's per-model retry loop (which
         # only reassigns .model/.extra), so it stays capped across every
         # model in the fallback chain, not just the first one tried.
-        settings=GroqLLMService.Settings(model=model, extra=extra, max_completion_tokens=400),
+        settings=GroqLLMService.Settings(
+            model=model, extra=extra, max_completion_tokens=400, **_temperature_setting()
+        ),
     )
 
 
@@ -524,7 +539,9 @@ def _build_openrouter_llm():
     return OpenAILLMService(
         api_key=settings.openrouter_api_key,
         base_url="https://openrouter.ai/api/v1",
-        settings=OpenAILLMService.Settings(model=settings.openrouter_model, max_completion_tokens=900, extra=extra),
+        settings=OpenAILLMService.Settings(
+            model=settings.openrouter_model, max_completion_tokens=900, extra=extra, **_temperature_setting()
+        ),
     )
 
 
@@ -1059,6 +1076,67 @@ async def _persist_call_telemetry(
     await usage_meter.record_call_usage(db, call_session_id, host_user_id, usage_rows)
 
 
+
+async def _build_kb_grounding_guard(
+    *,
+    host_user_id: uuid.UUID,
+    property_id: uuid.UUID | None,
+    call_session_id: uuid.UUID,
+    guest_known_name: str | None,
+    conversation_state: ConversationState,
+    context_holder: dict,
+) -> KnowledgeGroundingGuardProcessor:
+    """Builds the knowledge-base grounding guard (app/voice/
+    kb_grounding_guard.py) for one call. Everything here fails open: a
+    failure to load the prompt's property details just leaves the guard
+    with less static support (so it may flag more in shadow mode), never
+    blocks the call from starting."""
+    from app.prompts.system_prompt import KB_MISS_LINE
+    from app.services import kb_gap_service
+
+    static_text = ""
+    try:
+        async with AsyncSessionLocal() as db:
+            host = await db.get(User, host_user_id)
+            if property_id is not None:
+                single = await db.get(Property, property_id)
+                properties = [single] if single is not None else []
+            else:
+                properties = list((await db.scalars(select(Property).where(Property.user_id == host_user_id))).all())
+        static_text = build_static_text(properties, host.name if host is not None else None, guest_known_name)
+    except Exception:
+        logger.exception("kb_grounding_guard: could not load static property text -- continuing without it")
+
+    async def gap_sink(question: str, source: str) -> None:
+        try:
+            selected = conversation_state.selected_property_id
+            try:
+                gap_property_id = uuid.UUID(selected) if selected else property_id
+            except ValueError:
+                gap_property_id = property_id
+            async with AsyncSessionLocal() as db:
+                await kb_gap_service.log_kb_gap(
+                    db,
+                    user_id=host_user_id,
+                    property_id=gap_property_id,
+                    call_session_id=call_session_id,
+                    question=question,
+                    source=source,
+                )
+        except Exception:
+            logger.exception("kb_grounding_guard: could not log a knowledge gap")
+
+    guard = KnowledgeGroundingGuardProcessor(
+        mode=settings.kb_guard_mode,
+        miss_line=KB_MISS_LINE,
+        gap_sink=gap_sink,
+        guest_text_provider=lambda: guest_text_from_context(context_holder.get("context")),
+        last_guest_utterance_provider=lambda: last_guest_utterance(context_holder.get("context")),
+    )
+    guard.set_static_text(static_text)
+    return guard
+
+
 async def _run_pipeline_inner(
     transport: BaseTransport,
     property_id: uuid.UUID | None,
@@ -1325,6 +1403,24 @@ async def _run_pipeline_inner(
         real_caller_number = (
             caller_number if caller_number and caller_number != call_service.BROWSER_TEST_CALLER_NUMBER else None
         )
+        # Knowledge-base grounding: nothing about a property may be spoken
+        # unless it is supported by what the agent was actually given on
+        # file. Built here (not with the other guards) because it needs the
+        # tools' outputs; the LLM context it reads the guest's words from
+        # doesn't exist yet, so it reads it through this holder.
+        kb_context_holder: dict = {}
+        kb_grounding_guard = (
+            await _build_kb_grounding_guard(
+                host_user_id=host_user_id,
+                property_id=property_id,
+                call_session_id=call_session_id,
+                guest_known_name=guest_known_name,
+                conversation_state=conversation_state,
+                context_holder=kb_context_holder,
+            )
+            if settings.kb_guard_mode in ("shadow", "enforce")
+            else None
+        )
         tools = build_voice_tools(
             call_session_id,
             property_id,
@@ -1334,6 +1430,7 @@ async def _run_pipeline_inner(
             caller_number=real_caller_number,
             silence_watchdog=silence_watchdog,
             property_recommendation_guard=property_recommendation_guard,
+            kb_grounding_guard=kb_grounding_guard,
         )
         # first_message is pre-seeded as an assistant turn so the LLM knows
         # it was already said (the "don't repeat greeting" rule relies on
@@ -1349,6 +1446,7 @@ async def _run_pipeline_inner(
             ],
             tools=tools,
         )
+        kb_context_holder["context"] = context
         # Guarantees end_call actually fires whenever the model speaks
         # DEFAULT_CLOSING_PHRASE -- confirmed live: a guest-initiated
         # ("thank you") close sometimes produced the closing line as plain
@@ -1427,6 +1525,7 @@ async def _run_pipeline_inner(
                 repetition_guard,
                 meta_commentary_guard,
                 style_compliance_monitor,
+                *([kb_grounding_guard] if kb_grounding_guard is not None else []),
                 property_recommendation_guard,
                 escalation_guard,
                 premature_end_call_guard,

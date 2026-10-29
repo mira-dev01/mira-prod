@@ -34,6 +34,7 @@ async def create_faq_entry(
     db.add(entry)
     await db.commit()
     await db.refresh(entry)
+    await faq_service.resync_property_facts(db, entry.property_id)
     return entry
 
 
@@ -51,6 +52,7 @@ async def update_faq_entry(
     if payload.property_id is not None:
         await get_owned_property(db, payload.property_id, current_user)
 
+    previous_property_id = entry.property_id
     changes = payload.model_dump(exclude_unset=True)
     question_changed = "question" in changes and changes["question"] != entry.question
     for field, value in changes.items():
@@ -63,6 +65,11 @@ async def update_faq_entry(
 
     await db.commit()
     await db.refresh(entry)
+    await faq_service.resync_property_facts(db, entry.property_id)
+    if previous_property_id != entry.property_id:
+        # Moved between properties (or to/from portfolio-wide): the old one's
+        # facts still contain it.
+        await faq_service.resync_property_facts(db, previous_property_id)
     if question_changed:
         asyncio.create_task(embedding_service.backfill_faq_entry_embedding(entry.id, entry.question))
     return entry
@@ -75,8 +82,10 @@ async def delete_faq_entry(
     entry = await faq_service.get_owned_faq_entry(db, faq_id, current_user.id)
     if entry is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "FAQ entry not found")
+    property_id = entry.property_id
     await db.delete(entry)
     await db.commit()
+    await faq_service.resync_property_facts(db, property_id)
 
 
 # --- FAQ Learning Engine: questions search_faq had no verified answer for ---
@@ -102,6 +111,7 @@ async def list_faq_gaps(
             "suggested_faq_entry_id": gap.suggested_faq_entry_id,
             "suggested_answer": gap.suggested_answer,
             "match_score": gap.match_score,
+            "source": gap.source,
         }
         for gap in await faq_service.list_faq_gaps(db, current_user.id, property_id, date_range)
     ]

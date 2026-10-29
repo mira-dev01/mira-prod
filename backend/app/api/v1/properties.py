@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 import uuid
 
@@ -28,12 +29,14 @@ from app.services import faq_service
 from app.services.airbnb_import import parse_airbnb_listing, parse_bright_data_listing
 from app.services.amenity_taxonomy import canonicalize_amenities
 from app.services.calendar_service import sync_property_ical
-from app.services.property.chunking import sync_property_chunks
+from app.services.property.chunking import sync_property_chunks, sync_property_facts
 from app.services.property_normalizer import (
     NAME_DELIMITER_RE,
     normalize_property_name,
     normalize_property_name_llm_fallback,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/properties", tags=["properties"])
 
@@ -97,6 +100,37 @@ async def list_properties(
     return list(
         (await db.scalars(select(Property).where(Property.user_id == current_user.id))).all()
     )
+
+
+# Property fields that feed the knowledge base search_faq reads (see
+# app/services/property/chunking.py build_fact_chunks) -- editing any of them
+# must rebuild the property's facts.
+_KB_FIELDS = frozenset(
+    {
+        "usp",
+        "house_rules",
+        "neighborhood_info",
+        "amenities",
+        "faq",
+        "landmarks",
+        "seasonal_notes",
+        "check_in_time",
+        "check_out_time",
+        "max_guests",
+        "minimum_nights",
+    }
+)
+
+
+async def _resync_facts(db: AsyncSession, property_: Property) -> None:
+    """Never fails the request: a missed sync is caught later by
+    kb_retrieval's staleness check (property.updated_at is newer than the
+    facts) and rebuilt in memory."""
+    try:
+        await sync_property_facts(db, property_)
+    except Exception:
+        await db.rollback()
+        logger.exception("sync_property_facts failed for property_id=%s", property_.id)
 
 
 async def _upsert_property_from_parsed(
@@ -310,6 +344,7 @@ async def create_property(
     db.add(property_)
     await db.commit()
     await db.refresh(property_)
+    await _resync_facts(db, property_)
     return property_
 
 
@@ -354,6 +389,8 @@ async def update_property(
         setattr(property_, field, value)
     await db.commit()
     await db.refresh(property_)
+    if _KB_FIELDS & updates.keys():
+        await _resync_facts(db, property_)
     return property_
 
 

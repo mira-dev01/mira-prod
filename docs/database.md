@@ -64,7 +64,9 @@ c22483e0853a -> 054ea268d326   add index on notification property_id
 c4153fd289d2 -> f041738fce4c   add call_quality_events
 f041738fce4c -> a3f1c9d24e08   add host call hours (host_call_hours_*) + agent_handoff_phrase to users
 a3f1c9d24e08 -> c7e2a91d4f10   add admin monitoring tables
-c7e2a91d4f10 -> e5b8d2f1a9c3   add booking pricing/attribution fields + price_events (HEAD)
+c7e2a91d4f10 -> e5b8d2f1a9c3   add booking pricing/attribution fields + price_events
+...                           (further revisions up to bcde09807b54, see `alembic history`)
+bcde09807b54 -> c4f1a8d2e6b9   knowledge-base fact columns on property_chunks (source_kind, source_ref, meta) + unanswered_questions.source (HEAD)
 ```
 
 If a session ever fails with demo-login 500s or a missing-column error, check `alembic heads` against the running DB first — a DB left behind on an old revision is a common cause (see `project_state.md` at the repo root for the 2026-07-15 incident).
@@ -276,9 +278,7 @@ Verified, host-authored FAQ knowledge base (distinct from `Property.faq`, the le
 
 ### `unanswered_questions` (`UnansweredQuestion`, `app/models/unanswered_question.py`)
 
-Logged by `handle_search_faq` only when the property (or the question, portfolio-wide) resolves to nothing at all — no `FaqEntry`, no legacy `Property.faq`, and no known `property_id` to fall back to `faq_service.full_property_context()` for. Powers the FAQ Learning Engine (`GET /faq/gaps`). One row per occurrence; frequency is computed at query time via `GROUP BY normalized_question`, not an incrementing counter.
-
-**Known gap**: once a `property_id` is known, `search_faq` always returns `full_property_context()` as a last resort (every on-file fact for that property — see [agents.md](agents.md)), so this table no longer captures "guest asked something the property's raw fields didn't actually answer" — only "this property was completely unknown to the system." A host's FAQ Learning Engine page will under-report gaps for known properties as a result; not revisited as of 2026-07-17.
+"Mira couldn't answer this" — the host's FAQ Learning Engine (`GET /faq/gaps`), always with the property it was about. Written by `app/services/kb_gap_service.log_kb_gap` (deduped per call on `normalized_question`, plus one aggregated low-urgency `system` notification per call) from three paths, recorded in `source`: `search_miss` (`search_faq`'s knowledge-base search found nothing on file), `guard_blocked` (the grounding guard replaced an unsupported spoken claim — enforce mode only), `miss_line_spoken` (Mira said the not-on-file line after a "possible" result or without searching). One row per occurrence; frequency is computed at query time via `GROUP BY normalized_question`. When the host answers a gap, `faq_service.answer_faq_gap` creates a verified `FaqEntry` and re-syncs that property's fact rows, so the answer is live on the next call.
 
 Indexes: `(user_id, normalized_question, status)` and `(user_id, property_id)`.
 
@@ -292,6 +292,11 @@ Indexes: `(user_id, normalized_question, status)` and `(user_id, property_id)`.
 | `status` | String(16), default `pending` | |
 | `resolved_faq_entry_id` | UUID FK → faq_entries, `SET NULL`, nullable | |
 | `question_embedding` | JSONB list, nullable | same semantics as `FaqEntry.question_embedding` |
+| `source` | String(24), default `search_miss` | `search_miss` \| `guard_blocked` \| `miss_line_spoken` (see above) |
+
+### `property_chunks` (`PropertyChunk`, `app/models/property_chunk.py`)
+
+Two layers share this table. **Coarse chunks** (`chunk_type` `overview`/`amenities`/`location`/`house_rules`) feed `recommend_properties`' semantic re-ranking. **Knowledge-base facts** (`chunk_type = "fact"`) are what `search_faq` answers from: one small statement per row, built by `chunking.build_fact_chunks` from verified FAQ rows, the property's own fields (house rules, neighborhood sentences, landmarks, amenity groups, description, check-in/out, capacity) and seasonal notes. Fact-only columns: `source_kind` (`faq_entry`/`house_rules`/`neighborhood`/`amenity`/`description`/`seasonal_note`/`structured`), `source_ref` (FaqEntry id or field name), `meta` (JSONB — a seasonal note's `start_month`/`end_month`). `embedding` is a JSONB float array as elsewhere. The two layers are synced independently (`sync_property_chunks` never deletes facts; `sync_property_facts` never deletes coarse chunks); facts are rebuilt on property import/PATCH and on every FaqEntry create/update/delete/gap-answer, reusing stored embeddings for unchanged text. A property with no (or stale) fact rows is answered from facts built in memory (`kb_retrieval.load_property_facts`). Index `(property_id, chunk_type)`.
 
 ### `technicians` (`Technician`, `app/models/technician.py`)
 

@@ -29,6 +29,24 @@ _COUNT_RE = re.compile(r"(\d+)\s+(bedroom|bed|bathroom)s?", re.IGNORECASE)
 AUTO_FAQ_CATEGORIES = {"layout", "neighbourhood", "booking", "reputation", "description", "safety"}
 
 
+
+def truncate_at_sentence(text: str, limit: int) -> str:
+    """Cuts `text` to at most `limit` characters at the last sentence end that
+    fits, never mid-sentence. A hard [:limit] cut could drop the tail of a
+    sentence and change what the kept part says ("Sleeps six. Not suitable
+    for children" -> "...Not suitable"). When even the first sentence is
+    longer than `limit`, falls back to a word boundary so the field still
+    fits its column."""
+    text = (text or "").strip()
+    if len(text) <= limit:
+        return text
+    window = text[:limit]
+    ends = [m.end() for m in re.finditer(r"[.!?]['\")\]]*(?=\s|$)", window)]
+    if ends:
+        return window[: ends[-1]].strip()
+    return window.rsplit(" ", 1)[0].strip() or window.strip()
+
+
 def _to_24h(time_str: str) -> str | None:
     match = _TIME_RE.search(time_str)
     if not match:
@@ -379,7 +397,7 @@ async def parse_bright_data_listing(record: dict[str, Any], *, photo_folder: str
         fields["city"] = location.split(",")[0].strip()
 
     if description:
-        fields["usp"] = description[:280]
+        fields["usp"] = truncate_at_sentence(description, 280)
 
     house_rules_list = record.get("house_rules") or []
     if isinstance(house_rules_list, list) and house_rules_list:

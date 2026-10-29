@@ -8,7 +8,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.common import DateRange
@@ -20,110 +20,28 @@ from app.services import embedding_service
 from app.services.airbnb_import import AUTO_FAQ_CATEGORIES
 
 
-async def search_faq_entries(
-    db: AsyncSession,
-    user_id: uuid.UUID,
-    query: str,
-    property_id: uuid.UUID | None = None,
-) -> list[FaqEntry]:
-    pattern = f"%{query}%"
-    # Trigram similarity (pg_trgm, enabled via migration e7c2a4f8d9b1) catches
-    # paraphrases plain substring matching misses. Confirmed live: a guest
-    # re-asked essentially the same question, but the LLM phrases the
-    # search_faq `query` itself fresh on every call rather than passing the
-    # guest's verbatim words -- "distance from Mall Road" the first time,
-    # "distance from Manali shale to Mall Road" the second -- so the
-    # exact-substring ILIKE check missed it entirely even though the host
-    # had already verified an answer, and the guest was told "I don't have
-    # that" for something already on file. 0.35 threshold picked
-    # empirically: real paraphrases of the same question scored 0.47-0.63 in
-    # testing, unrelated questions scored 0.09-0.24 -- clean separation with
-    # margin on both sides.
-    question_similarity = func.similarity(FaqEntry.question, query)
-    stmt = select(FaqEntry).where(
-        FaqEntry.user_id == user_id,
-        FaqEntry.status == "verified",
-        or_(
-            FaqEntry.question.ilike(pattern),
-            FaqEntry.answer.ilike(pattern),
-            FaqEntry.category.ilike(pattern),
-            question_similarity > 0.35,
-        ),
-    )
-    if property_id is not None:
-        stmt = stmt.where(or_(FaqEntry.property_id == property_id, FaqEntry.property_id.is_(None)))
-        # Property-specific answers should win over a portfolio-wide fallback
-        # when both match the same query (e.g. a property-specific "limited
-        # roadside parking" override vs. a general Goa-wide parking entry) --
-        # property_id.is_(None) sorts as True (1) after False (0), so
-        # property-specific rows come first. Best match within that tier
-        # next, so the closest question (not just DB row order) wins the
-        # limit(3) cut.
-        stmt = stmt.order_by(FaqEntry.property_id.is_(None), question_similarity.desc())
-    else:
-        stmt = stmt.order_by(question_similarity.desc())
-    stmt = stmt.limit(3)
-    return list((await db.scalars(stmt)).all())
+async def resync_property_facts(db: AsyncSession, property_id: uuid.UUID | None) -> None:
+    """Rebuilds the knowledge-base fact rows search_faq reads after a FAQ row
+    changed. A portfolio-wide row (property_id None) isn't stored as facts --
+    it's read live -- so nothing is rebuilt, only the in-process cache is
+    dropped. Never raises: a failed sync just leaves facts that
+    kb_retrieval.load_property_facts will notice are stale (the FAQ row's
+    updated_at is newer) and rebuild in memory on the next question."""
+    from app.services.property import kb_retrieval
+    from app.services.property.chunking import sync_property_facts
 
+    if property_id is None:
+        kb_retrieval.invalidate_fact_cache()
+        return
+    try:
+        property_ = await db.get(Property, property_id)
+        if property_ is not None:
+            await sync_property_facts(db, property_)
+    except Exception:
+        await db.rollback()
+        import logging
 
-async def search_legacy_property_faq(db: AsyncSession, property_id: uuid.UUID, query: str) -> list[dict]:
-    """Fallback for the older inline Property.faq JSON field, for properties
-    that haven't been migrated to structured FaqEntry rows yet."""
-    property_ = await db.get(Property, property_id)
-    if property_ is None or not property_.faq:
-        return []
-    query_lower = query.lower()
-    return [
-        item
-        for item in property_.faq
-        if query_lower in item.get("question", "").lower() or query_lower in item.get("answer", "").lower()
-    ][:3]
-
-
-def full_property_context(property_: Property) -> str:
-    """Final search_faq fallback -- every fact on file for this property, in
-    one block, handed to the model to pick the actual answer out of.
-
-    Deliberately NOT keyword-matched against the query (an earlier version of
-    this had separate search_neighborhood_info/search_amenities helpers doing
-    sentence/keyword overlap, tuned per field). That approach quietly missed
-    real, on-file answers twice in testing -- once for a neighborhood
-    question, once for an amenity -- because keyword overlap is inherently
-    guessable-around: any phrasing that doesn't share a token with the source
-    text falls through to an unnecessary escalation. The host's own
-    requirement is stronger than "usually finds it": anything on file must
-    resolve, every time, and escalation is reserved for what's genuinely not
-    there. Handing over everything and letting the model itself read for the
-    answer is what actually guarantees that.
-
-    Covers exactly what Guest Support's system prompt gets for free (see
-    build_system_prompt) -- this is what gives a Lead Agent (portfolio-wide)
-    call the same knowledge once a specific property is being discussed,
-    without paying to repeat it for all 15 properties on every turn (see
-    build_lead_system_prompt's comment on why it's omitted there upfront).
-    """
-    # Imported here, not at module level -- avoids a system_prompt <-> faq_service
-    # import cycle (system_prompt.py doesn't import faq_service, so this
-    # direction is safe, but keeping the import local makes that non-obvious
-    # safety explicit rather than accidental).
-    from app.prompts.system_prompt import _active_seasonal_notes
-
-    parts = [
-        f"Check-in time: {property_.check_in_time}. Check-out time: {property_.check_out_time}. "
-        f"Max guests: {property_.max_guests}."
-    ]
-    if property_.usp:
-        parts.append(f"Description: {property_.usp}")
-    if property_.house_rules:
-        parts.append(f"House rules: {property_.house_rules}")
-    if property_.neighborhood_info:
-        parts.append(f"Neighborhood info: {property_.neighborhood_info}")
-    if property_.amenities:
-        parts.append(f"Amenities: {', '.join(property_.amenities)}")
-    active_notes = _active_seasonal_notes(property_.seasonal_notes)
-    if active_notes:
-        parts.append(f"Currently in effect: {'; '.join(active_notes)}")
-    return " | ".join(parts)
+        logging.getLogger(__name__).exception("resync_property_facts failed for property_id=%s", property_id)
 
 
 async def list_verified_property_faq(db: AsyncSession, property_id: uuid.UUID) -> list[FaqEntry]:
@@ -189,6 +107,7 @@ async def sync_imported_faq_entries(
             )
         )
     await db.commit()
+    await resync_property_facts(db, property_id)
     return len(faq_entries)
 
 
@@ -215,6 +134,8 @@ class FaqGap:
     suggested_faq_entry_id: uuid.UUID | None = None
     suggested_answer: str | None = None
     match_score: float | None = None
+    # UnansweredQuestion.source of the most recent occurrence.
+    source: str = "search_miss"
 
 
 async def list_faq_gaps(
@@ -278,6 +199,7 @@ async def list_faq_gaps(
             representative.c.property_id,
             representative.c.created_at,
             representative.c.question_embedding,
+            representative.c.source,
             counts_subq.c.count,
         )
         .join(counts_subq, counts_subq.c.normalized_question == representative.c.normalized_question)
@@ -293,6 +215,7 @@ async def list_faq_gaps(
             count=row.count,
             property_id=row.property_id,
             last_asked_at=row.created_at,
+            source=row.source,
         )
         for row in rows
     ]
@@ -499,6 +422,10 @@ async def answer_faq_gap(
     )
     await db.commit()
     await db.refresh(entry)
+
+    # The host's answer must reach Mira on the very next call: rebuild the
+    # property's searchable facts now (the entry is verified).
+    await resync_property_facts(db, entry.property_id)
 
     if entry.question_embedding is None:
         asyncio.create_task(embedding_service.backfill_faq_entry_embedding(entry.id, entry.question))

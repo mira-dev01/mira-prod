@@ -45,3 +45,9 @@ class UnansweredQuestion(UUIDPkMixin, TimestampMixin, Base):
     # (handle_search_faq); null means no semantic suggestion is possible
     # for this row, never an error.
     question_embedding: Mapped[list | None] = mapped_column(JSONB)
+    # How this gap was detected: "search_miss" (search_faq's knowledge-base
+    # search found nothing on file), "guard_blocked" (the KB grounding guard
+    # caught a spoken claim with no support on file and replaced it), or
+    # "miss_line_spoken" (Mira said the not-on-file line after a "possible"
+    # result). Server default keeps every pre-existing row a search_miss.
+    source: Mapped[str] = mapped_column(String(24), default="search_miss", server_default="search_miss")

@@ -204,8 +204,12 @@ async def test_reimport_does_not_duplicate_property_chunks(client, auth_headers,
     chunks = list(
         (await db_session.scalars(select(PropertyChunk).where(PropertyChunk.property_id == property_id))).all()
     )
-    chunk_types = [c.chunk_type for c in chunks]
+    # One coarse chunk per type; the knowledge-base "fact" rows are many by
+    # design (one per statement) but must not duplicate across a re-import.
+    chunk_types = [c.chunk_type for c in chunks if c.chunk_type != "fact"]
     assert len(chunk_types) == len(set(chunk_types))
+    fact_texts = [c.text for c in chunks if c.chunk_type == "fact"]
+    assert fact_texts and len(fact_texts) == len(set(fact_texts))
 
 
 async def test_reimport_with_changed_amenities_replaces_stale_chunk_content(client, auth_headers, db_session):
@@ -434,3 +438,17 @@ async def test_import_with_pathologically_long_seo_title_does_not_500(client, au
     prop = body["results"][0]["property"]
     assert len(prop["display_name"]) <= 120
     assert len(prop["spoken_name"]) <= 60
+
+
+def test_truncate_at_sentence_never_cuts_mid_sentence():
+    from app.services.airbnb_import import truncate_at_sentence
+
+    assert truncate_at_sentence("Short one.", 280) == "Short one."
+    text = "Glass house with a private jacuzzi. Sleeps four. " + "Filler words go here. " * 20 + "Not suitable for children."
+    cut = truncate_at_sentence(text, 280)
+    assert len(cut) <= 280
+    assert cut.endswith(".")
+    assert not cut.endswith("Not suitable")
+    # No sentence end fits: falls back to a word boundary, still within the limit.
+    fallback = truncate_at_sentence("word " * 100, 50)
+    assert len(fallback) <= 50 and not fallback.endswith("wor")

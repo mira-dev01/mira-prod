@@ -243,7 +243,7 @@ _SLEEPS_N_RE = re.compile(r"sleeps?\s+(?:up to\s+)?(\d+)", re.IGNORECASE)
 
 # Phase 4b.3: the lower-priority tail of Tool Output Fidelity -- search_faq's
 # returned text already includes every real amenity on file
-# (faq_service.full_property_context's "Amenities: ..." line, fed from the
+# (the "Amenities: ..." fact in the property's knowledge base, fed from the
 # SAME Property.amenities the guard is handed here). Deliberately a coarser
 # check than the numeric ones above, per the plan's own scoping: FAQ answers
 # are free text, not a single verifiable number, so this only confirms the

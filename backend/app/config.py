@@ -539,6 +539,38 @@ class Settings(BaseSettings):
     # timeout, done.
     semantic_search_timeout_seconds: float = 1.5
 
+    # Knowledge-base grounding (app/services/property/kb_retrieval.py,
+    # app/voice/kb_grounding_guard.py). All thresholds are STARTING POINTS
+    # that must be tuned with scripts/tune_kb_retrieval.py against a real
+    # embedding key (the golden set lives in tests/kb_golden_set.py); they
+    # cannot be validated without one.
+    #
+    # kb_guard_mode: "off" = guard not installed; "shadow" = detects and logs
+    # (kb_guard_would_block) but never changes what is spoken; "enforce" =
+    # replaces an unsupported sentence with the not-on-file line and logs a
+    # gap. Default shadow: run it on real calls for a week, review the
+    # kb_guard_would_block lines for false positives, then switch to enforce.
+    kb_guard_mode: str = "shadow"
+    # Sampling temperature for the voice LLM (Groq and OpenRouter paths). A
+    # lower value makes the model less likely to improvise detail the knowledge
+    # base doesn't contain -- a secondary mitigation, behind search_faq's
+    # fact-only results and the grounding guard. 0.5 is a starting point that
+    # still leaves room for the varied phrasing the prompt asks for; set to a
+    # negative number to leave the provider default untouched.
+    llm_temperature: float = 0.5
+    # Hard cap on the query-embedding call search_faq makes on the live call
+    # path. On timeout/failure retrieval continues lexical-only -- it never
+    # falls back to model knowledge.
+    kb_embedding_timeout_seconds: float = 1.0
+    # Embedding cosine (query vs fact) at/above which a fact is a confident
+    # match, and the lower bound for a "possibly relevant" fact.
+    kb_found_cosine: float = 0.45
+    kb_possible_cosine: float = 0.32
+    # Lexical coverage (fraction of the query's content words found in a
+    # fact) at/above which a fact is a confident / a possible match.
+    kb_found_coverage: float = 0.6
+    kb_possible_coverage: float = 0.34
+
     @property
     def is_production(self) -> bool:
         return self.environment.lower() == "production"

@@ -7,6 +7,8 @@ no-criteria-given case, per the plan's own verify step.
 
 import uuid
 
+import pytest
+
 from app.schemas.tool import RecommendPropertiesArgs
 from app.services.property.card import PropertyCard, match_reasons_for_card
 
@@ -74,11 +76,14 @@ def test_budget_not_comfortably_under_produces_no_budget_reason():
     assert "comfortably within budget" not in reasons
 
 
-def test_purpose_match_produces_purpose_phrase():
+@pytest.mark.parametrize("purpose", ["friends trip", "honeymoon", "family vacation", "workcation", "solo"])
+def test_purpose_never_becomes_a_claim_about_the_property(purpose):
+    """A stated purpose used to add canned lines like "private and quiet, good
+    for a honeymoon" to ANY property. No property data backs those, so a
+    purpose alone must produce no match reason."""
     card = _card()
-    args = RecommendPropertiesArgs(purpose_of_stay="friends trip")
-    reasons = match_reasons_for_card(card, args)
-    assert any("friends" in r for r in reasons)
+    args = RecommendPropertiesArgs(purpose_of_stay=purpose)
+    assert match_reasons_for_card(card, args) == []
 
 
 def test_purpose_with_no_known_mapping_produces_no_reason_rather_than_guessing():

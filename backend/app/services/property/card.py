@@ -111,28 +111,17 @@ def build_property_card(property_) -> PropertyCard:
 # Cap at 2 -- voice-friendly (requirement #5's "no information dumping"
 # applies just as much to a good reason as to a bad one). Checked in this
 # fixed priority order so the most concrete/specific reason (an amenity the
-# guest actually named) wins a slot over a vaguer one (a generic purpose
-# match) when both apply.
+# guest actually named) wins a slot over a vaguer one when both apply.
 _MAX_MATCH_REASONS = 2
 
-_PURPOSE_PHRASES: dict[str, str] = {
-    "family": "great for a family trip",
-    "friends": "good for a group of friends",
-    "couple": "private and quiet, good for a couples trip",
-    "honeymoon": "private and quiet, good for a honeymoon",
-    "romantic": "private and quiet, good for a romantic getaway",
-    "workcation": "quiet enough to get work done",
-    "business": "convenient for a work trip",
-    "solo": "a comfortable spot for a solo stay",
-}
-
-
-def _purpose_phrase(purpose_of_stay: str) -> str | None:
-    lowered = purpose_of_stay.lower()
-    for keyword, phrase in _PURPOSE_PHRASES.items():
-        if keyword in lowered:
-            return phrase
-    return None
+# Deliberately NO purpose-of-stay phrases ("private and quiet, good for a
+# honeymoon", "quiet enough to get work done", ...). They were fixed strings
+# keyed on what the guest said, asserted about ANY property, and no property
+# data backs them -- the agent would have told a honeymooning guest a villa is
+# "private and quiet" because of the guest's own words, not the villa's
+# information. A match reason must come from a field on the card (an amenity,
+# capacity, price); the guest's purpose still steers ranking elsewhere, it just
+# is never turned into a claim about the property.
 
 
 def match_reasons_for_card(card: PropertyCard, args, budget: "BudgetConstraint | None" = None) -> list[str]:
@@ -158,11 +147,6 @@ def match_reasons_for_card(card: PropertyCard, args, budget: "BudgetConstraint |
             if canonicalize_amenity(requested) in canonical_top:
                 reasons.append(f"has the {requested.lower()} you asked for")
                 break
-
-    if len(reasons) < _MAX_MATCH_REASONS and args.purpose_of_stay:
-        phrase = _purpose_phrase(args.purpose_of_stay)
-        if phrase:
-            reasons.append(phrase)
 
     if len(reasons) < _MAX_MATCH_REASONS and args.num_guests:
         # "Comfortably covers" -- not just barely meets, which would read as

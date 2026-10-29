@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import ForeignKey, String, Text
+from sqlalchemy import ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -31,6 +31,7 @@ class PropertyChunk(UUIDPkMixin, TimestampMixin, Base):
     """
 
     __tablename__ = "property_chunks"
+    __table_args__ = (Index("ix_property_chunks_property_type", "property_id", "chunk_type"),)
 
     property_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("properties.id", ondelete="CASCADE"), index=True
@@ -42,5 +43,18 @@ class PropertyChunk(UUIDPkMixin, TimestampMixin, Base):
     chunk_type: Mapped[str] = mapped_column(String(32), nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
     embedding: Mapped[list | None] = mapped_column(JSONB)
+    # Knowledge-base "fact" rows (chunk_type == "fact"): one small, citable
+    # statement each, built by app/services/property/chunking.py's
+    # build_fact_chunks and searched by app/services/property/kb_retrieval.py
+    # (search_faq's only source of spoken facts). source_kind says where the
+    # statement came from ("faq_entry", "house_rules", "neighborhood",
+    # "amenity", "description", "seasonal_note", "structured"), source_ref
+    # points at the FaqEntry id / field name, and meta carries extra data a
+    # fact needs at read time (a seasonal note's start_month/end_month).
+    # All null for the coarse overview/amenities/location/house_rules chunks
+    # recommend_properties' semantic search reads.
+    source_kind: Mapped[str | None] = mapped_column(String(24))
+    source_ref: Mapped[str | None] = mapped_column(String(64))
+    meta: Mapped[dict | None] = mapped_column(JSONB)
 
     property: Mapped["Property"] = relationship(back_populates="chunks")

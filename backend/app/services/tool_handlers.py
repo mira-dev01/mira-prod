@@ -22,7 +22,6 @@ from app.integrations import email_client, twilio_client
 from app.integrations.email_templates import build_escalation_email_html, build_photos_email_html
 from app.models.call_session import CallSession
 from app.models.property import Property
-from app.models.unanswered_question import UnansweredQuestion
 from app.models.user import User
 from app.schemas.tool import (
     CheckCalendarArgs,
@@ -43,9 +42,8 @@ from app.services import (
     calendar_service,
     capability_service,
     notification_preferences_service,
-    embedding_service,
-    faq_service,
     guest_booking_service,
+    kb_gap_service,
     lead_service,
     notification_service,
     price_event_service,
@@ -53,6 +51,7 @@ from app.services import (
     technician_service,
 )
 from app.services.pricing_engine import NegotiationResult, PriceBreakdown
+from app.services.property import kb_retrieval
 from app.services.property.pitch_formatter import RecommendationResult
 from app.services.property.retrieval import orchestrator as property_retrieval_orchestrator
 from app.utils.dates import today_ist
@@ -1232,16 +1231,30 @@ async def handle_search_faq(
     default_property_id: uuid.UUID | None,
     call_session_id: uuid.UUID | None = None,
     on_answered: Callable[[Property], None] | None = None,
+    on_result: Callable[[Property | None, kb_retrieval.KbSearchResult], None] | None = None,
 ) -> str:
-    """on_answered (Phase 4b.3, documentation/agent-conversation-improvement.md):
-    optional synchronous callback receiving the real, resolved Property
-    (for its .amenities) right before the result is returned -- only called
-    when a specific property was actually resolved (never for a
-    portfolio-wide query with no property_id at all, since there's no
-    single property's amenity list to verify a reply against in that case).
-    Lets app/voice/tools.py's wrapper feed property_recommendation_guard the
-    real on-file amenity list so it can catch the model inventing an amenity
-    that was never actually on file."""
+    """The agent's only route to property facts. Searches the property's
+    knowledge base (verified FAQ rows + its own fields + active seasonal notes,
+    see app/services/property/kb_retrieval.py) and returns ONLY the facts that
+    bear on the question -- never the whole property blob -- or an explicit
+    "nothing on file" that the agent must relay instead of answering from its
+    own knowledge. A "nothing on file" result is logged as a gap for the host
+    (always with the property it was about) and raises one in-app notification
+    for the call.
+
+    on_answered (Phase 4b.3, documentation/agent-conversation-improvement.md):
+    optional synchronous callback receiving the real, resolved Property (for
+    its .amenities) -- called whenever a specific property was resolved
+    (never for a portfolio-wide query with no property at all). Lets
+    app/voice/tools.py's wrapper feed property_recommendation_guard the real
+    on-file amenity list.
+
+    on_result: optional synchronous callback receiving (property or None, the
+    KbSearchResult) -- feeds the knowledge grounding guard
+    (app/voice/kb_grounding_guard.py) the exact facts the agent was handed,
+    which is what every spoken claim is later checked against."""
+    from app.prompts.system_prompt import KB_MISS_LINE  # local: system_prompt <-> services import cycle
+
     property_id = None
     if args.property_id:
         try:
@@ -1250,63 +1263,45 @@ async def handle_search_faq(
             property_id = None
     property_id = property_id or default_property_id
 
-    parts: list[str] = []
-
-    entries = await faq_service.search_faq_entries(db, host_user_id, args.query, property_id)
-    if entries:
-        parts.append(" | ".join(f"{entry.question}: {entry.answer}" for entry in entries))
-    elif property_id is not None:
-        legacy = await faq_service.search_legacy_property_faq(db, property_id, args.query)
-        if legacy:
-            parts.append(" | ".join(f"{item['question']}: {item['answer']}" for item in legacy))
-
-    if property_id is not None:
-        property_ = await _get_property(db, str(property_id))
-        if property_ is not None:
-            # Always included, even when a verified FaqEntry already matched
-            # above -- a verified entry can match the query's *wording*
-            # (trigram similarity) without actually covering what the guest
-            # asked. Confirmed live: "is it on the ground floor" got "I
-            # don't have that specific detail" even though the property's
-            # own description states the floor explicitly, because a
-            # loosely-matching verified entry short-circuited before this
-            # ever ran. Handing the model everything on file alongside
-            # whatever specific entry matched lets it pick the real answer
-            # itself rather than trusting a similarity score to have judged
-            # relevance correctly -- see full_property_context's docstring.
-            parts.append(f"{property_.name}: {faq_service.full_property_context(property_)}")
-            if on_answered is not None:
-                on_answered(property_)
-
-    if parts:
-        return " | ".join(parts)
-
-    # No verified answer anywhere -- log the gap for the FAQ Learning Engine
-    # (app/api/v1/faq.py's /faq/gaps endpoints) so hosts can see frequently
-    # unanswered questions and convert them into real FaqEntry rows. Never
-    # let a logging failure break the guest-facing response.
-    try:
-        gap = UnansweredQuestion(
-            user_id=host_user_id,
-            property_id=property_id,
-            call_session_id=call_session_id,
-            question=args.query,
-            normalized_question=args.query.strip().lower(),
-        )
-        db.add(gap)
-        await db.commit()
-        await db.refresh(gap)
-        # Knowledge Memory (memory-architecture-plan.md section 3.1):
-        # embedding computed fire-and-forget, AFTER the DB commit above and
-        # never awaited here -- an embedding API call must never add
-        # latency to this live guest turn. Uses its own DB session (see
-        # embedding_service.py), so it's safe even after this handler
-        # returns.
-        asyncio.create_task(embedding_service.backfill_unanswered_question_embedding(gap.id, gap.question))
-    except Exception:
-        await db.rollback()
-
-    return (
-        "I don't have verified information about that on file. Let me check with the host so you get the "
-        "correct details."
+    property_ = await _get_property(db, str(property_id)) if property_id is not None else None
+    property_facts = await kb_retrieval.load_property_facts(db, property_) if property_ is not None else []
+    portfolio_facts = await kb_retrieval.load_portfolio_facts(db, host_user_id)
+    vocabulary_extra = (
+        " ".join(filter(None, [property_.name, property_.display_name, property_.spoken_name, property_.city]))
+        if property_ is not None
+        else ""
     )
+    result = await kb_retrieval.search_facts(args.query, property_facts, portfolio_facts, vocabulary_extra)
+
+    if property_ is not None:
+        if on_answered is not None:
+            on_answered(property_)
+    if on_result is not None:
+        try:
+            on_result(property_, result)
+        except Exception:
+            logger.exception("search_faq on_result callback failed -- ignoring")
+
+    if result.status == "none":
+        try:
+            await kb_gap_service.log_kb_gap(
+                db,
+                user_id=host_user_id,
+                property_id=property_id,
+                call_session_id=call_session_id,
+                question=args.query,
+                source="search_miss",
+            )
+        except Exception:
+            # A logging failure must never break the guest-facing response.
+            await db.rollback()
+            logger.exception("Failed to log a knowledge-base gap for query=%r", args.query[:80])
+
+    name = (property_.display_name or property_.name) if property_ is not None else "this host's properties"
+    text = kb_retrieval.render_kb_result(name, result, KB_MISS_LINE)
+    if property_ is None and result.status != "found":
+        text += (
+            " No specific property is selected for this question: if the guest is asking about a particular "
+            "property, ask which one before answering."
+        )
+    return text

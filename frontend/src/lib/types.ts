@@ -709,6 +709,10 @@ export type FaqGapOut = {
   suggested_faq_entry_id: string | null;
   suggested_answer: string | null;
   match_score: number | null;
+  // How Mira noticed she couldn't answer: "search_miss" (nothing on file),
+  // "guard_blocked" (she tried to state something unverified and was stopped)
+  // or "miss_line_spoken".
+  source?: string;
 };
 
 export type FaqGapAnswer = {

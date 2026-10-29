@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ListRow } from "@/components/ui/list-row";
 import { RightPanel, RightPanelFooterButton } from "@/components/ui/right-panel";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -46,7 +47,18 @@ export function UnansweredQuestionsCard({
 } = {}) {
   const { data: properties } = useAsync(() => api.properties.list(), []);
   const { data: allGaps, loading: gapsLoading, refetch: refetchGaps } = useAsync(() => api.faqGaps.list(), []);
-  const gaps = limit ? allGaps?.slice(0, limit) : allGaps;
+  // Which property's gaps to show (full list only). Filtered client-side: the
+  // list is already fully loaded and small, and it keeps the unanswered-count
+  // badge (totalCount, across every property) unaffected by the filter.
+  const [selectedFilterId, setSelectedFilterId] = useState<string>("all");
+  const gapPropertyIds = Array.from(new Set((allGaps ?? []).map((gap) => gap.property_id).filter(Boolean))) as string[];
+  // Falls back to "all" once the chosen property has no gaps left (e.g. the
+  // host just answered its last one) -- otherwise the list would empty out
+  // with the filter control gone, leaving no way back.
+  const filterPropertyId = gapPropertyIds.includes(selectedFilterId) ? selectedFilterId : "all";
+  const visibleGaps =
+    filterPropertyId === "all" ? allGaps : allGaps?.filter((gap) => gap.property_id === filterPropertyId);
+  const gaps = limit ? visibleGaps?.slice(0, limit) : visibleGaps;
   const totalCount = allGaps?.length ?? 0;
 
   const [expanded, setExpanded] = useState(!collapsible);
@@ -75,7 +87,10 @@ export function UnansweredQuestionsCard({
     // clear it before saving, same "AI suggests, host approves" pattern as
     // the Host Memory discount rules on the AI Training page.
     setGapAnswerText(gap.suggested_answer ?? "");
-    setApplyToProperty(false);
+    // The gap belongs to one property: default the answer to that property
+    // only. A portfolio-wide answer ("pets are allowed") would otherwise
+    // become a fact Mira states for every other property too.
+    setApplyToProperty(Boolean(gap.property_id));
     setRecordedBlob(null);
     setRecordedUrl(null);
   }
@@ -180,6 +195,23 @@ export function UnansweredQuestionsCard({
             </p>
           ) : (
             <div className="space-y-3">
+              {!limit && gapPropertyIds.length > 1 && (
+                <Select value={filterPropertyId} onValueChange={(v) => v && setSelectedFilterId(v)}>
+                  <SelectTrigger className="w-full sm:w-64">
+                    <SelectValue>
+                      {(value: string) => (value === "all" ? "All properties" : propertyName(value))}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All properties</SelectItem>
+                    {gapPropertyIds.map((id) => (
+                      <SelectItem key={id} value={id}>
+                        {propertyName(id)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               {gaps.map((gap) => (
                 <ListRow key={gap.sample_id} className="flex-row flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0 flex-1 space-y-1">
@@ -191,6 +223,11 @@ export function UnansweredQuestionsCard({
                       {gap.suggested_answer && (
                         <Badge variant="secondary" className="shrink-0">
                           Suggested answer found
+                        </Badge>
+                      )}
+                      {gap.source === "guard_blocked" && (
+                        <Badge variant="outline" className="shrink-0">
+                          Mira held back an unverified answer
                         </Badge>
                       )}
                     </div>

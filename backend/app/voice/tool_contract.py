@@ -136,8 +136,13 @@ def voice_tool(
     aliases: dict[str, str] | None = None,
     internal_error_text: str | None = None,
     on_internal_error: Callable[[], None] | None = None,
+    on_outcome: Callable[[str, "ToolOutcome"], None] | None = None,
 ):
-    """aliases: legacy/misremembered argument names mapped onto the real one
+    """on_outcome: observation-only hook called with (tool name, outcome) for
+    every result delivered to the model -- the knowledge grounding guard uses
+    it to learn what the agent was legitimately told (prices, dates, ...). It
+    must never raise into the call; a failure is logged and ignored.
+    aliases: legacy/misremembered argument names mapped onto the real one
     before validation (e.g. {"budget": "budget_amount"}).
     internal_error_text/on_internal_error: a tool-specific failure message,
     and a hook for tool-specific cleanup (recommend_properties arms the
@@ -173,6 +178,11 @@ def voice_tool(
                 elif outcome.status in _SUCCESS_STATUSES:
                     invalid_streak = 0
                 delivered.append(outcome)
+                if on_outcome is not None:
+                    try:
+                        on_outcome(name, outcome)
+                    except Exception:
+                        logger.exception("voice_tool {}: on_outcome hook failed -- ignoring", name)
                 logger.info(
                     "voice_tool_call tool={} call_session_id={} tool_call_id={} success={} status={} "
                     "duration_ms={} arg_keys={}",

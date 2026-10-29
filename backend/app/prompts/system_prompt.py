@@ -54,6 +54,16 @@ DEFAULT_ESCALATION_PHRASE = (
 # asked for yet.
 DEFAULT_CLOSING_PHRASE = "Thanks so much for calling -- have a wonderful day!"
 
+# Spoken whenever a property/location question has no answer in the
+# knowledge base search_faq returned (rendered in the guest's own language
+# per Conversation Style, same meaning). Fixed wording on purpose (same "no
+# detection, deterministic wording" principle as DEFAULT_ESCALATION_PHRASE)
+# so the model never improvises an answer from general knowledge instead.
+# Deliberately promises nothing: any follow-up promise ("the host will get
+# back to you") comes from the escalation phrase, said only alongside a real
+# escalate_to_host call, so the guest is never told something that isn't true.
+KB_MISS_LINE = "I don't have that detail on file, and I'd rather not guess."
+
 # Spoken deterministically (TTSSpeakFrame in app/voice/pipeline.py's
 # _wait_and_trigger_handoff, never LLM-generated) right before a live call
 # is transferred to the host after they tap "Take Call". Host-overridable
@@ -187,7 +197,23 @@ def _resolve_template(template: str, **values: str | None) -> str:
         return template
 
 
-GOLDEN_RULES = """Golden rules:
+GOLDEN_RULES = f"""Golden rules:
+- KNOWLEDGE BOUNDARY (overrides every other rule): every fact you state about a property or its
+  surroundings -- location, distances, travel times, nearby places, rules, policies, amenities, food,
+  transport, safety -- must be directly supported by the latest search_faq result in this conversation.
+  You may paraphrase it or say it in the guest's language, but never add to it, round it, estimate from
+  it, or fill a gap in it. Never use general or world knowledge for these, even when you are sure you
+  know the answer (e.g. how far a city is, what a place is like, what is usually allowed). Always call
+  search_faq before answering any such question.
+  Exempt from search_faq (they already have their own source): the property name, city, check-in/out
+  times, max guests and base nightly rate given in this prompt; the property portfolio and Locations
+  lists given in this prompt; and anything returned by get_pricing, negotiate_rate, check_calendar,
+  recommend_properties or lookup_booking.
+  When search_faq's result does not contain the specific answer, do exactly this and nothing else: say
+  "{KB_MISS_LINE}" (same meaning, in the guest's own language and script per the Conversation Style block),
+  with no guess, estimate, "usually", "around" or "I think". Then, if you have not yet escalated on this
+  call, say the escalation phrasing below and call escalate_to_host (urgency "medium", the guest's
+  question as the reason); if you already have, say only the line above -- never a second escalation phrase.
 - Speak only your own single turn, then stop and wait -- never generate, speak, or assume the guest's
   reply for them, even when their answer seems obvious or you're confident what they'll say. Confirmed
   live: after asking "May I have your name?", the reply spoken aloud continued on its own with "My name
@@ -316,10 +342,11 @@ GOLDEN_RULES = """Golden rules:
   property's full on-file details (house rules, amenities, neighborhood info, check-in/out times,
   seasonal notes, etc.) for you to read the actual answer out of -- either way, only answer with what's
   actually in what it returned. If the specific thing the guest asked isn't actually present in the
-  result (even though something came back), that counts as no verified information: say so plainly and
-  escalate -- do not answer from memory, guesswork, or by loosely inferring from unrelated details in
-  the result. Everything genuinely on file must resolve on the call itself, without escalating -- only
-  escalate a property/support question when the answer truly isn't in what search_faq returned.
+  result (even though something came back), that counts as no verified information: follow the
+  KNOWLEDGE BOUNDARY rule above for exactly what to say and do -- do not answer from memory, guesswork,
+  or by loosely inferring from unrelated details in the result. Everything genuinely on file must
+  resolve on the call itself, without escalating -- only escalate a property/support question when the
+  answer truly isn't in what search_faq returned.
 - If the guest asks to see photos/pictures/images of the property, ask whether the number they're
   calling from is also their WhatsApp number, or if they'd like to give a different one -- then call
   send_photos with that number. Ask this every time, even if a caller-ID number is already known --
@@ -575,11 +602,12 @@ GOLDEN_RULES = """Golden rules:
   new the guest just told you. Use this sparingly, not on every turn, and never twice in a row with
   the same word -- vary it, consistent with the rule above about never repeating yourself. Never use
   a filler as a substitute for actually answering.
-- Sound like an experienced, warm local host who genuinely enjoys this, not a transactional support
-  bot reading facts off a screen. This is entirely about HOW you deliver a reply, never about saying
-  more -- every concise-response, one-question-per-turn, and no-filler-on-interruption rule above
-  still applies exactly as written, and you must never invent a fact, embellish a property, or add
-  marketing language just to sound more enthusiastic.
+- Sound warm and personable, like someone who genuinely enjoys hosting, not a transactional support
+  bot reading facts off a screen. This is entirely about tone -- you have no personal or local
+  knowledge of your own, only what search_faq and your other tools return. It is about HOW you
+  deliver a reply, never about saying more -- every concise-response, one-question-per-turn, and
+  no-filler-on-interruption rule above still applies exactly as written, and you must never invent a
+  fact, embellish a property, or add marketing language just to sound more enthusiastic.
   - React like a person, briefly, in the same turn as your next line -- never as a separate turn on
     its own. If the guest says something positive ("I like that one", "this sounds nice", "perfect"),
     open with a short acknowledgment ("Great choice." / "I'm glad you like it.") before continuing. If
@@ -744,13 +772,15 @@ never ask the guest for it.
 {GOLDEN_RULES}
 Capabilities:
 - Check availability and quote pricing using your tools, do not guess numbers.
-- Answer property/support questions using search_faq (falls back to the house rules/amenities below).
-- If the guest asks generally about the property ("tell me about this place", "what's it like"), lead
-  your answer with the one-line description given below, if one is set, before adding more detail.
+- Answer every property/support question with search_faq -- it returns the facts on file for this
+  property (description, house rules, amenities, neighborhood, FAQ answers). You are given no property
+  details beyond the name, city, check-in/out times, max guests and nightly rate below.
+- If the guest asks generally about the property ("tell me about this place", "what's it like"), call
+  search_faq and lead with the description it returns, before adding more detail.
 - For local-area questions (nearby cafes/restaurants, scooter/bike rental, distance to the
-  beach/landmarks/airport/railway station, cab availability and typical fares), answer directly from
-  the neighborhood info below if it covers it -- don't escalate just because it's a "local tips"
-  question rather than a property-policy one.
+  beach/landmarks/airport/railway station, cab availability and typical fares), call search_faq and
+  answer only from what it returns -- never from your own knowledge of the area. If it doesn't cover
+  the specific thing asked, follow the KNOWLEDGE BOUNDARY rule instead of guessing.
 - If the guest reports an urgent issue (no water, no AC, lockout, safety concern), use escalate_to_host
   or dispatch_technician as appropriate -- do not try to resolve physical issues yourself.
 - For WhatsApp confirmations the guest asks for, use send_whatsapp.
@@ -855,7 +885,7 @@ def build_system_prompt(
 ) -> str:
     # Section order here is deliberate for Groq's prefix-based prompt cache
     # (see docs/agents.md's Groq section): everything up to and including the
-    # property/FAQ/seasonal-notes block below is byte-identical across every
+    # "Current property" block below is byte-identical across every
     # call to the same property, so it stays first/contiguous to maximize the
     # cacheable prefix. caller_phone/guest-memory/active-booking are per-call-
     # unique (vary by guest even for the same property) and are appended only
@@ -875,33 +905,15 @@ def build_system_prompt(
         f"- base nightly rate: ₹{float(property_.base_price):,.0f}"
     )
 
-    if property_.usp:
-        sections.append(f"\nOne-line description (lead with this when asked generally about the property): {property_.usp}")
-
-    if property_.house_rules:
-        sections.append(f"\nHouse rules:\n{property_.house_rules}")
-
-    if property_.neighborhood_info:
-        sections.append(f"\nNeighborhood / local area info:\n{property_.neighborhood_info}")
-
-    if property_.amenities:
-        sections.append(f"\nAmenities: {', '.join(property_.amenities)}")
-
-    # Two sources, both inlined the same way: property_.faq is the legacy
-    # inline column (kept for hosts/properties not yet migrated to
-    # FaqEntry -- see alembic 7a7297081aaa), verified_faq_entries is the
-    # structured FaqEntry table the dashboard's FAQ tab and per-property FAQ
-    # editor both write to now (app/services/faq_service.list_verified_property_faq).
-    faq_pairs = [(item["question"], item["answer"]) for item in (property_.faq or [])]
-    faq_pairs += [(entry.question, entry.answer) for entry in (verified_faq_entries or [])]
-    if faq_pairs:
-        faq_lines = "\n".join(f"Q: {question}\nA: {answer}" for question, answer in faq_pairs)
-        sections.append(f"\nFrequently asked questions:\n{faq_lines}")
-
-    active_notes = _active_seasonal_notes(property_.seasonal_notes)
-    if active_notes:
-        notes_lines = "\n".join(f"- {note}" for note in active_notes)
-        sections.append(f"\nSeasonal notes currently in effect:\n{notes_lines}")
+    # Deliberately NOT inlined here: the description, house rules,
+    # neighborhood info, amenities, FAQ answers and seasonal notes. They reach
+    # the model only through search_faq (app/services/property/kb_retrieval.py),
+    # which returns just the facts that bear on the guest's question. Keeping
+    # them in the prompt let the model answer from them -- or past them, from
+    # its own knowledge -- without ever calling a tool, and made "the answer
+    # must come from the knowledge base" unenforceable. `verified_faq_entries`
+    # stays in the signature for callers but is no longer used here; the same
+    # rows are indexed as facts (chunking.build_fact_chunks).
 
     caller_phone_section = _caller_phone_section(caller_phone)
     if caller_phone_section:

@@ -107,3 +107,52 @@ async def test_faq_gaps_api_list_and_answer(client, auth_headers, test_user, tes
 
     res = await client.get("/api/v1/faq/gaps", headers=auth_headers)
     assert res.json() == []
+
+
+async def test_gap_source_is_exposed_through_the_api(client, auth_headers, test_user, test_property, db_session):
+    row = await _add_gap(db_session, test_user.id, test_property.id, "How far is Delhi?")
+    row.source = "guard_blocked"
+    await db_session.commit()
+
+    response = await client.get("/api/v1/faq/gaps", headers=auth_headers)
+
+    assert response.status_code == 200
+    gap = next(g for g in response.json() if g["question"] == "How far is Delhi?")
+    assert gap["source"] == "guard_blocked"
+    assert gap["property_id"] == str(test_property.id)
+
+
+async def test_property_scoped_gap_answer_becomes_a_fact_for_that_property_only(
+    test_user, test_property, db_session
+):
+    """The dashboard answers a gap 'for this property only' -- the answer must
+    be searchable for that property and must not leak to another."""
+    from app.models.property import Property
+    from app.schemas.tool import SearchFaqArgs
+    from app.services import embedding_service, tool_handlers
+    from app.services.property import kb_retrieval
+
+    async def _none(text):
+        return None
+
+    embedding_service.get_embedding, original = _none, embedding_service.get_embedding
+    try:
+        other = Property(user_id=test_user.id, name="Other Villa", city="Goa", base_price=3000, max_guests=2)
+        db_session.add(other)
+        await db_session.commit()
+
+        gap = await _add_gap(db_session, test_user.id, test_property.id, "Is there a gym?")
+        await faq_service.answer_faq_gap(db_session, gap, "A small gym on the ground floor.", True, "host_gap_answer")
+        kb_retrieval.invalidate_fact_cache()
+
+        mine = await tool_handlers.handle_search_faq(
+            db_session, SearchFaqArgs(query="gym", property_id=str(test_property.id)), test_user.id, test_property.id
+        )
+        theirs = await tool_handlers.handle_search_faq(
+            db_session, SearchFaqArgs(query="gym", property_id=str(other.id)), test_user.id, other.id
+        )
+    finally:
+        embedding_service.get_embedding = original
+
+    assert "small gym on the ground floor" in mine
+    assert "small gym" not in theirs

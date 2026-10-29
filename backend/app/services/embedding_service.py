@@ -136,3 +136,27 @@ async def backfill_property_chunk_embedding(chunk_id, text: str) -> None:
                 await db.commit()
     except Exception:
         logger.exception("Failed to save embedding for property_chunk_id=%s", chunk_id)
+
+
+async def backfill_property_chunk_embeddings(items: list[tuple]) -> None:
+    """Embeds many (chunk_id, text) pairs -- a property's knowledge-base fact
+    rows after a sync -- with a small concurrency cap so one edit can't fire
+    dozens of simultaneous embedding requests. Same fire-and-forget, never-
+    raises contract as backfill_property_chunk_embedding: a fact whose
+    embedding fails just stays lexical-only in search_faq's retrieval."""
+    import asyncio
+
+    from app.services.property import kb_retrieval
+
+    semaphore = asyncio.Semaphore(4)
+
+    async def _one(chunk_id, text):
+        async with semaphore:
+            await backfill_property_chunk_embedding(chunk_id, text)
+
+    try:
+        await asyncio.gather(*[_one(chunk_id, text) for chunk_id, text in items], return_exceptions=True)
+    finally:
+        # Cached fact lists hold the embeddings loaded at the time; drop them
+        # so the next search sees the freshly written vectors.
+        kb_retrieval.invalidate_fact_cache()

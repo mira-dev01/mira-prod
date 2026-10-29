@@ -13,6 +13,8 @@ class FaqGapOut(BaseModel):
     suggested_faq_entry_id: uuid.UUID | None = None
     suggested_answer: str | None = None
     match_score: float | None = None
+    # search_miss | guard_blocked | miss_line_spoken (UnansweredQuestion.source)
+    source: str = "search_miss"
 
 
 class FaqGapAnswerIn(BaseModel):
