@@ -401,7 +401,10 @@ def test_property_usp_omitted_from_lead_agent_portfolio_listing():
     prop = _property(usp="Glass house, 1BHK with a private jacuzzi")
     prompt = build_lead_system_prompt(host, [prop])
     assert "Glasshouse Studio" in prompt
-    assert "Glass house, 1BHK with a private jacuzzi" not in prompt
+    # Only the per-property listing omits it; the per-city Locations section
+    # deliberately carries one short USP-derived blurb per city.
+    listing = prompt.split("Property portfolio:")[1].split("Locations:")[0]
+    assert "Glass house, 1BHK with a private jacuzzi" not in listing
 
 
 def test_property_amenities_omitted_from_lead_agent_portfolio_listing():
@@ -1114,3 +1117,28 @@ def test_agent_language_policy_present_in_lead_agent_prompt_too():
     host = _user(agent_language_policy="hindi_first")
     prompt = build_lead_system_prompt(host, [_property()])
     assert "guests generally prefer Hindi/Hinglish" in prompt
+
+
+def test_lead_prompt_locations_section_lists_each_city_with_blurb():
+    props = [
+        _property(name="Slow-life", city="Kasol", base_price=3500, max_guests=10, usp="Riverside villa. Bonfire nights."),
+        _property(name="Cove", city="Goa", base_price=6000, max_guests=4),
+    ]
+    prompt = build_lead_system_prompt(_user(), props)
+    assert "Locations:" in prompt
+    assert "- Kasol: 1 property, from ₹3,500/night, sleeps up to 10 -- Riverside villa" in prompt
+    assert "Bonfire nights" not in prompt.split("Locations:")[1]
+    assert "- Goa: 1 property, from ₹6,000/night, sleeps up to 4" in prompt
+    assert "name two or three of these locations" in prompt
+    assert "do NOT escalate" in prompt
+
+
+def test_lead_prompt_single_location_says_never_ask_where():
+    prompt = build_lead_system_prompt(_user(), [_property(city="Kasol"), _property(city="Kasol", name="B")])
+    assert "- Kasol: 2 properties" in prompt
+    assert "never ask the guest where they want to stay" in prompt
+    assert "name two or three of these locations" not in prompt
+
+
+def test_lead_prompt_no_locations_section_without_properties():
+    assert "Locations:" not in build_lead_system_prompt(_user(), [])

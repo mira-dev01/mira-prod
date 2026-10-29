@@ -1114,7 +1114,10 @@ Lead qualification workflow:
    every field being filled. If you already know their preferred area/type of stay or purpose and
    have at least a stay length (nights) or exact dates, recommend now; ask budget afterward as a
    second pass to refine the options, rather than before showing anything. Only ask budget first if
-   you genuinely have nothing else yet to search on. If the guest mentions a city or region
+   you genuinely have nothing else yet to search on. A vague stay length ("two to five nights", "not
+   sure yet") is enough to search on -- never re-ask nights the guest already answered. A missing
+   field is never a reason to escalate_to_host: ask for it (for a missing location, see the Locations
+   section below) -- escalate only for things that genuinely need the host. If the guest mentions a city or region
    ("properties in Rajasthan", "something in Goa"), call recommend_properties immediately with that
    location -- don't ask more questions first.
 
@@ -1204,6 +1207,67 @@ Lead qualification workflow:
 """
 
 
+_LOCATION_BLURB_MAX_CHARS = 90
+
+
+def _location_blurb(properties: list[Property]) -> str:
+    """One short descriptor for a city, taken from the cheapest property's USP
+    that has one (first sentence, capped). Empty when none of them has a USP --
+    the line then just carries counts/prices rather than inventing a blurb."""
+    for property_ in sorted(properties, key=lambda p: p.base_price):
+        usp = (property_.usp or "").strip()
+        if not usp:
+            continue
+        first_sentence = re.split(r"(?<=[.!?])\s", usp, maxsplit=1)[0].rstrip(".!? ")
+        if len(first_sentence) > _LOCATION_BLURB_MAX_CHARS:
+            first_sentence = first_sentence[: _LOCATION_BLURB_MAX_CHARS].rsplit(" ", 1)[0].rstrip(",;:- ") + "..."
+        return first_sentence
+    return ""
+
+
+def _locations_section(properties: list[Property]) -> str:
+    """Per-city summary built from data already loaded for the prompt (no extra
+    query, no tool call). Lets the model name real locations -- with a one-line
+    feel for each -- when a guest hasn't said where they want to stay, instead
+    of escalating or guessing. Per-city rather than per-property on purpose:
+    the property listing above is resent every turn, so this stays small.
+    Identical across calls for a host, so it sits in the cacheable prefix."""
+    by_city: dict[str, list[Property]] = {}
+    for property_ in properties:
+        city = (property_.city or "").strip()
+        if city:
+            by_city.setdefault(city, []).append(property_)
+    if not by_city:
+        return ""
+
+    lines = []
+    for city, city_properties in sorted(by_city.items()):
+        count = len(city_properties)
+        cheapest = min(float(p.base_price) for p in city_properties)
+        largest = max(p.max_guests for p in city_properties)
+        line = (
+            f"- {city}: {count} propert{'y' if count == 1 else 'ies'}, from ₹{cheapest:,.0f}/night, "
+            f"sleeps up to {largest}"
+        )
+        blurb = _location_blurb(city_properties)
+        if blurb:
+            line += f" -- {blurb}"
+        lines.append(line)
+
+    if len(by_city) == 1:
+        rule = (
+            "All properties are in one location, so never ask the guest where they want to stay -- "
+            "go straight to recommend_properties once you have enough to search on."
+        )
+    else:
+        rule = (
+            "If the guest hasn't said where they want to stay, do NOT escalate and do NOT call a tool "
+            "first: name two or three of these locations, each with its short feel from this list, and "
+            "ask which appeals to them. Only use locations listed here -- never invent one."
+        )
+    return "\nLocations:\n" + "\n".join(lines) + "\n" + rule
+
+
 def build_lead_system_prompt(
     user: User,
     properties: list[Property],
@@ -1242,6 +1306,9 @@ def build_lead_system_prompt(
                 f"sleeps {property_.max_guests}"
             )
         sections.append("\nProperty portfolio:\n" + "\n".join(lines))
+        locations_section = _locations_section(properties)
+        if locations_section:
+            sections.append(locations_section)
     else:
         sections.append("\nNo properties are configured in the portfolio yet -- escalate any enquiry to the host.")
 
