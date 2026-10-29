@@ -35,6 +35,17 @@ It cannot catch a fluent invented opinion with no measure/place/topic in it
 ("it's a lovely quiet area") -- the prompt rules and search_faq's fact-only
 results are what constrain that.
 
+Offers are checked too. The claim classes above skip questions (a question
+asserts nothing), which left a hole: "would you like a private pool?" or
+"beach or mountains?" offers something the portfolio may not have, and the
+guest then hears it is unavailable. A question that names an amenity or a
+kind of place (_OFFER_TOPICS) must name one the portfolio really offers --
+checked against the SupportCorpus plus a portfolio corpus (property
+type/style/amenities/blurbs) kept separate from it, so the portfolio's
+amenities never make an assertion about one particular property pass. The
+enforce action is the fixed OFFER_FALLBACK_LINE, since a question can't be
+answered "not on file".
+
 Position in the pipeline: after the LLM, streaming sentence by sentence (a
 sentence is held only until its terminator arrives, which TTS needs anyway),
 so replies that make no checkable claim add no latency.
@@ -202,6 +213,17 @@ _AMENITY_RE = re.compile(
 )
 
 
+# Topics that can be OFFERED to a guest as a choice (a kind of stay, a
+# feature). Policy and service topics (pets, cancellation, airport, ...) are
+# questions about the guest's own needs, not menu items.
+_OFFER_TOPICS = frozenset({"beach", "nature", "market", "restaurants"})
+OFFER_FALLBACK_LINE = "What kind of stay are you looking for?"
+
+
+def _is_offer_topic(topic: str) -> bool:
+    return topic in _OFFER_TOPICS or topic.startswith("amenity:")
+
+
 def extract_topics(text: str) -> set[str]:
     topics = {topic for topic, regex in _TOPIC_RES.items() if regex.search(text or "")}
     topics |= {f"amenity:{canonicalize_amenity(m)}" for m in _AMENITY_RE.findall(text or "")}
@@ -247,11 +269,13 @@ class SupportCorpus:
         self._tools: list[str] = []  # other tool results: same
         self._static: list[str] = []  # property details given in the prompt: same
         self._guest: list[str] = []  # the guest's own words: ground times and place names only
+        self._portfolio: list[str] = []  # what the host's properties offer: grounds offers (questions) only
         self._dirty = True
         self._measures: set[tuple[str, float]] = set()
         self._vague: set[str] = set()
         self._times: set[int] = set()
         self._topics: set[str] = set()
+        self._offerable: set[str] = set()
         self._words: set[str] = set()
 
     def add_facts(self, texts: list[str]) -> None:
@@ -270,6 +294,10 @@ class SupportCorpus:
         self._guest = [text] if text else []
         self._dirty = True
 
+    def set_portfolio_text(self, text: str) -> None:
+        self._portfolio = [text] if text else []
+        self._dirty = True
+
     def _rebuild(self) -> None:
         supporting = " \n".join(self._facts + self._tools + self._static)
         everything = supporting + " \n" + " \n".join(self._guest)
@@ -280,6 +308,7 @@ class SupportCorpus:
         self._vague = _vague_kinds(supporting)
         self._times = extract_clock_times(everything)
         self._topics = extract_topics(supporting)  # the guest asking about a topic doesn't make it true
+        self._offerable = extract_topics(supporting + " \n" + " \n".join(self._portfolio))
         self._words = set(re.findall(r"[a-z]{3,}", everything.lower()))
         self._dirty = False
 
@@ -306,6 +335,16 @@ class SupportCorpus:
         if self._dirty:
             self._rebuild()
         return self._topics
+
+    @property
+    def has_portfolio(self) -> bool:
+        return bool(self._portfolio)
+
+    @property
+    def offerable_topics(self) -> set[str]:
+        if self._dirty:
+            self._rebuild()
+        return self._offerable
 
     @property
     def words(self) -> set[str]:
@@ -344,6 +383,43 @@ def analyze_sentence(sentence: str, corpus: SupportCorpus) -> list[Violation]:
         violations.append(Violation("topic", topic))
 
     return violations
+
+
+def analyze_offer(sentence: str, corpus: SupportCorpus) -> list[Violation]:
+    """Offer topics a spoken QUESTION names that nothing in the portfolio
+    offers ("would you like a private pool?" when no property has a pool).
+    The counterpart of analyze_sentence, which skips questions."""
+    text = sentence.strip().replace("\u2019", "'")
+    # No portfolio text means it failed to load, not that nothing is offered:
+    # fail open rather than flag every offer.
+    if not corpus.has_portfolio or not text.endswith("?") or _DISCLAIMER_RE.search(text):
+        return []
+    return [
+        Violation("offer", topic)
+        for topic in sorted(extract_topics(text) - corpus.offerable_topics)
+        if _is_offer_topic(topic)
+    ]
+
+
+def build_portfolio_text(properties: list[Any]) -> str:
+    """What the host's properties offer a guest to choose between: type,
+    style, amenities and the free-text blurbs. Permissive on purpose (a
+    neighborhood mentioning a beach counts) -- an offer is only flagged when
+    nothing anywhere in the portfolio mentions it."""
+    parts: list[str] = []
+    for property_ in properties:
+        parts.extend(
+            str(x)
+            for x in (
+                property_.property_type,
+                property_.property_style,
+                property_.usp,
+                property_.neighborhood_info,
+                *(a for a in (property_.amenities or []) if isinstance(a, str)),
+            )
+            if x
+        )
+    return " \n".join(parts)
 
 
 def build_static_text(
@@ -412,6 +488,9 @@ class KnowledgeGroundingGuardProcessor(FrameProcessor):
 
     def set_static_text(self, text: str) -> None:
         self.corpus.set_static(text)
+
+    def set_portfolio_text(self, text: str) -> None:
+        self.corpus.set_portfolio_text(text)
 
     def record_search(self, status: str, fact_texts: list[str]) -> None:
         self._last_search_status = status
@@ -511,6 +590,15 @@ class KnowledgeGroundingGuardProcessor(FrameProcessor):
 
         violations = analyze_sentence(sentence, self.corpus)
         if not violations:
+            offers = analyze_offer(sentence, self.corpus)
+            if offers:
+                logger.warning(
+                    "kb_guard_would_block mode={} violations=[{}] sentence={!r}",
+                    self._mode,
+                    "; ".join(f"{v.kind}={v.detail}" for v in offers),
+                    sentence.strip()[:160],
+                )
+            sentence = OFFER_FALLBACK_LINE + " " if offers and self._mode == "enforce" else sentence
             await self.push_frame(LLMTextFrame(sentence), direction)
             return
 

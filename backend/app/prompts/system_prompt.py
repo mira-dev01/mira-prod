@@ -22,6 +22,7 @@ import re
 from datetime import date, datetime, timedelta
 
 from app.models.guest_profile import GuestProfile
+from app.services.amenity_taxonomy import NOTABLE_AMENITY_TAGS
 from app.services.call_service import BROWSER_TEST_CALLER_NUMBER
 from app.services import notification_preferences_service
 from app.services.guest_booking_service import BookingMatch
@@ -1092,11 +1093,11 @@ firing off the next question cold.
 {GOLDEN_RULES}
 Lead qualification workflow:
 1. Greet the guest and ask how you can help finding a stay.
-2. Understand their need first -- ask about number of guests, preferred area or type of stay (beach,
-   mountains, city, etc.), purpose, and their stay length/dates. Ask one question at a time, and
-   before each question check whether the guest already answered it earlier (including in their
-   opening message -- see the re-ask rule in golden rules above) -- skip straight to whichever of
-   these you're still missing. Do NOT ask for name or phone number yet -- people share contact
+2. Understand their need first -- ask about number of guests, preferred area or type of stay (only
+   choices the Locations section below lists), purpose, and their stay length/dates. Ask one
+   question at a time, and before each question check whether the guest already answered it earlier
+   (including in their opening message -- see the re-ask rule in golden rules above) -- skip
+   straight to whichever of these you're still missing. Do NOT ask for name or phone number yet -- people share contact
    details after they've gotten value, not before.
 
    For dates specifically: ask for their stay length (how many nights) BEFORE pressing for an exact
@@ -1222,6 +1223,32 @@ Lead qualification workflow:
 _LOCATION_BLURB_MAX_CHARS = 90
 
 
+def _location_facets(properties: list[Property]) -> str:
+    """The property types and notable features (pool, view, ...) this city's
+    properties really have, with how many of them have each. This is the
+    only menu the agent may offer a guest from: without it the model
+    invents example choices ("beach or mountains?", "a private pool?") from
+    general knowledge and then has to retract them. Notable features only
+    (amenity_taxonomy.NOTABLE_AMENITY_TAGS) -- baseline amenities like wifi
+    aren't a choice a guest makes. Empty when nothing is on file."""
+    total = len(properties)
+    types = sorted({p.property_type.strip().lower() for p in properties if p.property_type and p.property_type.strip()})
+    feature_counts: dict[str, int] = {}
+    for property_ in properties:
+        for tag in set(property_.amenity_tags or []) & NOTABLE_AMENITY_TAGS:
+            feature_counts[tag] = feature_counts.get(tag, 0) + 1
+    features = [
+        f"{tag.replace('_', ' ')} ({count} of {total})"
+        for tag, count in sorted(feature_counts.items(), key=lambda item: (-item[1], item[0]))
+    ]
+    parts = []
+    if types:
+        parts.append("types: " + ", ".join(types))
+    if features:
+        parts.append("features: " + ", ".join(features))
+    return "; ".join(parts)
+
+
 def _location_blurb(properties: list[Property]) -> str:
     """One short descriptor for a city, taken from the cheapest property's USP
     that has one (first sentence, capped). Empty when none of them has a USP --
@@ -1264,6 +1291,9 @@ def _locations_section(properties: list[Property]) -> str:
         blurb = _location_blurb(city_properties)
         if blurb:
             line += f" -- {blurb}"
+        facets = _location_facets(city_properties)
+        if facets:
+            line += f" [{facets}]"
         lines.append(line)
 
     if len(by_city) == 1:
@@ -1277,6 +1307,11 @@ def _locations_section(properties: list[Property]) -> str:
             "first: name two or three of these locations, each with its short feel from this list, and "
             "ask which appeals to them. Only use locations listed here -- never invent one."
         )
+    rule += (
+        " Whenever you offer the guest a choice -- a type of stay, a feature, a kind of place -- "
+        "offer only what the guest's location lists in [types/features] above; anything not listed "
+        "there is not in this portfolio, so never suggest it, not even as an example."
+    )
     return "\nLocations:\n" + "\n".join(lines) + "\n" + rule
 
 

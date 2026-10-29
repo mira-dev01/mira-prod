@@ -13,6 +13,7 @@ from app.prompts.system_prompt import (
     DEFAULT_HOST_HANDOFF_PHRASE,
     _active_booking_section,
     _active_seasonal_notes,
+    LEAD_AGENT_INSTRUCTIONS,
     build_lead_system_prompt,
     build_system_prompt,
     first_message_for,
@@ -1135,6 +1136,29 @@ def test_lead_prompt_locations_section_lists_each_city_with_blurb():
     assert "- Goa: 1 property, from ₹6,000/night, sleeps up to 4" in prompt
     assert "name two or three of these locations" in prompt
     assert "do NOT escalate" in prompt
+
+
+def test_lead_prompt_locations_list_only_real_types_and_features_per_city():
+    props = [
+        _property(name="A", city="Dehradun", property_type="Villa", amenity_tags=["pool", "wifi", "view"]),
+        _property(name="B", city="Dehradun", property_type="cabin", amenity_tags=["view", "ac"]),
+        _property(name="C", city="Goa", property_type="apartment", amenity_tags=["wifi"]),
+    ]
+    locations = build_lead_system_prompt(_user(), props).split("Locations:")[1]
+    assert "[types: cabin, villa; features: view (2 of 2), pool (1 of 2)]" in locations
+    # Baseline amenities are not a choice; a city with nothing notable lists types only.
+    assert "wifi" not in locations.split("- Goa")[0]
+    assert "[types: apartment]" in locations
+    assert "never suggest it" in locations
+
+
+def test_lead_prompt_locations_omit_facets_when_nothing_on_file():
+    locations = build_lead_system_prompt(_user(), [_property(city="Goa")]).split("Locations:")[1]
+    assert "[" not in locations.split("\n")[1]
+
+
+def test_lead_prompt_does_not_hardcode_example_stay_types():
+    assert "beach" not in LEAD_AGENT_INSTRUCTIONS.lower()
 
 
 def test_lead_prompt_single_location_says_never_ask_where():

@@ -87,6 +87,7 @@ from app.voice.language_sync import DEFAULT_TTS_LANGUAGE, LanguageSyncProcessor
 from app.voice.low_confidence_transcript_guard import LowConfidenceTranscriptGuardProcessor
 from app.voice.kb_grounding_guard import (
     KnowledgeGroundingGuardProcessor,
+    build_portfolio_text,
     build_static_text,
     guest_text_from_context,
     last_guest_utterance,
@@ -1095,6 +1096,7 @@ async def _build_kb_grounding_guard(
     from app.services import kb_gap_service
 
     static_text = ""
+    portfolio_text = ""
     try:
         async with AsyncSessionLocal() as db:
             host = await db.get(User, host_user_id)
@@ -1104,6 +1106,7 @@ async def _build_kb_grounding_guard(
             else:
                 properties = list((await db.scalars(select(Property).where(Property.user_id == host_user_id))).all())
         static_text = build_static_text(properties, host.name if host is not None else None, guest_known_name)
+        portfolio_text = build_portfolio_text(properties)
     except Exception:
         logger.exception("kb_grounding_guard: could not load static property text -- continuing without it")
 
@@ -1134,6 +1137,7 @@ async def _build_kb_grounding_guard(
         last_guest_utterance_provider=lambda: last_guest_utterance(context_holder.get("context")),
     )
     guard.set_static_text(static_text)
+    guard.set_portfolio_text(portfolio_text)
     return guard
 
 

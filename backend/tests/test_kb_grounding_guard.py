@@ -9,8 +9,11 @@ from pipecat.tests.utils import run_test
 from app.prompts.system_prompt import KB_MISS_LINE
 from app.voice.kb_grounding_guard import (
     KnowledgeGroundingGuardProcessor,
+    OFFER_FALLBACK_LINE,
     SupportCorpus,
+    analyze_offer,
     analyze_sentence,
+    build_portfolio_text,
     extract_clock_times,
     extract_measures,
     guest_text_from_context,
@@ -290,3 +293,87 @@ def test_guest_text_from_context_reads_string_and_part_messages():
     text = guest_text_from_context(Ctx())
     assert "hello" in text and "how far is Delhi" in text and "airport" not in text
     assert guest_text_from_context(None) == ""
+
+
+# --- offers (questions naming something the portfolio may not have) ---------
+
+PORTFOLIO = "villa cabin Valley views and a shared swimming pool. Pine forest, riverside walks."
+
+
+def _offers(sentence, portfolio=PORTFOLIO):
+    corpus = SupportCorpus()
+    corpus.set_portfolio_text(portfolio)
+    return [v.detail for v in analyze_offer(sentence, corpus)]
+
+
+@pytest.mark.parametrize(
+    "sentence, expected",
+    [
+        ("Would you prefer a beach or the mountains?", ["beach"]),
+        ("Are you looking for a hot tub?", ["amenity:bathtub"]),
+        ("Would you like a private pool or a market nearby?", ["market"]),
+    ],
+)
+def test_offer_naming_something_the_portfolio_lacks_is_flagged(sentence, expected):
+    assert _offers(sentence) == expected
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "Would you like a place with a pool?",  # "private pool" and "shared pool" both canonicalize to pool
+        "Are you travelling with pets?",  # policy topic: about the guest, not a menu item
+        "How many guests will be staying?",
+        "Would you like me to check the dates?",
+        "I don't have a beach option, would a lake work?",  # disclaimer
+        "We have a pool.",  # statements are analyze_sentence's job
+    ],
+)
+def test_supported_or_non_offer_questions_pass(sentence):
+    assert _offers(sentence) == []
+
+
+def test_offer_check_fails_open_without_portfolio_text():
+    assert _offers("Would you prefer a beach?", portfolio="") == []
+
+
+def test_portfolio_text_never_supports_an_assertion_about_a_property():
+    corpus = SupportCorpus()
+    corpus.set_portfolio_text(PORTFOLIO)
+    assert _kinds("This villa has a pool.", corpus) == [("topic", "amenity:pool")]
+
+
+def test_build_portfolio_text_collects_type_style_amenities_and_blurbs():
+    from types import SimpleNamespace
+
+    prop = SimpleNamespace(
+        property_type="villa",
+        property_style="beachfront",
+        usp="Sunset deck.",
+        neighborhood_info=None,
+        amenities=["Private pool", {"ignored": True}],
+    )
+    assert build_portfolio_text([prop]) == " \n".join(["villa", "beachfront", "Sunset deck.", "Private pool"])
+
+
+async def test_enforce_swaps_an_unsupported_offer_for_the_fixed_question():
+    guard = _guard("enforce")
+    guard.set_portfolio_text(PORTFOLIO)
+
+    down, _ = await run_test(guard, frames_to_send=_response("Happy to help. ", "Would you like a beach stay? ", "Great."))
+    await asyncio.sleep(0)
+
+    text = _spoken(down)
+    assert "beach" not in text
+    assert OFFER_FALLBACK_LINE in text
+    assert "Happy to help." in text and "Great." in text
+
+
+async def test_shadow_leaves_an_unsupported_offer_untouched():
+    guard = _guard("shadow")
+    guard.set_portfolio_text(PORTFOLIO)
+
+    down, _ = await run_test(guard, frames_to_send=_response("Would you like a beach stay? "))
+    await asyncio.sleep(0)
+
+    assert "beach" in _spoken(down)
