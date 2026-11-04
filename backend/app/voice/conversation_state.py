@@ -299,6 +299,20 @@ class ConversationState:
     turn_index: int = 0
     attention: dict[str, Salience] = field(default_factory=dict)
 
+    # Collect gate (app/voice/collect_gate.py). How many times, in separate
+    # guest turns, the agent has been told to ask for each missing detail, and
+    # the turn the last nudge happened on. A detail nudged twice is waived: the
+    # agent carries on without it and the lead is saved regardless.
+    collect_nudges: dict[str, int] = field(default_factory=dict)
+    collect_nudge_turn: dict[str, int] = field(default_factory=dict)
+    # Details the guest did not give after being asked twice, for the host.
+    waived_fields: list[str] = field(default_factory=list)
+    # Area lock: the new area the agent was told to confirm with the guest
+    # (a search for it was held back once). Confirmed implicitly when the
+    # guest names it or when the agent insists on a later turn.
+    area_confirm_asked: str | None = None
+    area_confirm_turn: int = -1
+
     # Phase 4D -- call-level negotiation event history (Phase 4C Section F:
     # "Call-level (starts at call connect, discarded at hangup)"). Holds
     # only NegotiationEvent entries for the property/dates currently being

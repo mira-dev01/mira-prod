@@ -172,6 +172,8 @@ async def test_abuse_6_property_change_invalidates_old_negotiation_history(db_se
     await db_session.refresh(property_b)
 
     state = ConversationState()
+
+    state.slots.update({"guest_name": "Test Guest", "phone": "+919999999999"})  # contact details already given
     tools = build_voice_tools(call_session_id=None, property_id=None, host_user_id=test_user.id, conversation_state=state)
     negotiate_rate = next(t for t in tools if t.__name__ == "negotiate_rate")
     check_in, check_out = _dates()

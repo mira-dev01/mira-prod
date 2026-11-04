@@ -34,6 +34,7 @@ that completion reaching the guard. See app/voice/property_recommendation_guard.
 """
 
 import functools
+import re
 import uuid
 from datetime import date
 from typing import Literal
@@ -46,6 +47,8 @@ from loguru import logger
 from pipecat.transcriptions.language import Language
 
 from app.database import AsyncSessionLocal
+from app.models.user import User
+from app.schemas.agent_config import AgentConfig
 from app.schemas.tool import (
     CheckCalendarArgs,
     DispatchTechnicianArgs,
@@ -61,7 +64,7 @@ from app.schemas.tool import (
     SendWhatsappArgs,
     UpdateLeadArgs,
 )
-from app.services import tool_handlers
+from app.services import agent_config_service, lead_service, tool_handlers
 from app.services.amenity_taxonomy import canonicalize_amenities, canonicalize_amenity
 from app.services.property.budget import coerce_budget_basis, infer_budget_basis, mentions_amount
 from app.services.property.pitch_formatter import (
@@ -70,6 +73,7 @@ from app.services.property.pitch_formatter import (
     render_recommendation_text,
 )
 from app.utils.dates import today_ist
+from app.voice import collect_gate
 from app.voice.conversation_state import ConversationState
 from app.voice.kb_grounding_guard import KnowledgeGroundingGuardProcessor
 from app.voice.property_recommendation_guard import PropertyRecommendationGuardProcessor
@@ -223,6 +227,114 @@ def build_voice_tools(
             o.get("offer_percent") and o.get("property_id") == str(property_id) for o in state.recommendations_shown
         )
 
+    def _area_needs_confirmation(params: FunctionCallParams, requested: str | None) -> bool:
+        """Area lock: once the guest has named an area, searches stay in it
+        unless the guest changes it. A different area the guest did not just
+        say is held back once so the agent can confirm; if the agent is still
+        sure on a later turn, or the guest did say it, the area switches."""
+        locked = state.slots.get("preferred_location")
+        if not requested or not locked:
+            return False
+        a, b = str(requested).strip().lower(), str(locked).strip().lower()
+        if a == b or a in b or b in a:
+            return False
+        guest_texts = _recent_guest_texts(params)
+        if any(not text.isascii() for text in guest_texts):
+            # The guest may have said the place in another script (e.g. Hindi),
+            # which a plain text match cannot check -- do not hold the search back.
+            return False
+        if any(re.search(rf"\b{re.escape(a)}\b", text.lower()) for text in guest_texts):
+            return False  # the guest said it themselves
+        if state.area_confirm_asked == a and state.area_confirm_turn != state.turn_index:
+            return False  # already asked on an earlier turn; the agent is sure
+        state.area_confirm_asked, state.area_confirm_turn = a, state.turn_index
+        return True
+
+    # -- Host's "must have" details (Agent page -> Collect) -------------
+    # Lead Agent calls only (they have no bound property); a Guest Support
+    # call answers questions about one property and collects nothing.
+    agent_config_cache: list = []
+
+    async def _agent_config():
+        if not agent_config_cache:
+            async with AsyncSessionLocal() as db:
+                host = await db.get(User, host_user_id)
+            agent_config_cache.append(agent_config_service.get_config(host) if host else AgentConfig())
+        return agent_config_cache[0]
+
+    async def _collect_gate_blocks(
+        params: FunctionCallParams,
+        stage: collect_gate.Stage,
+        provided: set[str],
+        *,
+        engagement: str | None = None,
+        property_id_arg: str | None = None,
+        check_in_arg: str | None = None,
+        check_out_arg: str | None = None,
+        num_guests_arg: int | None = None,
+    ) -> bool:
+        """True when the host's must-have details are missing and the tool
+        should not run yet (the agent has been told what to ask). Never blocks
+        silently: the guest's interest is still recorded as a lead first."""
+        if property_id is not None:
+            return False
+        config = await _agent_config()
+        if not collect_gate.anything_missing(state, config, stage, frozenset(provided)):
+            return False  # nothing needed: no extra lookups on the normal path
+        # Let bad arguments and unknown properties surface as their own errors
+        # (invalid arguments / property not found) rather than being masked by
+        # a polite "ask for X first".
+        property_name: str | None = None
+        if property_id_arg is not None:
+            if _uuid_or_none(property_id_arg) is None:
+                return False
+            for raw in (check_in_arg, check_out_arg):
+                if raw and _parse_iso_date(raw) is None:
+                    return False
+            async with AsyncSessionLocal() as db:
+                found = await tool_handlers._get_property(db, property_id_arg)
+            if found is None:
+                return False
+            property_name = found.name
+        decision = collect_gate.evaluate(state, config, stage, frozenset(provided))
+        if decision.waived:
+            await _note_missing_details(decision.waived)
+        if not decision.block:
+            return False
+        if engagement is not None and property_name is not None:
+            await _record_interest_despite_block(engagement, property_name, check_in_arg, check_out_arg, num_guests_arg)
+        await params.result_callback(ToolOutcome.needs_clarification(decision.text))
+        return True
+
+    async def _record_interest_despite_block(engagement, property_name, check_in_arg, check_out_arg, num_guests_arg):
+        """The lead-preservation safety net (see lead_service.
+        backfill_lead_from_engagement) normally runs inside the tool handler;
+        a blocked call skips the handler, so run the same step here."""
+        try:
+            async with AsyncSessionLocal() as db:
+                await lead_service.backfill_lead_from_engagement(
+                    db,
+                    host_user_id,
+                    call_session_id,
+                    property_name,
+                    _parse_iso_date(check_in_arg) if _is_bookable(_parse_iso_date(check_in_arg)) else None,
+                    _parse_iso_date(check_out_arg) if _is_bookable(_parse_iso_date(check_in_arg)) else None,
+                    num_guests_arg,
+                    guest_profile_id=guest_profile_id,
+                    engagement=engagement,
+                )
+        except Exception:
+            logger.exception("collect gate: could not record the lead for a blocked call")
+
+    async def _note_missing_details(details: list[str]) -> None:
+        """Tells the host which must-have details the guest never gave (once)."""
+        labels = [collect_gate.LABELS[d] for d in details]
+        try:
+            async with AsyncSessionLocal() as db:
+                await lead_service.note_missing_details(db, host_user_id, call_session_id, guest_profile_id, labels)
+        except Exception:
+            logger.exception("collect gate: could not note missing details on the lead")
+
     @tool()
     async def check_calendar(
         params: FunctionCallParams,
@@ -239,6 +351,17 @@ def build_voice_tools(
             check_out: Check-out date, ISO format (YYYY-MM-DD).
             num_guests: Number of guests, if known.
         """
+        if await _collect_gate_blocks(
+            params,
+            "funnel",
+            {"dates"} | ({"guests"} if num_guests else set()),
+            engagement="availability_checked",
+            property_id_arg=property_id,
+            check_in_arg=check_in,
+            check_out_arg=check_out,
+            num_guests_arg=num_guests,
+        ):
+            return
         async with AsyncSessionLocal() as db:
             try:
                 args = CheckCalendarArgs(
@@ -313,6 +436,17 @@ def build_voice_tools(
                 checking out later than the standard time. Same rule as
                 requested_early_checkin -- never volunteered unprompted.
         """
+        if await _collect_gate_blocks(
+            params,
+            "funnel",
+            ({"dates"} if (check_in and check_out) or nights else set()) | ({"guests"} if num_guests else set()),
+            engagement="pricing_requested",
+            property_id_arg=property_id,
+            check_in_arg=check_in,
+            check_out_arg=check_out,
+            num_guests_arg=num_guests,
+        ):
+            return
         async with AsyncSessionLocal() as db:
             try:
                 args = GetPricingArgs(
@@ -639,6 +773,17 @@ def build_voice_tools(
             num_guests: Number of guests, if known.
             guest_loyalty: One of new, returning, frequent.
         """
+        if await _collect_gate_blocks(
+            params,
+            "funnel",
+            ({"dates"} if (check_in and check_out) or nights else set()) | ({"guests"} if num_guests else set()),
+            engagement="negotiation_initiated",
+            property_id_arg=property_id,
+            check_in_arg=check_in,
+            check_out_arg=check_out,
+            num_guests_arg=num_guests,
+        ):
+            return
         async with AsyncSessionLocal() as db:
             try:
                 args = NegotiateRateArgs(
@@ -874,6 +1019,32 @@ def build_voice_tools(
                 recommended (e.g. "something more premium", "anything
                 nicer").
         """
+        if await _collect_gate_blocks(
+            params,
+            "recommend",
+            {
+                name
+                for name, given in (
+                    ("guests", num_guests),
+                    ("location", preferred_location),
+                    ("purpose", purpose_of_stay),
+                    ("budget", budget_amount),
+                    ("dates", nights),
+                )
+                if given
+            },
+        ):
+            return
+        if _area_needs_confirmation(params, preferred_location):
+            locked = state.slots.get("preferred_location")
+            await params.result_callback(
+                ToolOutcome.needs_clarification(
+                    f"The guest has been looking in {locked}, and they have not asked for {preferred_location}. "
+                    f"Check before searching somewhere else: ask whether they are still looking in {locked} or "
+                    f"want to look in {preferred_location}. Do not search until they answer."
+                )
+            )
+            return
         # A property is already locked for this call AND the guest hasn't
         # given any new distinguishing criteria (no location/budget/purpose/
         # amenity/landmark/relative-refinement this time) -- almost certainly
@@ -1298,6 +1469,7 @@ def build_voice_tools(
                 state.set_slot("purpose_of_stay", args.purpose_of_stay)
                 state.set_slot("phone", args.phone)
                 state.set_slot("guest_name", args.guest_name)
+                state.set_slot("email", args.email)
             except ValidationError as exc:
                 result = ToolOutcome.invalid_arguments(exc)
         await params.result_callback(result)

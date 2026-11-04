@@ -13,6 +13,8 @@ from app.api.v1.common import DateRange
 from app.models.call_session import CallSession
 from app.models.lead import Lead
 from app.models.notification import Notification
+from app.models.user import User
+from app.services import agent_config_service
 from app.services import lead_temperature as temperature
 from app.utils.dates import today_ist
 
@@ -238,8 +240,10 @@ async def backfill_lead_from_engagement(
         lead.num_guests = num_guests
         changed = True
     if engagement is not None:
+        host = await db.get(User, user_id)
+        hot_on = agent_config_service.get_config(host).hot_lead.hot_on if host is not None else None
         lead.lead_temperature = temperature.merge_temperature(
-            lead.lead_temperature, temperature.engagement_floor(engagement)
+            lead.lead_temperature, temperature.engagement_floor(engagement, hot_on)
         )
 
     # Commit unconditionally, not just `if changed` -- _get_or_create_lead_for_call
@@ -247,6 +251,27 @@ async def backfill_lead_from_engagement(
     # the first time, which needs persisting even if none of the fields above
     # happened to change (e.g. reusing an existing lead that already has this
     # exact property/dates on file).
+    await db.commit()
+
+
+async def note_missing_details(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    call_session_id: uuid.UUID | None,
+    guest_profile_id: uuid.UUID | None,
+    labels: list[str],
+) -> None:
+    """Tells the host which of their must-have details the guest never gave,
+    after being asked twice (voice/collect_gate.py). Written to next_follow_up
+    only while it is still empty, so it never overwrites the agent's own
+    follow-up note; if the agent writes one later, that one wins."""
+    if call_session_id is None or not labels:
+        return
+    lead = await _get_or_create_lead_for_call(db, user_id, call_session_id, guest_profile_id, guest_name_hint=None)
+    if lead is None:
+        return
+    if not lead.next_follow_up:
+        lead.next_follow_up = ("Guest did not give " + ", ".join(labels) + " -- ask when you follow up.")[:255]
     await db.commit()
 
 

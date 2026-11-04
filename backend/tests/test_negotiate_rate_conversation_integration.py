@@ -355,6 +355,8 @@ async def test_20_property_change_resets_negotiation_decision(db_session, test_u
     await db_session.refresh(property_b)
 
     state = ConversationState()
+
+    state.slots.update({"guest_name": "Test Guest", "phone": "+919999999999"})  # contact details already given
     tools = build_voice_tools(call_session_id=None, property_id=None, host_user_id=test_user.id, conversation_state=state)
     negotiate_rate = next(t for t in tools if t.__name__ == "negotiate_rate")
     check_in, check_out = _dates()

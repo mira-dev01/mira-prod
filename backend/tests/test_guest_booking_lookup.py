@@ -333,6 +333,8 @@ async def test_check_calendar_wrapper_never_stores_past_dates(test_user, test_pr
     from app.voice.conversation_state import ConversationState
 
     state = ConversationState()
+
+    state.slots.update({"guest_name": "Test Guest", "phone": "+919999999999"})  # contact details already given
     check_calendar = _voice_tool("check_calendar", test_user, state)
     params = _Params()
     await check_calendar(

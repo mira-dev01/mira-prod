@@ -207,6 +207,7 @@ async def test_update_lead_nights_is_not_persisted_to_lead_row(test_property, db
 
 async def test_check_calendar_sets_slots_and_checking_availability_goal(test_property, db_session, test_user):
     state = ConversationState()
+    state.slots.update({"guest_name": "Test Guest", "phone": "+919999999999"})  # contact details already given
     tools = build_voice_tools(call_session_id=None, property_id=None, host_user_id=test_user.id, conversation_state=state)
     check_calendar = next(t for t in tools if t.__name__ == "check_calendar")
 
@@ -229,6 +230,7 @@ async def test_get_pricing_records_quoted_price_in_state(test_property, db_sessi
     quoted ₹X for these dates" instead of relying on the model to recall it
     from a long transcript."""
     state = ConversationState()
+    state.slots.update({"guest_name": "Test Guest", "phone": "+919999999999"})  # contact details already given
     tools = build_voice_tools(call_session_id=None, property_id=None, host_user_id=test_user.id, conversation_state=state)
     get_pricing = next(t for t in tools if t.__name__ == "get_pricing")
 
@@ -256,6 +258,7 @@ async def test_get_pricing_later_quote_overwrites_earlier_one(test_property, db_
     discount applied) is always the current one the model should
     reference -- confirmed this overwrites rather than merges/stacks."""
     state = ConversationState()
+    state.slots.update({"guest_name": "Test Guest", "phone": "+919999999999"})  # contact details already given
     tools = build_voice_tools(call_session_id=None, property_id=None, host_user_id=test_user.id, conversation_state=state)
     get_pricing = next(t for t in tools if t.__name__ == "get_pricing")
 
@@ -369,6 +372,8 @@ async def test_lock_property_after_recommendation_sets_guest_accepted_id(db_sess
     property_ = await _small_property(db_session, test_user, "Ocean View", max_guests=4)
 
     state = ConversationState()
+
+    state.slots.update({"guest_name": "Test Guest", "phone": "+919999999999"})  # contact details already given
     tools = build_voice_tools(call_session_id=None, property_id=None, host_user_id=test_user.id, conversation_state=state)
     recommend_properties = next(t for t in tools if t.__name__ == "recommend_properties")
     get_pricing = next(t for t in tools if t.__name__ == "get_pricing")
@@ -448,6 +453,8 @@ async def test_recommend_properties_after_check_calendar_does_not_crash_on_raw_d
     await db_session.commit()
 
     state = ConversationState()
+
+    state.slots.update({"guest_name": "Test Guest", "phone": "+919999999999"})  # contact details already given
     tools = build_voice_tools(call_session_id=None, property_id=None, host_user_id=test_user.id, conversation_state=state)
     check_calendar = next(t for t in tools if t.__name__ == "check_calendar")
     recommend_properties = next(t for t in tools if t.__name__ == "recommend_properties")

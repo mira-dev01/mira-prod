@@ -115,5 +115,12 @@ ENGAGEMENT_FLOORS: dict[str, str] = {
 }
 
 
-def engagement_floor(event: str) -> str | None:
-    return ENGAGEMENT_FLOORS.get(event)
+def engagement_floor(event: str, hot_on: Iterable[str] | None = None) -> str | None:
+    """The raise-only floor for an observed event. `hot_on` is the host's
+    choice (Agent page -> Hot leads) of which events make a lead hot: an event
+    they have turned off still counts as engagement, so it floors at warm
+    rather than hot. None = every default signal counts."""
+    floor = ENGAGEMENT_FLOORS.get(event)
+    if floor == "hot" and hot_on is not None and event not in set(hot_on):
+        return "warm"
+    return floor

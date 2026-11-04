@@ -305,12 +305,27 @@ def build_state_block_content(state: ConversationState, quality: "ConversationQu
     language_hint = _language_hint(state, quality)
     negotiation_hint = _negotiation_hint(state)
 
-    if not slot_summary and not goal_hint and not language_hint and not state.quoted_price and not negotiation_hint:
+    if (
+        not slot_summary
+        and not goal_hint
+        and not language_hint
+        and not state.quoted_price
+        and not negotiation_hint
+        and not state.waived_fields
+    ):
         return ""
 
     lines = []
     if slot_summary:
         lines.append(f"Already collected this call: {slot_summary}. Do not re-ask for these.")
+    if state.waived_fields:
+        from app.voice.collect_gate import LABELS
+
+        waived = ", ".join(LABELS[d] for d in state.waived_fields)
+        lines.append(
+            f"The guest did not give {waived} after being asked twice. Do not ask for it again; carry on and "
+            "the host will follow up for it."
+        )
     if state.recommendations_shown:
         names = ", ".join(o["name"] for o in state.recommendations_shown)
         lines.append(f"Already recommended: {names}. Do not re-list these unless asked or something new is known.")

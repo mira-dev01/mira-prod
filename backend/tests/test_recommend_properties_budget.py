@@ -537,6 +537,7 @@ async def test_pitched_offer_is_what_get_pricing_quotes(db_session, test_user):
     villa = await _property(db_session, test_user, name="Offer Villa", base_price=7500)
     await _stay_offer(db_session, villa, percent=10, min_nights=2)
     state = ConversationState()
+    state.slots.update({"guest_name": "Test Guest", "phone": "+919999999999"})  # contact details already given
     tools = _tools(state, test_user.id)
     await tools["recommend_properties"](
         _FakeFunctionCallParams(), budget_amount=7000, budget_basis="per_night", nights=2
@@ -551,10 +552,10 @@ async def test_pitched_offer_is_what_get_pricing_quotes(db_session, test_user):
 async def test_without_a_pitched_offer_get_pricing_keeps_the_standard_first_quote(db_session, test_user):
     villa = await _property(db_session, test_user, name="Offer Villa", base_price=7500)
     await _stay_offer(db_session, villa, percent=10, min_nights=2)
+    state = ConversationState()
+    state.slots.update({"guest_name": "Test Guest", "phone": "+919999999999"})  # contact details already given
     params = _FakeFunctionCallParams()
-    await _tools(ConversationState(), test_user.id)["get_pricing"](
-        params, property_id=str(villa.id), num_guests=2, nights=2
-    )
+    await _tools(state, test_user.id)["get_pricing"](params, property_id=str(villa.id), num_guests=2, nights=2)
     assert "₹15,000 total" in params.result
 
 
@@ -725,6 +726,7 @@ async def test_steeper_option_offer_carries_through_to_get_pricing(db_session, t
     await _stay_offer(db_session, palace, percent=10, min_nights=2)
     await _property(db_session, test_user, name="Lake Haveli", base_price=6500)
     state = ConversationState()
+    state.slots.update({"guest_name": "Test Guest", "phone": "+919999999999"})  # contact details already given
     tools = _tools(state, test_user.id)
     params = _FakeFunctionCallParams()
     await tools["recommend_properties"](params, budget_amount=7000, budget_basis="per_night", nights=2)
@@ -742,6 +744,7 @@ async def test_negotiation_never_stacks_on_a_pitched_offer(db_session, test_user
     villa = await _property(db_session, test_user, name="Offer Villa", base_price=7500)
     await _stay_offer(db_session, villa, percent=10, min_nights=2)
     state = ConversationState()
+    state.slots.update({"guest_name": "Test Guest", "phone": "+919999999999"})  # contact details already given
     tools = _tools(state, test_user.id)
     await tools["recommend_properties"](
         _FakeFunctionCallParams(), budget_amount=7000, budget_basis="per_night", nights=2

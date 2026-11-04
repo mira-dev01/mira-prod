@@ -70,6 +70,8 @@ async def test_search_faq_locks_to_property_named_via_check_calendar(test_proper
     await db_session.commit()
 
     state = ConversationState()
+
+    state.slots.update({"guest_name": "Test Guest", "phone": "+919999999999"})  # contact details already given
     # Lead Agent mode: property_id=None at closure level, exactly like a real
     # portfolio-wide call before any property has been chosen.
     tools = build_voice_tools(call_session_id=None, property_id=None, host_user_id=test_user.id, conversation_state=state)
@@ -102,6 +104,8 @@ async def test_property_switch_updates_lock(test_property, db_session, test_user
     ocean_view = await _second_property(db_session, test_user, name="Ocean View")
 
     state = ConversationState()
+
+    state.slots.update({"guest_name": "Test Guest", "phone": "+919999999999"})  # contact details already given
     tools = build_voice_tools(call_session_id=None, property_id=None, host_user_id=test_user.id, conversation_state=state)
     get_pricing = next(t for t in tools if t.__name__ == "get_pricing")
 

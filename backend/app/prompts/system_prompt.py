@@ -24,7 +24,8 @@ from datetime import date, datetime, timedelta
 from app.models.guest_profile import GuestProfile
 from app.services.amenity_taxonomy import NOTABLE_AMENITY_TAGS
 from app.services.call_service import BROWSER_TEST_CALLER_NUMBER
-from app.services import notification_preferences_service
+from app.schemas.agent_config import AgentConfig
+from app.services import agent_config_service, notification_preferences_service
 from app.services.guest_booking_service import BookingMatch
 from app.models.property import Property
 from app.models.user import User
@@ -1119,6 +1120,10 @@ Lead qualification workflow:
    values -- nights/window_start/window_end are real, guest-stated substitutes for an exact date,
    never a placeholder you make up yourself.
 
+   Once you know why they are visiting, mention two or three facilities that would suit that need and
+   that the Locations section below lists for their area, and ask whether they want them. Pass the ones
+   they say yes to as required_amenities. Never offer a facility the Locations section does not list.
+
    Set lead_temperature from what you now know: warm once they've given real booking details (dates or
    a stay length, guest count, a specific property); hot once they're discussing availability, price or
    a discount for a stay -- dates and guest count alone are NOT hot; cold if they're just browsing with
@@ -1140,6 +1145,9 @@ Lead qualification workflow:
    not, call check_calendar separately just to pre-screen the options it returns; check_calendar is
    for confirming ONE specific chosen property once the guest is ready to move forward with it (see
    step 5). Recommend a maximum of three properties at a time (plus the one STEEPER OPTION, if returned).
+   Stay in the area the guest named. Once they have said where they want to stay, only recommend there
+   unless they ask for somewhere else. If you are not sure they have changed their mind, ask "still
+   looking in <that area>?" before searching anywhere else.
 4. Once a property is chosen (the guest names it, or shows interest in one from a recommendation),
    that property is now the active one for the rest of this call -- use its property_id for
    check_calendar/get_pricing/negotiate_rate/search_faq's faq_property_id from then on, for every
@@ -1315,6 +1323,75 @@ def _locations_section(properties: list[Property]) -> str:
     return "\nLocations:\n" + "\n".join(lines) + "\n" + rule
 
 
+def _collect_section(config: AgentConfig) -> str:
+    """The host's Collect settings (Agent page), as instructions. Says nothing
+    for a host who has not changed anything, so their calls sound exactly as
+    before; an email setting left off keeps the original "only when finalising"
+    wording in the workflow above."""
+    labels = {
+        "dates": "stay dates (or how many nights)",
+        "guests": "number of guests",
+        "purpose": "reason for the stay",
+        "location": "preferred area",
+        "budget": "budget",
+        "email": "email address",
+    }
+    modes: dict[str, list[str]] = {"required": [], "optional": [], "off": []}
+    for name, label in labels.items():
+        modes[getattr(config.collect, name)].append(label)
+    defaults = AgentConfig().collect
+    if config.collect == defaults:
+        return ""
+    lines = ["\nWhat the host wants you to collect (these settings override the workflow above where they differ):"]
+    if modes["required"]:
+        lines.append(
+            "- Must have: " + ", ".join(modes["required"]) + ". Do not move on to the step that needs one until "
+            "you have it -- if a tool tells you to ask for something first, ask. Ask at most twice, and if the "
+            "guest still will not say, carry on: the host will follow up for it. A missing detail never stops "
+            "you saving the lead with update_lead."
+        )
+    if modes["optional"]:
+        lines.append("- Nice to have: " + ", ".join(modes["optional"]) + ". Ask naturally; never press for these.")
+    # Email left off keeps the workflow's own "only when finalising" rule, so
+    # it is not listed here.
+    off = [labels[name] for name in ("dates", "guests", "purpose", "location", "budget") if getattr(config.collect, name) == "off"]
+    if off:
+        lines.append("- Do not ask for: " + ", ".join(off) + ".")
+    if config.collect.email != "off":
+        lines.append("- You may ask for the email address even before the guest is finalising a booking.")
+    return "\n".join(lines)
+
+
+_HOT_SIGNAL_TEXT = {
+    "availability_confirmed": "the guest's exact dates are confirmed available",
+    "pricing_requested": "the guest asks for a price",
+    "negotiation_initiated": "the guest asks for a discount",
+}
+
+
+def _hot_lead_section(config: AgentConfig) -> str:
+    """What counts as a hot lead for this host (Agent page -> Hot leads), when
+    they have changed it. The workflow's own wording is "hot = discussing
+    availability, pricing or negotiating"; this overrides it so the model's
+    judgement and the system's deterministic floors agree. Empty for a host
+    who kept the default."""
+    chosen = list(config.hot_lead.hot_on)
+    if set(chosen) == set(_HOT_SIGNAL_TEXT):
+        return ""
+    if not chosen:
+        return (
+            "\nWhat counts as a hot lead (the host's setting, overriding the workflow above): availability, price "
+            "and discount questions do NOT make a lead hot -- use warm for them. Only a guest who agrees to book "
+            "is very_hot."
+        )
+    allowed = "; ".join(_HOT_SIGNAL_TEXT[name] for name in _HOT_SIGNAL_TEXT if name in chosen)
+    return (
+        "\nWhat counts as a hot lead (the host's setting, overriding the workflow above): mark a lead hot only when "
+        f"{allowed}. Anything else short of the guest agreeing to book stays warm. A guest who agrees to book is "
+        "very_hot."
+    )
+
+
 def build_lead_system_prompt(
     user: User,
     properties: list[Property],
@@ -1329,6 +1406,10 @@ def build_lead_system_prompt(
     # guest memory, active booking) are appended after it, not before.
     host_name = user.name or "this host"
     sections = [LEAD_AGENT_INSTRUCTIONS.format(host_name=host_name), _today_anchor()]
+    agent_config = agent_config_service.get_config(user)
+    for section in (_collect_section(agent_config), _hot_lead_section(agent_config)):
+        if section:
+            sections.append(section)
     sections.extend(_persona_and_escalation_sections(user))
 
     if properties:

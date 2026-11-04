@@ -28,6 +28,16 @@ class _FakeFunctionCallParams:
         self.result = result.get("result", result.get("message")) if isinstance(result, dict) else result
 
 
+class _GuestSaid:
+    """Minimal stand-in for the LLM context: one guest message."""
+
+    def __init__(self, text):
+        self._messages = [{"role": "user", "content": text}]
+
+    def get_messages(self):
+        return self._messages
+
+
 async def _property(db_session, test_user, **overrides):
     defaults = dict(
         user_id=test_user.id,
@@ -89,6 +99,10 @@ async def test_explicit_location_this_call_overrides_and_updates_state(db_sessio
     recommend_properties = next(t for t in tools if t.__name__ == "recommend_properties")
 
     params = _FakeFunctionCallParams()
+    # The guest said it themselves, so this is a real change of area, not the
+    # model drifting (that case is held back for confirmation -- see
+    # tests/test_collect_gate_tools.py).
+    params.context = _GuestSaid("Actually show me places in Jaipur")
     await recommend_properties(params, preferred_location="Jaipur")
     assert "Jaipur Haveli" in params.result
     assert state.slots["preferred_location"] == "Jaipur"
