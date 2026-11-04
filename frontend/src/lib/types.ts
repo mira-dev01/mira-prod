@@ -731,6 +731,28 @@ export type FaqGapAnswer = {
   question?: string;
 };
 
+// --- Tickets (GET /tickets): what Mira told a guest would happen, still open ---
+
+export type TicketKind = "escalation" | "transfer" | "technician" | "photos" | "whatsapp" | "promise";
+export type TicketStatus = "open" | "done" | "dismissed";
+
+export type TicketOut = {
+  id: string;
+  kind: TicketKind;
+  summary: string;
+  detail: string | null;
+  urgency: "low" | "medium" | "high" | "emergency";
+  status: TicketStatus;
+  source: "tool" | "post_call";
+  created_at: string;
+  resolved_at: string | null;
+  property_id: string | null;
+  property_name: string | null;
+  call_session_id: string | null;
+  guest_name: string | null;
+  guest_phone: string | null;
+};
+
 // --- Agent rules (GET/PUT /agent-config) ---
 
 export type AgentFieldMode = "off" | "optional" | "required";

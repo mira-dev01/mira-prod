@@ -18,6 +18,7 @@ import { CloseLeadDialog } from "@/components/close-lead-dialog";
 import { DateRangePicker } from "@/components/date-range-picker";
 import { LeadDetailPanel, LEAD_STATUSES, leadUrgencyTone } from "@/components/lead-detail-panel";
 import { MissedCallsTab } from "@/components/missed-calls-tab";
+import { TicketsTab } from "@/components/tickets-tab";
 import { ServiceRequestsTable } from "@/components/service-requests-table";
 import { WhatsAppButton } from "@/components/whatsapp-button";
 import { useAsync } from "@/hooks/use-async";
@@ -27,7 +28,7 @@ import { leadGuestLabel, leadPhoneLabel, useLeadLabels } from "@/lib/leads";
 import { cn, isBrowserTestIdentity, matchesSearch } from "@/lib/utils";
 import type { LeadOut, LeadStatus } from "@/lib/types";
 
-const VALID_TABS = ["service", "booking", "missed"] as const;
+const VALID_TABS = ["service", "booking", "missed", "tickets"] as const;
 type RequestsTab = (typeof VALID_TABS)[number];
 
 const STATUSES = LEAD_STATUSES;
@@ -571,6 +572,10 @@ function LiveRequestsPageContent() {
     VALID_TABS.includes(initialTab as RequestsTab) ? (initialTab as RequestsTab) : "service"
   );
 
+  // Open-ticket count for the tab label; the tab itself reloads its own list.
+  const { data: openTicketList, refetch: refetchTickets } = useAsync(() => api.tickets.list("open"), []);
+  const openTickets = openTicketList?.length ?? 0;
+
   function handleTabChange(value: unknown) {
     if (typeof value !== "string" || !VALID_TABS.includes(value as RequestsTab)) return;
     setTab(value as RequestsTab);
@@ -586,6 +591,10 @@ function LiveRequestsPageContent() {
           <TabsTrigger value="service">Service Requests</TabsTrigger>
           <TabsTrigger value="booking">Booking Requests</TabsTrigger>
           <TabsTrigger value="missed">Missed calls</TabsTrigger>
+          <TabsTrigger value="tickets">
+            Tickets
+            {openTickets > 0 && <span className="ml-1.5 text-xs text-muted-foreground">({openTickets})</span>}
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="service" className="pt-4">
           <ServiceRequestsTabContent />
@@ -595,6 +604,9 @@ function LiveRequestsPageContent() {
         </TabsContent>
         <TabsContent value="missed" className="pt-4">
           <MissedCallsTab />
+        </TabsContent>
+        <TabsContent value="tickets" className="pt-4">
+          <TicketsTab onChanged={refetchTickets} />
         </TabsContent>
       </Tabs>
     </div>

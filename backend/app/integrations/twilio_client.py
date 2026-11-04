@@ -88,7 +88,7 @@ async def send_whatsapp_message(to_phone: str, body: str, timeout: float = 15.0)
     return {"status": "sent", "sid": data.get("sid"), "twilio_status": data.get("status")}
 
 
-async def send_whatsapp_best_effort(to_phone: str, body: str, timeout: float = 15.0) -> None:
+async def send_whatsapp_best_effort(to_phone: str, body: str, timeout: float = 15.0) -> bool:
     """Fire-and-forget wrapper around send_whatsapp_message -- the shared
     "log skip/failure, never raise" contract every caller that sends
     WhatsApp from a detached asyncio.create_task needs (tool_handlers.py's
@@ -96,13 +96,22 @@ async def send_whatsapp_best_effort(to_phone: str, body: str, timeout: float = 1
     host busy-recovery messages). Previously each caller reimplemented this
     same try/except shape independently; centralized here since it's
     intrinsic to how this client is meant to be used fire-and-forget, not
-    specific to any one caller's business logic."""
+    specific to any one caller's business logic.
+
+    Returns True when Twilio accepted the message, False when it was skipped
+    (not configured) or failed. Accepted is not delivered -- a freeform
+    message can still be refused later outside WhatsApp's 24h window -- but a
+    caller that told a guest "sent" can at least record when it never got that
+    far. Callers that don't care simply ignore the result."""
     try:
         result = await send_whatsapp_message(to_phone, body, timeout=timeout)
         if result.get("status") == "skipped":
             logger.info("WhatsApp message to %s skipped: %s", to_phone, result.get("reason"))
+            return False
+        return True
     except TwilioError:
         logger.exception("Failed to send WhatsApp message to %s", to_phone)
+        return False
 
 
 async def send_whatsapp_template(

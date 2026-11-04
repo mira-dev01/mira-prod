@@ -80,6 +80,12 @@ call) leave objection_tags as an empty list -- do not use NO_OBJECTION (that spe
 booking conversation with no friction," not "not applicable"), and do not force any other tag either.
 If more than one tag applies to a real booking conversation, include all that apply.
 
+Also list promises_made: anything Mira told the guest would happen AFTER the call -- the host will call or \
+message them, details or photos will be sent, someone will come and fix something, a booking will be \
+confirmed. One short line each, in plain words, naming what was promised. Only things Mira actually said \
+in the transcript; do not list things the guest merely asked for, and do not list a price or availability \
+answer she gave during the call. [] if she promised nothing.
+
 Respond with ONLY a JSON object of this exact shape, no other text:
 {
   "booking_snapshot": {
@@ -103,7 +109,8 @@ Respond with ONLY a JSON object of this exact shape, no other text:
   "host_action": ["only items requiring the host's attention, or [\\"No action required.\\"]"],
   "key_details": ["factual bullet points only, e.g. group size, preferences, city of origin, special requests"],
   "missing_information": ["booking info Mira could not collect, e.g. Check-in date, Budget -- or [] if none missing"],
-  "objection_tags": ["zero or more of the exact tag strings listed above"]
+  "objection_tags": ["zero or more of the exact tag strings listed above"],
+  "promises_made": ["what Mira promised would happen after the call, or [] if nothing"]
 }
 
 Call transcript:
@@ -198,6 +205,7 @@ def _parse_summary_response(raw_text: str) -> CallSummary:
         key_details=_as_str_list(parsed.get("key_details")),
         missing_information=_as_str_list(parsed.get("missing_information")),
         objection_tags=_as_objection_tags(parsed.get("objection_tags")),
+        promises_made=_as_str_list(parsed.get("promises_made")),
     )
 
 

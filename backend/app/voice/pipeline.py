@@ -72,6 +72,7 @@ from app.services import (
     lead_service,
     pricing_engine,
     recovery_service,
+    ticket_service,
     usage_meter,
 )
 from app.voice.audio_input_observer import AudioInputContext, AudioInputObserver, BotSpeechTap
@@ -1744,6 +1745,14 @@ async def _run_pipeline_inner(
                 # itself crash on_pipeline_finished.
                 summary = await call_summary_service.summarize_call(transcript, duration_seconds)
                 await call_service.set_call_summary(finalize_db, call_session_id, summary)
+                # Anything Mira promised in words that no tool recorded gets a
+                # ticket now, so a promise cannot silently disappear.
+                await ticket_service.reconcile_promises(
+                    finalize_db,
+                    host_user_id=host_user_id,
+                    call_session_id=call_session_id,
+                    promises=summary.promises_made,
+                )
 
                 # Persists this call's guard/validator firings plus the two
                 # internal telemetry records and metered usage -- purely for

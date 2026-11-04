@@ -68,7 +68,8 @@ c7e2a91d4f10 -> e5b8d2f1a9c3   add booking pricing/attribution fields + price_ev
 ...                           (further revisions up to bcde09807b54, see `alembic history`)
 bcde09807b54 -> c4f1a8d2e6b9   knowledge-base fact columns on property_chunks (source_kind, source_ref, meta) + unanswered_questions.source
 c4f1a8d2e6b9 -> d7a2b5c9e1f3   faq_entries.group_id (one FAQ applied to several properties)
-d7a2b5c9e1f3 -> e9b3c7d1a4f2   users.agent_config + properties.agent_config_overrides (Agent rules, JSONB; NULL = defaults) (HEAD)
+d7a2b5c9e1f3 -> e9b3c7d1a4f2   users.agent_config + properties.agent_config_overrides (Agent rules, JSONB; NULL = defaults)
+e9b3c7d1a4f2 -> a5d9e2c7b1f4   tickets table (durable follow-ups behind what the agent promises a guest) (HEAD)
 ```
 
 If a session ever fails with demo-login 500s or a missing-column error, check `alembic heads` against the running DB first — a DB left behind on an old revision is a common cause (see `project_state.md` at the repo root for the 2026-07-15 incident).
@@ -300,6 +301,24 @@ Indexes: `(user_id, normalized_question, status)` and `(user_id, property_id)`.
 ### `property_chunks` (`PropertyChunk`, `app/models/property_chunk.py`)
 
 Two layers share this table. **Coarse chunks** (`chunk_type` `overview`/`amenities`/`location`/`house_rules`) feed `recommend_properties`' semantic re-ranking. **Knowledge-base facts** (`chunk_type = "fact"`) are what `search_faq` answers from: one small statement per row, built by `chunking.build_fact_chunks` from verified FAQ rows, the property's own fields (house rules, neighborhood sentences, landmarks, amenity groups, description, check-in/out, capacity) and seasonal notes. Fact-only columns: `source_kind` (`faq_entry`/`house_rules`/`neighborhood`/`amenity`/`description`/`seasonal_note`/`structured`), `source_ref` (FaqEntry id or field name), `meta` (JSONB — a seasonal note's `start_month`/`end_month`). `embedding` is a JSONB float array as elsewhere. The two layers are synced independently (`sync_property_chunks` never deletes facts; `sync_property_facts` never deletes coarse chunks); facts are rebuilt on property import/PATCH and on every FaqEntry create/update/delete/gap-answer, reusing stored embeddings for unchanged text. A property with no (or stale) fact rows is answered from facts built in memory (`kb_retrieval.load_property_facts`). Index `(property_id, chunk_type)`.
+
+### `tickets` (`Ticket`, `app/models/ticket.py`)
+
+An open obligation behind something the agent told a guest ("I've flagged this to the host"). The `notifications` row is the alert; the ticket is what stays open until the host marks it done.
+
+| Column | Type | Notes |
+|---|---|---|
+| `user_id` | UUID FK → users, cascade delete | the host |
+| `property_id`, `call_session_id`, `notification_id` | UUID FK, nullable, `SET NULL` | what it is about / the alert raised with it |
+| `kind` | String(24) | `escalation` / `transfer` / `technician` / `photos` / `whatsapp` / `promise` |
+| `summary` | String(255) | what the host has to do, one line |
+| `detail` | Text, nullable | |
+| `urgency` | String(16), default `medium` | `low` / `medium` / `high` / `emergency` |
+| `status` | String(16), default `open` | `open` / `done` / `dismissed` |
+| `source` | String(16), default `tool` | `tool` = opened as the tool ran; `post_call` = the end-of-call check found an unrecorded promise |
+| `resolved_at` | timestamptz, nullable | |
+
+Indexes: `(user_id, status)`, `call_session_id`. The same `(call_session_id, kind, summary)` is never opened twice.
 
 ### `technicians` (`Technician`, `app/models/technician.py`)
 

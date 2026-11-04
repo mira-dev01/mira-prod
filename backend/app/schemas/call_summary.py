@@ -66,3 +66,8 @@ class CallSummary(BaseModel):
     # explicit value (not just an empty list) so a genuinely smooth call is
     # distinguishable from "the model didn't extract anything."
     objection_tags: list[str] = []
+    # What Mira told the guest would happen after the call (the host will call
+    # back, details will be sent, someone will fix something), one short line
+    # each. The end-of-call check (ticket_service.reconcile_promises) makes
+    # sure each one ended up somewhere the host will see it.
+    promises_made: list[str] = []

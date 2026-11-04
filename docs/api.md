@@ -130,6 +130,15 @@ See [research-flow.md](research-flow.md) for how these rules feed `negotiate_rat
 
 See [agents.md](agents.md) for how `search_faq` logs gaps during a live call.
 
+## `tickets.py` — `/tickets`
+
+What Mira told guests would happen after the call, kept open until the host does it (`app/services/ticket_service.py`).
+
+| Method & path | Purpose | Auth |
+|---|---|---|
+| `GET /tickets` | The host's tickets, newest first; `state` = `open` (default) / `resolved` (done or dismissed) / `all`; optional `property_id` | required |
+| `PATCH /tickets/{id}` | Set `status` to `open` / `done` / `dismissed` | required |
+
 ## `agent_config.py` — `/agent-config`
 
 The host's Agent rules (what Mira collects, what makes a lead hot, how a booking is confirmed and paid). Stored partially; missing keys read as defaults. Name and phone are not configurable. See `app/schemas/agent_config.py`.

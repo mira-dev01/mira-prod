@@ -38,6 +38,7 @@ from app.schemas.tool import (
     ToolBusinessError,
     UpdateLeadArgs,
 )
+from app.database import AsyncSessionLocal
 from app.services import (
     calendar_service,
     capability_service,
@@ -49,6 +50,7 @@ from app.services import (
     price_event_service,
     pricing_engine,
     technician_service,
+    ticket_service,
 )
 from app.services.pricing_engine import NegotiationResult, PriceBreakdown
 from app.services.property import kb_retrieval
@@ -484,7 +486,7 @@ async def handle_dispatch_technician(
     # must never just disappear -- but no technician is named or suggested.
     # The tool itself stays registered; only this outcome changes.
     if not await capability_service.is_capability_enabled(property_.user_id, "technician_dispatch"):
-        await notification_service.create_notification(
+        notification = await notification_service.create_notification(
             db,
             channel="escalation",
             property_id=property_.id,
@@ -495,12 +497,22 @@ async def handle_dispatch_technician(
                 "Technician dispatch is turned off -- please arrange this directly."
             ),
         )
+        await ticket_service.open_ticket(
+            db,
+            kind="technician",
+            summary=f"Arrange a {args.issue_type} fix at {property_.name}",
+            detail="Technician dispatch is turned off, so the host must arrange this directly.",
+            urgency=args.urgency,
+            property_id=property_.id,
+            call_session_id=call_session_id,
+            notification_id=notification.id,
+        )
         return f"I've flagged this to the host as {args.urgency} priority so they can arrange it directly."
 
     technician = await technician_service.find_technician(db, property_.id, args.issue_type)
 
     if technician is None:
-        await notification_service.create_notification(
+        notification = await notification_service.create_notification(
             db,
             channel="escalation",
             property_id=property_.id,
@@ -511,12 +523,22 @@ async def handle_dispatch_technician(
                 f"dispatch (urgency: {args.urgency})."
             ),
         )
+        await ticket_service.open_ticket(
+            db,
+            kind="technician",
+            summary=f"Arrange a {args.issue_type} fix at {property_.name}",
+            detail=f"No {args.issue_type} technician is on file for this property.",
+            urgency=args.urgency,
+            property_id=property_.id,
+            call_session_id=call_session_id,
+            notification_id=notification.id,
+        )
         return (
             f"I don't have a {role_label} on file for {property_.name} yet, "
             f"so I've flagged this for the host to arrange directly."
         )
 
-    await notification_service.create_notification(
+    notification = await notification_service.create_notification(
         db,
         channel="escalation",
         property_id=property_.id,
@@ -527,6 +549,16 @@ async def handle_dispatch_technician(
             f"Suggested technician: {technician.name} ({technician.phone}, rating {technician.rating})."
         ),
     )
+    await ticket_service.open_ticket(
+        db,
+        kind="technician",
+        summary=f"Confirm {technician.name} fixed the {args.issue_type} issue at {property_.name}",
+        detail=f"Suggested technician: {technician.name} ({technician.phone}).",
+        urgency=args.urgency,
+        property_id=property_.id,
+        call_session_id=call_session_id,
+        notification_id=notification.id,
+    )
     return (
         f"I've let {technician.name}, our {role_label} for {property_.name}, know -- "
         f"they'll take care of it shortly."
@@ -536,6 +568,20 @@ async def handle_dispatch_technician(
             f"and flagged this to the host as {args.urgency} priority."
         )
     )
+
+
+async def _send_whatsapp_or_open_ticket(to_phone: str, body: str, **ticket) -> None:
+    """Sends in the background (the guest is still on the line), and if
+    WhatsApp does not accept the message after the agent said it was sent,
+    opens the ticket that makes sure the host sends it instead. A result of
+    None (an unknown sender, e.g. a test double) is not treated as a failure."""
+    try:
+        accepted = await twilio_client.send_whatsapp_best_effort(to_phone, body)
+        if accepted is False:
+            async with AsyncSessionLocal() as db:
+                await ticket_service.open_ticket(db, **ticket)
+    except Exception:
+        logger.exception("WhatsApp send / ticket follow-up failed for %s", to_phone)
 
 
 async def handle_send_whatsapp(
@@ -556,8 +602,26 @@ async def handle_send_whatsapp(
     # host to email); the host simply won't see this one on WhatsApp until
     # TWILIO_ENABLED is back on. See config.py's twilio_enabled.
     if settings.twilio_enabled:
-        asyncio.create_task(twilio_client.send_whatsapp_best_effort(args.phone, args.message))
+        asyncio.create_task(
+            _send_whatsapp_or_open_ticket(
+                args.phone,
+                args.message,
+                kind="whatsapp",
+                summary=f"Send a WhatsApp message to {args.phone}",
+                detail=f"WhatsApp did not accept Mira's message. Message: {args.message}",
+                property_id=property_id,
+                call_session_id=call_session_id,
+            )
+        )
         return f"Got it, I've queued a WhatsApp message to {args.phone}." + _phone_confirmation_warning(args.phone)
+    await ticket_service.open_ticket(
+        db,
+        kind="whatsapp",
+        summary=f"Send a WhatsApp message to {args.phone}",
+        detail=f"Mira could not send it herself. Message: {args.message}",
+        property_id=property_id,
+        call_session_id=call_session_id,
+    )
     return (
         f"I've noted that down, but I'm not able to send a WhatsApp message to {args.phone} right now."
         + _phone_confirmation_warning(args.phone)
@@ -571,6 +635,26 @@ async def handle_send_photos(
     if property_ is None:
         return ToolBusinessError("I couldn't find that property to send photos for.")
     if not property_.photos:
+        # The agent says it will flag this to the host, so something must
+        # actually record it (it used to say so with nothing behind it).
+        notification = await notification_service.create_notification(
+            db,
+            channel="whatsapp",
+            property_id=property_.id,
+            call_session_id=call_session_id,
+            urgency="low",
+            message=f"Guest {args.guest_phone} asked for photos of {property_.name}, but none are on file.",
+        )
+        await ticket_service.open_ticket(
+            db,
+            kind="photos",
+            summary=f"Send photos of {property_.name} to {args.guest_phone}",
+            detail="No photos are on file for this property, so Mira could not send any.",
+            user_id=host_user_id,
+            property_id=property_.id,
+            call_session_id=call_session_id,
+            notification_id=notification.id,
+        )
         return f"I don't have photos on file for {property_.name} yet -- I'll flag that to the host."
 
     # One link, not N image attachments -- WhatsApp Business API bills per
@@ -595,8 +679,15 @@ async def handle_send_photos(
     # in config.py.
     if settings.twilio_enabled:
         asyncio.create_task(
-            twilio_client.send_whatsapp_best_effort(
-                args.guest_phone, f"Here are photos of {property_.name} -- {gallery_url}"
+            _send_whatsapp_or_open_ticket(
+                args.guest_phone,
+                f"Here are photos of {property_.name} -- {gallery_url}",
+                kind="photos",
+                summary=f"Send photos of {property_.name} to {args.guest_phone}",
+                detail=f"WhatsApp did not accept Mira's message. Gallery: {gallery_url}",
+                user_id=host_user_id,
+                property_id=property_.id,
+                call_session_id=call_session_id,
             )
         )
 
@@ -632,6 +723,15 @@ async def handle_send_photos(
             f"Got it, I've sent a photo gallery link for {property_.name} to {args.guest_phone}."
             + _phone_confirmation_warning(args.guest_phone)
         )
+    await ticket_service.open_ticket(
+        db,
+        kind="photos",
+        summary=f"Send photos of {property_.name} to {args.guest_phone}",
+        detail=f"Mira could not send them by WhatsApp. Gallery: {gallery_url}",
+        user_id=host_user_id,
+        property_id=property_.id,
+        call_session_id=call_session_id,
+    )
     return (
         f"Got it -- I've let the host know you'd like to see photos of {property_.name}, and they'll "
         f"reach out to you shortly." + _phone_confirmation_warning(args.guest_phone)
@@ -682,7 +782,7 @@ async def handle_escalate_to_host(
         escalated=True,
     )
 
-    await notification_service.create_notification(
+    notification = await notification_service.create_notification(
         db,
         channel="escalation",
         property_id=property_.id if property_ is not None else None,
@@ -698,6 +798,17 @@ async def handle_escalate_to_host(
         call_session_id=call_session_id,
         urgency=args.urgency,
         message=message,
+    )
+    await ticket_service.open_ticket(
+        db,
+        kind="escalation",
+        summary=args.reason,
+        detail=message,
+        urgency=args.urgency,
+        user_id=host_user_id,
+        property_id=property_.id if property_ is not None else None,
+        call_session_id=call_session_id,
+        notification_id=notification.id,
     )
 
     # In-app notification above covers hosts watching the dashboard live;
@@ -928,7 +1039,7 @@ async def _record_transfer_for_follow_up(
         lead = await lead_service.upsert_lead(
             db, host_user_id, call_session_id, guest_profile_id=guest_profile_id, transferred_to_host=True
         )
-        await notification_service.create_notification(
+        notification = await notification_service.create_notification(
             db,
             channel="escalation",
             property_id=property_id,
@@ -939,6 +1050,17 @@ async def _record_transfer_for_follow_up(
                 f"Guest asked to be transferred to you: {args.reason or 'no reason given'}. "
                 "If you missed the call, please follow up with them."
             ),
+        )
+        await ticket_service.open_ticket(
+            db,
+            kind="transfer",
+            summary=f"Call back the guest who asked for you: {args.reason or 'no reason given'}",
+            detail="Mira transferred the call. If you did not pick up, the guest is waiting to hear from you.",
+            urgency="high",
+            user_id=host_user_id,
+            property_id=property_id,
+            call_session_id=call_session_id,
+            notification_id=notification.id,
         )
     except Exception:
         logger.exception("Recording transfer follow-up failed for call_session_id=%s", call_session_id)

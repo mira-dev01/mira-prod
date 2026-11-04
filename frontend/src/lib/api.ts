@@ -15,6 +15,8 @@ import type {
   CallSessionOut,
   CapabilityUpdate,
   AgentConfigOut,
+  TicketOut,
+  TicketStatus,
   AgentConfigUpdate,
   FaqEntryCreate,
   FaqEntryOut,
@@ -431,6 +433,11 @@ export const api = {
       request<void>(`/faq/${id}${buildQuery({ group: opts?.group })}`, { method: "DELETE" }),
     setScope: (id: string, scope: FaqScope) =>
       request<FaqEntryOut[]>(`/faq/${id}/scope`, { method: "PUT", body: JSON.stringify(scope) }),
+  },
+  tickets: {
+    list: (state: "open" | "resolved" | "all" = "open") => request<TicketOut[]>(`/tickets${buildQuery({ state })}`),
+    setStatus: (id: string, status: TicketStatus) =>
+      request<TicketOut>(`/tickets/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
   },
   agentConfig: {
     get: () => request<AgentConfigOut>("/agent-config"),

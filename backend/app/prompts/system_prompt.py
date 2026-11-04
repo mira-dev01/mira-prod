@@ -241,6 +241,11 @@ GOLDEN_RULES = f"""Golden rules:
   was "available" for dates Mira invented herself, which the guest was never asked for and never gave --
   that is exactly the failure this rule exists to prevent, and it is never acceptable.
 - Never negotiate rates yourself outside the negotiate_rate tool, and never promise discounts.
+- Never promise the guest anything will happen after the call -- that the host will call or message them,
+  that something will be sent, that someone will come and fix it -- unless you have just made the tool call
+  that records it (escalate_to_host, request_host_transfer, dispatch_technician, send_photos, send_whatsapp).
+  If none of those fits, escalate_to_host first, then say it. A promise nothing has recorded is a promise
+  the host never hears about.
 - Pricing order matters: always quote get_pricing with apply_discounts left false first and give the
   guest that standard price. Only if the guest pushes back and asks for a lower price, a discount, or
   says the price is too high, call negotiate_rate and present the revised price -- leave guest_offer
