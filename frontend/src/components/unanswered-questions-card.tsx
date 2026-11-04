@@ -13,11 +13,11 @@ import { ListRow } from "@/components/ui/list-row";
 import { RightPanel, RightPanelFooterButton } from "@/components/ui/right-panel";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { cn, glassCardClassName } from "@/lib/utils";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError } from "@/lib/api";
+import { PropertyScopePicker, scopePayload, type PropertyScope } from "@/components/property-scope-picker";
 import type { FaqGapOut } from "@/lib/types";
 
 // Shared by two call sites:
@@ -70,7 +70,7 @@ export function UnansweredQuestionsCard({
   const [gapAnswerText, setGapAnswerText] = useState("");
   // The host can reword the guest's question before it becomes an FAQ.
   const [gapQuestionText, setGapQuestionText] = useState("");
-  const [applyToProperty, setApplyToProperty] = useState(false);
+  const [scope, setScope] = useState<PropertyScope>({ all: true, ids: [] });
   const [answeringSubmitting, setAnsweringSubmitting] = useState(false);
 
   const [isRecording, setIsRecording] = useState(false);
@@ -89,8 +89,9 @@ export function UnansweredQuestionsCard({
     setGapAnswerText(gap.suggested_answer ?? "");
     // The gap belongs to one property: default the answer to that property
     // only. A portfolio-wide answer ("pets are allowed") would otherwise
-    // become a fact Mira states for every other property too.
-    setApplyToProperty(Boolean(gap.property_id));
+    // become a fact Mira states for every other property too. The host can
+    // widen it from the dropdown.
+    setScope(gap.property_id ? { all: false, ids: [gap.property_id] } : { all: true, ids: [] });
     setRecordedBlob(null);
     setRecordedUrl(null);
   }
@@ -129,11 +130,11 @@ export function UnansweredQuestionsCard({
     try {
       const question = gapQuestionText.trim() || undefined;
       if (recordedBlob) {
-        await api.faqGaps.answerVoice(answeringGap.sample_id, recordedBlob, applyToProperty, question);
+        await api.faqGaps.answerVoice(answeringGap.sample_id, recordedBlob, scopePayload(scope), question);
       } else {
         await api.faqGaps.answer(answeringGap.sample_id, {
           answer: gapAnswerText,
-          apply_to_property: applyToProperty,
+          ...scopePayload(scope),
           question,
         });
       }
@@ -322,14 +323,13 @@ export function UnansweredQuestionsCard({
             )}
           </div>
 
-          {answeringGap?.property_id && (
-            <div className="flex items-center gap-2">
-              <Switch id="apply-to-property" checked={applyToProperty} onCheckedChange={setApplyToProperty} />
-              <Label htmlFor="apply-to-property" className="text-sm text-muted-foreground">
-                Apply only to {propertyName(answeringGap.property_id)} (otherwise applies portfolio-wide)
-              </Label>
-            </div>
-          )}
+          <div className="space-y-2">
+            <Label htmlFor="gap-scope">Applies to</Label>
+            <PropertyScopePicker id="gap-scope" value={scope} onChange={setScope} properties={properties} />
+            <p className="text-xs text-muted-foreground">
+              Mira will only use this answer for the properties you pick.
+            </p>
+          </div>
         </form>
       </RightPanel>
     </>

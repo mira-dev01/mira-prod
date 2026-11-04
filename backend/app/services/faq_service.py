@@ -44,6 +44,175 @@ async def resync_property_facts(db: AsyncSession, property_id: uuid.UUID | None)
         logging.getLogger(__name__).exception("resync_property_facts failed for property_id=%s", property_id)
 
 
+class FaqScopeError(ValueError):
+    """The requested property scope for an FAQ answer is invalid (empty, or
+    names a property the host doesn't own). The API maps it to 4xx."""
+
+
+def scope_targets(property_ids: list[uuid.UUID] | None, apply_to_all: bool) -> list[uuid.UUID | None] | None:
+    """The list of property_id values an answer should be stored under:
+    [None] = every property (one portfolio-wide row, which retrieval already
+    reads live), or the explicit property ids, de-duplicated in order. None
+    means the caller gave no scope at all (use the legacy single-property
+    behaviour)."""
+    if property_ids:
+        return list(dict.fromkeys(property_ids))
+    if apply_to_all:
+        return [None]
+    return None
+
+
+async def validate_owned_properties(db: AsyncSession, user_id: uuid.UUID, targets: list[uuid.UUID | None]) -> None:
+    wanted = {t for t in targets if t is not None}
+    if not wanted:
+        return
+    found = set(
+        (await db.scalars(select(Property.id).where(Property.id.in_(wanted), Property.user_id == user_id))).all()
+    )
+    if found != wanted:
+        raise FaqScopeError("One or more properties were not found")
+
+
+def _new_entry(
+    *,
+    user_id: uuid.UUID,
+    property_id: uuid.UUID | None,
+    group_id: uuid.UUID | None,
+    question: str,
+    answer: str,
+    category: str | None,
+    status: str,
+    verified_by: str | None,
+    question_embedding: list | None,
+) -> FaqEntry:
+    return FaqEntry(
+        user_id=user_id,
+        property_id=property_id,
+        group_id=group_id,
+        question=question,
+        answer=answer,
+        category=category,
+        status=status,
+        verified_by=verified_by,
+        question_embedding=question_embedding,
+    )
+
+
+async def create_scoped_entries(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    targets: list[uuid.UUID | None],
+    question: str,
+    answer: str,
+    category: str | None,
+    status: str,
+    verified_by: str | None,
+    question_embedding: list | None = None,
+) -> list[FaqEntry]:
+    """One row per target, sharing a group_id when there is more than one.
+    Adds and flushes; the caller commits and resyncs."""
+    group_id = uuid.uuid4() if len(targets) > 1 else None
+    entries = [
+        _new_entry(
+            user_id=user_id,
+            property_id=target,
+            group_id=group_id,
+            question=question,
+            answer=answer,
+            category=category,
+            status=status,
+            verified_by=verified_by,
+            question_embedding=question_embedding,
+        )
+        for target in targets
+    ]
+    db.add_all(entries)
+    await db.flush()
+    return entries
+
+
+async def get_entry_group(db: AsyncSession, entry: FaqEntry) -> list[FaqEntry]:
+    """The entry plus every sibling row of the same logical FAQ."""
+    if entry.group_id is None:
+        return [entry]
+    stmt = (
+        select(FaqEntry)
+        .where(FaqEntry.user_id == entry.user_id, FaqEntry.group_id == entry.group_id)
+        .order_by(FaqEntry.created_at, FaqEntry.id)
+    )
+    rows = list((await db.scalars(stmt)).all())
+    return rows or [entry]
+
+
+async def resync_many(db: AsyncSession, property_ids: set[uuid.UUID | None]) -> None:
+    for property_id in property_ids:
+        await resync_property_facts(db, property_id)
+
+
+async def set_entry_scope(
+    db: AsyncSession,
+    entry: FaqEntry,
+    *,
+    property_ids: list[uuid.UUID] | None,
+    apply_to_all: bool,
+) -> list[FaqEntry]:
+    """Re-scopes one logical FAQ (the entry and its group siblings) to
+    exactly the requested properties: rows for properties still wanted are
+    kept, rows for dropped properties are deleted, rows for newly added
+    properties are cloned from `entry`. Returns the resulting rows."""
+    targets = scope_targets(property_ids, apply_to_all)
+    if targets is None:
+        raise FaqScopeError("Choose all properties or at least one property")
+    await validate_owned_properties(db, entry.user_id, targets)
+
+    group = await get_entry_group(db, entry)
+    existing = {row.property_id: row for row in group}
+    affected: set[uuid.UUID | None] = set(existing) | set(targets)
+
+    # Read what the clones need before anything is deleted.
+    template = dict(
+        user_id=entry.user_id,
+        question=entry.question,
+        answer=entry.answer,
+        category=entry.category,
+        status=entry.status,
+        verified_by=entry.verified_by,
+        question_embedding=entry.question_embedding,
+    )
+    kept = [existing[t] for t in targets if t in existing]
+    created = [
+        _new_entry(property_id=t, group_id=None, **template) for t in targets if t not in existing
+    ]
+    for property_id, row in existing.items():
+        if property_id not in targets:
+            await db.delete(row)
+    db.add_all(created)
+
+    final = kept + created
+    group_id = (entry.group_id or uuid.uuid4()) if len(final) > 1 else None
+    for row in final:
+        row.group_id = group_id
+    await db.commit()
+    for row in final:
+        await db.refresh(row)
+    await resync_many(db, affected)
+    return final
+
+
+async def update_group_fields(db: AsyncSession, entry: FaqEntry, changes: dict) -> list[FaqEntry]:
+    """Copies the editable content fields from `entry` onto its siblings so
+    one logical FAQ never drifts apart. Returns the siblings (not `entry`)."""
+    siblings = [row for row in await get_entry_group(db, entry) if row.id != entry.id]
+    for sibling in siblings:
+        for field in ("question", "answer", "category", "status", "verified_by"):
+            if field in changes:
+                setattr(sibling, field, getattr(entry, field))
+        if "question" in changes:
+            sibling.question_embedding = entry.question_embedding
+    return siblings
+
+
 async def list_verified_property_faq(db: AsyncSession, property_id: uuid.UUID) -> list[FaqEntry]:
     """Verified, property-scoped FaqEntry rows for build_system_prompt to
     inline upfront -- keeps behavior consistent with the legacy Property.faq
@@ -388,16 +557,31 @@ async def answer_faq_gap(
     apply_to_property: bool,
     verified_by: str,
     question: str | None = None,
+    *,
+    property_ids: list[uuid.UUID] | None = None,
+    apply_to_all: bool = False,
 ) -> FaqEntry:
     """Converts an unanswered-question group into a real, verified FaqEntry,
     and marks every pending row sharing the same normalized_question (i.e.
     the whole group, not just the one `gap` row used to look it up) as
     answered -- so the group actually disappears from list_faq_gaps.
-    `question` lets the host reword the guest's question; blank keeps it."""
+    `question` lets the host reword the guest's question; blank keeps it.
+
+    Scope: `property_ids` (explicit list) or `apply_to_all` decide where the
+    answer lives; with neither, the legacy `apply_to_property` flag applies
+    (the gap's own property, else portfolio-wide). A multi-property scope
+    creates one row per property sharing a group_id; the first is returned."""
     question = (question or "").strip() or gap.question
-    entry = FaqEntry(
+    targets = scope_targets(property_ids, apply_to_all)
+    if targets is None:
+        targets = [gap.property_id if apply_to_property else None]
+    else:
+        await validate_owned_properties(db, gap.user_id, targets)
+
+    entries = await create_scoped_entries(
+        db,
         user_id=gap.user_id,
-        property_id=gap.property_id if apply_to_property else None,
+        targets=targets,
         question=question,
         answer=answer,
         category="host_answered",
@@ -408,8 +592,7 @@ async def answer_faq_gap(
         # question (or none computed yet) gets the background backfill below.
         question_embedding=gap.question_embedding if question == gap.question else None,
     )
-    db.add(entry)
-    await db.flush()  # need entry.id before the bulk-update below
+    entry = entries[0]  # flushed above, so every id exists for the update below
 
     await db.execute(
         UnansweredQuestion.__table__.update()
@@ -421,13 +604,15 @@ async def answer_faq_gap(
         .values(status="answered", resolved_faq_entry_id=entry.id)
     )
     await db.commit()
-    await db.refresh(entry)
+    for row in entries:
+        await db.refresh(row)
 
-    # The host's answer must reach Mira on the very next call: rebuild the
-    # property's searchable facts now (the entry is verified).
-    await resync_property_facts(db, entry.property_id)
+    # The host's answer must reach Mira on the very next call: rebuild each
+    # affected property's searchable facts now (the entries are verified).
+    await resync_many(db, {row.property_id for row in entries})
 
-    if entry.question_embedding is None:
-        asyncio.create_task(embedding_service.backfill_faq_entry_embedding(entry.id, entry.question))
+    for row in entries:
+        if row.question_embedding is None:
+            asyncio.create_task(embedding_service.backfill_faq_entry_embedding(row.id, row.question))
 
     return entry

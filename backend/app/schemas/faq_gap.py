@@ -20,6 +20,9 @@ class FaqGapOut(BaseModel):
 class FaqGapAnswerIn(BaseModel):
     answer: str
     apply_to_property: bool = False
+    # Newer scope controls; either wins over apply_to_property.
+    apply_to_all: bool = False
+    property_ids: list[uuid.UUID] = []
     # The host's own wording for the question (defaults to the guest's).
     question: str | None = Field(default=None, max_length=500)
 

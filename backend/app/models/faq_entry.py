@@ -16,6 +16,11 @@ class FaqEntry(UUIDPkMixin, TimestampMixin, Base):
         UUID(as_uuid=True), ForeignKey("properties.id", ondelete="CASCADE")
     )
 
+    # Rows sharing a group_id are ONE answer the host applied to several
+    # properties (one row per property so retrieval and fact-syncing stay
+    # per-property). None = a standalone entry. See faq_service.set_entry_scope.
+    group_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), index=True)
+
     question: Mapped[str] = mapped_column(Text, nullable=False)
     answer: Mapped[str] = mapped_column(Text, nullable=False)
     category: Mapped[str | None] = mapped_column(String(64))

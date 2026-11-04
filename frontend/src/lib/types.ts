@@ -680,6 +680,8 @@ export type FaqEntryOut = {
   id: string;
   user_id: string;
   property_id: string | null;
+  // Rows sharing a group_id are one FAQ applied to several properties.
+  group_id: string | null;
   question: string;
   answer: string;
   category: string | null;
@@ -691,6 +693,8 @@ export type FaqEntryOut = {
 
 export type FaqEntryCreate = {
   property_id?: string | null;
+  // Several properties at once (wins over property_id).
+  property_ids?: string[];
   question: string;
   answer: string;
   category?: string | null;
@@ -698,7 +702,9 @@ export type FaqEntryCreate = {
   verified_by?: string | null;
 };
 
-export type FaqEntryUpdate = Partial<FaqEntryCreate>;
+export type FaqEntryUpdate = Partial<Omit<FaqEntryCreate, "property_ids">>;
+
+export type FaqScope = { apply_to_all?: boolean; property_ids?: string[] };
 
 export type FaqGapOut = {
   sample_id: string;
@@ -718,6 +724,9 @@ export type FaqGapOut = {
 export type FaqGapAnswer = {
   answer: string;
   apply_to_property?: boolean;
+  // Where the answer applies: all properties, or an explicit list.
+  apply_to_all?: boolean;
+  property_ids?: string[];
   // The host's wording for the question; omitted = the guest's.
   question?: string;
 };

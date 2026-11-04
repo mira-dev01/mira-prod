@@ -9,9 +9,10 @@ from app.auth.dependencies import get_current_user
 from app.database import get_db
 from app.models.faq_entry import FaqEntry
 from app.models.user import User
-from app.schemas.faq_entry import FaqEntryCreate, FaqEntryOut, FaqEntryUpdate
+from app.schemas.faq_entry import FaqEntryCreate, FaqEntryOut, FaqEntryUpdate, FaqScopeIn
 from app.schemas.faq_gap import FaqGapAnalyticsOut, FaqGapAnswerIn, FaqGapOut
 from app.services import embedding_service, faq_service
+from app.services.faq_service import FaqScopeError
 
 router = APIRouter(prefix="/faq", tags=["faq"])
 
@@ -23,19 +24,34 @@ async def list_faq_entries(
     return await faq_service.list_faq_entries(db, current_user.id)
 
 
+def _scope_http_error(exc: FaqScopeError) -> HTTPException:
+    detail = str(exc)
+    code = status.HTTP_404_NOT_FOUND if "not found" in detail else 422
+    return HTTPException(code, detail)
+
+
 @router.post("", response_model=FaqEntryOut, status_code=status.HTTP_201_CREATED)
 async def create_faq_entry(
     payload: FaqEntryCreate, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ) -> FaqEntry:
-    if payload.property_id is not None:
-        await get_owned_property(db, payload.property_id, current_user)
+    fields = payload.model_dump(exclude={"property_id", "property_ids"})
+    if payload.property_ids:
+        targets: list = faq_service.scope_targets(payload.property_ids, False) or []
+        try:
+            await faq_service.validate_owned_properties(db, current_user.id, targets)
+        except FaqScopeError as exc:
+            raise _scope_http_error(exc)
+    else:
+        if payload.property_id is not None:
+            await get_owned_property(db, payload.property_id, current_user)
+        targets = [payload.property_id]
 
-    entry = FaqEntry(user_id=current_user.id, **payload.model_dump())
-    db.add(entry)
+    entries = await faq_service.create_scoped_entries(db, user_id=current_user.id, targets=targets, **fields)
     await db.commit()
-    await db.refresh(entry)
-    await faq_service.resync_property_facts(db, entry.property_id)
-    return entry
+    for entry in entries:
+        await db.refresh(entry)
+    await faq_service.resync_many(db, {entry.property_id for entry in entries})
+    return entries[0]
 
 
 @router.patch("/{faq_id}", response_model=FaqEntryOut)
@@ -54,6 +70,12 @@ async def update_faq_entry(
 
     previous_property_id = entry.property_id
     changes = payload.model_dump(exclude_unset=True)
+    if entry.group_id is not None and changes.get("property_id", entry.property_id) != entry.property_id:
+        # One logical FAQ spans several rows; moving a single row would
+        # silently split it. Re-scope the whole thing instead.
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "This FAQ applies to several properties -- change its scope instead"
+        )
     question_changed = "question" in changes and changes["question"] != entry.question
     for field, value in changes.items():
         setattr(entry, field, value)
@@ -63,29 +85,55 @@ async def update_faq_entry(
         # background (same helper new entries use).
         entry.question_embedding = None
 
+    siblings = await faq_service.update_group_fields(db, entry, changes) if entry.group_id else []
     await db.commit()
     await db.refresh(entry)
-    await faq_service.resync_property_facts(db, entry.property_id)
+    await faq_service.resync_many(db, {entry.property_id, *(sibling.property_id for sibling in siblings)})
     if previous_property_id != entry.property_id:
         # Moved between properties (or to/from portfolio-wide): the old one's
         # facts still contain it.
         await faq_service.resync_property_facts(db, previous_property_id)
     if question_changed:
-        asyncio.create_task(embedding_service.backfill_faq_entry_embedding(entry.id, entry.question))
+        for row in [entry, *siblings]:
+            asyncio.create_task(embedding_service.backfill_faq_entry_embedding(row.id, row.question))
     return entry
+
+
+@router.put("/{faq_id}/scope", response_model=list[FaqEntryOut])
+async def set_faq_entry_scope(
+    faq_id: uuid.UUID,
+    payload: FaqScopeIn,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[FaqEntry]:
+    """Applies one FAQ to all properties or to an explicit set of them."""
+    entry = await faq_service.get_owned_faq_entry(db, faq_id, current_user.id)
+    if entry is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "FAQ entry not found")
+    try:
+        return await faq_service.set_entry_scope(
+            db, entry, property_ids=payload.property_ids, apply_to_all=payload.apply_to_all
+        )
+    except FaqScopeError as exc:
+        raise _scope_http_error(exc)
 
 
 @router.delete("/{faq_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_faq_entry(
-    faq_id: uuid.UUID, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+    faq_id: uuid.UUID,
+    group: bool = Query(default=False, description="Also remove this FAQ from every property it was applied to"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ) -> None:
     entry = await faq_service.get_owned_faq_entry(db, faq_id, current_user.id)
     if entry is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "FAQ entry not found")
-    property_id = entry.property_id
-    await db.delete(entry)
+    rows = await faq_service.get_entry_group(db, entry) if group else [entry]
+    property_ids = {row.property_id for row in rows}
+    for row in rows:
+        await db.delete(row)
     await db.commit()
-    await faq_service.resync_property_facts(db, property_id)
+    await faq_service.resync_many(db, property_ids)
 
 
 # --- FAQ Learning Engine: questions search_faq had no verified answer for ---
@@ -136,15 +184,27 @@ async def answer_faq_gap(
     gap = await faq_service.get_owned_unanswered_question(db, gap_id, current_user.id)
     if gap is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Unanswered question not found")
-    return await faq_service.answer_faq_gap(
-        db, gap, payload.answer, payload.apply_to_property, "host_gap_answer", question=payload.question
-    )
+    try:
+        return await faq_service.answer_faq_gap(
+            db,
+            gap,
+            payload.answer,
+            payload.apply_to_property,
+            "host_gap_answer",
+            question=payload.question,
+            property_ids=payload.property_ids,
+            apply_to_all=payload.apply_to_all,
+        )
+    except FaqScopeError as exc:
+        raise _scope_http_error(exc)
 
 
 @router.post("/gaps/{gap_id}/answer-voice", response_model=FaqEntryOut, status_code=status.HTTP_201_CREATED)
 async def answer_faq_gap_voice(
     gap_id: uuid.UUID,
     apply_to_property: bool = False,
+    apply_to_all: bool = False,
+    property_ids: list[uuid.UUID] = Query(default=[]),
     question: str | None = Query(default=None, max_length=500),
     audio: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
@@ -158,6 +218,16 @@ async def answer_faq_gap_voice(
     if not answer_text:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Could not transcribe audio -- please try again or type the answer")
 
-    return await faq_service.answer_faq_gap(
-        db, gap, answer_text, apply_to_property, "host_gap_answer_voice", question=question
-    )
+    try:
+        return await faq_service.answer_faq_gap(
+            db,
+            gap,
+            answer_text,
+            apply_to_property,
+            "host_gap_answer_voice",
+            question=question,
+            property_ids=property_ids,
+            apply_to_all=apply_to_all,
+        )
+    except FaqScopeError as exc:
+        raise _scope_http_error(exc)

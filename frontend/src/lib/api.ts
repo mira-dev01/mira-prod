@@ -17,6 +17,7 @@ import type {
   FaqEntryCreate,
   FaqEntryOut,
   FaqEntryUpdate,
+  FaqScope,
   FaqGapAnalytics,
   FaqGapAnswer,
   FaqGapOut,
@@ -109,10 +110,11 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return (await res.json()) as T;
 }
 
-function buildQuery(params: Record<string, string | number | boolean | undefined>): string {
+function buildQuery(params: Record<string, string | number | boolean | string[] | undefined>): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined) search.set(key, String(value));
+    if (Array.isArray(value)) value.forEach((item) => search.append(key, item));
+    else if (value !== undefined) search.set(key, String(value));
   }
   const query = search.toString();
   return query ? `?${query}` : "";
@@ -423,7 +425,10 @@ export const api = {
     create: (data: FaqEntryCreate) => request<FaqEntryOut>("/faq", { method: "POST", body: JSON.stringify(data) }),
     update: (id: string, data: FaqEntryUpdate) =>
       request<FaqEntryOut>(`/faq/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
-    remove: (id: string) => request<void>(`/faq/${id}`, { method: "DELETE" }),
+    remove: (id: string, opts?: { group?: boolean }) =>
+      request<void>(`/faq/${id}${buildQuery({ group: opts?.group })}`, { method: "DELETE" }),
+    setScope: (id: string, scope: FaqScope) =>
+      request<FaqEntryOut[]>(`/faq/${id}/scope`, { method: "PUT", body: JSON.stringify(scope) }),
   },
   faqGaps: {
     list: (params?: { propertyId?: string; startDate?: string; endDate?: string }) =>
@@ -438,9 +443,13 @@ export const api = {
       request<FaqGapAnalytics>(`/faq/gaps/analytics${buildQuery({ bucket })}`),
     answer: (gapId: string, data: FaqGapAnswer) =>
       request<FaqEntryOut>(`/faq/gaps/${gapId}/answer`, { method: "POST", body: JSON.stringify(data) }),
-    answerVoice: (gapId: string, audio: Blob, applyToProperty: boolean = false, question?: string) =>
+    answerVoice: (gapId: string, audio: Blob, scope: FaqScope, question?: string) =>
       uploadAudio<FaqEntryOut>(
-        `/faq/gaps/${gapId}/answer-voice${buildQuery({ apply_to_property: applyToProperty, question })}`,
+        `/faq/gaps/${gapId}/answer-voice${buildQuery({
+          apply_to_all: scope.apply_to_all,
+          property_ids: scope.property_ids,
+          question,
+        })}`,
         audio,
         "answer.webm"
       ),
