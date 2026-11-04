@@ -457,6 +457,11 @@ class Settings(BaseSettings):
     # (its own measured cost is persisted per call as observer_overhead_ms).
     audio_input_telemetry_enabled: bool = True
 
+    # Quiet keyboard-typing bed while a lookup tool runs (app/voice/
+    # typing_sound.py). Plays only in silence -- never over the guest or Mira.
+    # Kill-switch only; on by default.
+    typing_sound_enabled: bool = True
+
     # Usage metering for the internal /admin panel (app/services/
     # usage_meter.py) -- every paid external call is recorded fail-open into
     # service_usage_events. Kill-switch only; on by default.

@@ -101,6 +101,7 @@ from app.voice.response_shape_guard import ResponseShapeValidatorProcessor
 from app.voice.ringing_audio import play_busy_message, play_ringing_tone
 from app.voice.silence_watchdog import SilenceWatchdogProcessor
 from app.voice.slow_tool_filler import SlowToolFillerProcessor
+from app.voice.typing_sound import TypingSoundProcessor
 from app.voice.state_prompt_sync import StatePromptSyncProcessor
 from app.voice.style_compliance_monitor import StyleComplianceMonitor
 from app.voice.tools import build_voice_tools
@@ -1316,6 +1317,8 @@ async def _run_pipeline_inner(
     # unscoped -- DB-only, no equivalent external-API long-tail risk. See
     # app/voice/slow_tool_filler.py for the full per-tool reasoning.
     slow_tool_filler = SlowToolFillerProcessor()
+    # Silent keyboard bed during lookups; sits just before transport.output().
+    typing_sound = TypingSoundProcessor() if settings.typing_sound_enabled else None
     # Cuts a response short, mid-stream, the moment it starts repeating
     # itself -- the deterministic guarantee max_completion_tokens alone
     # doesn't provide (a cap bounds how much garbage CAN be generated, not
@@ -1537,6 +1540,7 @@ async def _run_pipeline_inner(
                 end_call_reliability_guard,
                 tts,
                 *telemetry_out,
+                *([typing_sound] if typing_sound is not None else []),
                 transport.output(),
                 assistant_aggregator,
             ]

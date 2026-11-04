@@ -147,6 +147,11 @@ def test_processors_sit_where_the_design_requires_in_the_live_pipeline():
     collector directly after tts (spoken text + TTS metrics)."""
     source = inspect.getsource(voice_pipeline._run_pipeline_inner)
     assert re.search(r"stt,\s*\*telemetry_in,\s*low_confidence_transcript_guard,", source)
-    assert re.search(r"tts,\s*\*telemetry_out,\s*transport\.output\(\),", source)
+    # The typing-sound bed goes after the telemetry (so spoken-text and TTS
+    # metrics never see it) and directly before the transport.
+    assert re.search(
+        r"tts,\s*\*telemetry_out,\s*\*\(\[typing_sound\] if typing_sound is not None else \[\]\),\s*transport\.output\(\),",
+        source,
+    )
     assert "usage_meter.bind_usage_context(call_session_id, host_user_id)" in source
     assert "await _persist_call_telemetry(" in source
