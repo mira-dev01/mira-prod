@@ -241,3 +241,30 @@ async def test_create_with_several_properties(client, auth_headers, test_user, p
     assert r.status_code == 201, r.text
     rows = await _rows(db_session, test_user, "Is there a kettle?")
     assert {x.property_id for x in rows} == {a.id, b.id} and len({x.group_id for x in rows}) == 1
+
+
+async def test_rescoping_removes_a_stray_duplicate_row_instead_of_orphaning_it(
+    client, auth_headers, test_user, props, db_session
+):
+    a, b, _ = props
+    entry = await _make_entry(client, auth_headers, a.id, question="Is there a gym nearby?")
+    await client.put(
+        f"/api/v1/faq/{entry['id']}/scope", headers=auth_headers, json={"property_ids": [str(a.id), str(b.id)]}
+    )
+    rows = await _rows(db_session, test_user, "Is there a gym nearby?")
+    group_id = rows[0].group_id
+    async with AsyncSessionLocal() as fresh:  # a second row for property A in the same group
+        fresh.add(
+            FaqEntry(
+                user_id=test_user.id, property_id=a.id, group_id=group_id,
+                question="Is there a gym nearby?", answer="Yes, free parking.", status="verified",
+            )
+        )
+        await fresh.commit()
+    assert len(await _rows(db_session, test_user, "Is there a gym nearby?")) == 3
+
+    result = await client.put(
+        f"/api/v1/faq/{entry['id']}/scope", headers=auth_headers, json={"property_ids": [str(a.id), str(b.id)]}
+    )
+    assert result.status_code == 200
+    assert len(await _rows(db_session, test_user, "Is there a gym nearby?")) == 2  # one per property again

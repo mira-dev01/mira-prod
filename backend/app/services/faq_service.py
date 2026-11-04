@@ -167,7 +167,15 @@ async def set_entry_scope(
     await validate_owned_properties(db, entry.user_id, targets)
 
     group = await get_entry_group(db, entry)
-    existing = {row.property_id: row for row in group}
+    existing: dict[uuid.UUID | None, FaqEntry] = {}
+    duplicates: list[FaqEntry] = []
+    for row in group:
+        # Normally one row per property; if a group ever holds two for the
+        # same property, keep the first and remove the rest rather than orphan them.
+        if row.property_id in existing:
+            duplicates.append(row)
+        else:
+            existing[row.property_id] = row
     affected: set[uuid.UUID | None] = set(existing) | set(targets)
 
     # Read what the clones need before anything is deleted.
@@ -184,6 +192,8 @@ async def set_entry_scope(
     created = [
         _new_entry(property_id=t, group_id=None, **template) for t in targets if t not in existing
     ]
+    for row in duplicates:
+        await db.delete(row)
     for property_id, row in existing.items():
         if property_id not in targets:
             await db.delete(row)
