@@ -66,7 +66,9 @@ f041738fce4c -> a3f1c9d24e08   add host call hours (host_call_hours_*) + agent_h
 a3f1c9d24e08 -> c7e2a91d4f10   add admin monitoring tables
 c7e2a91d4f10 -> e5b8d2f1a9c3   add booking pricing/attribution fields + price_events
 ...                           (further revisions up to bcde09807b54, see `alembic history`)
-bcde09807b54 -> c4f1a8d2e6b9   knowledge-base fact columns on property_chunks (source_kind, source_ref, meta) + unanswered_questions.source (HEAD)
+bcde09807b54 -> c4f1a8d2e6b9   knowledge-base fact columns on property_chunks (source_kind, source_ref, meta) + unanswered_questions.source
+c4f1a8d2e6b9 -> d7a2b5c9e1f3   faq_entries.group_id (one FAQ applied to several properties)
+d7a2b5c9e1f3 -> e9b3c7d1a4f2   users.agent_config + properties.agent_config_overrides (Agent rules, JSONB; NULL = defaults) (HEAD)
 ```
 
 If a session ever fails with demo-login 500s or a missing-column error, check `alembic heads` against the running DB first — a DB left behind on an old revision is a common cause (see `project_state.md` at the repo root for the 2026-07-15 incident).
@@ -270,6 +272,7 @@ Verified, host-authored FAQ knowledge base (distinct from `Property.faq`, the le
 |---|---|---|
 | `user_id` | UUID FK → users, cascade delete | |
 | `property_id` | UUID FK → properties, cascade delete, nullable | `NULL` = portfolio-wide entry |
+| `group_id` | UUID, nullable, indexed | rows sharing a `group_id` are one FAQ applied to several properties (one row per property so retrieval and fact-syncing stay per-property); `NULL` = standalone |
 | `question`, `answer` | Text, not null | |
 | `category` | String(64), nullable | |
 | `status` | String(16), default `pending` | |

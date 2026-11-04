@@ -180,6 +180,10 @@ class Property(UUIDPkMixin, TimestampMixin, Base):
     # way (pricing_engine.calculate_price applies none, on or off). Length-
     # of-stay discounts still apply either way -- those are a host-
     # configured discount, not a markup.
+    # This property's departures from the host's portfolio Agent rules (today:
+    # payment only), as {"payment": {...only the fields that differ...}}. None =
+    # follows the portfolio. See app/services/agent_config_service.py.
+    agent_config_overrides: Mapped[dict | None] = mapped_column(JSONB)
     exact_airbnb_pricing: Mapped[bool] = mapped_column(default=False, server_default="false")
 
     # Recommendation conversations ("Phase X"): host-set, never LLM-inferred --

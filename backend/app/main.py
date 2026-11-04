@@ -15,6 +15,7 @@ from app.api.v1 import (
     auth,
     bookings,
     calls,
+    agent_config,
     capabilities,
     faq,
     guests,
@@ -354,6 +355,7 @@ app.include_router(leads.router, prefix=API_PREFIX)
 app.include_router(faq.router, prefix=API_PREFIX)
 app.include_router(negotiation_rules.router, prefix=API_PREFIX)
 app.include_router(capabilities.router, prefix=API_PREFIX)
+app.include_router(agent_config.router, prefix=API_PREFIX)
 app.include_router(onboarding.router, prefix=API_PREFIX)
 app.include_router(preferences.router, prefix=API_PREFIX)
 app.include_router(notification_settings.router, prefix=API_PREFIX)

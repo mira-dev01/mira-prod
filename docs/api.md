@@ -120,14 +120,26 @@ See [research-flow.md](research-flow.md) for how these rules feed `negotiate_rat
 |---|---|---|
 | `GET /faq` | List verified `FaqEntry` rows | required |
 | `POST /faq` | Create a verified FAQ entry directly | required |
-| `PATCH /faq/{id}` | Update a FAQ entry | required |
-| `DELETE /faq/{id}` | Delete a FAQ entry | required |
+| `PATCH /faq/{id}` | Update a FAQ entry; edits to a multi-property FAQ apply to every copy, and moving a single copy is rejected (use `/scope`) | required |
+| `PUT /faq/{id}/scope` | Apply a FAQ to all properties (`apply_to_all`) or a chosen set (`property_ids`); keeps rows still wanted, deletes dropped ones, clones new ones | required |
+| `DELETE /faq/{id}` | Delete a FAQ entry; `?group=true` also removes it from every property it was applied to | required |
 | `GET /faq/gaps` | List unanswered-question gaps, grouped by normalized question; filters: `property_id`, `start_date`, `end_date` | required |
 | `GET /faq/gaps/analytics` | Gap analytics: most-frequent / by-property / over-time; param `bucket` (`week`/`month`) | required |
-| `POST /faq/gaps/{gap_id}/answer` | Convert a gap into a verified `FaqEntry` (text answer); marks every row sharing the normalized question as answered | required |
+| `POST /faq/gaps/{gap_id}/answer` | Convert a gap into a verified `FaqEntry` (text answer); body takes `apply_to_all` or `property_ids` (legacy `apply_to_property` still works); marks every row sharing the normalized question as answered | required |
 | `POST /faq/gaps/{gap_id}/answer-voice` | Same, but answer given as an audio upload (transcribed via Sarvam batch STT) | required |
 
 See [agents.md](agents.md) for how `search_faq` logs gaps during a live call.
+
+## `agent_config.py` — `/agent-config`
+
+The host's Agent rules (what Mira collects, what makes a lead hot, how a booking is confirmed and paid). Stored partially; missing keys read as defaults. Name and phone are not configurable. See `app/schemas/agent_config.py`.
+
+| Method & path | Purpose | Auth |
+|---|---|---|
+| `GET /agent-config` | Effective config (defaults filled in) plus per-property payment overrides | required |
+| `PUT /agent-config` | Replace the sections sent (`collect`, `hot_lead`, `booking`, `payment`); others untouched | required |
+| `PUT /agent-config/properties/{id}/payment` | Set a property's payment override (only the fields that differ from the portfolio) | required |
+| `DELETE /agent-config/properties/{id}/payment` | Clear it; the property follows the portfolio again | required |
 
 ## `voice.py` — `/voice`
 

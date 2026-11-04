@@ -124,6 +124,12 @@ class User(UUIDPkMixin, TimestampMixin, Base):
     # market (the goal's own "any host in India" framing).
     agent_language_policy: Mapped[str | None] = mapped_column(String(16))
 
+    # The host's Agent rules (what Mira collects, what makes a lead hot, how a
+    # booking is confirmed and paid) as a partial JSON document -- see
+    # app/schemas/agent_config.py. None = every default. Read through
+    # app/services/agent_config_service.py, never directly.
+    agent_config: Mapped[dict | None] = mapped_column(JSONB)
+
     # Host Memory: host-level negotiation/policy preferences (see
     # memory-architecture-plan.md section 4). discount_policy_text is the
     # host's own free-text paragraph describing how they usually handle
