@@ -66,8 +66,8 @@ NAV_DESTINATIONS: tuple[NavDestination, ...] = (
     ),
     NavDestination(
         "ai_training",
-        "AI Training",
-        "/dashboard/properties/ai-training",
+        "Agent",
+        "/dashboard/agent",
         ("guest_support_agent", "negotiation", "knowledge_faq"),
     ),
     NavDestination(
@@ -78,10 +78,9 @@ NAV_DESTINATIONS: tuple[NavDestination, ...] = (
         independent=True,
     ),
     NavDestination("calls", "Calls", "/dashboard/calls", ("guest_support_agent", "lead_agent", "analytics_reporting")),
-    NavDestination(
-        "live_requests", "Live Requests", "/dashboard/leads", ("lead_capture", "busy_call_recovery", "host_handoff")
-    ),
-    NavDestination("opportunities", "Opportunities", "/dashboard/opportunities", ("lead_capture", "busy_call_recovery")),
+    # "Leads" also holds the Missed calls tab (busy-call recoveries), so it
+    # owns what the separate Opportunities page used to.
+    NavDestination("live_requests", "Leads", "/dashboard/leads", ("lead_capture", "busy_call_recovery", "host_handoff")),
     # The Guests page is one view of guest memory, not the capability.
     NavDestination("guests", "Guests", "/dashboard/guests", ("guest_memory",)),
     # FAQ navigation is where hosts curate knowledge; hiding it never stops

@@ -37,7 +37,7 @@ const SIGNAL_LABELS: Record<string, string> = {
   pricing_discussed: "Mira quoted a price",
   negotiation: "Negotiated with Mira",
   recent: "Spoke to Mira recently",
-  host_closed_lead: "Confirmed from Live Requests",
+  host_closed_lead: "Confirmed from Leads",
 };
 
 const PRICE_SOURCE_LABELS: Record<string, string> = {

@@ -222,13 +222,13 @@ function PricingPageContent() {
             <CardTitle>Negotiation policy</CardTitle>
             <CardDescription>
               {approvedDiscountRulesCount} approved discount rule{approvedDiscountRulesCount === 1 ? "" : "s"} from
-              your AI Training policy apply{approvedDiscountRulesCount === 1 ? "ies" : ""} to live negotiations across
+              your Agent discount policy apply{approvedDiscountRulesCount === 1 ? "ies" : ""} to live negotiations across
               all your properties.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Link
-              href="/dashboard/properties/ai-training"
+              href="/dashboard/agent"
               className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
             >
               Review negotiation policy

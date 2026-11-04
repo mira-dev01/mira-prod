@@ -60,7 +60,7 @@ OVERVIEW_WIDGETS: tuple[OverviewWidget, ...] = (
     ),
     OverviewWidget(
         "live_requests",
-        "Live requests",
+        "Leads",
         "Open guest requests and escalations.",
         ("lead_capture", "host_handoff"),
         default_visible=True,
@@ -71,7 +71,7 @@ OVERVIEW_WIDGETS: tuple[OverviewWidget, ...] = (
     ),
     OverviewWidget(
         "opportunities",
-        "Opportunities",
+        "Missed calls",
         "Booking leads worth a follow-up, including busy-call recoveries.",
         ("lead_capture", "busy_call_recovery"),
         default_visible=True,

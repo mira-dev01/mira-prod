@@ -35,7 +35,7 @@ export const USE_CASES: UseCase[] = [
     label: "WhatsApp automation",
     description: "Automatic WhatsApp follow-ups and recovery when you can't pick up a call.",
     icon: Zap,
-    navHref: "/dashboard/opportunities",
+    navHref: "/dashboard/leads",
   },
   {
     key: "pricing_negotiation",
@@ -75,5 +75,7 @@ export function useCaseByKey(key: string): UseCase | undefined {
  * used by sidebar-nav.tsx to partition its existing `links` array. */
 export function hrefsForInterests(interests: readonly string[]): string[] {
   const selected = new Set(interests);
-  return USE_CASES.filter((useCase) => selected.has(useCase.key)).map((useCase) => useCase.navHref);
+  // Several use cases can point at the same page (Leads covers both inbound
+  // leads and WhatsApp follow-ups), and a link must only be promoted once.
+  return [...new Set(USE_CASES.filter((useCase) => selected.has(useCase.key)).map((useCase) => useCase.navHref))];
 }

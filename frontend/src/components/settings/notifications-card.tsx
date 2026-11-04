@@ -133,7 +133,7 @@ export function NotificationsCard() {
           )}
         </Section>
 
-        <Section title="Lead labels" hint="Your names for each lead tier — used on the dashboard, Live Requests and in email subjects.">
+        <Section title="Lead labels" hint="Your names for each lead tier — used on the dashboard, Leads and in email subjects.">
           <div className="grid gap-3 sm:grid-cols-4">
             {LEAD_BUCKETS.map((bucket) => (
               <div key={bucket} className="space-y-1">

@@ -18,7 +18,6 @@ import {
   Settings,
   Menu,
   X,
-  Zap,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -41,12 +40,11 @@ const links: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/dashboard", label: "Overview", icon: Home },
   { href: "/dashboard/analytics", label: "Analytics", icon: ChartColumn },
   { href: "/dashboard/properties", label: "Properties", icon: Building2 },
-  { href: "/dashboard/properties/ai-training", label: "AI Training", icon: BrainCircuit },
+  { href: "/dashboard/agent", label: "Agent", icon: BrainCircuit },
   { href: "/dashboard/pricing", label: "Pricing", icon: IndianRupee },
   { href: "/dashboard/calendar", label: "Calendar", icon: Calendar },
   { href: "/dashboard/calls", label: "Calls", icon: Phone },
-  { href: "/dashboard/leads", label: "Live Requests", icon: Users },
-  { href: "/dashboard/opportunities", label: "Opportunities", icon: Zap },
+  { href: "/dashboard/leads", label: "Leads", icon: Users },
   { href: "/dashboard/guests", label: "Guests", icon: UserRound },
   { href: "/dashboard/faq", label: "FAQ", icon: HelpCircle },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
@@ -72,9 +70,7 @@ function NavLinks({ onNavigate, onTalkToMira }: { onNavigate?: () => void; onTal
     const active =
       link.href === "/dashboard"
         ? pathname === link.href
-        : link.href === "/dashboard/properties"
-          ? pathname === link.href || (pathname.startsWith(link.href) && !pathname.startsWith("/dashboard/properties/ai-training"))
-          : pathname.startsWith(link.href);
+        : pathname.startsWith(link.href);
     const Icon = link.icon;
     return (
       <Link

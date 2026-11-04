@@ -138,8 +138,8 @@ function fallback(
 export const FALLBACK_WIDGETS: OverviewWidget[] = [
   fallback("portfolio_snapshot", "Portfolio snapshot", "summary", "full", ["full"]),
   fallback("needs_attention", "Needs your attention", "summary", "full", ["full"]),
-  fallback("live_requests", "Live requests", "live", "half", ["half", "full"]),
-  fallback("opportunities", "Opportunities", "live", "half", ["half", "full"]),
+  fallback("live_requests", "Leads", "live", "half", ["half", "full"]),
+  fallback("opportunities", "Missed calls", "live", "half", ["half", "full"]),
   fallback("recent_calls", "Recent calls", "details", "half", ["half", "full"]),
   fallback("unanswered_questions", "Unanswered questions", "details", "half", ["half", "full"]),
   fallback("busy_call_recovery", "Busy-call recovery", "details", "half", ["half", "full"], false),

@@ -45,7 +45,7 @@ export function OpportunitiesCard({
   return (
     <Card className={cn("h-full", glass && glassCardClassName)}>
       <CardHeader className="flex flex-row items-center justify-between gap-2">
-        <CardTitle>Opportunities</CardTitle>
+        <CardTitle>Missed calls</CardTitle>
         <Badge variant="outline">{opportunityLeads.length} open</Badge>
       </CardHeader>
       <CardContent className="flex-1 space-y-3">
@@ -54,7 +54,7 @@ export function OpportunitiesCard({
       {limit && opportunityLeads.length > limit && (
         <div className="border-t px-4 py-3">
           <Link
-            href="/dashboard/opportunities"
+            href="/dashboard/leads?tab=missed"
             className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
           >
             View all {opportunityLeads.length} opportunities

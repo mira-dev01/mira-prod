@@ -17,6 +17,7 @@ import { StatusChip, type StatusTone } from "@/components/status-chip";
 import { CloseLeadDialog } from "@/components/close-lead-dialog";
 import { DateRangePicker } from "@/components/date-range-picker";
 import { LeadDetailPanel, LEAD_STATUSES, leadUrgencyTone } from "@/components/lead-detail-panel";
+import { MissedCallsTab } from "@/components/missed-calls-tab";
 import { ServiceRequestsTable } from "@/components/service-requests-table";
 import { WhatsAppButton } from "@/components/whatsapp-button";
 import { useAsync } from "@/hooks/use-async";
@@ -26,7 +27,7 @@ import { leadGuestLabel, leadPhoneLabel, useLeadLabels } from "@/lib/leads";
 import { cn, isBrowserTestIdentity, matchesSearch } from "@/lib/utils";
 import type { LeadOut, LeadStatus } from "@/lib/types";
 
-const VALID_TABS = ["service", "booking"] as const;
+const VALID_TABS = ["service", "booking", "missed"] as const;
 type RequestsTab = (typeof VALID_TABS)[number];
 
 const STATUSES = LEAD_STATUSES;
@@ -578,18 +579,22 @@ function LiveRequestsPageContent() {
 
   return (
     <div className="space-y-6">
-      <h1 className="page-title">Live Requests</h1>
+      <h1 className="page-title">Leads</h1>
 
       <Tabs value={tab} onValueChange={handleTabChange}>
         <TabsList>
           <TabsTrigger value="service">Service Requests</TabsTrigger>
           <TabsTrigger value="booking">Booking Requests</TabsTrigger>
+          <TabsTrigger value="missed">Missed calls</TabsTrigger>
         </TabsList>
         <TabsContent value="service" className="pt-4">
           <ServiceRequestsTabContent />
         </TabsContent>
         <TabsContent value="booking" className="pt-4">
           <BookingRequestsTabContent />
+        </TabsContent>
+        <TabsContent value="missed" className="pt-4">
+          <MissedCallsTab />
         </TabsContent>
       </Tabs>
     </div>

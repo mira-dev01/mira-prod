@@ -731,6 +731,39 @@ export type FaqGapAnswer = {
   question?: string;
 };
 
+// --- Agent rules (GET/PUT /agent-config) ---
+
+export type AgentFieldMode = "off" | "optional" | "required";
+export type AgentHotSignal = "availability_confirmed" | "pricing_requested" | "negotiation_initiated";
+
+export type AgentCollectConfig = {
+  dates: AgentFieldMode;
+  guests: AgentFieldMode;
+  purpose: AgentFieldMode;
+  location: AgentFieldMode;
+  budget: AgentFieldMode;
+  email: AgentFieldMode;
+};
+
+export type AgentConfig = {
+  collect: AgentCollectConfig;
+  hot_lead: { hot_on: AgentHotSignal[] };
+  booking: { confirm_by: "host" | "payment" };
+  payment: {
+    kind: "full" | "split";
+    split_percent: number;
+    balance_due_days_before_checkin: number;
+    hold_minutes: number;
+  };
+};
+
+export type AgentConfigOut = {
+  config: AgentConfig;
+  payment_overrides: Record<string, Partial<AgentConfig["payment"]>>;
+};
+
+export type AgentConfigUpdate = Partial<Pick<AgentConfig, "collect" | "hot_lead" | "booking" | "payment">>;
+
 export type FaqGapAnalytics = {
   most_frequent: { question: string; count: number }[];
   by_property: { property_id: string | null; count: number }[];

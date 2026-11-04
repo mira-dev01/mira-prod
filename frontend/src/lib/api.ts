@@ -14,6 +14,8 @@ import type {
   CallSessionDetailOut,
   CallSessionOut,
   CapabilityUpdate,
+  AgentConfigOut,
+  AgentConfigUpdate,
   FaqEntryCreate,
   FaqEntryOut,
   FaqEntryUpdate,
@@ -429,6 +431,11 @@ export const api = {
       request<void>(`/faq/${id}${buildQuery({ group: opts?.group })}`, { method: "DELETE" }),
     setScope: (id: string, scope: FaqScope) =>
       request<FaqEntryOut[]>(`/faq/${id}/scope`, { method: "PUT", body: JSON.stringify(scope) }),
+  },
+  agentConfig: {
+    get: () => request<AgentConfigOut>("/agent-config"),
+    update: (data: AgentConfigUpdate) =>
+      request<AgentConfigOut>("/agent-config", { method: "PUT", body: JSON.stringify(data) }),
   },
   faqGaps: {
     list: (params?: { propertyId?: string; startDate?: string; endDate?: string }) =>

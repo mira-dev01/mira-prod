@@ -73,7 +73,7 @@ export function LiveRequestsCard({
   return (
     <Card className={cn("h-full", glass && glassCardClassName)}>
       <CardHeader className="flex flex-row items-center justify-between gap-2">
-        <CardTitle>Live requests</CardTitle>
+        <CardTitle>Leads</CardTitle>
         <Badge variant="outline">{escalatedLeads.length} active</Badge>
       </CardHeader>
       <CardContent className="flex-1 space-y-3">

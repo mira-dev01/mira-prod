@@ -11,7 +11,6 @@ import {
   Settings,
   UserRound,
   Users,
-  Zap,
   type LucideIcon,
 } from "lucide-react";
 import type { NavItem } from "@/lib/types";
@@ -30,7 +29,6 @@ export const NAV_ICONS: Record<string, LucideIcon> = {
   calendar: Calendar,
   calls: Phone,
   live_requests: Users,
-  opportunities: Zap,
   guests: UserRound,
   faq: HelpCircle,
   settings: Settings,
@@ -52,18 +50,17 @@ export const FALLBACK_NAV: NavItem[] = [
   fallback("overview", "Overview", "/dashboard", "pinned_top", false),
   fallback("analytics", "Analytics", "/dashboard/analytics", "movable"),
   fallback("properties", "Properties", "/dashboard/properties", "movable", false),
-  fallback("ai_training", "AI Training", "/dashboard/properties/ai-training", "movable"),
+  fallback("ai_training", "Agent", "/dashboard/agent", "movable"),
   fallback("calendar", "Calendar", "/dashboard/calendar", "movable"),
   fallback("calls", "Calls", "/dashboard/calls", "movable"),
-  fallback("live_requests", "Live Requests", "/dashboard/leads", "movable"),
-  fallback("opportunities", "Opportunities", "/dashboard/opportunities", "movable"),
+  fallback("live_requests", "Leads", "/dashboard/leads", "movable"),
   fallback("guests", "Guests", "/dashboard/guests", "movable"),
   fallback("faq", "FAQ", "/dashboard/faq", "movable"),
   fallback("settings", "Settings", "/dashboard/settings", "pinned_bottom", false),
 ];
 
 /** The one nav item a pathname belongs to: the longest matching href, so
- * /dashboard/properties/ai-training highlights AI Training, not Properties,
+ * /dashboard/agent/anything highlights Agent, not Overview,
  * and /dashboard only matches exactly. */
 export function activeNavId(items: NavItem[], pathname: string): string | null {
   let best: NavItem | null = null;

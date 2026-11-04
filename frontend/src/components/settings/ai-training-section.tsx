@@ -80,7 +80,7 @@ function ruleConditionSummary(rule: NegotiationRuleOut): string {
   return rule.discount_percent != null ? `${rule.discount_percent}% off` : "—";
 }
 
-// Rendered on BOTH the AI Training page (app/dashboard/properties/ai-training)
+// Rendered on BOTH the Agent page (app/dashboard/agent, Pricing step)
 // and the Pricing page (app/dashboard/pricing) -- same component, same
 // list/parse/approve endpoints, so the two pages stay wired together by
 // construction. One text box (typed or dictated -- DictationTextarea's
@@ -337,10 +337,10 @@ export function AiTrainingSection() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="font-heading text-base leading-snug font-medium">AI Negotiation Training</h2>
+        <h2 className="font-heading text-base leading-snug font-medium">Discounts and negotiation</h2>
         <p className="text-sm text-muted-foreground">
-          Teach Mira how to negotiate -- discounts, minimum stays, and fees -- and review anything she&apos;s
-          learned before it goes live.
+          Tell Mira when she can offer a discount, minimum stays and fees. Review what she learns before it goes
+          live.
         </p>
       </div>
       <CapabilityNotice

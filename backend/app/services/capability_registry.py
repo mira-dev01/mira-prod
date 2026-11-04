@@ -88,7 +88,7 @@ class Capability:
     requirements: tuple[Requirement, ...] = ()
     integrations: tuple[IntegrationRef, ...] = ()
     # Dashboard routes that surface this capability. Several capabilities
-    # share routes (Overview, Properties, AI Training, Settings) -- that's
+    # share routes (Overview, Properties, Agent, Settings) -- that's
     # expected and is exactly why routes aren't the unit of activation.
     routes: tuple[str, ...] = ()
     # Voice tools (app/voice/tools.py) that exercise this capability.
@@ -144,7 +144,7 @@ CAPABILITIES: tuple[Capability, ...] = (
         off_effect="",
         hard_dependencies=("property_management",),
         requirements=(_HAS_PROPERTY, _PROPERTY_PHONE),
-        routes=("/dashboard/calls", "/dashboard/properties", "/dashboard/properties/ai-training"),
+        routes=("/dashboard/calls", "/dashboard/properties", "/dashboard/agent"),
         voice_tools=("check_calendar", "get_pricing", "search_faq", "lookup_booking", "end_call"),
         onboarding_setup="voice_intro",
     ),
@@ -182,7 +182,7 @@ CAPABILITIES: tuple[Capability, ...] = (
         activation="core",
         enforcement="always_on",
         default_enabled=True,
-        on_effect="Busy callers get a WhatsApp menu and appear in Live Requests.",
+        on_effect="Busy callers get a WhatsApp menu and appear in Leads.",
         off_effect="",
         soft_dependencies=("lead_capture",),
         requirements=(_HOST_PHONE_SOFT,),
@@ -233,7 +233,7 @@ CAPABILITIES: tuple[Capability, ...] = (
     Capability(
         id="negotiation",
         name="Discount negotiation",
-        description="Mira can offer discounts within the limits you set in AI Training.",
+        description="Mira can offer discounts within the limits you set on the Agent page.",
         benefit="Close price-sensitive guests without giving away more than you allow.",
         group="bookings_pricing",
         activation="bound",
@@ -248,10 +248,10 @@ CAPABILITIES: tuple[Capability, ...] = (
                 "A discount limit or approved discount rules",
                 False,
                 "Set your discount policy",
-                "/dashboard/properties/ai-training",
+                "/dashboard/agent",
             ),
         ),
-        routes=("/dashboard/properties/ai-training",),
+        routes=("/dashboard/agent",),
         voice_tools=("negotiate_rate",),
         bound_user_field="negotiation_allowed",
         onboarding_setup="negotiation",
@@ -358,16 +358,16 @@ CAPABILITIES: tuple[Capability, ...] = (
     # ── Leads & Guest CRM ──────────────────────────────────────────────
     Capability(
         id="lead_capture",
-        name="Live requests & lead capture",
+        name="Lead capture",
         description="Turns every genuine enquiry into a lead you can follow up.",
         benefit="No booking enquiry silently disappears.",
         group="leads_crm",
         activation="core",
         enforcement="always_on",
         default_enabled=True,
-        on_effect="Enquiries, escalations and busy-call recoveries appear in Live Requests and Opportunities.",
+        on_effect="Enquiries, escalations and busy-call recoveries appear in Leads, including the Missed calls tab.",
         off_effect="",
-        routes=("/dashboard/leads", "/dashboard/opportunities"),
+        routes=("/dashboard/leads",),
         voice_tools=("update_lead",),
     ),
     Capability(
@@ -432,7 +432,7 @@ CAPABILITIES: tuple[Capability, ...] = (
         requirements=(
             Requirement("faq_knowledge", "Verified FAQs or listing FAQs", False, "Review FAQs", "/dashboard/faq"),
         ),
-        routes=("/dashboard/faq", "/dashboard/properties/ai-training"),
+        routes=("/dashboard/faq", "/dashboard/agent"),
         voice_tools=("search_faq",),
     ),
     # ── Analytics & Insights ───────────────────────────────────────────
