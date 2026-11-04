@@ -138,3 +138,24 @@ async def test_missing_asset_is_a_pass_through():
     down, _ = await run_test(proc, frames_to_send=[_started(), SleepFrame(sleep=0.2), _result()])
     assert _typing(down) == []
     assert any(isinstance(f, FunctionCallResultFrame) for f in down)
+
+
+async def test_a_lookup_that_never_reports_back_does_not_type_forever():
+    """An errored tool sends neither a result nor a cancel. Typing must stop on
+    its own, and must not restart after the next spoken line."""
+    proc = TypingSoundProcessor(start_delay=0.05, resume_delay=0.05, max_pending_seconds=0.3)
+    down, _ = await run_test(
+        proc,
+        frames_to_send=[
+            _started(),
+            SleepFrame(sleep=0.8),  # well past the cap
+            TTSStartedFrame(),
+            SleepFrame(sleep=0.1),
+            BotStoppedSpeakingFrame(),
+            SleepFrame(sleep=0.4),
+        ],
+    )
+    spoke = next(i for i, f in enumerate(down) if isinstance(f, TTSStartedFrame))
+    typing_before = _typing(down[:spoke])
+    assert typing_before and len(typing_before) < 15  # roughly 0.25s of typing, not 0.75s
+    assert _typing(down[spoke + 1 :]) == []  # and it did not come back

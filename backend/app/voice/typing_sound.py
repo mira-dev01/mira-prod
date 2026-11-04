@@ -72,6 +72,10 @@ TYPING_TOOLS = frozenset(
 START_DELAY_SECONDS = 0.4
 # After a spoken filler ends, resume sooner -- the lookup has already been slow.
 RESUME_DELAY_SECONDS = 0.2
+# A lookup that has produced neither a result nor a cancel for this long is
+# treated as abandoned (an errored tool never sends one), so the typing cannot
+# restart after every spoken line for the rest of the call.
+MAX_PENDING_SECONDS = 30.0
 CHUNK_SECONDS = 0.04
 _CHUNK_BYTES = int(_SAMPLE_RATE * CHUNK_SECONDS) * _SAMPLE_WIDTH
 
@@ -99,13 +103,16 @@ class TypingSoundProcessor(FrameProcessor):
         start_delay: float = START_DELAY_SECONDS,
         resume_delay: float = RESUME_DELAY_SECONDS,
         pcm: bytes | None = _TYPING_PCM,
+        max_pending_seconds: float = MAX_PENDING_SECONDS,
     ):
         super().__init__()
         self._tools = tools
         self._start_delay = start_delay
         self._resume_delay = resume_delay
         self._pcm = pcm
-        self._pending: set[str] = set()
+        # tool_call_id -> when it started
+        self._pending: dict[str, float] = {}
+        self._max_pending = max_pending_seconds
         self._bot_speaking = False
         self._user_speaking = False
         self._task: asyncio.Task | None = None
@@ -150,12 +157,12 @@ class TypingSoundProcessor(FrameProcessor):
         if isinstance(frame, FunctionCallsStartedFrame):
             for call in frame.function_calls:
                 if call.function_name in self._tools:
-                    self._pending.add(call.tool_call_id)
+                    self._pending[call.tool_call_id] = time.monotonic()
             if not self._bot_speaking:
                 self._spoke_since_started = False
             await self._reconcile()
         elif isinstance(frame, (FunctionCallResultFrame, FunctionCallCancelFrame)):
-            self._pending.discard(frame.tool_call_id)
+            self._pending.pop(frame.tool_call_id, None)
             if not self._pending:
                 self._spoke_since_started = False
             await self._reconcile()
@@ -204,7 +211,12 @@ class TypingSoundProcessor(FrameProcessor):
                     OutputAudioRawFrame(audio=chunk, sample_rate=_SAMPLE_RATE, num_channels=1)
                 )
                 deadline += CHUNK_SECONDS
-                await asyncio.sleep(max(0.0, deadline - time.monotonic()))
+                now = time.monotonic()
+                for call_id in [k for k, started in self._pending.items() if now - started > self._max_pending]:
+                    del self._pending[call_id]
+                if not self._pending:
+                    return
+                await asyncio.sleep(max(0.0, deadline - now))
         except asyncio.CancelledError:
             raise
         except Exception:
