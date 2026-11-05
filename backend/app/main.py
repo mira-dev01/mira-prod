@@ -39,7 +39,7 @@ from app.database import AsyncSessionLocal, engine
 from app.observability import health, http_hook, probes
 from app.observability.logging_setup import configure_logging
 from app.observability.middleware import ObservabilityMiddleware, install_db_hook
-from app.services import health_monitor_service
+from app.services import health_monitor_service, recovery_service
 from app.services.calendar_service import sync_all_properties
 from app.services.call_service import reconcile_stuck_call_sessions
 from app.services.smart_pricing_service import refresh_live_pricing_cache, refresh_smart_pricing
@@ -124,6 +124,13 @@ async def _reconcile_stuck_call_sessions() -> None:
             await reconcile_stuck_call_sessions(db)
     except Exception:
         logger.exception("Stuck-call-session reconciliation failed -- will retry on the next interval")
+
+
+async def _check_busy_callbacks() -> None:
+    """Every minute: for busy-call guests Mira invited to ring back whose wait
+    has passed, open a ticket for the host if they didn't (see recovery_
+    service.check_missed_callbacks, which never raises)."""
+    await recovery_service.check_missed_callbacks()
 
 
 async def _scheduled_smart_pricing_refresh() -> None:
@@ -270,6 +277,7 @@ async def lifespan(app: FastAPI):
     # inside that window so the connection is always warm by the time a real
     # call needs it (see _check_db_health above).
     scheduler.add_job(_check_db_health, "interval", seconds=60, id="db_keepalive")
+    scheduler.add_job(_check_busy_callbacks, "interval", seconds=60, id="busy_callback_check", max_instances=1, coalesce=True)
     # Sweep any CallSession stranded at status="in_progress" by a finalize
     # path that never completed (see _reconcile_stuck_call_sessions). Every
     # 10 min is well inside "a host would notice a phantom live call on the

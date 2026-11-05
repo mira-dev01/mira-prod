@@ -158,6 +158,23 @@ A second simultaneous call to a host/property already on a live call is rejected
 - **Inbound WhatsApp replies** land on `POST /webhooks/whatsapp/inbound` (`app/api/v1/webhooks/whatsapp.py`), routed by `app/services/whatsapp_reply_service.py` to the guest's existing recovery `Lead` (found by phone number, since the reply carries no host context) — Property/Pricing/FAQs/Photos reply automatically from the same data the voice tools use; "talk to host" and free-text replies notify the host and let them follow up personally, no LLM involved on this path.
 - **Recovery Analytics** (`GET /analytics/recovery`, `app/api/v1/analytics.py`) reads Busy Calls/Recovered/Converted/Lost counts and average recovery/host-response times directly from the `Notification`/`Lead` rows RecoveryService already writes — see [api.md](api.md) for the exact query semantics (why `Notification`, not `Lead`, is the source of truth for attempt counts).
 
+### Busy-call modes (Agent page → Busy calls)
+
+`AgentConfig.busy_calls` (`app/schemas/agent_config.py`) chooses what happens next, and the default is the behaviour that existed before the setting did:
+
+- **`callback_invite`** (default): the flow above — when the lease is released Mira messages the guest that she is free. New: that send also arms `Lead.busy_recovery_callback_due_at` (`callback_wait_minutes`, default 5). A scheduler job (`_check_busy_callbacks`, every minute → `recovery_service.check_missed_callbacks`) atomically claims each lead that is due (one `UPDATE … RETURNING`, so two workers never ticket the same guest). A guest who rang back and got through (`upsert_lead` clears the deadline with the status) or answered on WhatsApp (`next_follow_up` changed) is left alone; anyone else gives the host a `missed_call` ticket plus an alert. The deadline is a column, not an in-memory timer, so a deploy in those minutes cannot lose it.
+- **`host_follows_up`**: the guest still gets the "we missed your call" WhatsApp and the host the alert, but the lead is not armed for the "I'm free" message and the host gets a `missed_call` ticket at once. Mira does not message the guest again.
+- An outbound call as the fallback (`agent_call`) is deliberately not accepted by the API yet — see `OUTGOING_CALLS_PLAN.md`; a setting that did nothing would be a lie.
+
+### Calls that fail to connect (`app/services/missed_call_service.py`)
+
+When a call that should have reached Mira doesn't, the host and the admins hear straight away so a person can ring the guest back. Four triggers (reason keys): `pipeline_crash` (the crash handler in `_run_pipeline`), `never_finished` (the stuck-call sweep, `reconcile_stuck_call_sessions`), `not_connected` (Exotel reports `failed` or `no-answer` for a call that never reached Mira — `busy` is the recovery path's job and `canceled` is the guest hanging up), and `never_answered` (the guest spoke at least once and Mira never started speaking, for a call of 6s or more, `call_metrics.bot_replies == 0`).
+
+- **Per call, never throttled:** a `missed_call` ticket (high urgency) and an in-app alert for the host. A call to the portfolio number now resolves its host from the lead number (it used to be created with no owner and was invisible).
+- **Throttled:** the host's WhatsApp/email and the admins' email — the first goes out immediately, later ones within 5 minutes are counted and folded into the next ("N other call(s) also failed"). In-process, so with several workers an outage can send one per worker. Reuses `_send_escalation_whatsapp`/`_send_escalation_email` (the host's template and email preference apply). Admins are `ALERT_EMAILS`, only where health alerts are active (production unless overridden).
+- **Raised once per call** (a crash followed by the sweep is one ticket); browser test calls are ignored.
+- **Not covered here:** a provider-level model outage with no failing call is the existing service-health alert's job (`docs/observability.md`). A model failure that kills a call is caught as `pipeline_crash`; one that leaves the guest unanswered as `never_answered`.
+
 ### Silence watchdog and call-ending tools
 
 `SilenceWatchdogProcessor` (`app/voice/silence_watchdog.py`) sits in the pipeline directly after `stt` (see the stage list above — the diagram omits it for brevity but it runs between `SarvamSTTService` and `LanguageSyncProcessor`) so it sees every `TranscriptionFrame` plus the upstream `BotStoppedSpeakingFrame` that fires once TTS audio finishes draining. It drives two distinct behaviors that both end the call, but for different reasons:

@@ -69,7 +69,8 @@ c7e2a91d4f10 -> e5b8d2f1a9c3   add booking pricing/attribution fields + price_ev
 bcde09807b54 -> c4f1a8d2e6b9   knowledge-base fact columns on property_chunks (source_kind, source_ref, meta) + unanswered_questions.source
 c4f1a8d2e6b9 -> d7a2b5c9e1f3   faq_entries.group_id (one FAQ applied to several properties)
 d7a2b5c9e1f3 -> e9b3c7d1a4f2   users.agent_config + properties.agent_config_overrides (Agent rules, JSONB; NULL = defaults)
-e9b3c7d1a4f2 -> a5d9e2c7b1f4   tickets table (durable follow-ups behind what the agent promises a guest) (HEAD)
+e9b3c7d1a4f2 -> a5d9e2c7b1f4   tickets table (durable follow-ups behind what the agent promises a guest)
+a5d9e2c7b1f4 -> b6e1d3f8a2c5   leads.busy_recovery_callback_due_at (busy-call no-callback check) (HEAD)
 ```
 
 If a session ever fails with demo-login 500s or a missing-column error, check `alembic heads` against the running DB first — a DB left behind on an old revision is a common cause (see `project_state.md` at the repo root for the 2026-07-15 incident).
@@ -221,6 +222,7 @@ Computed properties (not columns): `duration_minutes`, `guest_name` (prefers `Le
 | `busy_recovery_availability_status` | String(16), nullable, **indexed** | Whether Mira still owes this busy-recovery guest an "I'm available now" WhatsApp — `pending` / `processing` / `notified`, or `NULL` for every lead with no `recovery_reason`. Set by `recovery_service.py`'s `process_availability_recovery`, triggered from `app/voice/pipeline.py`'s `_run_pipeline` finally block only when `call_coordinator.release()` returns `True` (this call's own token actually freed the lease). Deliberately separate from `status` (sales lifecycle) and `recovery_reason` (why, not follow-up state) — see the model's own comment |
 | `busy_recovery_at` | DateTime(tz), nullable | When the (most recent) busy call happened — not `created_at`/`updated_at`, both of which can be inaccurate for a reused Lead (see migration `8f1c4b9e2a67`'s own comment). Basis for `process_availability_recovery`'s `AVAILABILITY_WINDOW` (30 min, conservative default — no existing convention for this specific question; see that module's own comment) |
 | `busy_recovery_claimed_at` | DateTime(tz), nullable | Set only while `busy_recovery_availability_status == "processing"` — lets a crashed worker's stuck claim become reclaimable after `STALE_CLAIM_THRESHOLD` (2 min) instead of blocking that guest's notification forever |
+| `busy_recovery_callback_due_at` | DateTime(tz), nullable, indexed | Set when Mira tells a busy-call guest she is free (callback_invite mode): when to check they rang back. Cleared by a sweeper (`recovery_service.check_missed_callbacks`) or when the guest gets through; a guest who didn't gives the host a `missed_call` ticket |
 
 ### `guest_profiles` (`GuestProfile`, `app/models/guest_profile.py`)
 
@@ -310,7 +312,7 @@ An open obligation behind something the agent told a guest ("I've flagged this t
 |---|---|---|
 | `user_id` | UUID FK → users, cascade delete | the host |
 | `property_id`, `call_session_id`, `notification_id` | UUID FK, nullable, `SET NULL` | what it is about / the alert raised with it |
-| `kind` | String(24) | `escalation` / `transfer` / `technician` / `photos` / `whatsapp` / `promise` |
+| `kind` | String(24) | `escalation` / `transfer` / `technician` / `photos` / `whatsapp` / `promise` / `missed_call` |
 | `summary` | String(255) | what the host has to do, one line |
 | `detail` | Text, nullable | |
 | `urgency` | String(16), default `medium` | `low` / `medium` / `high` / `emergency` |

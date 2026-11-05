@@ -194,6 +194,16 @@ class CallMetricsCollector(FrameProcessor):
     def tool_calls(self) -> Counter:
         return self._tool_calls
 
+    @property
+    def user_turns(self) -> int:
+        """How many times the guest finished speaking."""
+        return self._user_turns
+
+    @property
+    def bot_replies(self) -> int:
+        """How many times Mira started speaking after a guest turn finished."""
+        return len(self._response_latencies)
+
     def finalize(
         self,
         *,

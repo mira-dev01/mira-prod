@@ -146,7 +146,7 @@ The host's Agent rules (what Mira collects, what makes a lead hot, how a booking
 | Method & path | Purpose | Auth |
 |---|---|---|
 | `GET /agent-config` | Effective config (defaults filled in) plus per-property payment overrides | required |
-| `PUT /agent-config` | Replace the sections sent (`collect`, `hot_lead`, `booking`, `payment`); others untouched | required |
+| `PUT /agent-config` | Replace the sections sent (`collect`, `hot_lead`, `booking`, `payment`, `busy_calls`); others untouched | required |
 | `PUT /agent-config/properties/{id}/payment` | Set a property's payment override (only the fields that differ from the portfolio) | required |
 | `DELETE /agent-config/properties/{id}/payment` | Clear it; the property follows the portfolio again | required |
 

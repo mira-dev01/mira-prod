@@ -151,6 +151,8 @@ async def upsert_lead(
     if call_session_id is not None and lead.busy_recovery_availability_status is not None:
         lead.busy_recovery_availability_status = None
         lead.busy_recovery_claimed_at = None
+        # They rang back and got through: nothing left to wait for.
+        lead.busy_recovery_callback_due_at = None
 
     # guest_profile_id is consumed above for the reuse lookup, not passed
     # through **fields -- still needs applying to the lead itself, same

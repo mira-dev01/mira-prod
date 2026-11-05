@@ -13,6 +13,7 @@ from app.models.property import Property
 from app.models.user import User
 from app.schemas.call_classification import ClassificationResult
 from app.schemas.call_summary import CallSummary
+from app.services import missed_call_service
 
 if TYPE_CHECKING:
     from app.voice.conversation_quality import ConversationQuality
@@ -191,12 +192,17 @@ async def attach_exotel_call(
     as `CallSid` -- so this just updates that row. Calls that never reach the
     AI (busy/no-answer/failed) get their session created here instead."""
     session = await db.scalar(select(CallSession).where(CallSession.exotel_call_id == exotel_call_id))
+    created_here = session is None
 
     if session is None:
         property_ = await get_property_by_number(db, dialed_number)
+        # A call to the portfolio (Lead Agent) number has no property; its
+        # host is whoever owns that number. Without this a failed call to it
+        # would belong to nobody and nobody could be told.
+        lead_host = await get_user_by_lead_number(db, dialed_number) if property_ is None else None
         session = CallSession(
             exotel_call_id=exotel_call_id,
-            user_id=property_.user_id if property_ else None,
+            user_id=property_.user_id if property_ else (lead_host.id if lead_host else None),
             property_id=property_.id if property_ else None,
             caller_number=caller_number,
             status="in_progress",
@@ -209,8 +215,21 @@ async def attach_exotel_call(
     if recording_url:
         session.recording_url = recording_url
 
+    # A call Exotel reports as failed or unanswered, for a call that never
+    # reached Mira at all, is a guest nobody spoke to: record it as such and
+    # tell the host and admins now. (busy is the busy-recovery path's job, and
+    # canceled means the guest hung up before anyone could answer.)
+    never_reached_mira = created_here and (status or "").lower() in _NOT_CONNECTED_STATUSES
+    if never_reached_mira:
+        session.call_type = "MISSED_SYSTEM_FAILURE"
+        session.classification_confidence = 1.0
+        session.classification_reason = f"Exotel reported the call as {status} before it reached Mira."
+        session.ended_at = datetime.now(timezone.utc)
+
     await db.commit()
     await db.refresh(session)
+    if never_reached_mira:
+        missed_call_service.spawn_alert(session.id, "not_connected", f"Exotel status: {status}")
     return session
 
 
@@ -291,6 +310,10 @@ async def record_quality_events(
     except Exception:
         logger.exception("Failed to record quality events for call_session_id=%s", call_session_id)
         await db.rollback()
+
+
+# Exotel statuses meaning a call should have reached Mira and did not.
+_NOT_CONNECTED_STATUSES = frozenset({"failed", "no-answer"})
 
 
 def _map_exotel_status(exotel_status: str) -> str:
@@ -378,9 +401,14 @@ async def reconcile_stuck_call_sessions(db: AsyncSession) -> int:
         session.classification_reason = (
             "Call never finalized (pipeline setup/teardown failure); reconciled by the stuck-session sweep."
         )
+    stuck_ids = [session.id for session in stuck]
     await db.commit()
     logger.warning("reconcile_stuck_call_sessions fixed %d stranded in_progress row(s)", len(stuck))
-    return len(stuck)
+    # Each of these was a guest whose call never finished properly: tell the
+    # host and admins (the sweep is a background job, so awaiting is fine).
+    for call_session_id in stuck_ids:
+        await missed_call_service.alert_failed_call(call_session_id, "never_finished")
+    return len(stuck_ids)
 
 
 async def quality_event_analytics(db: AsyncSession, user_id: uuid.UUID, bucket: str = "week") -> dict:

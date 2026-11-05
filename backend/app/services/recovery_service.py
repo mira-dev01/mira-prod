@@ -57,11 +57,13 @@ from app.models.property import Property
 from app.models.user import User
 from app.schemas.lead import RecoveryReason
 from app.services import (
+    agent_config_service,
     call_service,
     guest_memory_service,
     lead_service,
     notification_preferences_service,
     notification_service,
+    ticket_service,
 )
 from app.services.lead_service import _REUSABLE_LEAD_STATUSES
 from app.services.whatsapp_reply_service import MENU_DISPLAY_TEXT
@@ -188,6 +190,7 @@ async def _handle_busy_recovery(
     # to risk an implicit lazy-reload outside a valid greenlet context (see
     # app/voice/pipeline.py's busy_recovery_property_id, which hit exactly
     # this against a different object/session in the same call chain).
+    busy_mode = agent_config_service.get_config(host).busy_calls.mode
     property_ = await db.get(Property, property_id) if property_id is not None else None
     property_name = (property_.display_name or property_.name) if property_ is not None else None
     # Still before any commit (see above). The busy-call WhatsApp alert to
@@ -277,6 +280,23 @@ async def _handle_busy_recovery(
         urgency="medium",
         message=reason + (f" | Guest: {caller_number}" if caller_number else " | Guest: not captured"),
     )
+
+    # Host-follows-up mode (Agent page -> Busy calls): Mira does not message
+    # the guest again when she is free; the host gets a ticket to get back to
+    # them instead. The lead must not stay armed for the availability message.
+    if busy_mode == "host_follows_up":
+        lead.busy_recovery_availability_status = None
+        await db.commit()
+        await ticket_service.open_ticket(
+            db,
+            kind="missed_call",
+            summary=f"Call back {caller_number or 'the guest'} -- they rang while you were busy",
+            detail=reason,
+            urgency="medium",
+            user_id=host_user_id,
+            property_id=property_id,
+            notification_id=notification.id,
+        )
 
     # Guest-facing WhatsApp: the guest has no other way to reach anyone right
     # now (they were just hung up on), so this -- not email -- is the
@@ -543,6 +563,24 @@ async def _notify_availability(db: AsyncSession, lead: Lead, property_id: uuid.U
         logger.info("availability_notification_skipped lead_id=%s reason=guest_already_engaged", lead.id)
         return
 
+    # The host may have switched to "I'll follow up myself" after this guest
+    # was queued: honour the setting as it is now, not as it was at busy time.
+    host = await db.get(User, lead.user_id)
+    if host is not None and agent_config_service.get_config(host).busy_calls.mode == "host_follows_up":
+        lead.busy_recovery_availability_status = None
+        lead.busy_recovery_claimed_at = None
+        await db.commit()
+        await ticket_service.open_ticket(
+            db,
+            kind="missed_call",
+            summary=f"Call back {lead.phone or 'the guest'} -- they rang while you were busy",
+            detail="You chose to follow up busy-call guests yourself, so Mira has not messaged them again.",
+            urgency="medium",
+            user_id=lead.user_id,
+        )
+        logger.info("availability_notification_skipped lead_id=%s reason=host_follows_up", lead.id)
+        return
+
     phone = lead.phone
     if not phone:
         lead.busy_recovery_availability_status = "notified"
@@ -594,6 +632,9 @@ async def _notify_availability(db: AsyncSession, lead: Lead, property_id: uuid.U
     # message" confirmation, not an assumption.
     lead.busy_recovery_availability_status = "notified"
     lead.busy_recovery_claimed_at = None
+    if host is not None:
+        wait = agent_config_service.get_config(host).busy_calls.callback_wait_minutes
+        lead.busy_recovery_callback_due_at = datetime.now(timezone.utc) + timedelta(minutes=wait)
     await db.commit()
     logger.info("availability_notification_sent lead_id=%s", lead.id)
 
@@ -618,3 +659,65 @@ async def _notify_availability(db: AsyncSession, lead: Lead, property_id: uuid.U
         urgency="low",
         message="Mira is available again -- sent the guest a follow-up WhatsApp",
     )
+
+
+async def check_missed_callbacks() -> int:
+    """Run every minute. For each busy-call guest Mira told "I'm free, ring
+    back" whose wait has passed: if they rang back (the lead was cleared) or
+    have since replied on WhatsApp, nothing is owed; if neither, the host gets
+    a ticket to reach out. Each lead is claimed with one atomic UPDATE before
+    anything is sent, so two workers (or two overlapping runs) never ticket
+    the same guest twice. Returns how many tickets were opened. Never raises."""
+    opened = 0
+    try:
+        async with AsyncSessionLocal() as db:
+            now = datetime.now(timezone.utc)
+            due_ids = list(
+                (
+                    await db.scalars(
+                        select(Lead.id).where(
+                            Lead.busy_recovery_callback_due_at.is_not(None), Lead.busy_recovery_callback_due_at <= now
+                        )
+                    )
+                ).all()
+            )
+            for lead_id in due_ids:
+                claimed = await db.execute(
+                    update(Lead)
+                    .where(Lead.id == lead_id, Lead.busy_recovery_callback_due_at.is_not(None))
+                    .values(busy_recovery_callback_due_at=None)
+                    .returning(Lead.id)
+                )
+                won = claimed.scalar_one_or_none() is not None
+                await db.commit()
+                if not won:
+                    continue  # another run took it
+                lead = await db.get(Lead, lead_id)
+                await db.refresh(lead)
+                still_waiting = (
+                    lead.busy_recovery_availability_status == "notified"
+                    and lead.next_follow_up == _AWAITING_CALLBACK_FOLLOW_UP
+                )
+                if not still_waiting:
+                    continue  # they rang back, or answered on WhatsApp
+                guest = lead.guest_name or lead.phone or "the guest"
+                notification = await notification_service.create_notification(
+                    db,
+                    channel=NOTIFICATION_CHANNEL_BUSY_RECOVERY,
+                    lead_id=lead.id,
+                    urgency="medium",
+                    message=f"{guest} hasn't called back after being told you were free -- please reach out.",
+                )
+                ticket = await ticket_service.open_ticket(
+                    db,
+                    kind="missed_call",
+                    summary=f"Reach out to {guest} -- they didn't call back",
+                    detail="Mira told them she was free again and asked them to ring back; they haven't.",
+                    urgency="medium",
+                    user_id=lead.user_id,
+                    notification_id=notification.id,
+                )
+                opened += 1 if ticket is not None else 0
+    except Exception:
+        logger.exception("check_missed_callbacks failed")
+    return opened

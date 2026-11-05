@@ -92,6 +92,13 @@ class Lead(UUIDPkMixin, TimestampMixin, Base):
     # staleness threshold instead of blocking that guest's notification
     # forever.
     busy_recovery_claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Set when Mira tells a busy-call guest she is free again (callback_invite
+    # mode, see schemas/agent_config.py BusyCallConfig): the moment to check
+    # whether they actually rang back. A sweeper (recovery_service.
+    # check_missed_callbacks) clears it and, if they did not, opens a ticket
+    # for the host. Persisted rather than an in-memory timer so a deploy in
+    # those few minutes cannot lose it.
+    busy_recovery_callback_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
 
     conversation_summary: Mapped[str | None] = mapped_column(Text)
     next_follow_up: Mapped[str | None] = mapped_column(String(255))

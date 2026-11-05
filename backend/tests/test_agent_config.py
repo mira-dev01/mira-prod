@@ -154,3 +154,16 @@ async def test_a_corrupted_stored_value_degrades_to_defaults_instead_of_breaking
 
     assert agent_config_service.parse_config(None).payment.hold_minutes == 60
     assert agent_config_service.parse_config("not a dict").collect.email == "off"  # type: ignore[arg-type]
+
+
+async def test_busy_call_defaults_keep_todays_behaviour_and_are_validated(client, auth_headers):
+    config = (await client.get(URL, headers=auth_headers)).json()["config"]
+    assert config["busy_calls"] == {"mode": "callback_invite", "callback_wait_minutes": 5}
+
+    saved = await client.put(URL, headers=auth_headers, json={"busy_calls": {"mode": "host_follows_up", "callback_wait_minutes": 10}})
+    assert saved.json()["config"]["busy_calls"] == {"mode": "host_follows_up", "callback_wait_minutes": 10}
+    # Other sections are untouched by it.
+    assert saved.json()["config"]["payment"]["kind"] == "full"
+
+    for bad in ({"mode": "agent_call"}, {"mode": "nonsense"}, {"callback_wait_minutes": 0}, {"callback_wait_minutes": 61}):
+        assert (await client.put(URL, headers=auth_headers, json={"busy_calls": bad})).status_code == 422, bad

@@ -24,7 +24,7 @@ from app.schemas.agent_config import (
 
 logger = logging.getLogger(__name__)
 
-_SECTIONS = ("collect", "hot_lead", "booking", "payment")
+_SECTIONS = ("collect", "hot_lead", "booking", "payment", "busy_calls")
 
 
 def parse_config(stored: dict | None) -> AgentConfig:

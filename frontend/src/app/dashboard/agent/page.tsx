@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { BusyCallsStep } from "@/components/agent/busy-calls-step";
 import { CollectStep } from "@/components/agent/collect-step";
 import { HotLeadStep } from "@/components/agent/hot-lead-step";
 import { VoiceStep } from "@/components/agent/voice-step";
@@ -21,6 +22,7 @@ const STEPS = [
   { id: "collect", label: "Collect" },
   { id: "hot", label: "Hot leads" },
   { id: "pricing", label: "Pricing" },
+  { id: "busy", label: "Busy calls" },
   { id: "voice", label: "Voice" },
 ] as const;
 type StepId = (typeof STEPS)[number]["id"];
@@ -48,7 +50,7 @@ function AgentPageContent() {
     router.replace(`/dashboard/agent?step=${value}`, { scroll: false });
   }
 
-  const needsConfig = step === "collect" || step === "hot";
+  const needsConfig = step === "collect" || step === "hot" || step === "busy";
   const waiting = authLoading || (needsConfig && configLoading);
 
   return (
@@ -87,6 +89,9 @@ function AgentPageContent() {
             </TabsContent>
             <TabsContent value="hot" keepMounted className="pt-4">
               {config && <HotLeadStep config={config} onSaved={setSaved} />}
+            </TabsContent>
+            <TabsContent value="busy" keepMounted className="pt-4">
+              {config && <BusyCallsStep config={config} onSaved={setSaved} />}
             </TabsContent>
             <TabsContent value="pricing" className="pt-4">
               <AiTrainingSection />

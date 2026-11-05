@@ -35,7 +35,7 @@ class Ticket(UUIDPkMixin, TimestampMixin, Base):
         UUID(as_uuid=True), ForeignKey("notifications.id", ondelete="SET NULL")
     )
 
-    # escalation | transfer | technician | photos | whatsapp | promise
+    # escalation | transfer | technician | photos | whatsapp | promise | missed_call
     kind: Mapped[str] = mapped_column(String(24), nullable=False)
     # What the host has to do, in one line.
     summary: Mapped[str] = mapped_column(String(255), nullable=False)

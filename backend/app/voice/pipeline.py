@@ -71,6 +71,7 @@ from app.services import (
     guest_memory_service,
     lead_service,
     pricing_engine,
+    missed_call_service,
     recovery_service,
     ticket_service,
     usage_meter,
@@ -791,6 +792,8 @@ async def _run_pipeline(
                                 reason="Call ended due to an unhandled error in the voice pipeline.",
                             ),
                         )
+                        # The guest was cut off: tell the host and the admins now.
+                        missed_call_service.spawn_alert(call_session_id, "pipeline_crash")
             except Exception:
                 logger.exception(
                     "Failed to record MISSED_SYSTEM_FAILURE for call_session_id=%s", call_session_id
@@ -1041,6 +1044,11 @@ async def _enforce_max_call_duration(worker: PipelineWorker, call_session_id: uu
     )
     await worker.queue_frame(TTSSpeakFrame(_MAX_CALL_DURATION_PHRASE, append_to_context=False))
     await worker.queue_frame(EndFrame(reason=_MAX_CALL_DURATION_END_REASON))
+
+
+# A guest who spoke and got no reply is only worth alerting on if the call ran
+# long enough for Mira to have answered (a "hello?" and a hang-up is not that).
+_NEVER_ANSWERED_MIN_SECONDS = 6.0
 
 
 async def _persist_call_telemetry(
@@ -1745,6 +1753,18 @@ async def _run_pipeline_inner(
                 # itself crash on_pipeline_finished.
                 summary = await call_summary_service.summarize_call(transcript, duration_seconds)
                 await call_service.set_call_summary(finalize_db, call_session_id, summary)
+                # A guest who spoke and was never answered (the model or speech
+                # system failed quietly) is a missed guest too: alert the host
+                # and admins so someone rings them back.
+                if (
+                    not is_host_handoff
+                    and call_metrics.user_turns >= 1
+                    and call_metrics.bot_replies == 0
+                    and (duration_seconds or 0) >= _NEVER_ANSWERED_MIN_SECONDS
+                    and any(m.get("role") == "user" for m in context.messages)
+                ):
+                    missed_call_service.spawn_alert(call_session_id, "never_answered")
+
                 # Anything Mira promised in words that no tool recorded gets a
                 # ticket now, so a promise cannot silently disappear.
                 await ticket_service.reconcile_promises(

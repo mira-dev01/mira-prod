@@ -13,6 +13,7 @@ handoff phrase, call hours) stay where they are and are not copied in.
 Which phase makes each section do something:
   collect, hot_lead  -> the goal engine (Phase 4)
   booking, payment   -> payment links and date holds (Phase 9)
+  busy_calls         -> busy-call recovery (app/services/recovery_service.py)
 """
 
 from typing import Literal
@@ -65,12 +66,25 @@ class PaymentConfig(_Section):
     hold_minutes: int = Field(default=60, ge=5, le=1440)
 
 
+class BusyCallConfig(_Section):
+    """What happens to a guest who rang while Mira was already on a call."""
+
+    # host_follows_up: the guest is told the host will get back to them and the
+    #   host gets a ticket to do so; Mira does not message them again.
+    # callback_invite: when Mira is free again she messages the guest to call
+    #   back; if they have not rung within callback_wait_minutes, the host gets
+    #   a ticket to reach out. (Today's behaviour, so it is the default.)
+    mode: Literal["host_follows_up", "callback_invite"] = "callback_invite"
+    callback_wait_minutes: int = Field(default=5, ge=1, le=60)
+
+
 class AgentConfig(_Section):
     version: Literal[1] = 1
     collect: CollectConfig = Field(default_factory=CollectConfig)
     hot_lead: HotLeadConfig = Field(default_factory=HotLeadConfig)
     booking: BookingConfig = Field(default_factory=BookingConfig)
     payment: PaymentConfig = Field(default_factory=PaymentConfig)
+    busy_calls: BusyCallConfig = Field(default_factory=BusyCallConfig)
 
 
 class PaymentOverride(_Section):
@@ -98,6 +112,7 @@ class AgentConfigUpdate(BaseModel):
     hot_lead: HotLeadConfig | None = None
     booking: BookingConfig | None = None
     payment: PaymentConfig | None = None
+    busy_calls: BusyCallConfig | None = None
 
 
 class AgentConfigOut(BaseModel):

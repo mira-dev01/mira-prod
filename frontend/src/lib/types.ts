@@ -733,7 +733,7 @@ export type FaqGapAnswer = {
 
 // --- Tickets (GET /tickets): what Mira told a guest would happen, still open ---
 
-export type TicketKind = "escalation" | "transfer" | "technician" | "photos" | "whatsapp" | "promise";
+export type TicketKind = "escalation" | "transfer" | "technician" | "photos" | "whatsapp" | "promise" | "missed_call";
 export type TicketStatus = "open" | "done" | "dismissed";
 
 export type TicketOut = {
@@ -767,6 +767,11 @@ export type AgentCollectConfig = {
   email: AgentFieldMode;
 };
 
+export type AgentBusyCalls = {
+  mode: "host_follows_up" | "callback_invite";
+  callback_wait_minutes: number;
+};
+
 export type AgentConfig = {
   collect: AgentCollectConfig;
   hot_lead: { hot_on: AgentHotSignal[] };
@@ -777,6 +782,7 @@ export type AgentConfig = {
     balance_due_days_before_checkin: number;
     hold_minutes: number;
   };
+  busy_calls: AgentBusyCalls;
 };
 
 export type AgentConfigOut = {
@@ -784,7 +790,7 @@ export type AgentConfigOut = {
   payment_overrides: Record<string, Partial<AgentConfig["payment"]>>;
 };
 
-export type AgentConfigUpdate = Partial<Pick<AgentConfig, "collect" | "hot_lead" | "booking" | "payment">>;
+export type AgentConfigUpdate = Partial<Pick<AgentConfig, "collect" | "hot_lead" | "booking" | "payment" | "busy_calls">>;
 
 export type FaqGapAnalytics = {
   most_frequent: { question: string; count: number }[];

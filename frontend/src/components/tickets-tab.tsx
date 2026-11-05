@@ -22,6 +22,7 @@ const KIND_LABEL: Record<TicketKind, string> = {
   photos: "Photos",
   whatsapp: "Message",
   promise: "Promise",
+  missed_call: "Call back",
 };
 
 const URGENCY_TONE: Partial<Record<TicketOut["urgency"], StatusTone>> = {
