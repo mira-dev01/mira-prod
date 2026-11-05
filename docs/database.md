@@ -70,7 +70,9 @@ bcde09807b54 -> c4f1a8d2e6b9   knowledge-base fact columns on property_chunks (s
 c4f1a8d2e6b9 -> d7a2b5c9e1f3   faq_entries.group_id (one FAQ applied to several properties)
 d7a2b5c9e1f3 -> e9b3c7d1a4f2   users.agent_config + properties.agent_config_overrides (Agent rules, JSONB; NULL = defaults)
 e9b3c7d1a4f2 -> a5d9e2c7b1f4   tickets table (durable follow-ups behind what the agent promises a guest)
-a5d9e2c7b1f4 -> b6e1d3f8a2c5   leads.busy_recovery_callback_due_at (busy-call no-callback check) (HEAD)
+a5d9e2c7b1f4 -> b6e1d3f8a2c5   leads.busy_recovery_callback_due_at (busy-call no-callback check)
+b6e1d3f8a2c5 -> c7f2a9d4b8e1   policies + policy_documents (booking policies the agent answers from)
+c7f2a9d4b8e1 -> d8a3b6e1f4c7   payment_requests + hold_waiters + users.billing_config (payment links and date holds) (HEAD)
 ```
 
 If a session ever fails with demo-login 500s or a missing-column error, check `alembic heads` against the running DB first — a DB left behind on an old revision is a common cause (see `project_state.md` at the repo root for the 2026-07-15 incident).
@@ -302,7 +304,7 @@ Indexes: `(user_id, normalized_question, status)` and `(user_id, property_id)`.
 
 ### `property_chunks` (`PropertyChunk`, `app/models/property_chunk.py`)
 
-Two layers share this table. **Coarse chunks** (`chunk_type` `overview`/`amenities`/`location`/`house_rules`) feed `recommend_properties`' semantic re-ranking. **Knowledge-base facts** (`chunk_type = "fact"`) are what `search_faq` answers from: one small statement per row, built by `chunking.build_fact_chunks` from verified FAQ rows, the property's own fields (house rules, neighborhood sentences, landmarks, amenity groups, description, check-in/out, capacity) and seasonal notes. Fact-only columns: `source_kind` (`faq_entry`/`house_rules`/`neighborhood`/`amenity`/`description`/`seasonal_note`/`structured`), `source_ref` (FaqEntry id or field name), `meta` (JSONB — a seasonal note's `start_month`/`end_month`). `embedding` is a JSONB float array as elsewhere. The two layers are synced independently (`sync_property_chunks` never deletes facts; `sync_property_facts` never deletes coarse chunks); facts are rebuilt on property import/PATCH and on every FaqEntry create/update/delete/gap-answer, reusing stored embeddings for unchanged text. A property with no (or stale) fact rows is answered from facts built in memory (`kb_retrieval.load_property_facts`). Index `(property_id, chunk_type)`.
+Two layers share this table. **Coarse chunks** (`chunk_type` `overview`/`amenities`/`location`/`house_rules`) feed `recommend_properties`' semantic re-ranking. **Knowledge-base facts** (`chunk_type = "fact"`) are what `search_faq` answers from: one small statement per row, built by `chunking.build_fact_chunks` from verified FAQ rows, the property's effective active policies (see `policies`), the property's own fields (house rules, neighborhood sentences, landmarks, amenity groups, description, check-in/out, capacity) and seasonal notes. Fact-only columns: `source_kind` (`faq_entry`/`policy`/`house_rules`/`neighborhood`/`amenity`/`description`/`seasonal_note`/`structured`), `source_ref` (FaqEntry id, `policy_<id>`, or field name), `meta` (JSONB — a seasonal note's `start_month`/`end_month`). `embedding` is a JSONB float array as elsewhere. The two layers are synced independently (`sync_property_chunks` never deletes facts; `sync_property_facts` never deletes coarse chunks); facts are rebuilt on property import/PATCH and on every FaqEntry create/update/delete/gap-answer, reusing stored embeddings for unchanged text. A property with no (or stale) fact rows is answered from facts built in memory (`kb_retrieval.load_property_facts`). Index `(property_id, chunk_type)`.
 
 ### `tickets` (`Ticket`, `app/models/ticket.py`)
 
@@ -312,7 +314,7 @@ An open obligation behind something the agent told a guest ("I've flagged this t
 |---|---|---|
 | `user_id` | UUID FK → users, cascade delete | the host |
 | `property_id`, `call_session_id`, `notification_id` | UUID FK, nullable, `SET NULL` | what it is about / the alert raised with it |
-| `kind` | String(24) | `escalation` / `transfer` / `technician` / `photos` / `whatsapp` / `promise` / `missed_call` |
+| `kind` | String(24) | `escalation` / `transfer` / `technician` / `photos` / `whatsapp` / `promise` / `missed_call` / `payment` |
 | `summary` | String(255) | what the host has to do, one line |
 | `detail` | Text, nullable | |
 | `urgency` | String(16), default `medium` | `low` / `medium` / `high` / `emergency` |
@@ -321,6 +323,51 @@ An open obligation behind something the agent told a guest ("I've flagged this t
 | `resolved_at` | timestamptz, nullable | |
 
 Indexes: `(user_id, status)`, `call_session_id`. The same `(call_session_id, kind, summary)` is never opened twice.
+
+### `policies` (`Policy`, `app/models/policy.py`)
+
+One booking/house policy in the host's words. Host-wide (`property_id` NULL) or a property's own version that replaces the host-wide one of the same `topic` for that property. Only `active` rows reach the agent (as `property_chunks` facts with `source_kind = "policy"`); `draft` rows came from an uploaded document and wait for the host.
+
+| Column | Type | Notes |
+|---|---|---|
+| `user_id` | UUID FK → users, cascade delete | the host |
+| `property_id` | UUID FK → properties, cascade delete, nullable | NULL = host-wide |
+| `source_document_id` | UUID FK → policy_documents, `SET NULL`, nullable | which upload it was read from |
+| `topic` | String(32) | `check_in_out` / `cancellation` / `payment` / `damage_deposit` / `booking_limits` / `age_restrictions` / `id_requirements` / `pets` / `smoking` / `parties_events` / `visitors` / `quiet_hours` / `other` (list lives in `policy_service.TOPICS`) |
+| `title` | String(120) | defaults to the topic's label; the name of an `other` note |
+| `text` | Text (≤ 800 chars enforced by the API) | |
+| `status` | String(12), default `active` | `draft` / `active` |
+| `source_excerpt` | Text, nullable | the document's own wording |
+| `review_notes` | JSONB list | things to check before approving |
+
+Indexes: `(user_id, status)`; partial unique `(user_id, topic)` WHERE host-wide AND active AND topic ≠ `other`; partial unique `(property_id, topic)` WHERE property-level AND active AND topic ≠ `other`.
+
+### `policy_documents` (`PolicyDocument`, `app/models/policy.py`)
+
+A record that a host uploaded a file for Mira to read: `filename`, `content_type`, `size_bytes`, `item_count`, `truncated`. The file itself is never stored.
+
+### `payment_requests` (`PaymentRequest`, `app/models/payment.py`)
+
+A payment link sent to a guest **and** the hold on their dates. While `status` is `active` or `paid`, a mirror row in `bookings` (`kind = "blocked"`, `platform = "mira_hold"`, no `source_uid` so the iCal sync never deletes it) blocks the dates for everyone, so every existing availability check respects it; on payment that row becomes the reservation (`platform = "mira"`). Lifecycle `active → paid | expired | cancelled`; every transition is one atomic `UPDATE … WHERE status = <from> RETURNING`.
+
+| Column | Notes |
+|---|---|
+| `user_id`, `property_id` | host and property; `lead_id`, `call_session_id`, `booking_id` nullable (`SET NULL`) |
+| `guest_name`, `guest_phone`, `check_in`, `check_out` | |
+| `total_amount`, `amount_due`, `currency` | rupees: the stay total Mira quoted, and what the link charges (all, or the advance) |
+| `kind` | `full` / `advance` ; `confirm_by` (`host` / `payment`) and `balance_due_on` snapshot the host's rules at the time |
+| `razorpay_link_id`, `short_url`, `razorpay_payment_id`, `link_closed` | `link_closed` = cancelled/expired at Razorpay, so a late payment is impossible and polling stops |
+| `hold_expires_at`, `paid_at`, `link_sent_at`, `success_sent_at`, `host_notified_at`, `conflict_notified_at` | each message / escalation is stamped so it is sent once |
+| `link_message_sid`, `link_delivery_checked_at` | the WhatsApp message carrying the link, and when its delivery was last confirmed |
+| `last_error` | |
+
+Indexes: `(status, hold_expires_at)`, `(user_id, status)`, `(property_id, status)`. A per-property Postgres advisory lock (`hold:<property_id>`) serialises "check availability, then hold".
+
+### `hold_waiters` (`HoldWaiter`)
+
+A second guest who asked for dates held for someone else and was promised an update. Unique `(payment_request_id, guest_phone)`; `notified_at` is claimed with one atomic UPDATE so they are told exactly once when the hold lapses.
+
+`users.billing_config` (JSONB, nullable): `razorpay` (`key_id`, `secret_enc` — Fernet-encrypted, `mode`, `verified_at`), `templates` (`approved` / `draft` per message), `notify_host_on_payment`. Kept apart from `agent_config` so reading the Agent rules can never carry a secret.
 
 ### `technicians` (`Technician`, `app/models/technician.py`)
 

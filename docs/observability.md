@@ -49,6 +49,21 @@ Alerts are sent only where `HEALTH_ALERTS_ENABLED` is true. That defaults to pro
 - **Dedupe**: each incident sends each kind of email at most once, tracked in `service_incidents`. A redeploy mid-outage continues the same incident instead of re-alerting.
 - **Daily digest** at 03:30 UTC (09:00 IST): credits left (with days left at current burn), incidents in the last 24h, and each service's current state and 24h availability.
 
+## Database deadlocks (`app/observability/db_deadlock.py`)
+
+When Postgres breaks a deadlock it aborts one transaction (SQLSTATE `40P01`) and rolls back **everything that transaction had written**; the caller just sees a database error. Each one now emails `ALERT_EMAILS` with: the code path that ran it (outermost call first), the call/host/request it ran for, what Postgres said (which two processes were waiting on which), the statement that failed with its values, and the writes the transaction held when it was rolled back.
+
+- **How it sees them:** a `handle_error` listener on the shared engine (so it covers every query, with no change to any caller), plus a `before_cursor_execute` listener that remembers the last 25 statements of the transaction in progress per DB connection. That memory is cleared on begin/commit/rollback, so a transaction that finished is never reported as lost. Only INSERT/UPDATE/DELETE are listed as lost writes.
+- **What it never does:** raise, swallow or alter the exception (the caller gets the original error, exactly as before), or do I/O on the query path. The email is a detached task.
+- **Where it emails:** same rule as the other health alerts (`HEALTH_ALERTS_ENABLED`, production by default), through the same Resend path — so if Resend itself failed recently the shared back-off applies. The structured log line `db_deadlock_detected` (full text, filterable on `event=db_deadlock`) is written everywhere, always.
+- **Throttling:** one email per code path + statement per 10 minutes; later ones are counted and the next email says how many it stands for. In-process, so several workers can each send one.
+- **Privacy:** values are cut at 200 characters, and a statement that touches a `password`/`token`/`secret`/`credential`/`api_key`/`otp`/`code_hash` column — or payment credentials (`billing_config`, anything Razorpay, payment links) — has its values withheld. Everything else (guest phone numbers, names, message text) is shown — it goes to admins only.
+- **Limits:** it reports what was lost; it does not retry. The lost-writes list is the last 25 statements of the transaction, and only for statements issued through this engine.
+
+## Razorpay
+
+`api.razorpay.com` is on the passive httpx hook and in the catalog (`razorpay`, telephony group), like every external service — with one difference. It is called with each **host's own keys**, so a 401/403 or other 4xx is that host's wrong key or bad request, not Razorpay being unwell; the hook counts only 5xx, timeouts and connection errors against it. A host's bad keys are reported to that host instead (an in-app alert, at most once every six hours, and the Billing tab).
+
 ## External watchdog (outside the app, needs a one-time setup)
 
 Nothing inside the backend can email when the backend itself is down or failing to deploy. Set up a free uptime monitor (UptimeRobot or Better Stack):

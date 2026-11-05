@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { Suspense, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { MoreHorizontal, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -17,7 +18,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { RightPanel, RightPanelFooterButton } from "@/components/ui/right-panel";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { PoliciesTab } from "@/components/policies-tab";
 import { PropertyFaqManager } from "@/components/property-faq-manager";
 import { PropertyFormFields } from "@/components/property-form-fields";
 import { PropertyPhotoCarousel } from "@/components/property-photo-carousel";
@@ -89,7 +92,7 @@ function propertyToForm(property: PropertyOut): PropertyCreate {
   };
 }
 
-export default function PropertiesPage() {
+function PropertiesList() {
   const { isInternalOrg, user } = useAuth();
   const perPropertyTransfer = user?.notification_preferences.transfer_number_mode === "per_property";
   const { data: properties, loading, refetch } = useAsync(() => api.properties.list(), []);
@@ -571,5 +574,51 @@ export default function PropertiesPage() {
         </form>
       </RightPanel>
     </div>
+  );
+}
+
+const TABS = ["properties", "policies"] as const;
+type PropertiesTab = (typeof TABS)[number];
+
+function PropertiesPageTabs() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const requested = searchParams.get("tab");
+  const [tab, setTab] = useState<PropertiesTab>(TABS.includes(requested as PropertiesTab) ? (requested as PropertiesTab) : "properties");
+  // One fetch for the whole page so the tab can say how many policies are waiting for review.
+  const policies = useAsync(() => api.policies.overview(), []);
+  const toReview = policies.data?.drafts.length ?? 0;
+
+  function handleTabChange(value: unknown) {
+    if (typeof value !== "string" || !TABS.includes(value as PropertiesTab)) return;
+    setTab(value as PropertiesTab);
+    router.replace(`/dashboard/properties?tab=${value}`, { scroll: false });
+  }
+
+  return (
+    <Tabs value={tab} onValueChange={handleTabChange}>
+      <TabsList>
+        <TabsTrigger value="properties">Properties</TabsTrigger>
+        <TabsTrigger value="policies">
+          Policies
+          {toReview > 0 && <span className="ml-1.5 rounded-full bg-primary px-1.5 text-xs text-primary-foreground">{toReview}</span>}
+        </TabsTrigger>
+      </TabsList>
+      <TabsContent value="properties" className="pt-4">
+        <PropertiesList />
+      </TabsContent>
+      <TabsContent value="policies" className="pt-4">
+        <PoliciesTab overview={policies.data} loading={policies.loading} onChanged={policies.refetch} />
+      </TabsContent>
+    </Tabs>
+  );
+}
+
+export default function PropertiesPage() {
+  // useSearchParams requires a Suspense boundary.
+  return (
+    <Suspense fallback={<Skeleton className="h-64 w-full" />}>
+      <PropertiesPageTabs />
+    </Suspense>
   );
 }

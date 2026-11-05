@@ -733,7 +733,7 @@ export type FaqGapAnswer = {
 
 // --- Tickets (GET /tickets): what Mira told a guest would happen, still open ---
 
-export type TicketKind = "escalation" | "transfer" | "technician" | "photos" | "whatsapp" | "promise" | "missed_call";
+export type TicketKind = "escalation" | "transfer" | "technician" | "photos" | "whatsapp" | "promise" | "missed_call" | "payment";
 export type TicketStatus = "open" | "done" | "dismissed";
 
 export type TicketOut = {
@@ -789,6 +789,75 @@ export type AgentConfigOut = {
   config: AgentConfig;
   payment_overrides: Record<string, Partial<AgentConfig["payment"]>>;
 };
+
+// Settings -> Billing. The Razorpay secret never comes back from the server.
+export type BillingTemplateName = "payment_request" | "payment_success";
+export type BillingView = {
+  encryption_ready: boolean;
+  razorpay: { connected: boolean; key_id: string | null; mode: "live" | "test" | null; verified_at: string | null };
+  templates: Record<BillingTemplateName, { label: string; text: string; is_default: boolean; draft: string | null }>;
+  defaults: Record<BillingTemplateName, string>;
+  placeholders: { name: string; help: string }[];
+  notify_host_on_payment: boolean;
+  /** The "Online payments" capability (Settings -> Features) is switched on. */
+  capability_enabled: boolean;
+};
+
+export type PaymentRequestOut = {
+  id: string;
+  property_id: string;
+  property_name: string;
+  guest_name: string | null;
+  guest_phone: string | null;
+  check_in: string;
+  check_out: string;
+  total_amount: string;
+  amount_due: string;
+  kind: "full" | "advance";
+  status: "active" | "paid" | "expired" | "cancelled";
+  hold_expires_at: string;
+  paid_at: string | null;
+  short_url: string | null;
+  created_at: string;
+};
+
+// Policies (Properties -> Policies). `state` drives the colour dot of a topic row.
+export type PolicyRowState = "everyone" | "some_differ" | "property_only" | "unset";
+
+export type PolicyOut = {
+  id: string;
+  topic: string;
+  title: string;
+  text: string;
+  status: "draft" | "active";
+  property_id: string | null;
+  property_name: string | null;
+  source_document_id: string | null;
+  source_filename: string | null;
+  source_excerpt: string | null;
+  review_notes: string[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type PolicyRow = {
+  topic: string;
+  label: string;
+  hint: string;
+  state: PolicyRowState;
+  override_count: number;
+  items: PolicyOut[];
+};
+
+export type PolicyOverview = {
+  rows: PolicyRow[];
+  drafts: PolicyOut[];
+  documents: { id: string; filename: string; item_count: number; truncated: boolean; created_at: string }[];
+  properties: { id: string; name: string; city: string | null }[];
+  topics: { key: string; label: string; hint: string }[];
+};
+
+export type PolicyUpload = { document: PolicyOverview["documents"][number]; drafts: PolicyOut[]; skipped: number };
 
 export type AgentConfigUpdate = Partial<Pick<AgentConfig, "collect" | "hot_lead" | "booking" | "payment" | "busy_calls">>;
 

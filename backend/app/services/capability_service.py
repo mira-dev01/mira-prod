@@ -34,7 +34,7 @@ from app.schemas.capability import (
     RequirementDefOut,
     RequirementOut,
 )
-from app.services import notification_preferences_service
+from app.services import billing_service, notification_preferences_service
 from app.services.capability_registry import (
     CAPABILITIES,
     GROUPS,
@@ -42,6 +42,8 @@ from app.services.capability_registry import (
     dependents_of,
     get_capability,
 )
+
+from app.utils import secrets
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +109,7 @@ _REQUIREMENT_CHECKS: dict[str, Callable[[HostSnapshot], bool]] = {
     "technician_on_file": lambda s: s.technician_count > 0,
     "property_photos": lambda s: s.has_property_photos,
     "faq_knowledge": lambda s: s.verified_faq_count > 0 or s.has_legacy_property_faq,
+    "razorpay_connected": lambda s: billing_service.is_connected(s.user),
 }
 
 
@@ -125,6 +128,9 @@ _INTEGRATIONS: dict[str, tuple[str, Callable[[], bool]]] = {
     "email": ("Email (Resend)", lambda: bool(settings.resend_api_key)),
     "searchapi": ("Airbnb live prices (SearchApi)", lambda: bool(settings.searchapi_api_key)),
     "bright_data": ("Airbnb listing import (Bright Data)", lambda: bool(settings.bright_data_api_key)),
+    # Hosts' Razorpay secrets are only ever stored encrypted: without the
+    # server key there is nowhere safe to put them.
+    "payment_encryption": ("Secure key storage", secrets.is_configured),
 }
 
 

@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-TicketKind = Literal["escalation", "transfer", "technician", "photos", "whatsapp", "promise", "missed_call"]
+TicketKind = Literal["escalation", "transfer", "technician", "photos", "whatsapp", "promise", "missed_call", "payment"]
 TicketStatus = Literal["open", "done", "dismissed"]
 
 

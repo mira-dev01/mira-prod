@@ -181,18 +181,26 @@ def _faq_facts(question: str, answer: str, source_ref: str) -> list[FactDraft]:
     ]
 
 
-def build_fact_chunks(property_, faq_entries) -> list[FactDraft]:
+def build_fact_chunks(property_, faq_entries, policies=None) -> list[FactDraft]:
     """Every knowledge-base fact for one property, de-duplicated. faq_entries
     is the property's VERIFIED FaqEntry rows (any object with .id/.question/
-    .answer); the legacy inline Property.faq JSON is folded in too. Order is
-    FAQ first so a host-edited answer wins over an identical imported
-    sentence."""
+    .answer); the legacy inline Property.faq JSON is folded in too. `policies`
+    is the property's effective ACTIVE policies (policy_service.effective_for_
+    property): each becomes "Policy (<topic>): ...". Order is FAQ first so a
+    host-edited answer wins over an identical imported sentence."""
+    from app.services.policy_service import TOPIC_LABELS
+
     drafts: list[FactDraft] = []
 
     for entry in faq_entries or []:
         drafts.extend(_faq_facts(entry.question, entry.answer, str(entry.id)))
     for item in property_.faq or []:
         drafts.extend(_faq_facts(item.get("question", ""), item.get("answer", ""), "legacy"))
+    for policy in policies or []:
+        # "Other" has no topic of its own, so the host's title names it.
+        label = policy.title if policy.topic == "other" else TOPIC_LABELS.get(policy.topic, policy.title)
+        for piece in _pack_sentences(policy.text):
+            drafts.append(FactDraft(f"Policy ({label}): {piece}", "policy", f"policy_{policy.id}"))
 
     drafts.append(
         FactDraft(
@@ -289,7 +297,10 @@ async def sync_property_facts(db: AsyncSession, property_) -> int:
             )
         ).all()
     )
-    drafts = build_fact_chunks(property_, entries)
+    from app.services import policy_service
+
+    policies = await policy_service.effective_for_property(db, property_)
+    drafts = build_fact_chunks(property_, entries, policies)
 
     existing = list(
         (

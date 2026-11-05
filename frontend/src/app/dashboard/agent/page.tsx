@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BusyCallsStep } from "@/components/agent/busy-calls-step";
 import { CollectStep } from "@/components/agent/collect-step";
 import { HotLeadStep } from "@/components/agent/hot-lead-step";
+import { PaymentsStep } from "@/components/agent/payments-step";
 import { VoiceStep } from "@/components/agent/voice-step";
 import { AiTrainingSection } from "@/components/settings/ai-training-section";
 import { useAsync } from "@/hooks/use-async";
@@ -22,6 +23,7 @@ const STEPS = [
   { id: "collect", label: "Collect" },
   { id: "hot", label: "Hot leads" },
   { id: "pricing", label: "Pricing" },
+  { id: "payments", label: "Payments" },
   { id: "busy", label: "Busy calls" },
   { id: "voice", label: "Voice" },
 ] as const;
@@ -43,6 +45,8 @@ function AgentPageContent() {
   // from what was just saved, not from what the page first loaded.
   const [saved, setSaved] = useState<AgentConfig | null>(null);
   const config = saved ?? data?.config ?? null;
+  const [savedOverrides, setSavedOverrides] = useState<Record<string, Partial<AgentConfig["payment"]>> | null>(null);
+  const overrides = savedOverrides ?? data?.payment_overrides ?? {};
 
   function handleStepChange(value: unknown) {
     if (typeof value !== "string" || !isStep(value)) return;
@@ -50,7 +54,7 @@ function AgentPageContent() {
     router.replace(`/dashboard/agent?step=${value}`, { scroll: false });
   }
 
-  const needsConfig = step === "collect" || step === "hot" || step === "busy";
+  const needsConfig = step === "collect" || step === "hot" || step === "busy" || step === "payments";
   const waiting = authLoading || (needsConfig && configLoading);
 
   return (
@@ -89,6 +93,9 @@ function AgentPageContent() {
             </TabsContent>
             <TabsContent value="hot" keepMounted className="pt-4">
               {config && <HotLeadStep config={config} onSaved={setSaved} />}
+            </TabsContent>
+            <TabsContent value="payments" keepMounted className="pt-4">
+              {config && <PaymentsStep config={config} overrides={overrides} onSaved={setSaved} onOverridesChanged={setSavedOverrides} />}
             </TabsContent>
             <TabsContent value="busy" keepMounted className="pt-4">
               {config && <BusyCallsStep config={config} onSaved={setSaved} />}

@@ -60,6 +60,7 @@ from app.prompts.system_prompt import (
 )
 from app.schemas.call_classification import QUALIFIED_CALL_TYPES, ClassificationResult
 from app.services import (
+    payment_service,
     call_classification_service,
     call_coordinator,
     call_service,
@@ -1437,6 +1438,12 @@ async def _run_pipeline_inner(
             if settings.kb_guard_mode in ("shadow", "enforce")
             else None
         )
+        payments_enabled = False
+        try:
+            async with AsyncSessionLocal() as billing_db:
+                payments_enabled = await payment_service.payments_enabled_for(await billing_db.get(User, host_user_id))
+        except Exception:
+            logger.exception("could not check whether payments are enabled; running without the payment tool")
         tools = build_voice_tools(
             call_session_id,
             property_id,
@@ -1447,6 +1454,7 @@ async def _run_pipeline_inner(
             silence_watchdog=silence_watchdog,
             property_recommendation_guard=property_recommendation_guard,
             kb_grounding_guard=kb_grounding_guard,
+            payments_enabled=payments_enabled,
         )
         # first_message is pre-seeded as an assistant turn so the LLM knows
         # it was already said (the "don't repeat greeting" rule relies on
@@ -2270,6 +2278,7 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
                 system_prompt = build_system_prompt(
                     property_, guest, host, active_booking, caller_phone=caller_number,
                     verified_faq_entries=verified_faq_entries, repeat_guest_discount=repeat_guest_discount,
+                    payments_enabled=await payment_service.payments_enabled_for(host),
                 )
                 first_message = first_message_for(property_, guest, host)
                 property_id = property_.id
@@ -2291,6 +2300,7 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
                 system_prompt = build_lead_system_prompt(
                     lead_user, properties, guest, active_booking, caller_phone=caller_number,
                     repeat_guest_discount=repeat_guest_discount,
+                    payments_enabled=await payment_service.payments_enabled_for(lead_user),
                 )
                 first_message = lead_first_message_for(lead_user)
                 property_id = None
@@ -2516,6 +2526,7 @@ async def run_voice_pipeline_twilio(websocket: WebSocket, call_data: CallData) -
                 system_prompt = build_system_prompt(
                     property_, guest, host, active_booking, caller_phone=caller_number,
                     verified_faq_entries=verified_faq_entries, repeat_guest_discount=repeat_guest_discount,
+                    payments_enabled=await payment_service.payments_enabled_for(host),
                 )
                 first_message = first_message_for(property_, guest, host)
                 property_id = property_.id
@@ -2537,6 +2548,7 @@ async def run_voice_pipeline_twilio(websocket: WebSocket, call_data: CallData) -
                 system_prompt = build_lead_system_prompt(
                     lead_user, properties, guest, active_booking, caller_phone=caller_number,
                     repeat_guest_discount=repeat_guest_discount,
+                    payments_enabled=await payment_service.payments_enabled_for(lead_user),
                 )
                 first_message = lead_first_message_for(lead_user)
                 property_id = None
@@ -2609,7 +2621,10 @@ async def run_browser_voice_pipeline(connection: SmallWebRTCConnection, property
             user_id=property_.user_id,
         )
         verified_faq_entries = await faq_service.list_verified_property_faq(db, property_.id)
-        system_prompt = build_system_prompt(property_, None, host, verified_faq_entries=verified_faq_entries)
+        system_prompt = build_system_prompt(
+            property_, None, host, verified_faq_entries=verified_faq_entries,
+            payments_enabled=await payment_service.payments_enabled_for(host),
+        )
         first_message = first_message_for(property_, None, host)
         property_id = property_.id
         host_user_id = property_.user_id
@@ -2657,7 +2672,8 @@ async def run_browser_lead_pipeline(connection: SmallWebRTCConnection, user: Use
             user_id=user.id,
         )
         system_prompt = build_lead_system_prompt(
-            user, properties, guest, active_booking, repeat_guest_discount=repeat_guest_discount
+            user, properties, guest, active_booking, repeat_guest_discount=repeat_guest_discount,
+            payments_enabled=await payment_service.payments_enabled_for(user),
         )
         first_message = lead_first_message_for(user)
         call_session_id = session.id

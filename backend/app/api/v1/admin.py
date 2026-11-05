@@ -4,6 +4,7 @@ PUT. All aggregation lives in app/services/admin_monitor_service.py."""
 
 import asyncio
 import json
+import uuid
 from datetime import date, datetime, time, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -13,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.admin import require_admin
 from app.database import get_db
+from app.services import admin_host_service
 from app.services import admin_monitor_service as monitor
 from app.services import health_monitor_service
 
@@ -71,6 +73,23 @@ async def leads(scope: monitor.Scope = Depends(admin_scope), db: AsyncSession = 
 @router.get("/hosts")
 async def hosts(scope: monitor.Scope = Depends(admin_scope), db: AsyncSession = Depends(get_db)) -> dict:
     return await monitor.hosts(db, scope)
+
+
+@router.get("/host-roster")
+async def host_roster(scope: monitor.Scope = Depends(admin_scope), db: AsyncSession = Depends(get_db)) -> dict:
+    """Every host (including those with no calls) with what is waiting on
+    them, plus the open missed-call takeover queue."""
+    return await admin_host_service.roster(db, scope)
+
+
+@router.get("/hosts/{user_id}")
+async def host_detail(
+    user_id: uuid.UUID, scope: monitor.Scope = Depends(admin_scope), db: AsyncSession = Depends(get_db)
+) -> dict:
+    result = await admin_host_service.detail(db, user_id, scope)
+    if result is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Host not found")
+    return result
 
 
 @router.get("/usage")

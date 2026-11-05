@@ -32,6 +32,7 @@ _EXACT_HOSTS = {
     "www.searchapi.io": "searchapi",
     "api.brightdata.com": "bright_data",
     "api.clerk.com": "clerk",
+    "api.razorpay.com": "razorpay",
     "api.cloudinary.com": "cloudinary",
 }
 _SUFFIX_HOSTS = [
@@ -85,6 +86,12 @@ def _observe(request: httpx.Request, started: float, response: httpx.Response | 
             health.record(service, "error", latency_ms=latency_ms, error=exc, kind=kind, op=op)
             return
         outcome, kind = classify_status(response.status_code)
+        if service == "razorpay" and response.status_code < 500:
+            # Razorpay is called with each HOST's own keys: a 401 or a 4xx is that
+            # host's wrong key or bad request, not Razorpay being unwell, and must
+            # not flip the platform's status or email the admins. Only 5xx,
+            # timeouts and connection errors count against Razorpay.
+            outcome, kind = "ok", None
         if outcome == "ok":
             health.record(service, "ok", latency_ms=latency_ms, op=op)
         else:

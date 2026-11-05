@@ -17,6 +17,8 @@ from app.models.service_usage_event import ServiceUsageEvent
 from app.models.property import Property
 from app.models.property_chunk import PropertyChunk
 from app.models.technician import Technician
+from app.models.payment import HoldWaiter, PaymentRequest
+from app.models.policy import Policy, PolicyDocument
 from app.models.ticket import Ticket
 from app.models.unanswered_question import UnansweredQuestion
 from app.models.user import User
@@ -43,6 +45,10 @@ __all__ = [
     "ServiceIncident",
     "ServiceUsageEvent",
     "Technician",
+    "HoldWaiter",
+    "PaymentRequest",
+    "Policy",
+    "PolicyDocument",
     "Ticket",
     "UnansweredQuestion",
     "User",

@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.orm import DeclarativeBase
 
 from app.config import settings
+from app.observability import db_deadlock
 
 engine = create_async_engine(
     settings.database_url,
@@ -13,6 +14,10 @@ engine = create_async_engine(
 )
 
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+
+# Deadlocks are reported (with the writes they rolled back) to the admins; this only
+# observes -- see app/observability/db_deadlock.py.
+db_deadlock.install(engine)
 
 
 class Base(DeclarativeBase):

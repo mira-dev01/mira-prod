@@ -456,6 +456,14 @@ async def _deliver(subject: str, text: str, html: str) -> bool:
     return delivered
 
 
+async def send_admin_alert(subject: str, text: str, html: str) -> bool:
+    """Email every ALERT_EMAILS recipient. Whether an alert is warranted is the
+    caller's decision; this only delivers (True if anyone received it)."""
+    if not settings.alert_email_list:
+        return False
+    return await _deliver(subject, text, html)
+
+
 async def _send_alert(kind: str, incident: ServiceIncident, now: datetime) -> bool:
     definition = catalog.get(incident.service)
     critical = definition.critical()

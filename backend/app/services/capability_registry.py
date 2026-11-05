@@ -231,6 +231,37 @@ CAPABILITIES: tuple[Capability, ...] = (
         voice_tools=("get_pricing",),
     ),
     Capability(
+        id="online_payments",
+        name="Online payments",
+        description="Sends a payment link once a guest agrees a price, and holds their dates while they pay.",
+        benefit="Bookings can be paid for without you chasing, and no two guests can take the same dates.",
+        group="bookings_pricing",
+        activation="preference",
+        enforcement="enforced",
+        default_enabled=True,
+        on_effect=(
+            "Mira sends a Razorpay payment link on WhatsApp after a guest agrees a quoted price, and holds "
+            "their dates while they pay."
+        ),
+        off_effect=(
+            "Mira never sends payment links; you confirm bookings and collect payment yourself. "
+            "Links already sent stay valid until they are paid or run out."
+        ),
+        hard_dependencies=("pricing_quotes",),
+        requirements=(
+            Requirement(
+                "razorpay_connected",
+                "Your Razorpay account connected",
+                True,
+                "Connect Razorpay",
+                "/dashboard/settings?tab=billing",
+            ),
+        ),
+        integrations=(IntegrationRef("payment_encryption", required=True),),
+        routes=("/dashboard/settings?tab=billing", "/dashboard/agent?step=payments"),
+        voice_tools=("send_payment_link",),
+    ),
+    Capability(
         id="negotiation",
         name="Discount negotiation",
         description="Mira can offer discounts within the limits you set on the Agent page.",
@@ -427,7 +458,7 @@ CAPABILITIES: tuple[Capability, ...] = (
         default_enabled=True,
         # The FAQ page is where hosts curate this -- hiding that page in
         # Phase 2 must not stop Mira answering from the knowledge base.
-        on_effect="Mira searches your verified FAQs and listing details on every question.",
+        on_effect="Mira searches your verified FAQs, your policies and listing details on every question.",
         off_effect="",
         requirements=(
             Requirement("faq_knowledge", "Verified FAQs or listing FAQs", False, "Review FAQs", "/dashboard/faq"),

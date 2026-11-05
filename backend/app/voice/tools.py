@@ -188,6 +188,7 @@ def build_voice_tools(
     silence_watchdog: SilenceWatchdogProcessor | None = None,
     property_recommendation_guard: PropertyRecommendationGuardProcessor | None = None,
     kb_grounding_guard: KnowledgeGroundingGuardProcessor | None = None,
+    payments_enabled: bool = False,
 ) -> list:
     """Build the tool functions for one call, bound to its call_session_id/property_id/host_user_id.
 
@@ -395,6 +396,36 @@ def build_voice_tools(
                 state.mark_checking_availability()
             except ValidationError as exc:
                 result = ToolOutcome.invalid_arguments(exc)
+        await params.result_callback(result)
+
+    @tool()
+    async def send_payment_link(
+        params: FunctionCallParams,
+        property_id: str,
+        guest_name: str | None = None,
+        phone: str | None = None,
+    ):
+        """Send the guest a payment link on WhatsApp and hold their dates for them.
+        Use ONLY after you have quoted the price for exact dates and the guest has agreed
+        to it and wants to book. The amount and dates are taken from the price you quoted --
+        you cannot set them. Never ask for card or UPI details on the call.
+
+        Args:
+            property_id: The property's id, as given to you in your instructions.
+            guest_name: The guest's name, if known.
+            phone: The WhatsApp number to send it to, ONLY if the guest gave a different number
+                from the one they are calling from.
+        """
+        async with AsyncSessionLocal() as db:
+            result = await tool_handlers.handle_send_payment_link(
+                db,
+                host_user_id=host_user_id,
+                property_id=property_id,
+                quote=state.quoted_price,
+                guest_name=guest_name or state.slots.get("guest_name"),
+                phone=phone,
+                call_session_id=call_session_id,
+            )
         await params.result_callback(result)
 
     @tool()
@@ -1575,6 +1606,7 @@ def build_voice_tools(
     return [
         check_calendar,
         get_pricing,
+        *([send_payment_link] if payments_enabled else []),
         dispatch_technician,
         send_whatsapp,
         send_photos,

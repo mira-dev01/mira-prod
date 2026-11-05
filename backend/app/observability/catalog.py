@@ -14,6 +14,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from app.config import settings
+from app.utils import secrets
 
 GROUP_ORDER = ["voice", "ai", "telephony", "platform", "data", "credits"]
 GROUP_LABELS = {
@@ -118,6 +119,13 @@ SERVICES: dict[str, ServiceDef] = {
             "telephony",
             "Escalation, call-summary, admin-login and these alert emails.",
             configured=lambda: bool(settings.resend_api_key and settings.resend_from_email),
+        ),
+        ServiceDef(
+            "razorpay",
+            "Razorpay payment links",
+            "telephony",
+            "Payment links and paid-checks, called with each host's own keys. Only Razorpay-side failures count; a host's wrong key does not.",
+            configured=lambda: secrets.is_configured(),
         ),
         ServiceDef(
             "postgres",

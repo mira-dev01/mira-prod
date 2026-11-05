@@ -114,6 +114,39 @@ async def send_whatsapp_best_effort(to_phone: str, body: str, timeout: float = 1
         return False
 
 
+async def send_whatsapp_tracked(to_phone: str, body: str, timeout: float = 15.0) -> str | None:
+    """Like send_whatsapp_best_effort, but returns the message SID when Twilio
+    accepted it (None when it was skipped or refused) so the caller can later
+    ask whether it was actually delivered -- accepted is not delivered, and a
+    freeform message to someone who has not messaged the business in the last
+    24 hours is accepted and then fails (Twilio 63016)."""
+    try:
+        result = await send_whatsapp_message(to_phone, body, timeout=timeout)
+        if result.get("status") == "skipped":
+            logger.info("WhatsApp message to %s skipped: %s", to_phone, result.get("reason"))
+            return None
+        return result.get("sid") or None
+    except (TwilioError, httpx.HTTPError):
+        logger.exception("Failed to send WhatsApp message to %s", to_phone)
+        return None
+
+
+async def fetch_message_status(message_sid: str, timeout: float = 10.0) -> tuple[str | None, int | None]:
+    """(status, error_code) of a message already sent: queued / sent / delivered
+    / read, or failed / undelivered (error_code explains why, e.g. 63016)."""
+    if not (settings.twilio_account_sid and settings.twilio_auth_token):
+        raise TwilioError("Twilio is not configured")
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        response = await client.get(
+            f"{_BASE_URL}/Accounts/{settings.twilio_account_sid}/Messages/{message_sid}.json",
+            auth=(settings.twilio_account_sid, settings.twilio_auth_token),
+        )
+    if response.status_code >= 400:
+        raise TwilioError(f"status lookup failed ({response.status_code})")
+    data = response.json()
+    return data.get("status"), data.get("error_code")
+
+
 async def send_whatsapp_template(
     to_phone: str, content_sid: str, content_variables: dict[str, str], timeout: float = 15.0
 ) -> dict:

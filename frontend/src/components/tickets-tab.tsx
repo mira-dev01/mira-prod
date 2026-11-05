@@ -23,6 +23,7 @@ const KIND_LABEL: Record<TicketKind, string> = {
   whatsapp: "Message",
   promise: "Promise",
   missed_call: "Call back",
+  payment: "Payment",
 };
 
 const URGENCY_TONE: Partial<Record<TicketOut["urgency"], StatusTone>> = {

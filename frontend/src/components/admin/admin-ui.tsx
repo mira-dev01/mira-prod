@@ -30,6 +30,15 @@ export function fmtMoney(value: number | null | undefined, currency = "INR"): st
   return `${symbol}${value.toLocaleString("en-IN", { maximumFractionDigits: digits, minimumFractionDigits: digits })}`;
 }
 
+/** How long ago, coarsely: "5m", "3h", "2d". */
+export function fmtAgo(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const minutes = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  if (minutes < 60) return `${minutes}m`;
+  if (minutes < 60 * 48) return `${Math.round(minutes / 60)}h`;
+  return `${Math.round(minutes / 1440)}d`;
+}
+
 export function humanize(key: string): string {
   return key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }

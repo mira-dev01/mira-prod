@@ -168,6 +168,24 @@ async def test_hook_records_real_requests_but_not_probes():
     assert "HTTP 503" in health.last_error("resend")["message"]
 
 
+async def test_razorpay_is_watched_but_a_hosts_wrong_key_is_not_an_outage():
+    # Razorpay is called with each HOST's own keys: their 401 is their typo.
+    http_hook.install()
+    status = {"code": 401}
+    transport = httpx.MockTransport(lambda request: httpx.Response(status["code"], json={"error": {"description": "bad key"}}))
+    async with httpx.AsyncClient(transport=transport) as client:
+        for code in (401, 403, 400, 404, 422):
+            status["code"] = code
+            await client.get("https://api.razorpay.com/v1/payment_links")
+        window = next(s for s in health.snapshot() if s["key"] == "razorpay")["window"]
+        assert window["errors"] == 0 and window["ok"] == 5
+
+        status["code"] = 502  # Razorpay itself failing does count
+        await client.get("https://api.razorpay.com/v1/payment_links")
+    window = next(s for s in health.snapshot() if s["key"] == "razorpay")["window"]
+    assert window["errors"] == 1
+
+
 async def test_hook_records_transport_errors_and_reraises():
     http_hook.install()
 

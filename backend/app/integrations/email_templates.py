@@ -448,6 +448,66 @@ def build_health_alert_email_html(
     return _health_shell(headings[kind], rows, admin_url=admin_url, accent=accent)
 
 
+def build_deadlock_alert_email_html(
+    *,
+    occurred_at,
+    location: list[str],
+    call_session_id: str | None,
+    host_id: str | None,
+    request_id: str | None,
+    message: str,
+    pg_detail: str | None,
+    failing: tuple[str, str],
+    lost_writes: list[tuple[str, str]],
+    held_back: int,
+    window_minutes: int,
+    admin_url: str,
+) -> str:
+    """A transaction Postgres rolled back to break a deadlock, with the writes
+    that went with it."""
+    block = (
+        f"font-family:Menlo,Consolas,monospace;font-size:12px;background:{_BACKGROUND};"
+        "padding:8px 10px;border-radius:6px;display:block;white-space:pre-wrap;word-break:break-word;"
+    )
+
+    def code(text: str) -> str:
+        return f'<code style="{block}">{_esc(text)}</code>'
+
+    def statement(sql: str, values: str) -> str:
+        return f'{code(sql)}<div style="height:4px;"></div>{code("values: " + values)}'
+
+    lost = "".join(f'<div style="margin-bottom:10px;">{statement(sql, values)}</div>' for sql, values in lost_writes)
+    ids = "".join(
+        f'<div style="font-size:12px;color:{_MUTED};">{label}: <span style="font-family:Menlo,Consolas,monospace;">{_esc(value)}</span></div>'
+        for label, value in (("Call", call_session_id), ("Host", host_id), ("Request", request_id))
+        if value
+    )
+    if call_session_id:
+        ids += f'<div style="font-size:12px;color:{_MUTED};">Railway logs: @call_session_id:{_esc(call_session_id)}</div>'
+    rows = _kv_rows(
+        [
+            ("What happened", "Postgres aborted a transaction to break a deadlock. <strong>Everything that transaction was writing was rolled back</strong>, and the code that ran it received a database error."),
+            ("When", _esc(_fmt_when(occurred_at))),
+            ("Where in the code", "<br>".join(_esc(frame) for frame in reversed(location)) or "unknown"),
+            ("Which call / host", ids),
+            ("Postgres said", _esc(message) + (f'<div style="font-size:12px;color:{_MUTED};">{_esc(pg_detail)}</div>' if pg_detail else "")),
+            ("Failing statement", statement(*failing)),
+            (
+                f"Lost writes ({len(lost_writes)})" if lost_writes else "Lost writes",
+                lost or f'<span style="color:{_MUTED};">None recorded earlier in this transaction -- only the failing statement above.</span>',
+            ),
+            ("Also", f"{held_back} similar deadlock(s) in the last {window_minutes} min are folded into this email." if held_back else ""),
+        ]
+    )
+    return _health_shell("A database deadlock rolled back a transaction", rows, admin_url=admin_url, accent="#b8452f")
+
+
+def _fmt_when(value) -> str:
+    from datetime import timedelta, timezone
+
+    return value.astimezone(timezone(timedelta(hours=5, minutes=30))).strftime("%d %b %Y, %I:%M:%S %p IST")
+
+
 def build_health_digest_email_html(
     *,
     overall: str,

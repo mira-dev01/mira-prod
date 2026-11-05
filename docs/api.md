@@ -139,6 +139,35 @@ What Mira told guests would happen after the call, kept open until the host does
 | `GET /tickets` | The host's tickets, newest first; `state` = `open` (default) / `resolved` (done or dismissed) / `all`; optional `property_id` | required |
 | `PATCH /tickets/{id}` | Set `status` to `open` / `done` / `dismissed` | required |
 
+## `billing.py` + `payments.py` — `/billing`, `/payments`
+
+A host's payment setup and the payment links Mira has sent (`app/services/billing_service.py`, `payment_service.py`). Money goes from the guest straight to the host's own Razorpay account. Nothing here ever returns the Razorpay secret.
+
+| Method & path | Purpose | Auth |
+|---|---|---|
+| `GET /billing` | The Billing tab: whether the server can store keys (`encryption_ready`), Razorpay connection (`connected`, `key_id`, `mode` live/test), the two guest messages (approved text, pending `draft`), the allowed `{placeholders}`, `notify_host_on_payment`, `capability_enabled` (the *Online payments* capability is on) | required |
+| `PUT /billing/razorpay` | `{key_id, key_secret}` — checked against Razorpay first, then stored (secret encrypted). 422 with a plain reason if refused, the server has no encryption key, or the Key ID changes while payment links are open | required |
+| `DELETE /billing/razorpay` | Disconnect. 422 while any payment link is still open | required |
+| `PUT /billing/templates/{payment_request\|payment_success}` | Save wording as a **draft**; guests keep getting the approved wording. The request message must contain `{link}`; unknown `{names}` are refused | required |
+| `POST /billing/templates/{name}/approve` · `DELETE /billing/templates/{name}` | Make the draft live · back to Mira's standard wording | required |
+| `PUT /billing/notify-host` | `{enabled}` — WhatsApp the host when a guest pays (the in-app alert is always sent) | required |
+| `GET /payments` | The host's payment links / date holds, newest first (`status`: `active` / `paid` / `expired` / `cancelled`) | required |
+| `POST /payments/{id}/cancel` | Release a hold: closes the Razorpay link, frees the dates, tells waiting guests. Refused if the guest has just paid | required |
+
+## `policies.py` — `/policies`
+
+The host's booking and house policies (cancellation, age limits, pets, …), host-wide or per property, and how uploaded documents become drafts (`app/services/policy_service.py`, `policy_documents.py`). Approved policies become knowledge-base facts immediately. All routes are scoped to the signed-in host; another host's ids are 404.
+
+| Method & path | Purpose | Auth |
+|---|---|---|
+| `GET /policies` | One row per topic (`state`: `everyone` / `some_differ` / `property_only` / `unset`, `override_count`, live `items`), the `drafts` waiting for review, uploaded `documents`, the host's `properties`, and the `topics` list | required |
+| `POST /policies` | Write a live policy `{topic, text, title?, property_id?}` (`property_id` null = host-wide). 422 if that topic already has one in that scope | required |
+| `PATCH /policies/{id}` | Edit `text` / `title` / `topic`; an active policy is re-synced to the knowledge base at once | required |
+| `DELETE /policies/{id}` | Remove (a live one is removed from the knowledge base; removing a property override returns that property to the host-wide policy) | required |
+| `POST /policies/{id}/approve` | Make a draft live; replaces a live policy of the same topic and scope (`replaced: true`) | required |
+| `POST /policies/approve-all` | `{document_id?}` — approve every draft, or one document's | required |
+| `POST /policies/documents` | Multipart `file` (PDF, .docx, .xlsx, .csv, .txt, .md, PNG/JPG/WebP, ≤ 8 MB). Returns the `document`, the new `drafts` and `skipped` (already on file). 422 with a plain reason when it can't be read | required |
+
 ## `agent_config.py` — `/agent-config`
 
 The host's Agent rules (what Mira collects, what makes a lead hot, how a booking is confirmed and paid). Stored partially; missing keys read as defaults. Name and phone are not configurable. See `app/schemas/agent_config.py`.
@@ -182,6 +211,8 @@ Not host-facing and not Clerk-authenticated. Login is an emailed one-time code f
 | POST | `/admin/auth/verify-code` | `{email, code}` → `{token, email, expires_at}`. Single-use, 10-min TTL, locked after 5 wrong attempts. |
 | GET | `/admin/auth/me` | Validates the session; 403 once the address leaves the allowlist. |
 | GET | `/admin/overview` · `/admin/audio` · `/admin/conversations` · `/admin/performance` · `/admin/leads` · `/admin/hosts` · `/admin/usage` | All take `start_date`, `end_date` (inclusive UTC days, default last 7) and `include_test_calls`. Cross-host aggregates from `app/services/admin_monitor_service.py`; each payload reports its own telemetry `coverage`. |
+| GET | `/admin/host-roster` | Every host from the `users` table — so a host with no calls still appears — with properties, whether a number is connected, the Busy-calls mode, calls/missed/escalations in range, open tickets (split into urgent and `missed_call` "takeover"), distinct pending questions and how many have waited over 24h, unopened escalations (and whether the oldest is over 24h), cost, and a plain-language `attention` list. Hosts with something waiting sort first. Also returns `takeover`: every open `missed_call` ticket across hosts, longest-waiting first (max 50). Same range params as above. From `app/services/admin_host_service.py`. |
+| GET | `/admin/hosts/{user_id}` | One host in full: the roster row, profile, their Agent settings, capabilities, per-property numbers/calls/open questions, 15 latest calls, open tickets, pending questions (oldest first, max 25), 10 latest escalations. 404 for an unknown host. |
 | GET | `/admin/balances?refresh=` | Prepaid (Sarvam, Exotel: entered amount − metered spend since entry), postpaid (Groq: month spend vs budget), quota (Resend) and live provider balances (Twilio, OpenRouter, SearchApi, Bright Data, Cloudinary, Neon — `app/integrations/billing_clients.py`, cached 5 min). |
 | GET / PUT | `/admin/settings/services[/{account}]` | Prepaid amounts, unit prices, USD→INR rate (`fx`). Entering a prepaid amount restarts its "spent since" clock. |
 

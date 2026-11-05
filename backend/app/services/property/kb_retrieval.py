@@ -37,9 +37,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.faq_entry import FaqEntry
+from app.models.policy import Policy
 from app.models.property import Property
 from app.models.property_chunk import PropertyChunk
-from app.services import embedding_service
+from app.services import embedding_service, policy_service
 from app.services.property.chunking import FACT_CHUNK_TYPE, build_fact_chunks
 from app.utils.dates import IST
 
@@ -266,7 +267,23 @@ async def load_property_facts(db: AsyncSession, property_: Property) -> list[Fac
         # ORM instance that attribute access would try to lazy-load (IO) from
         # inside async code.
         property_updated_at = await db.scalar(select(Property.updated_at).where(Property.id == property_.id))
-        if (property_updated_at and property_updated_at > newest_fact) or (newest_faq and newest_faq > newest_fact):
+        # A policy written after the facts were built (e.g. a re-sync that
+        # failed part-way) must not be missed: this heals it on the next read.
+        newest_policy = await db.scalar(
+            select(func.max(Policy.updated_at)).where(
+                Policy.user_id == property_.user_id,
+                Policy.status == "active",
+                (Policy.property_id.is_(None)) | (Policy.property_id == property_.id),
+            )
+        )
+        if any(t and t > newest_fact for t in (property_updated_at, newest_faq, newest_policy)):
+            stale = True
+        # An edit shows up as a newer timestamp, but a policy that was DELETED or
+        # replaced leaves nothing to compare -- so compare which policies the facts
+        # were built from with which ones apply now.
+        live_policy_ids = {str(p.id) for p in await policy_service.effective_for_property(db, property_)}
+        fact_policy_ids = {row.source_ref.removeprefix("policy_") for row in rows if row.source_kind == "policy" and row.source_ref}
+        if live_policy_ids != fact_policy_ids:
             stale = True
 
     if stale:
@@ -277,9 +294,10 @@ async def load_property_facts(db: AsyncSession, property_: Property) -> list[Fac
                 )
             ).all()
         )
+        policies = await policy_service.effective_for_property(db, property_)
         facts = [
             Fact(None, draft.text, draft.source_kind, draft.source_ref, draft.meta, None)
-            for draft in build_fact_chunks(property_, entries)
+            for draft in build_fact_chunks(property_, entries, policies)
         ]
         await _schedule_lazy_sync(property_.id)
     else:

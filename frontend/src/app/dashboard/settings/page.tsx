@@ -6,11 +6,12 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CreditCard, KeyRound, Users } from "lucide-react";
+import { KeyRound, Users } from "lucide-react";
 import { DefinitionRow } from "@/components/ui/definition-row";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { BillingTab } from "@/components/billing-tab";
 import { TechniciansSection } from "@/components/settings/technicians-section";
 import { FeaturesSection } from "@/components/settings/features-section";
 import { DashboardSection } from "@/components/settings/dashboard-section";
@@ -204,7 +205,7 @@ function SettingsPageContent() {
         </TabsContent>
 
         <TabsContent value="billing" className="pt-4">
-          <ComingSoonTab icon={CreditCard} label="Billing" />
+          <BillingTab />
         </TabsContent>
         <TabsContent value="api" className="pt-4">
           <ComingSoonTab icon={KeyRound} label="API access" />

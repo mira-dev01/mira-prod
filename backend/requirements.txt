@@ -15,6 +15,13 @@ redis>=5.2,<6.0
 python-multipart>=0.0.12
 python-dotenv>=1.0
 cloudinary>=1.41,<2.0
+# Policy upload (Properties -> Policies): text out of PDF / Word / Excel files.
+pypdf>=5.0,<7.0
+python-docx>=1.1,<2.0
+openpyxl>=3.1,<4.0
+# Encrypts each host's Razorpay secret at rest (app/utils/secrets.py). Used directly,
+# so it is pinned here rather than relying on it arriving through another package.
+cryptography>=42.0
 pipecat-ai[websocket,webrtc,anthropic,groq,sarvam]==1.6.0
 # Pinned exactly to 1.6.0 (2026-10-27): the >=1.5.0,<2.0 range let Railway
 # rebuild onto a much newer release whose Silero VAD/Exotel serializer

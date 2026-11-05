@@ -129,6 +129,11 @@ class User(UUIDPkMixin, TimestampMixin, Base):
     # app/schemas/agent_config.py. None = every default. Read through
     # app/services/agent_config_service.py, never directly.
     agent_config: Mapped[dict | None] = mapped_column(JSONB)
+    # The host's payment setup (Settings -> Billing): their Razorpay keys (the
+    # secret encrypted, see app/utils/secrets.py), the guest message wording and
+    # the notify-me switch. Separate from agent_config so a read of the Agent
+    # rules can never carry a secret. Shape owned by app/services/billing_service.py.
+    billing_config: Mapped[dict | None] = mapped_column(JSONB)
 
     # Host Memory: host-level negotiation/policy preferences (see
     # memory-architecture-plan.md section 4). discount_policy_text is the

@@ -260,6 +260,13 @@ class Settings(BaseSettings):
     # run_voice_pipeline_twilio.
     twilio_voice_webhook_token: str = "change-me"
 
+    # Fernet key(s) that encrypt each host's Razorpay secret at rest (see
+    # app/utils/secrets.py). Comma-separated to rotate: the first encrypts,
+    # all decrypt. Unset = hosts cannot save payment credentials at all (the
+    # Billing tab says so) -- a secret is never stored in the clear. Generate:
+    #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    payment_encryption_key: str | None = None
+
     # Cloudinary -- re-hosts property photos scraped via Bright Data
     # (see app/integrations/cloudinary_client.py) so listing images survive
     # even if the source Airbnb listing is edited/removed, and so MIRA can

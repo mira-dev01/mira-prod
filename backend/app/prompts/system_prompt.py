@@ -889,6 +889,7 @@ def build_system_prompt(
     caller_phone: str | None = None,
     verified_faq_entries: list | None = None,
     repeat_guest_discount: bool = False,
+    payments_enabled: bool = False,
 ) -> str:
     # Section order here is deliberate for Groq's prefix-based prompt cache
     # (see docs/agents.md's Groq section): everything up to and including the
@@ -922,6 +923,9 @@ def build_system_prompt(
     # stays in the signature for callers but is no longer used here; the same
     # rows are indexed as facts (chunking.build_fact_chunks).
 
+    payment_section = _payment_section(payments_enabled)
+    if payment_section:
+        sections.append(payment_section)
     caller_phone_section = _caller_phone_section(caller_phone)
     if caller_phone_section:
         sections.append(caller_phone_section)
@@ -1397,6 +1401,26 @@ def _hot_lead_section(config: AgentConfig) -> str:
     )
 
 
+def _payment_section(payments_enabled: bool) -> str:
+    """Only when the call has the send_payment_link tool (payment_service.
+    payments_enabled_for: Razorpay connected and the capability on): otherwise
+    the agent must not mention online payment at all. Deliberately states no
+    amount, duration or policy -- the tool's own result is the only source."""
+    if not payments_enabled:
+        return ""
+    return (
+        "\nTaking a booking payment (send_payment_link):\n"
+        "- Once you have quoted a price for exact dates and the guest has AGREED to it and wants to book, offer to "
+        "send a payment link on WhatsApp, then call send_payment_link. You cannot set the amount or dates: the tool "
+        "uses the price you quoted. Do not call it for a rough or vague timeline, or before the guest has agreed.\n"
+        "- After it succeeds, tell the guest only what the tool result says: the amount, that the link is on WhatsApp, "
+        "and how long their dates are held. Never read the link out. Never ask for card, UPI or bank details on the call.\n"
+        "- If the tool says the dates are on hold for another guest, say exactly that, give only the update the tool "
+        "allows, and never promise the dates or name the other guest.\n"
+        "- Do not discuss refunds or cancellation terms unless search_faq returns them."
+    )
+
+
 def build_lead_system_prompt(
     user: User,
     properties: list[Property],
@@ -1404,6 +1428,7 @@ def build_lead_system_prompt(
     active_booking: BookingMatch | None = None,
     caller_phone: str | None = None,
     repeat_guest_discount: bool = False,
+    payments_enabled: bool = False,
 ) -> str:
     # Same cache-ordering reasoning as build_system_prompt above: the property
     # portfolio listing below is byte-identical across every call to this
@@ -1412,7 +1437,7 @@ def build_lead_system_prompt(
     host_name = user.name or "this host"
     sections = [LEAD_AGENT_INSTRUCTIONS.format(host_name=host_name), _today_anchor()]
     agent_config = agent_config_service.get_config(user)
-    for section in (_collect_section(agent_config), _hot_lead_section(agent_config)):
+    for section in (_collect_section(agent_config), _hot_lead_section(agent_config), _payment_section(payments_enabled)):
         if section:
             sections.append(section)
     sections.extend(_persona_and_escalation_sections(user))

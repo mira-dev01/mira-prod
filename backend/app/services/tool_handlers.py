@@ -37,9 +37,11 @@ from app.schemas.tool import (
     SendWhatsappArgs,
     ToolBusinessError,
     UpdateLeadArgs,
+    _normalize_phone,
 )
 from app.database import AsyncSessionLocal
 from app.services import (
+    billing_service,
     calendar_service,
     capability_service,
     notification_preferences_service,
@@ -47,6 +49,7 @@ from app.services import (
     kb_gap_service,
     lead_service,
     notification_service,
+    payment_service,
     price_event_service,
     pricing_engine,
     technician_service,
@@ -197,6 +200,81 @@ def _past_dates_error(check_in: date) -> ToolBusinessError | None:
     )
 
 
+def _minutes_until(moment) -> int:
+    from datetime import datetime, timezone
+    import math
+
+    return max(1, math.ceil((moment - datetime.now(timezone.utc)).total_seconds() / 60))
+
+
+async def _caller_of(db: AsyncSession, call_session_id: uuid.UUID | None) -> tuple[str | None, uuid.UUID | None]:
+    """(the caller's number as a plain 10-digit string, the call's lead id).
+    Browser test calls have no real number."""
+    from app.services.call_service import BROWSER_TEST_CALLER_NUMBER
+
+    if call_session_id is None:
+        return None, None
+    session = await db.get(CallSession, call_session_id)
+    if session is None:
+        return None, None
+    number = session.caller_number
+    if not number or number == BROWSER_TEST_CALLER_NUMBER:
+        return None, session.lead_id
+    return _normalize_phone(number), session.lead_id
+
+
+def _is_own_hold(hold, phone: str | None, call_session_id: uuid.UUID | None) -> bool:
+    """The hold belongs to the guest on this call: it was made on this very call
+    (they may have asked for the link on a different number), or by the same
+    number on an earlier one."""
+    if call_session_id is not None and hold.call_session_id == call_session_id:
+        return True
+    return bool(phone and hold.guest_phone and _normalize_phone(hold.guest_phone) == phone)
+
+
+async def _on_hold_answer(
+    db: AsyncSession, property_: Property, check_in: date, check_out: date, call_session_id: uuid.UUID | None
+) -> str | None:
+    """When the dates are unavailable only because they are held for a guest who
+    has not paid yet: say so, remember this guest so they hear if the hold
+    lapses, and alert the host at HIGH urgency (once per waiting guest, however
+    often the question is asked). None when no unpaid hold is involved."""
+    hold = await payment_service.find_blocking_hold(db, property_.id, check_in, check_out)
+    if hold is None or hold.status != "active":
+        return None  # a paid hold is simply a booking
+    phone, lead_id = await _caller_of(db, call_session_id)
+    minutes = _minutes_until(hold.hold_expires_at)
+    name = property_.name
+
+    if _is_own_hold(hold, phone, call_session_id):
+        return (
+            f"{name} is already ON HOLD for this guest for those dates, waiting for their payment. A payment link was "
+            f"sent on WhatsApp; the hold lasts about {minutes} more minute{'s' if minutes != 1 else ''}."
+        )
+
+    if phone:
+        added = await payment_service.register_waiter(
+            db, hold, guest_name=None, guest_phone=phone, lead_id=lead_id, call_session_id=call_session_id
+        )
+        if added:
+            await payment_service.escalate_hold_interest(
+                db, hold, property_, guest_name=None, guest_phone=phone, call_session_id=call_session_id
+            )
+        promise = (
+            "We will message them on WhatsApp if it is released, and that can only happen within about "
+            f"{minutes} minute{'s' if minutes != 1 else ''}."
+        )
+    else:
+        promise = (
+            "The host has been told and will get back to them. You do not have their number, so do not promise a message."
+        )
+    return (
+        f"{name} is NOT available for those dates right now: another guest has them ON HOLD while their payment is "
+        f"pending. Tell the guest exactly that -- a booking is on hold for these dates. {promise} "
+        "Do not promise the dates and do not say who holds them. The host has been alerted."
+    )
+
+
 async def handle_check_calendar(
     db: AsyncSession,
     args: CheckCalendarArgs,
@@ -297,6 +375,10 @@ async def handle_check_calendar(
             f"{property_.name} is AVAILABLE from {args.check_in.isoformat()} to {args.check_out.isoformat()} "
             f"({nights} night{'s' if nights != 1 else ''})."
         )
+
+    held = await _on_hold_answer(db, property_, args.check_in, args.check_out, call_session_id)
+    if held is not None:
+        return held
 
     window = await calendar_service.next_available_window(db, property_.id, args.check_in, nights)
     if window:
@@ -464,6 +546,87 @@ async def handle_get_pricing(
         check_out=args.check_out,
     )
     return summary
+
+
+async def handle_send_payment_link(
+    db: AsyncSession,
+    *,
+    host_user_id: uuid.UUID,
+    property_id: str,
+    quote: dict | None,
+    guest_name: str | None,
+    phone: str | None,
+    call_session_id: uuid.UUID | None,
+) -> str:
+    """Sends the guest a payment link for the price Mira last quoted and holds
+    their dates. The amount and dates come from `quote` -- what Mira herself
+    recorded when she quoted -- never from anything the model passes in."""
+    host = await db.get(User, host_user_id)
+    property_ = await _get_property(db, property_id)
+    if host is None or property_ is None or property_.user_id != host_user_id:
+        return ToolBusinessError("I couldn't find that property. Which one is the guest booking?")
+    if not billing_service.is_connected(host):
+        return ToolBusinessError(
+            "Online payment isn't set up for this host. Tell the guest the host will confirm the booking and send payment details."
+        )
+    usable = (
+        quote
+        and not quote.get("is_estimate")
+        and quote.get("check_in")
+        and quote.get("check_out")
+        and quote.get("property_name") == property_.name
+        and float(quote.get("total") or 0) > 0
+    )
+    if not usable:
+        return ToolBusinessError(
+            "There is no confirmed price for this property and these exact dates yet. Get the exact dates, quote the price "
+            "with get_pricing, and have the guest agree to it before sending a payment link."
+        )
+    guest_phone, lead_id = await _caller_of(db, call_session_id)
+    guest_phone = _normalize_phone(phone) if phone else guest_phone
+    if not guest_phone:
+        return ToolBusinessError("Ask the guest for the WhatsApp number to send the payment link to.")
+    try:
+        check_in, check_out = date.fromisoformat(quote["check_in"]), date.fromisoformat(quote["check_out"])
+    except ValueError:
+        return ToolBusinessError("I need the exact check-in and check-out dates before sending a payment link.")
+
+    # Make sure this opportunity is on file whatever else happens.
+    await lead_service.backfill_lead_from_engagement(
+        db, host_user_id, call_session_id, property_.name, check_in, check_out, None, engagement="availability_confirmed"
+    )
+    _, lead_id = await _caller_of(db, call_session_id)
+
+    try:
+        request = await payment_service.create_payment_request(
+            db, host, property_, check_in=check_in, check_out=check_out, total=quote["total"],
+            guest_name=guest_name, guest_phone=guest_phone, lead_id=lead_id, call_session_id=call_session_id,
+        )
+    except payment_service.DatesOnHold as exc:
+        if _is_own_hold(exc.hold, guest_phone, call_session_id):
+            return ToolBusinessError(
+                f"This guest already has {property_.name} on hold from {exc.hold.check_in:%d %b %Y} to "
+                f"{exc.hold.check_out:%d %b %Y}, with a payment link sent. A different range can't be held as well: "
+                "ask them to pay for those dates, or say the host can change them."
+            )
+        answer = await _on_hold_answer(db, property_, check_in, check_out, call_session_id)
+        return ToolBusinessError(answer or str(exc))
+    except payment_service.DatesUnavailable:
+        return ToolBusinessError(f"{property_.name} is no longer available for those dates. Offer other dates or another property.")
+    except payment_service.PaymentError as exc:
+        return ToolBusinessError(str(exc))
+
+    minutes = _minutes_until(request.hold_expires_at)
+    rest = ""
+    if request.kind == "advance":
+        rest = f" That is the advance; the remaining {payment_service.rupees(request.total_amount - request.amount_due)} is due by {request.balance_due_on:%d %b %Y}."
+    sent = "sent on WhatsApp" if request.link_sent_at else "being sent by the host on WhatsApp shortly (WhatsApp did not accept it just now)"
+    return (
+        f"The payment link for {payment_service.rupees(request.amount_due)} is {sent}.{rest} "
+        f"{property_.name} is held for this guest from {check_in:%d %b %Y} to {check_out:%d %b %Y} for the next {minutes} minutes. "
+        "Tell the guest the amount, that the link is on WhatsApp, and how long the dates are held. "
+        "Do not read out the link and never ask for card or UPI details on the call."
+    )
 
 
 async def handle_dispatch_technician(

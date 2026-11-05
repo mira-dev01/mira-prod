@@ -14,7 +14,14 @@ import type {
   CallSessionDetailOut,
   CallSessionOut,
   CapabilityUpdate,
+  AgentConfig,
   AgentConfigOut,
+  BillingTemplateName,
+  BillingView,
+  PaymentRequestOut,
+  PolicyOut,
+  PolicyOverview,
+  PolicyUpload,
   TicketOut,
   TicketStatus,
   AgentConfigUpdate,
@@ -439,10 +446,45 @@ export const api = {
     setStatus: (id: string, status: TicketStatus) =>
       request<TicketOut>(`/tickets/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
   },
+  policies: {
+    overview: () => request<PolicyOverview>("/policies"),
+    create: (data: { topic: string; text: string; title?: string; property_id?: string | null }) =>
+      request<PolicyOut>("/policies", { method: "POST", body: JSON.stringify(data) }),
+    update: (id: string, data: { text?: string; title?: string; topic?: string }) =>
+      request<PolicyOut>(`/policies/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    remove: (id: string) => request<void>(`/policies/${id}`, { method: "DELETE" }),
+    approve: (id: string) => request<{ policy: PolicyOut; replaced: boolean }>(`/policies/${id}/approve`, { method: "POST" }),
+    approveAll: (documentId?: string) =>
+      request<{ approved: number }>("/policies/approve-all", {
+        method: "POST",
+        body: JSON.stringify({ document_id: documentId ?? null }),
+      }),
+    upload: (file: File) => uploadFiles<PolicyUpload>("/policies/documents", [file], "file"),
+  },
   agentConfig: {
     get: () => request<AgentConfigOut>("/agent-config"),
     update: (data: AgentConfigUpdate) =>
       request<AgentConfigOut>("/agent-config", { method: "PUT", body: JSON.stringify(data) }),
+    setPaymentOverride: (propertyId: string, data: Partial<AgentConfig["payment"]>) =>
+      request<AgentConfigOut>(`/agent-config/properties/${propertyId}/payment`, { method: "PUT", body: JSON.stringify(data) }),
+    clearPaymentOverride: (propertyId: string) =>
+      request<AgentConfigOut>(`/agent-config/properties/${propertyId}/payment`, { method: "DELETE" }),
+  },
+  billing: {
+    get: () => request<BillingView>("/billing"),
+    connectRazorpay: (keyId: string, keySecret: string) =>
+      request<BillingView>("/billing/razorpay", { method: "PUT", body: JSON.stringify({ key_id: keyId, key_secret: keySecret }) }),
+    disconnectRazorpay: () => request<BillingView>("/billing/razorpay", { method: "DELETE" }),
+    saveTemplate: (name: BillingTemplateName, text: string) =>
+      request<BillingView>(`/billing/templates/${name}`, { method: "PUT", body: JSON.stringify({ text }) }),
+    approveTemplate: (name: BillingTemplateName) => request<BillingView>(`/billing/templates/${name}/approve`, { method: "POST" }),
+    resetTemplate: (name: BillingTemplateName) => request<BillingView>(`/billing/templates/${name}`, { method: "DELETE" }),
+    setNotifyHost: (enabled: boolean) =>
+      request<BillingView>("/billing/notify-host", { method: "PUT", body: JSON.stringify({ enabled }) }),
+  },
+  payments: {
+    list: () => request<PaymentRequestOut[]>("/payments"),
+    cancel: (id: string) => request<{ cancelled: boolean }>(`/payments/${id}/cancel`, { method: "POST" }),
   },
   faqGaps: {
     list: (params?: { propertyId?: string; startDate?: string; endDate?: string }) =>

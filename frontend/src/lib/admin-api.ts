@@ -3,6 +3,8 @@
 // session is a short-lived token from the email one-time-code login, kept in
 // localStorage and sent as a Bearer token on every /admin/* request.
 
+import type { AgentConfig } from "@/lib/types";
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
 const TOKEN_KEY = "mira_admin_session";
 
@@ -267,6 +269,90 @@ export type HostsData = {
   properties: (GroupStats & { property_id: string; name: string; city: string | null })[];
 };
 
+// GET /admin/host-roster -- one row per host from the users table (so a host
+// with no calls still appears), what is waiting on them, and the takeover queue.
+export type HostRosterRow = {
+  user_id: string;
+  name: string;
+  email: string;
+  joined_at: string;
+  status: string;
+  onboarding: "in_progress" | "completed" | null;
+  properties: number;
+  number_connected: boolean;
+  busy_mode: "host_follows_up" | "callback_invite";
+  calls: number;
+  missed_calls: number;
+  last_call_at: string | null;
+  escalations: number;
+  escalations_unread: number;
+  escalations_overdue: boolean;
+  open_tickets: number;
+  urgent_tickets: number;
+  takeover: number;
+  questions_pending: number;
+  questions_overdue: number;
+  oldest_question_at: string | null;
+  cost_inr: number;
+  attention: string[];
+};
+export type TakeoverItem = {
+  id: string;
+  user_id: string;
+  host: string;
+  property_name: string | null;
+  summary: string;
+  detail: string | null;
+  urgency: string;
+  created_at: string;
+};
+export type HostRosterData = { hosts: HostRosterRow[]; takeover: TakeoverItem[] };
+
+// GET /admin/hosts/{id}
+export type HostDetailData = {
+  summary: HostRosterRow;
+  profile: {
+    phone: string | null;
+    tier: string;
+    timezone: string;
+    lead_number: string | null;
+    notification_email: string | null;
+  };
+  agent: AgentConfig;
+  capabilities: { id: string; name: string; enabled: boolean; state: string }[];
+  properties: {
+    id: string;
+    name: string;
+    city: string | null;
+    number_connected: boolean;
+    payment_override: boolean;
+    calls: number;
+    questions_pending: number;
+  }[];
+  recent_calls: {
+    id: string;
+    created_at: string;
+    caller_number: string | null;
+    call_type: string;
+    status: string;
+    urgency: string | null;
+    duration_s: number | null;
+  }[];
+  tickets: {
+    id: string;
+    kind: string;
+    summary: string;
+    detail: string | null;
+    urgency: string;
+    created_at: string;
+    property_name: string | null;
+    guest_name: string | null;
+    guest_phone: string | null;
+  }[];
+  questions: { question: string; asked: number; first_asked_at: string; property_name: string | null; overdue: boolean }[];
+  escalations: { message: string; urgency: string; status: string; created_at: string }[];
+};
+
 export type UsageRow = {
   account: string;
   service: string;
@@ -448,6 +534,8 @@ export const adminApi = {
   performance: (f: AdminFilters) => request<PerformanceData>(`/admin/performance${qs(f)}`),
   leads: (f: AdminFilters) => request<LeadsData>(`/admin/leads${qs(f)}`),
   hosts: (f: AdminFilters) => request<HostsData>(`/admin/hosts${qs(f)}`),
+  hostRoster: (f: AdminFilters) => request<HostRosterData>(`/admin/host-roster${qs(f)}`),
+  hostDetail: (id: string, f: AdminFilters) => request<HostDetailData>(`/admin/hosts/${id}${qs(f)}`),
   usage: (f: AdminFilters) => request<UsageData>(`/admin/usage${qs(f)}`),
   health: () => request<HealthSnapshot>("/admin/health"),
   sendHealthDigest: () =>
