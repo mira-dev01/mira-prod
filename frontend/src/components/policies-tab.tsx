@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { ChevronDown, Upload } from "lucide-react";
+import { ChevronDown, Plus, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { ALL_PROPERTIES, PropertyScopePicker, type PropertyScope } from "@/components/property-scope-picker";
 import { api, ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { PolicyOut, PolicyOverview, PolicyRow, PolicyRowState } from "@/lib/types";
@@ -60,27 +61,30 @@ function summaryLine(row: PolicyRow, propertyCount: number): string {
   return "Not set";
 }
 
-/** Edit or remove one live policy. */
+/** Edit, move to another topic, or remove one live policy. */
 function ItemEditor({
   item,
+  topics,
   showTitle,
   removeLabel = "Remove",
   onChanged,
 }: {
   item: PolicyOut;
+  topics: PolicyOverview["topics"];
   showTitle?: boolean;
   removeLabel?: string;
   onChanged: () => void;
 }) {
   const [text, setText] = useState(item.text);
   const [title, setTitle] = useState(item.title);
+  const [topic, setTopic] = useState(item.topic);
   const [busy, setBusy] = useState(false);
-  const dirty = text.trim() !== item.text || (showTitle && title.trim() !== item.title);
+  const dirty = text.trim() !== item.text || (showTitle && title.trim() !== item.title) || topic !== item.topic;
 
   async function save() {
     setBusy(true);
     try {
-      await api.policies.update(item.id, { text, ...(showTitle ? { title } : {}) });
+      await api.policies.update(item.id, { text, ...(showTitle ? { title } : {}), ...(topic !== item.topic ? { topic } : {}) });
       toast.success("Saved. Mira will use this on her next call.");
       onChanged();
     } catch (err) {
@@ -105,13 +109,25 @@ function ItemEditor({
     <div className="space-y-2">
       {showTitle && <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Short title" maxLength={120} />}
       <Textarea value={text} onChange={(e) => setText(e.target.value)} maxLength={800} aria-label="Policy" />
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button size="sm" onClick={save} disabled={busy || !dirty || !text.trim()}>
           Save
         </Button>
         <Button size="sm" variant="ghost" onClick={remove} disabled={busy}>
           {removeLabel}
         </Button>
+        <Select value={topic} onValueChange={(v) => v && setTopic(v)}>
+          <SelectTrigger className="ml-auto h-8 w-52 text-xs" aria-label="Topic">
+            <SelectValue>{topics.find((t) => t.key === topic)?.label ?? topic}</SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {topics.map((t) => (
+              <SelectItem key={t.key} value={t.key}>
+                {t.key === OTHER ? "Something else" : t.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
     </div>
   );
@@ -208,7 +224,7 @@ function TopicRow({ row, overview, onChanged }: { row: PolicyRow; overview: Poli
               {row.items.map((item) => (
                 <div key={item.id} className="space-y-1">
                   <p className="text-xs text-muted-foreground">{item.property_name ? `Only ${item.property_name}` : "All properties"}</p>
-                  <ItemEditor item={item} showTitle onChanged={onChanged} />
+                  <ItemEditor item={item} topics={overview.topics} showTitle onChanged={onChanged} />
                 </div>
               ))}
               <NewPolicy topic={OTHER} propertyId={null} showTitle label="Add a note for all properties" onChanged={onChanged} />
@@ -218,7 +234,7 @@ function TopicRow({ row, overview, onChanged }: { row: PolicyRow; overview: Poli
               <div className="space-y-1">
                 <p className="text-xs font-medium">{propertyCount > 1 ? "All properties" : "Policy"}</p>
                 {hostWide ? (
-                  <ItemEditor item={hostWide} onChanged={onChanged} />
+                  <ItemEditor item={hostWide} topics={overview.topics} onChanged={onChanged} />
                 ) : (
                   <NewPolicy topic={row.topic} propertyId={null} label={propertyCount > 1 ? "Set for all properties" : "Add policy"} onChanged={onChanged} />
                 )}
@@ -241,7 +257,7 @@ function TopicRow({ row, overview, onChanged }: { row: PolicyRow; overview: Poli
                         </div>
                         <div className="pl-[18px]">
                           {item ? (
-                            <ItemEditor item={item} removeLabel="Use the policy for all properties" onChanged={onChanged} />
+                            <ItemEditor item={item} topics={overview.topics} removeLabel="Use the policy for all properties" onChanged={onChanged} />
                           ) : (
                             <NewPolicy
                               topic={row.topic}
@@ -335,6 +351,81 @@ function DraftCard({ draft, overview, onChanged }: { draft: PolicyOut; overview:
   );
 }
 
+/** Add a policy from anywhere: pick a topic (or write your own title), say which properties it covers. */
+function AddPolicyForm({ overview, onDone, onCancel }: { overview: PolicyOverview; onDone: () => void; onCancel: () => void }) {
+  const [topic, setTopic] = useState(overview.topics[0]?.key ?? "check_in_out");
+  const [title, setTitle] = useState("");
+  const [text, setText] = useState("");
+  const [scope, setScope] = useState<PropertyScope>(ALL_PROPERTIES);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const custom = topic === OTHER;
+  const manyProperties = overview.properties.length > 1;
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.policies.createScoped({
+        topic,
+        text,
+        ...(custom ? { title } : {}),
+        ...(manyProperties && !scope.all ? { property_ids: scope.ids } : {}),
+      });
+      toast.success("Saved. Mira will use this on her next call.");
+      onDone();
+    } catch (err) {
+      setError(errorMessage(err, "Couldn't save"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardContent className="space-y-3 pt-4">
+        <p className="text-sm font-medium">Add a policy</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={topic} onValueChange={(v) => v && setTopic(v)}>
+            <SelectTrigger className="w-64" aria-label="Topic">
+              <SelectValue>{custom ? "Something else (your own title)" : (overview.topics.find((t) => t.key === topic)?.label ?? topic)}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {overview.topics.map((t) => (
+                <SelectItem key={t.key} value={t.key}>
+                  {t.key === OTHER ? "Something else (your own title)" : t.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {manyProperties && <PropertyScopePicker value={scope} onChange={setScope} properties={overview.properties} />}
+        </div>
+        {custom && <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title, e.g. Parking" maxLength={120} aria-label="Title" />}
+        <Textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          maxLength={800}
+          placeholder="Write it the way a guest should hear it"
+          aria-label="Policy"
+        />
+        {error && (
+          <p role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
+        )}
+        <div className="flex items-center gap-2">
+          <Button size="sm" onClick={save} disabled={busy || !text.trim() || (custom && !title.trim())}>
+            Save
+          </Button>
+          <Button size="sm" variant="ghost" onClick={onCancel} disabled={busy}>
+            Cancel
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function PoliciesTab({
   overview,
   loading,
@@ -347,22 +438,26 @@ export function PoliciesTab({
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [approvingAll, setApprovingAll] = useState(false);
+  const [adding, setAdding] = useState(false);
+  // Shown on the page until the next upload: a toast is gone before it can be read.
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   async function handleFile(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
     setUploading(true);
+    setUploadError(null);
     try {
       const result = await api.policies.upload(file);
       const found = result.drafts.length;
       const extra = result.skipped ? ` ${result.skipped} already on file.` : "";
       if (found) toast.success(`Found ${found} ${found === 1 ? "policy" : "policies"} to review.${extra}`);
       else toast.info(result.skipped ? `Everything in this file is already on file.` : "Couldn't find any policies in this file.");
-      if (result.document.truncated) toast.warning("This file was long, so only the first part was read.");
+      if (result.document.truncated) toast.warning("Part of this file couldn't be read, so check the list for gaps.");
       onChanged();
     } catch (err) {
-      toast.error(errorMessage(err, "Couldn't read this file"));
+      setUploadError(errorMessage(err, "Couldn't read this file"));
     } finally {
       setUploading(false);
     }
@@ -391,13 +486,25 @@ export function PoliciesTab({
             Nothing is used until you approve it.
           </p>
         </div>
-        <div className="shrink-0">
+        <div className="shrink-0 space-y-1">
           <input ref={fileRef} type="file" accept={ACCEPT} className="hidden" onChange={handleFile} />
-          <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={uploading}>
-            <Upload className="mr-1.5 size-4" />
-            {uploading ? "Reading…" : "Upload a document"}
-          </Button>
-          <p className="mt-1 text-xs text-muted-foreground">PDF, Word, Excel, CSV, text or a photo</p>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setAdding(true)} disabled={!overview}>
+              <Plus className="mr-1.5 size-4" />
+              Add a policy
+            </Button>
+            <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={uploading}>
+              <Upload className="mr-1.5 size-4" />
+              {uploading ? "Reading…" : "Upload a document"}
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">Upload: PDF, Word, Excel, CSV, text or a photo</p>
+          {uploading && <p className="text-xs text-muted-foreground">Long documents are read in parts, so this can take a minute.</p>}
+          {uploadError && (
+            <p role="alert" className="max-w-xs text-sm text-destructive">
+              {uploadError}
+            </p>
+          )}
         </div>
       </div>
 
@@ -405,6 +512,16 @@ export function PoliciesTab({
         <Skeleton className="h-64 w-full" />
       ) : overview ? (
         <>
+          {adding && (
+            <AddPolicyForm
+              overview={overview}
+              onDone={() => {
+                setAdding(false);
+                onChanged();
+              }}
+              onCancel={() => setAdding(false)}
+            />
+          )}
           {overview.drafts.length > 0 && (
             <Card>
               <CardContent className="space-y-1 pt-4">

@@ -231,6 +231,88 @@ async def test_the_database_allows_only_one_live_policy_per_topic_per_scope(db_s
     await db_session.rollback()
 
 
+# ── adding to several chosen properties, moving between topics ────────────
+
+
+async def test_a_policy_added_to_chosen_properties_reaches_only_those(db_session):
+    host = await _host(db_session)
+    a, b, c = [await _property(db_session, host, n) for n in ("Sea View", "Hill Cabin", "Palm Cottage")]
+
+    created = await policy_service.create_policies(db_session, host, topic="pets", text="Small dogs welcome.", property_ids=[a.id, c.id])
+
+    assert {p.property_id for p in created} == {a.id, c.id}
+    assert _policy_facts(await _fact_texts(db_session, a)) == ["Policy (Pets): Small dogs welcome."]
+    assert _policy_facts(await _fact_texts(db_session, c)) == ["Policy (Pets): Small dogs welcome."]
+    assert _policy_facts(await _fact_texts(db_session, b)) == []  # not chosen, so nothing is said there
+    rows = {r["topic"]: r for r in (await policy_service.overview(db_session, host))["rows"]}
+    assert rows["pets"]["state"] == "property_only" and rows["pets"]["override_count"] == 2
+
+
+async def test_adding_with_no_properties_means_the_whole_portfolio(db_session):
+    host = await _host(db_session)
+    a, b = await _property(db_session, host, "Sea View"), await _property(db_session, host, "Hill Cabin")
+    (created,) = await policy_service.create_policies(db_session, host, topic="smoking", text="No smoking.")
+    assert created.property_id is None
+    for prop in (a, b):
+        assert _policy_facts(await _fact_texts(db_session, prop))
+
+
+async def test_adding_to_several_properties_is_all_or_nothing(db_session):
+    host = await _host(db_session)
+    a, b = await _property(db_session, host, "Sea View"), await _property(db_session, host, "Hill Cabin")
+    await policy_service.create_policy(db_session, host, topic="pets", text="No pets.", property_id=b.id)
+
+    with pytest.raises(PolicyError, match="Hill Cabin already has a policy for Pets"):
+        await policy_service.create_policies(db_session, host, topic="pets", text="Dogs OK.", property_ids=[a.id, b.id])
+
+    assert await db_session.scalar(select(func.count()).select_from(Policy).where(Policy.user_id == host.id)) == 1  # nothing half-created
+    assert _policy_facts(await _fact_texts(db_session, a)) == []
+
+
+async def test_custom_titled_notes_can_be_added_more_than_once(db_session):
+    host = await _host(db_session)
+    prop = await _property(db_session, host)
+    await policy_service.create_policies(db_session, host, topic="other", title="Parking", text="One car per booking.")
+    await policy_service.create_policies(db_session, host, topic="other", title="Late arrivals", text="Tell us after 10 PM.")
+    assert len(_policy_facts(await _fact_texts(db_session, prop))) == 2
+
+
+async def test_another_hosts_property_cannot_be_chosen(db_session):
+    a, b = await _host(db_session, "Aaa"), await _host(db_session, "Bbb")
+    theirs = await _property(db_session, b)
+    with pytest.raises(PolicyError) as err:
+        await policy_service.create_policies(db_session, a, topic="pets", text="x", property_ids=[theirs.id])
+    assert err.value.not_found
+
+
+async def test_a_policy_can_be_moved_to_another_topic(db_session):
+    host = await _host(db_session)
+    prop = await _property(db_session, host)
+    policy = await policy_service.create_policy(db_session, host, topic="smoking", text="No parties after 10 PM.")
+
+    moved = await policy_service.update_policy(db_session, host, policy.id, topic="parties_events")
+
+    assert moved.topic == "parties_events" and moved.title == "Parties & events"
+    assert _policy_facts(await _fact_texts(db_session, prop)) == ["Policy (Parties & events): No parties after 10 PM."]
+
+
+async def test_a_title_the_host_wrote_survives_a_move(db_session):
+    host = await _host(db_session)
+    await _property(db_session, host)
+    (note,) = await policy_service.create_policies(db_session, host, topic="other", title="Parking", text="One car per booking.")
+    moved = await policy_service.update_policy(db_session, host, note.id, topic="visitors")
+    assert moved.title == "Parking"
+
+
+async def test_moving_onto_a_topic_that_is_already_set_is_refused(db_session):
+    host = await _host(db_session)
+    await _property(db_session, host)
+    await policy_service.create_policy(db_session, host, topic="pets", text="No pets.")
+    other = await policy_service.create_policy(db_session, host, topic="smoking", text="No smoking.")
+    with pytest.raises(PolicyError, match="already a policy"):
+        await policy_service.update_policy(db_session, host, other.id, topic="pets")
+
+
 # ── other hosts ───────────────────────────────────────────────────────────
 
 
@@ -422,9 +504,213 @@ def test_garbage_from_the_model_is_an_error_not_an_invented_policy(raw):
         policy_documents.clean_items(raw, _VALID)
 
 
-def test_at_most_forty_items_are_taken():
-    raw = json.dumps({"items": [{"topic": "other", "text": f"Rule number {i}."} for i in range(80)]})
+def test_the_number_of_items_taken_is_capped():
+    raw = json.dumps({"items": [{"topic": "other", "text": f"Rule number {i}."} for i in range(policy_documents.MAX_ITEMS + 40)]})
     assert len(policy_documents.clean_items(raw, _VALID)) == policy_documents.MAX_ITEMS
+
+
+# ── long, multi-property documents are read in sections ───────────────────
+
+
+def _multi_property_document(names=("Sea View", "Hill Cabin", "Palm Cottage", "Lakeside Loft"), rules: int = 30) -> str:
+    body = "MULTI PROPERTY BOOKING POLICY\nApplies to all properties unless stated otherwise.\n"
+    for name in names:
+        body += f"\n{name.upper()} - HOUSE POLICY\n"
+        body += "".join(f"{name}: rule {i}. Guests at {name} must follow this rule number {i} carefully at all times.\n" for i in range(rules))
+    return body
+
+
+def test_a_short_document_is_one_section_unchanged():
+    assert policy_documents.split_into_sections("Pets are not allowed.\nNo smoking.") == ["Pets are not allowed.\nNo smoking."]
+
+
+def test_a_long_document_is_split_and_every_section_knows_where_it_is():
+    document = _multi_property_document()
+    sections = policy_documents.split_into_sections(document)
+
+    assert len(sections) > 1
+    assert all(len(part) <= policy_documents.CHUNK_CHARS + policy_documents.PREAMBLE_CHARS + 400 for part in sections)
+    for part in sections[1:]:
+        assert part.startswith("DOCUMENT START:\n")
+        assert "Applies to all properties unless stated otherwise." in part  # the document's own opening lines travel with every part
+    # nothing is lost or invented: every rule line appears in some section
+    for name in ("Sea View", "Hill Cabin", "Palm Cottage", "Lakeside Loft"):
+        for i in range(30):
+            assert any(f"{name}: rule {i}." in part for part in sections), (name, i)
+
+
+def test_a_section_that_starts_mid_property_says_which_property():
+    sections = policy_documents.split_into_sections(_multi_property_document(("Hill Cabin",), rules=90))
+    continued = [part for part in sections[1:] if "HOUSE POLICY" not in part.split("---\n", 1)[1].split("\n")[1]]
+    assert continued, "expected a section that begins in the middle of the property"
+    assert all("[Section: HILL CABIN - HOUSE POLICY]" in part for part in continued)
+
+
+def _section_aware_llm(monkeypatch, calls: list | None = None):
+    """A stand-in model: reads which property section it was shown and answers for it."""
+
+    async def fake(prompt):
+        document = prompt.split("DOCUMENT:\n", 1)[1]
+        if calls is not None:
+            calls.append(document)
+        found = [n for n in ("Sea View", "Hill Cabin", "Palm Cottage", "Lakeside Loft") if f"{n}:" in document or f"[Section: {n.upper()}" in document]
+        owner = found[-1] if found else None
+        return json.dumps({"items": [{"topic": "pets", "title": "Pets", "text": f"Pets rule for {owner}.", "excerpt": "x", "properties": [owner]}] if owner else []})
+
+    monkeypatch.setattr(policy_documents, "_call_text_llm", fake)
+
+
+async def test_every_section_is_read_and_each_rule_keeps_its_property(monkeypatch):
+    calls: list = []
+    _section_aware_llm(monkeypatch, calls)
+    document = _multi_property_document()
+
+    result, _ = await policy_documents.read_document(
+        "policies.txt", document.encode(), topics=policy_service.TOPICS, property_names=["Sea View", "Hill Cabin", "Palm Cottage", "Lakeside Loft"]
+    )
+
+    assert len(calls) == len(policy_documents.split_into_sections(document)) > 1  # one reading per section
+    assert not result.truncated
+    assert {p for item in result.items for p in item.properties} == {"Sea View", "Hill Cabin", "Palm Cottage", "Lakeside Loft"}  # none lost, none merged
+
+
+async def test_the_same_rule_found_in_two_sections_is_listed_once(monkeypatch):
+    async def fake(prompt):  # every section returns the rule from the repeated opening lines
+        return json.dumps({"items": [{"topic": "id_requirements", "text": "ID is required for every adult.", "excerpt": "ID"}]})
+
+    monkeypatch.setattr(policy_documents, "_call_text_llm", fake)
+    result, _ = await policy_documents.read_document(
+        "p.txt", _multi_property_document().encode(), topics=policy_service.TOPICS, property_names=[]
+    )
+    assert [i.text for i in result.items] == ["ID is required for every adult."]
+
+
+async def test_if_one_section_cannot_be_read_the_rest_still_come_through(monkeypatch):
+    monkeypatch.setattr(policy_documents, "RETRY_DELAY_SECONDS", 0)
+
+    async def fake(prompt):
+        document = prompt.split("DOCUMENT:\n", 1)[1]
+        if "Palm Cottage: rule 5." in document:
+            raise RuntimeError("json_validate_failed")
+        return json.dumps({"items": [{"topic": "pets", "text": f"Pets rule {len(document)}.", "excerpt": "x"}]})
+
+    monkeypatch.setattr(policy_documents, "_call_text_llm", fake)
+    result, _ = await policy_documents.read_document("p.txt", _multi_property_document().encode(), topics=policy_service.TOPICS, property_names=[])
+
+    assert result.items and result.truncated is True  # partial: the host is told to check for gaps
+
+
+async def test_if_nothing_can_be_read_it_is_an_error_with_advice(monkeypatch):
+    monkeypatch.setattr(policy_documents, "RETRY_DELAY_SECONDS", 0)
+
+    async def broken(prompt):
+        raise RuntimeError("provider down")
+
+    monkeypatch.setattr(policy_documents, "_call_text_llm", broken)
+    with pytest.raises(PolicyParseError, match="smaller parts"):
+        await policy_documents.read_document("p.txt", _multi_property_document().encode(), topics=policy_service.TOPICS, property_names=[])
+
+
+async def test_a_section_that_fails_once_is_tried_again(monkeypatch):
+    monkeypatch.setattr(policy_documents, "RETRY_DELAY_SECONDS", 0)
+    attempts = {"n": 0}
+
+    async def flaky(prompt):
+        attempts["n"] += 1
+        if attempts["n"] == 1:
+            raise RuntimeError("json_validate_failed")
+        return json.dumps({"items": [{"topic": "pets", "text": "Pets are not allowed.", "excerpt": "Pets"}]})
+
+    monkeypatch.setattr(policy_documents, "_call_text_llm", flaky)
+    result, _ = await policy_documents.read_document("p.txt", b"Pets are not allowed.", topics=policy_service.TOPICS, property_names=[])
+    assert attempts["n"] == 2 and [i.topic for i in result.items] == ["pets"] and not result.truncated
+
+
+async def test_a_missing_provider_fails_at_once_without_retrying(monkeypatch):
+    attempts = {"n": 0}
+
+    async def unconfigured(prompt):
+        attempts["n"] += 1
+        raise PolicyParseError("Reading documents isn't set up yet (no AI provider is configured).")
+
+    monkeypatch.setattr(policy_documents, "_call_text_llm", unconfigured)
+    with pytest.raises(PolicyParseError, match="isn't set up"):
+        await policy_documents.read_document("p.txt", _multi_property_document().encode(), topics=policy_service.TOPICS, property_names=[])
+    assert attempts["n"] == len(policy_documents.split_into_sections(_multi_property_document()))  # once per section, no retries
+
+
+class _FakeGroq:
+    """Stands in for the Groq client: records the request, returns a canned reply."""
+
+    requests: list = []
+    reply = None
+
+    def __init__(self, api_key=None):
+        self.chat = type("Chat", (), {"completions": self})()
+
+    async def create(self, **kwargs):
+        _FakeGroq.requests.append(kwargs)
+        outcome = _FakeGroq.reply(kwargs)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+
+def _groq_reply(content='{"items": []}', finish="stop"):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(choices=[SimpleNamespace(finish_reason=finish, message=SimpleNamespace(content=content))])
+
+
+async def test_the_model_is_given_room_to_list_every_rule(monkeypatch):
+    import groq
+
+    from app.config import settings
+
+    monkeypatch.setattr(groq, "AsyncGroq", _FakeGroq)
+    monkeypatch.setattr(settings, "groq_api_key", "test-key")
+    monkeypatch.setattr(settings, "groq_model", "openai/gpt-oss-120b")
+    _FakeGroq.requests, _FakeGroq.reply = [], lambda kwargs: _groq_reply()
+
+    await policy_documents._call_text_llm("prompt")
+
+    sent = _FakeGroq.requests[0]
+    assert sent["max_completion_tokens"] == policy_documents.MAX_REPLY_TOKENS >= 8000  # the default cap cut long lists off mid-JSON
+    assert sent["temperature"] == 0 and sent["reasoning_effort"] == "low"
+    assert sent["response_format"] == {"type": "json_object"}
+
+
+async def test_a_reply_cut_off_at_the_limit_is_refused_not_half_read(monkeypatch):
+    import groq
+
+    from app.config import settings
+
+    monkeypatch.setattr(groq, "AsyncGroq", _FakeGroq)
+    monkeypatch.setattr(settings, "groq_api_key", "test-key")
+    _FakeGroq.requests, _FakeGroq.reply = [], lambda kwargs: _groq_reply('{"items": [{"topic": "pe', finish="length")
+    with pytest.raises(PolicyParseError, match="more rules than fit"):
+        await policy_documents._call_text_llm("prompt")
+
+
+async def test_a_model_that_does_not_take_reasoning_effort_is_asked_again_without_it(monkeypatch):
+    import groq
+    import httpx
+
+    from app.config import settings
+
+    monkeypatch.setattr(groq, "AsyncGroq", _FakeGroq)
+    monkeypatch.setattr(settings, "groq_api_key", "test-key")
+    monkeypatch.setattr(settings, "groq_model", "openai/gpt-oss-20b")
+
+    def reply(kwargs):
+        if "reasoning_effort" in kwargs:
+            response = httpx.Response(400, request=httpx.Request("POST", "https://api.groq.com/x"))
+            return groq.BadRequestError("reasoning_effort is not supported", response=response, body=None)
+        return _groq_reply()
+
+    _FakeGroq.requests, _FakeGroq.reply = [], reply
+    assert await policy_documents._call_text_llm("prompt") == '{"items": []}'
+    assert len(_FakeGroq.requests) == 2 and "reasoning_effort" not in _FakeGroq.requests[1]
 
 
 def _llm(monkeypatch, items):
@@ -605,6 +891,25 @@ async def test_http_errors_are_plain_and_correctly_coded(client, db_session, mon
     assert (await client.delete(f"/api/v1/policies/{policy_id}", headers=theirs)).status_code == 404
     assert (await client.post(f"/api/v1/policies/{policy_id}/approve", headers=theirs)).status_code == 404
     assert (await client.get("/api/v1/policies", headers=theirs)).json()["rows"][3]["items"] == []
+
+
+async def test_http_add_to_chosen_properties(client, db_session):
+    host = await _host(db_session)
+    a, b = await _property(db_session, host, "Sea View"), await _property(db_session, host, "Hill Cabin")
+    headers = auth_headers_for(host)
+
+    made = await client.post("/api/v1/policies/scoped", headers=headers, json={"topic": "pets", "text": "Dogs welcome.", "property_ids": [str(a.id)]})
+    assert made.status_code == 201 and [p["property_name"] for p in made.json()] == ["Sea View"]
+
+    clash = await client.post("/api/v1/policies/scoped", headers=headers, json={"topic": "pets", "text": "x", "property_ids": [str(a.id), str(b.id)]})
+    assert clash.status_code == 422 and "Sea View already has" in clash.json()["detail"]
+
+    everyone = await client.post("/api/v1/policies/scoped", headers=headers, json={"topic": "smoking", "text": "No smoking."})
+    assert everyone.status_code == 201 and everyone.json()[0]["property_id"] is None
+
+    stranger = await _host(db_session, "Other")
+    theirs = await client.post("/api/v1/policies/scoped", headers=auth_headers_for(stranger), json={"topic": "pets", "text": "x", "property_ids": [str(a.id)]})
+    assert theirs.status_code == 404
 
 
 async def test_approve_all_over_http(client, db_session):

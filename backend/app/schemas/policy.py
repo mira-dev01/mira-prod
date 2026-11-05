@@ -37,6 +37,15 @@ class PolicyCreate(BaseModel):
     property_id: uuid.UUID | None = None
 
 
+class PolicyCreateScoped(BaseModel):
+    """Add one policy to the whole portfolio (no property_ids) or to each chosen property."""
+
+    topic: str
+    text: str = Field(min_length=1, max_length=TEXT_MAX)
+    title: str | None = Field(default=None, max_length=TITLE_MAX)
+    property_ids: list[uuid.UUID] | None = Field(default=None, max_length=200)
+
+
 class PolicyUpdate(BaseModel):
     text: str | None = Field(default=None, min_length=1, max_length=TEXT_MAX)
     title: str | None = Field(default=None, max_length=TITLE_MAX)

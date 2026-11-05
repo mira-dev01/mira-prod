@@ -162,7 +162,8 @@ The host's booking and house policies (cancellation, age limits, pets, …), hos
 |---|---|---|
 | `GET /policies` | One row per topic (`state`: `everyone` / `some_differ` / `property_only` / `unset`, `override_count`, live `items`), the `drafts` waiting for review, uploaded `documents`, the host's `properties`, and the `topics` list | required |
 | `POST /policies` | Write a live policy `{topic, text, title?, property_id?}` (`property_id` null = host-wide). 422 if that topic already has one in that scope | required |
-| `PATCH /policies/{id}` | Edit `text` / `title` / `topic`; an active policy is re-synced to the knowledge base at once | required |
+| `POST /policies/scoped` | `{topic, text, title?, property_ids?}` — one live policy for the whole portfolio (no `property_ids`) or for each chosen property, **all or nothing** (422 naming any property that already has one for that topic). Returns the created policies | required |
+| `PATCH /policies/{id}` | Edit `text` / `title` / move to another `topic` (the title follows the move unless the host wrote their own); an active policy is re-synced to the knowledge base at once | required |
 | `DELETE /policies/{id}` | Remove (a live one is removed from the knowledge base; removing a property override returns that property to the host-wide policy) | required |
 | `POST /policies/{id}/approve` | Make a draft live; replaces a live policy of the same topic and scope (`replaced: true`) | required |
 | `POST /policies/approve-all` | `{document_id?}` — approve every draft, or one document's | required |

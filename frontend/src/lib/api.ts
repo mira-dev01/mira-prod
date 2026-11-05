@@ -450,6 +450,9 @@ export const api = {
     overview: () => request<PolicyOverview>("/policies"),
     create: (data: { topic: string; text: string; title?: string; property_id?: string | null }) =>
       request<PolicyOut>("/policies", { method: "POST", body: JSON.stringify(data) }),
+    /** One policy for the whole portfolio (no propertyIds) or for each chosen property. */
+    createScoped: (data: { topic: string; text: string; title?: string; property_ids?: string[] }) =>
+      request<PolicyOut[]>("/policies/scoped", { method: "POST", body: JSON.stringify(data) }),
     update: (id: string, data: { text?: string; title?: string; topic?: string }) =>
       request<PolicyOut>(`/policies/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
     remove: (id: string) => request<void>(`/policies/${id}`, { method: "DELETE" }),

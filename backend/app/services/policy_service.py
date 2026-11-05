@@ -196,6 +196,49 @@ async def create_policy(
     return policy
 
 
+async def create_policies(
+    db: AsyncSession,
+    user: User,
+    *,
+    topic: str,
+    text: str,
+    title: str | None = None,
+    property_ids: list[uuid.UUID] | None = None,
+) -> list[Policy]:
+    """A policy the host wrote, live at once, for the whole portfolio (no
+    property_ids) or for each of the chosen properties. All or nothing: if any
+    target already has a policy for this topic, nothing is created and the host
+    is told which. The knowledge base is re-synced once, for what changed."""
+    topic = _check_topic(topic)
+    text = _clean_text(text)
+    targets: list[uuid.UUID | None] = list(dict.fromkeys(property_ids)) if property_ids else [None]
+    names: dict[uuid.UUID, str] = {}
+    for property_id in targets:
+        if property_id is not None:
+            prop = await _owned_property(db, user.id, property_id)
+            names[property_id] = prop.display_name or prop.name
+    if topic != OTHER:
+        clashes = [
+            names.get(pid, "your whole portfolio")
+            for pid in targets
+            if await _active_in_scope(db, user.id, pid, topic) is not None
+        ]
+        if clashes:
+            raise PolicyError(
+                f"{', '.join(clashes)} already ha{'s' if len(clashes) == 1 else 've'} a policy for {TOPIC_LABELS[topic]}. Edit that one instead."
+            )
+    created = [
+        Policy(user_id=user.id, property_id=pid, topic=topic, title=_clean_title(title, topic), text=text, status="active", review_notes=[])
+        for pid in targets
+    ]
+    db.add_all(created)
+    await db.commit()
+    await resync(db, user.id, None if None in targets else [pid for pid in targets if pid is not None])
+    for policy in created:
+        await db.refresh(policy)
+    return created
+
+
 async def update_policy(
     db: AsyncSession,
     user: User,
@@ -212,9 +255,13 @@ async def update_policy(
             raise PolicyError("There is already a policy for that topic here.")
     if text is not None:
         policy.text = _clean_text(text)
+    old_topic = policy.topic
     policy.topic = new_topic
-    if title is not None or topic is not None:
-        policy.title = _clean_title(title if title is not None else policy.title, new_topic)
+    if title is not None:
+        policy.title = _clean_title(title, new_topic)
+    elif new_topic != old_topic and policy.title == TOPIC_LABELS.get(old_topic):
+        policy.title = TOPIC_LABELS[new_topic]  # the title was just the old topic's name: follow the move
+    # (a title the host wrote themselves is kept when the policy moves)
     await db.commit()
     if policy.status == "active":
         await resync(db, user.id, _sync_scope(policy))

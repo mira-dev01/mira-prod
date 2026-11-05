@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { UseCasePicker } from "@/components/use-case-picker";
 import { useAuth } from "@/lib/auth-context";
+import { useOnboarding } from "@/lib/onboarding-context";
 import { api, ApiError } from "@/lib/api";
 import type { AirbnbHostStatus, UseCaseKey } from "@/lib/types";
 
@@ -32,8 +33,18 @@ const STEPS = ["What matters to you", "Your details", "Hosting profile", "Voice 
 export default function OnboardingPage() {
   const { refreshUser } = useAuth();
   const router = useRouter();
+  // The dashboard's gate (app/dashboard/layout.tsx) lets a host in only once the
+  // server-side onboarding record is "completed". Finishing this form must
+  // complete that record AND update the shared state before navigating, or the
+  // gate still sees an unfinished host and sends them straight back to step one.
+  const { state: onboardingState, setState: setOnboardingState } = useOnboarding();
   const [submitting, setSubmitting] = useState(false);
   const [step, setStep] = useState(0);
+
+  // Already finished (e.g. a bookmarked /dashboard/onboarding): nothing to do here.
+  useEffect(() => {
+    if (onboardingState?.status === "completed") router.replace("/dashboard");
+  }, [onboardingState?.status, router]);
 
   const [name, setName] = useState("");
   const [businessName, setBusinessName] = useState("");
@@ -124,6 +135,7 @@ export default function OnboardingPage() {
         interests,
       });
       await refreshUser();
+      setOnboardingState(await api.onboarding.complete());
       // No live progress banner for this import: PendingImportBanner now
       // watches GET /onboarding's server-persisted first_property record
       // (app/services/onboarding_service.py), a separate system from this

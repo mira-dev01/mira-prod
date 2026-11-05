@@ -11,6 +11,7 @@ from app.schemas.policy import (
     PolicyApproveAllOut,
     PolicyApproveOut,
     PolicyCreate,
+    PolicyCreateScoped,
     PolicyOut,
     PolicyOverviewOut,
     PolicyUpdate,
@@ -49,6 +50,21 @@ async def create_policy(
     except PolicyError as exc:
         raise _http(exc)
     return await _out(db, current_user, policy)
+
+
+@router.post("/scoped", response_model=list[PolicyOut], status_code=status.HTTP_201_CREATED)
+async def create_policies_for_properties(
+    payload: PolicyCreateScoped, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+) -> list[dict]:
+    """One policy for the whole portfolio, or for each of the chosen properties (all or nothing)."""
+    try:
+        created = await policy_service.create_policies(
+            db, current_user, topic=payload.topic, text=payload.text, title=payload.title, property_ids=payload.property_ids
+        )
+    except PolicyError as exc:
+        raise _http(exc)
+    names, filenames = await policy_service.label_maps(db, current_user.id)
+    return [policy_service.policy_out(p, names, filenames) for p in created]
 
 
 @router.post("/documents", response_model=PolicyUploadOut, status_code=status.HTTP_201_CREATED)
