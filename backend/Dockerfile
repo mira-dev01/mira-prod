@@ -22,6 +22,13 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Optional: WebRTC echo cancellation for phone calls (app/voice/echo_canceller.py,
+# enabled by ECHO_CANCELLATION_ENABLED). No prebuilt Linux wheel exists, so this
+# compiles from source. Deliberately separate from requirements.txt and allowed to
+# fail: if the build breaks, the deploy still succeeds and calls run without echo
+# cancellation (the processor fails open when the package is missing).
+RUN pip install --no-cache-dir aec-audio-processing || echo "aec-audio-processing unavailable; continuing without echo cancellation"
+
 COPY . .
 
 EXPOSE 8000
