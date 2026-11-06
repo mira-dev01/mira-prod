@@ -201,6 +201,7 @@ def format_property_pitch_line(card: PropertyCard, index: int) -> str:
     return (
         f"{index}. {card.spoken_name}, a {descriptor}{amenity_phrase} in {card.city or 'unlisted city'} "
         f"for ₹{card.nightly_rate:,.0f} a night{_stay_price_clause(card)}, sleeps {card.max_guests}{reason_clause}. "
+        f"{card.stay_options_note + ' ' if card.stay_options_note else ''}"
         f"(property_id: {card.property_id})"
     )
 

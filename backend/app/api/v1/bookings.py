@@ -23,9 +23,11 @@ from app.schemas.booking import (
     BookingOut,
     BookingPriceConfirmation,
     BookingReconciliationOut,
+    BookingScopeUpdate,
     ReconciliationQueueOut,
 )
 from app.services import booking_reconciliation_service as reconciliation
+from app.services import stay_scope
 from app.services.calendar_service import is_available
 
 logger = logging.getLogger(__name__)
@@ -61,6 +63,9 @@ async def create_booking(
     payload: BookingCreate, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ) -> Booking:
     property_ = await get_owned_property(db, payload.property_id, current_user)
+    if payload.stay_scope == "rooms":
+        if error := stay_scope.validate_room_request(property_, payload.rooms_booked, None):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, error)
     data = payload.model_dump(exclude={"final_booking_price", "lead_id"})
     booking = Booking(**data)
     if payload.final_booking_price is not None:
@@ -214,6 +219,35 @@ async def update_booking_kind(
     booking.kind = payload.kind
     if payload.kind == "reservation" and booking.final_booking_price is None and booking.price_status == "unknown":
         booking.price_status = "pending_confirmation"
+    await db.commit()
+    await db.refresh(booking)
+    return await _reconciliation_view(db, booking, property_.name)
+
+
+@router.patch("/{booking_id}/scope", response_model=BookingReconciliationOut)
+async def update_booking_scope(
+    booking_id: uuid.UUID,
+    payload: BookingScopeUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> BookingReconciliationOut:
+    """Host correction of what a booking takes -- the entire place or N rooms.
+    An Airbnb room booking arrives as one room (the feed has no room count),
+    so the host sets the real number here. A booking synced from an Airbnb
+    feed keeps the scope of the feed it came from (that feed owns it: moving it
+    would orphan it from its own cancellations) -- only its room count can
+    change."""
+    booking, property_ = await _get_owned_booking(db, booking_id, current_user)
+    if booking.source_uid is not None and payload.stay_scope != booking.stay_scope:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "This booking comes from an Airbnb calendar feed, so what it covers can't be switched. "
+            "You can still correct the number of rooms.",
+        )
+    if payload.stay_scope == "rooms":
+        if error := stay_scope.validate_room_request(property_, payload.rooms_booked, None):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, error)
+    booking.stay_scope, booking.rooms_booked = payload.stay_scope, payload.rooms_booked
     await db.commit()
     await db.refresh(booking)
     return await _reconciliation_view(db, booking, property_.name)

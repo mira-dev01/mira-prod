@@ -26,7 +26,7 @@ _COUNT_RE = re.compile(r"(\d+)\s+(bedroom|bed|bathroom)s?", re.IGNORECASE)
 # categories on every import (delete + recreate) so re-uploading a refreshed
 # scrape doesn't pile up duplicate FAQ entries, while leaving any FAQ entries
 # the host added by hand (different categories) untouched.
-AUTO_FAQ_CATEGORIES = {"layout", "neighbourhood", "booking", "reputation", "description", "safety"}
+AUTO_FAQ_CATEGORIES = {"layout", "neighbourhood", "booking", "reputation", "description", "safety", "booking_scope"}
 
 
 
@@ -355,6 +355,52 @@ async def parse_airbnb_listing(raw: dict[str, Any], *, photo_folder: str | None 
     return {"fields": fields, "faq_entries": faq_entries}
 
 
+def _location_details_text(record: dict[str, Any]) -> str:
+    """Bright Data's `location_details` is either a string or, when there's no
+    `location_details_html`, a list of {"title", "value"} objects. Passing the
+    list straight to _strip_html crashed the whole listing's import."""
+    html_text = record.get("location_details_html")
+    if isinstance(html_text, str) and html_text.strip():
+        return _strip_html(html_text)
+    raw = record.get("location_details")
+    if isinstance(raw, str):
+        return _strip_html(raw)
+    parts: list[str] = []
+    for item in raw or []:
+        if isinstance(item, dict):
+            title, value = item.get("title"), item.get("value")
+            text = f"{title}: {value}" if title and value else (title or value)
+        else:
+            text = item
+        if text:
+            parts.append(_strip_html(str(text)))
+    return "\n".join(parts)
+
+
+def _extract_booking_scope_faq(record: dict[str, Any]) -> dict[str, str] | None:
+    """Whether this listing books the entire place or only a room in it,
+    from Bright Data's `category` ("Entire Place" / "Room"). Stored as an FAQ
+    entry so it lands in the property's knowledge base -- the agent can only
+    speak what's on file, and the two are priced and sold very differently."""
+    category = str(record.get("category") or "").strip().lower()
+    details = [str(d) for d in (record.get("details") or []) if d]
+    detail_text = f" Listing details: {', '.join(details)}." if details else ""
+    if category == "room":
+        answer = (
+            "This listing is for a room only, not the entire place. The guest books a room within the "
+            "home and the rest of the property is not exclusively theirs." + detail_text
+        )
+    elif category == "entire place":
+        answer = "This listing is for the entire place: guests have the whole property to themselves." + detail_text
+    else:
+        return None
+    return {
+        "question": "Is this the entire place or just a room?",
+        "answer": answer,
+        "category": "booking_scope",
+    }
+
+
 async def parse_bright_data_listing(record: dict[str, Any], *, photo_folder: str | None = None) -> dict[str, Any]:
     """Adapts one Bright Data Airbnb Scraper API record (dataset
     gd_ld7ll037kqy322v05 -- see app/integrations/bright_data_client.py) into
@@ -413,9 +459,9 @@ async def parse_bright_data_listing(record: dict[str, Any], *, photo_folder: str
                 if parsed:
                     fields["check_out_time"] = parsed
 
-    location_details = record.get("location_details")
+    location_details = _location_details_text(record)
     if location_details:
-        fields["neighborhood_info"] = _strip_html(record.get("location_details_html") or location_details)
+        fields["neighborhood_info"] = location_details
 
     amenity_names: list[str] = []
     for group in record.get("amenities") or []:
@@ -454,10 +500,13 @@ async def parse_bright_data_listing(record: dict[str, Any], *, photo_folder: str
         faq_entries.append(
             {
                 "question": "What's the neighbourhood like?",
-                "answer": _strip_html(record.get("location_details_html") or location_details),
+                "answer": location_details,
                 "category": "neighbourhood",
             }
         )
+    booking_scope_faq = _extract_booking_scope_faq(record)
+    if booking_scope_faq:
+        faq_entries.append(booking_scope_faq)
     if record.get("is_guest_favorite") or record.get("is_supperhost"):
         faq_entries.append(
             {

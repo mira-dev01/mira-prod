@@ -18,6 +18,7 @@ from app.services.property.card import (
     build_property_card,
     comparison_notes,
     match_reasons_for_card,
+    stay_options_note,
 )
 from app.services.property.pitch_formatter import (
     PartiallyAvailableProperty,
@@ -60,7 +61,14 @@ def build_recommendation_result(
     def _card(p: Property) -> PropertyCard:
         # The applicable stay price (offer included) rides on the card, so
         # the pitch, the guard and ConversationState all see the same number.
-        return dataclasses.replace(build_property_card(p), stay_price=stay_prices.get(p.id))
+        # stay_options_note is "" unless the property is also rented by the room.
+        return dataclasses.replace(
+            build_property_card(p),
+            stay_price=stay_prices.get(p.id),
+            stay_options_note=stay_options_note(
+                p, args.num_guests if args else None, args.purpose_of_stay if args else None
+            ),
+        )
 
     near_budget_cards = [_card(p) for p in (near_budget or [])]
     upsell_card = _card(upsell) if upsell is not None else None

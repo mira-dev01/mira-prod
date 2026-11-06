@@ -343,6 +343,8 @@ def build_voice_tools(
         check_in: str,
         check_out: str,
         num_guests: int | None = None,
+        stay_scope: str | None = None,
+        rooms: int | None = None,
     ):
         """Check if property is available for given dates.
 
@@ -351,6 +353,10 @@ def build_voice_tools(
             check_in: Check-in date, ISO format (YYYY-MM-DD).
             check_out: Check-out date, ISO format (YYYY-MM-DD).
             num_guests: Number of guests, if known.
+            stay_scope: ONLY for a property offered both ways (see "Stay options" in the property
+                details you were given). "entire_place" (the default) or "rooms" to check
+                individual rooms. Pass what the guest is actually booking.
+            rooms: How many rooms, when stay_scope is "rooms".
         """
         if await _collect_gate_blocks(
             params,
@@ -366,7 +372,12 @@ def build_voice_tools(
         async with AsyncSessionLocal() as db:
             try:
                 args = CheckCalendarArgs(
-                    property_id=property_id, check_in=check_in, check_out=check_out, num_guests=num_guests
+                    property_id=property_id,
+                    check_in=check_in,
+                    check_out=check_out,
+                    num_guests=num_guests,
+                    stay_scope=stay_scope,
+                    rooms=rooms,
                 )
 
                 # Phase 4b.1 (documentation/agent-conversation-improvement.md):
@@ -439,6 +450,8 @@ def build_voice_tools(
         apply_discounts: bool = False,
         requested_early_checkin: bool = False,
         requested_late_checkout: bool = False,
+        stay_scope: str | None = None,
+        rooms: int | None = None,
     ):
         """Get total price including base rate, cleaning fee, taxes.
 
@@ -466,6 +479,10 @@ def build_voice_tools(
             requested_late_checkout: Set True ONLY if the guest explicitly asked about
                 checking out later than the standard time. Same rule as
                 requested_early_checkin -- never volunteered unprompted.
+            stay_scope: ONLY for a property offered both ways (see "Stay options" in the property
+                details you were given). "entire_place" (the default) or "rooms" to price
+                individual rooms at the room rate. Pass what the guest is actually booking.
+            rooms: How many rooms, when stay_scope is "rooms".
         """
         if await _collect_gate_blocks(
             params,
@@ -489,6 +506,8 @@ def build_voice_tools(
                     apply_discounts=apply_discounts or _stay_offer_pitched(property_id),
                     requested_early_checkin=requested_early_checkin,
                     requested_late_checkout=requested_late_checkout,
+                    stay_scope=stay_scope,
+                    rooms=rooms,
                 )
 
                 if _is_bookable(args.check_in):
@@ -539,6 +558,8 @@ def build_voice_tools(
                         breakdown.total,
                         nights=breakdown.nights,
                         is_estimate=breakdown.is_estimate,
+                        stay_scope=args.stay_scope,
+                        rooms=args.rooms,
                     )
                     # Phase 4F: a plain get_pricing quote supersedes any
                     # earlier negotiation as "the current price fact" --
@@ -784,6 +805,8 @@ def build_voice_tools(
         guest_offer: float | None = None,
         num_guests: int | None = None,
         guest_loyalty: GuestLoyalty = "new",
+        stay_scope: str | None = None,
+        rooms: int | None = None,
     ):
         """Calculate negotiated rate based on rules and occupancy.
 
@@ -803,6 +826,9 @@ def build_voice_tools(
                 can you offer?") -- you'll get back the best price to propose directly.
             num_guests: Number of guests, if known.
             guest_loyalty: One of new, returning, frequent.
+            stay_scope: Same as in get_pricing -- negotiate the stay the guest was quoted:
+                "entire_place" (default) or "rooms".
+            rooms: How many rooms, when stay_scope is "rooms".
         """
         if await _collect_gate_blocks(
             params,
@@ -825,6 +851,8 @@ def build_voice_tools(
                     guest_offer=guest_offer,
                     num_guests=num_guests,
                     guest_loyalty=guest_loyalty,
+                    stay_scope=stay_scope,
+                    rooms=rooms,
                 )
 
                 # Phase 4D (Phase 4C Section L, ratified Decisions Log item
@@ -927,6 +955,8 @@ def build_voice_tools(
                         negotiation_result.counter_offer,
                         nights=nights,
                         is_estimate=negotiation_result.is_estimate,
+                        stay_scope=args.stay_scope,
+                        rooms=args.rooms,
                     )
                     state.record_negotiation_decision(
                         property_name=property_.name,

@@ -233,6 +233,14 @@ export type PropertyOut = {
   max_guests: number;
   minimum_nights: number;
   saturday_minimum_stay_enabled: boolean;
+  // Rent by the room: the same property can also be booked room by room. The
+  // entire-place price/capacity are base_price/max_guests above.
+  room_rental_enabled: boolean;
+  room_base_price: number | null;
+  rentable_room_count: number | null;
+  room_max_guests: number | null;
+  room_details: string | null;
+  room_ical_url: string | null;
   airbnb_listing_id: string | null;
   smart_price_estimate: number | null;
   smart_price_sample_size: number;
@@ -281,6 +289,12 @@ export type PropertyCreate = {
   max_guests?: number;
   minimum_nights?: number;
   saturday_minimum_stay_enabled?: boolean;
+  room_rental_enabled?: boolean;
+  room_base_price?: number | null;
+  rentable_room_count?: number | null;
+  room_max_guests?: number | null;
+  room_details?: string | null;
+  room_ical_url?: string | null;
   exact_airbnb_pricing?: boolean;
   is_premium?: boolean;
   // DEPRECATED -- superseded by the account-global Host call hours window
@@ -427,6 +441,9 @@ export type PriceStatus = "confirmed" | "pending_confirmation" | "unknown";
 export type AttributionStatus = "confirmed" | "probable" | "not_attributed" | "unknown";
 export type PriceChoice = "mira_conversation" | "outside_mira" | "not_confirmed_yet";
 
+/** What a booking takes: the whole property, or some of its rooms. */
+export type StayScope = "entire_place" | "rooms";
+
 export type BookingOut = {
   id: string;
   property_id: string;
@@ -438,6 +455,8 @@ export type BookingOut = {
   platform: string;
   status: string;
   kind: BookingKind;
+  stay_scope: StayScope;
+  rooms_booked: number | null;
   created_at: string;
   initial_price: number | null;
   negotiated_price: number | null;
@@ -465,6 +484,8 @@ export type BookingCreate = {
   check_out: string;
   platform?: string;
   kind?: BookingKind;
+  stay_scope?: StayScope;
+  rooms_booked?: number | null;
   final_booking_price?: number | null;
   lead_id?: string | null;
 };

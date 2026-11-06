@@ -484,6 +484,8 @@ class ConversationState:
         total: float,
         nights: int | None = None,
         is_estimate: bool = False,
+        stay_scope: str | None = None,
+        rooms: int | None = None,
     ) -> None:
         """Phase 4.1 -- always overwrites, never merges: a later quote (a
         discount applied on request, or different dates) is always the
@@ -500,6 +502,10 @@ class ConversationState:
             "total": total,
             "nights": nights,
             "is_estimate": is_estimate,
+            # Rent by the room: what the quote was FOR. None/"entire_place" for
+            # the whole property (every quote before this existed).
+            "stay_scope": stay_scope,
+            "rooms": rooms,
         }
 
     def record_negotiation_decision(

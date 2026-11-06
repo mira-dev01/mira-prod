@@ -23,6 +23,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { PoliciesTab } from "@/components/policies-tab";
 import { PropertyFaqManager } from "@/components/property-faq-manager";
 import { PropertyFormFields } from "@/components/property-form-fields";
+import { PropertyRoomRentalTab } from "@/components/property-room-rental-tab";
 import { PropertyPhotoCarousel } from "@/components/property-photo-carousel";
 import { PropertyPhotosManager } from "@/components/property-photos-manager";
 import { TalkToMiraDialog } from "@/components/talk-to-mira-dialog";
@@ -49,6 +50,7 @@ const emptyForm: PropertyCreate = {
   max_guests: 4,
   minimum_nights: 1,
   saturday_minimum_stay_enabled: false,
+  room_rental_enabled: false,
   exact_airbnb_pricing: false,
   is_premium: false,
 };
@@ -65,6 +67,8 @@ function normalizeForSubmit(form: PropertyCreate): PropertyCreate {
     usp: form.usp || null,
     house_rules: form.house_rules || null,
     neighborhood_info: form.neighborhood_info || null,
+    room_details: form.room_details || null,
+    room_ical_url: form.room_ical_url || null,
   };
 }
 
@@ -87,6 +91,12 @@ function propertyToForm(property: PropertyOut): PropertyCreate {
     max_guests: property.max_guests,
     minimum_nights: property.minimum_nights,
     saturday_minimum_stay_enabled: property.saturday_minimum_stay_enabled,
+    room_rental_enabled: property.room_rental_enabled,
+    room_base_price: property.room_base_price,
+    rentable_room_count: property.rentable_room_count,
+    room_max_guests: property.room_max_guests,
+    room_details: property.room_details ?? "",
+    room_ical_url: property.room_ical_url ?? "",
     exact_airbnb_pricing: property.exact_airbnb_pricing,
     is_premium: property.is_premium,
   };
@@ -322,9 +332,9 @@ function PropertiesList() {
               not deleted: the dialog/polling flow below is untouched, so this
               is a one-line revert once Bright Data's account status is
               confirmed stable again. */}
-          {/* <Button variant="outline" onClick={() => setAirbnbUrlDialogOpen(true)}>
+          <Button variant="outline" onClick={() => setAirbnbUrlDialogOpen(true)}>
             Import from Airbnb
-          </Button> */}
+          </Button> 
           <Button variant="ghost" disabled={importing} onClick={() => importInputRef.current?.click()}>
             {importing ? "Importing…" : "Import from file (advanced)"}
           </Button>
@@ -549,28 +559,47 @@ function PropertiesList() {
         }
       >
         <form id="edit-property-form" onSubmit={handleSaveEdit} className="space-y-4">
-          {editing && (
-            <div className="space-y-2">
-              <p className="text-micro pt-2 text-muted-foreground">Photos</p>
-              <PropertyPhotosManager
-                propertyId={editing.id}
-                photos={editForm.photos ?? []}
-                onChange={(photos) => setEditForm((f) => ({ ...f, photos }))}
-                propertyName={editing.name}
-              />
-            </div>
-          )}
-          <PropertyFormFields form={editForm} onChange={setEditForm} />
-          {editing &&
-            (loadingFaq ? (
-              <Skeleton className="h-24 w-full" />
-            ) : (
-              <PropertyFaqManager
-                propertyId={editing.id}
-                entries={editFaqEntries}
-                onChange={setEditFaqEntries}
-              />
-            ))}
+          {/* One property, two ways to rent it: the Entire place tab is the
+              property exactly as it always was; the Rooms tab is renting it
+              room by room. Both save together with the one Save button. */}
+          <Tabs key={editing?.id ?? "none"} defaultValue="entire">
+            <TabsList>
+              <TabsTrigger value="entire">Entire place</TabsTrigger>
+              <TabsTrigger value="rooms">
+                Rooms
+                {editForm.room_rental_enabled && (
+                  <span className="ml-1.5 inline-block size-1.5 rounded-full bg-(--status-live)" aria-label="On" />
+                )}
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="entire" className="space-y-4 pt-4">
+              {editing && (
+                <div className="space-y-2">
+                  <p className="text-micro pt-2 text-muted-foreground">Photos</p>
+                  <PropertyPhotosManager
+                    propertyId={editing.id}
+                    photos={editForm.photos ?? []}
+                    onChange={(photos) => setEditForm((f) => ({ ...f, photos }))}
+                    propertyName={editing.name}
+                  />
+                </div>
+              )}
+              <PropertyFormFields form={editForm} onChange={setEditForm} />
+              {editing &&
+                (loadingFaq ? (
+                  <Skeleton className="h-24 w-full" />
+                ) : (
+                  <PropertyFaqManager
+                    propertyId={editing.id}
+                    entries={editFaqEntries}
+                    onChange={setEditFaqEntries}
+                  />
+                ))}
+            </TabsContent>
+            <TabsContent value="rooms" className="pt-4">
+              <PropertyRoomRentalTab form={editForm} onChange={setEditForm} />
+            </TabsContent>
+          </Tabs>
         </form>
       </RightPanel>
     </div>

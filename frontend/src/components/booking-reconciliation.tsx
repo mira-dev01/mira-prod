@@ -12,7 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StatusChip } from "@/components/status-chip";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError } from "@/lib/api";
-import { formatINR, formatStayDates, nightsBetween } from "@/lib/format";
+import { formatINR, formatStayDates, nightsBetween, stayScopeLabel } from "@/lib/format";
 import { useLeadLabels } from "@/lib/leads";
 import { cn } from "@/lib/utils";
 import type { BookingReconciliation, PriceChoice } from "@/lib/types";
@@ -66,6 +66,7 @@ export function BookingSummary({ item }: { item: BookingReconciliation }) {
         {formatStayDates(booking.check_in, booking.check_out)} · {nights} night{nights === 1 ? "" : "s"}
         <span className="capitalize"> · {booking.platform}</span>
       </p>
+      <p className="text-muted-foreground">Covers: {stayScopeLabel(booking.stay_scope, booking.rooms_booked)}</p>
       <p className="text-muted-foreground">Guest: {guestLabel(item)}</p>
       <p className="text-muted-foreground">Mira conversation: {conversation ? "Found" : "Not found"}</p>
     </div>
@@ -287,6 +288,59 @@ function PriceSummary({ item, onEdit }: { item: BookingReconciliation; onEdit: (
 }
 
 /**
+ * How many rooms a room booking covers. An Airbnb room booking arrives as one
+ * room (the calendar feed has no room count), so the host sets the real number
+ * here. Only shown for room bookings.
+ */
+function RoomsBookedControl({
+  item,
+  onChanged,
+}: {
+  item: BookingReconciliation;
+  onChanged: (updated: BookingReconciliation) => void;
+}) {
+  const { booking } = item;
+  const [value, setValue] = useState(String(booking.rooms_booked ?? 1));
+  const [saving, setSaving] = useState(false);
+  const changed = Number(value) !== (booking.rooms_booked ?? 1);
+
+  async function save() {
+    setSaving(true);
+    try {
+      onChanged(await api.bookings.updateScope(booking.id, { stay_scope: "rooms", rooms_booked: Number(value) }));
+      toast.success("Rooms updated");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Couldn't update the rooms");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="space-y-2">
+      <h3 className="text-sm font-medium">Rooms booked</h3>
+      <div className="flex items-center gap-2">
+        <Input
+          type="number"
+          min={1}
+          className="w-24"
+          aria-label="Rooms booked"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+        />
+        <Button type="button" size="sm" variant="outline" disabled={!changed || saving || Number(value) < 1} onClick={save}>
+          {saving ? "Saving…" : "Save"}
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        The other rooms stay bookable. If a guest asks for the entire place on these dates, Mira holds it and asks you to
+        resolve the double occupancy.
+      </p>
+    </section>
+  );
+}
+
+/**
  * Everything for one booking: summary, the matched conversation, "Mira
  * match?" and the final price. `item` is owned by the caller so a list can
  * update its own row from `onChanged`.
@@ -316,6 +370,8 @@ export function BookingReconciliationBody({
   return (
     <div className="space-y-5">
       <BookingSummary item={item} />
+
+      {booking.stay_scope === "rooms" && <RoomsBookedControl key={booking.rooms_booked ?? 1} item={item} onChanged={onChanged} />}
 
       {isReservation && item.conversation && (
         <section className="space-y-3">

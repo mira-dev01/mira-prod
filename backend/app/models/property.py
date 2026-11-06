@@ -142,6 +142,28 @@ class Property(UUIDPkMixin, TimestampMixin, Base):
     # matching that field's existing precedent.
     saturday_minimum_stay_enabled: Mapped[bool] = mapped_column(default=False, server_default="false")
 
+    # --- Rent by the room (see app/services/stay_scope.py) ---
+    # The same physical property can be rented as the ENTIRE PLACE (the
+    # existing base_price / max_guests / bedroom_count / ical_url above) or
+    # by the ROOM (the columns below). One Property row, one identifier and
+    # one calendar, so a room stay and a whole-place stay can never be
+    # booked over each other. room_rental_enabled False (every property
+    # today) means nothing below is read anywhere.
+    room_rental_enabled: Mapped[bool] = mapped_column(default=False, server_default="false")
+    # Nightly rate for ONE room; a stay of N rooms is N times this.
+    room_base_price: Mapped[float | None] = mapped_column(Numeric(10, 2))
+    # How many rooms can be rented out separately (not necessarily every
+    # bedroom -- the host may keep one back).
+    rentable_room_count: Mapped[int | None] = mapped_column()
+    room_max_guests: Mapped[int | None] = mapped_column()  # per room
+    # What a guest gets in a room (bed, bathroom, shared areas). Goes into the
+    # property's knowledge base; never invented.
+    room_details: Mapped[str | None] = mapped_column(Text)
+    # Separate Airbnb calendar feed for the by-the-room listing, when the host
+    # lists the rooms on Airbnb as their own listing. Bookings from it are
+    # stored as room bookings on this same property.
+    room_ical_url: Mapped[str | None] = mapped_column(String(1024))
+
     # Property Memory (memory-architecture-plan.md section 5) -- the one
     # genuinely new piece beyond consolidating existing fields (house_rules/
     # neighborhood_info/amenities/faq already cover everything else).

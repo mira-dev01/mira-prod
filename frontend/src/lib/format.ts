@@ -43,3 +43,12 @@ export function nightsBetween(checkIn: string, checkOut: string): number {
   };
   return Math.round((toUtc(checkOut) - toUtc(checkIn)) / 86_400_000);
 }
+
+/** What a stay covers, as the calendar and booking panel say it: "Entire place" or "2 rooms". */
+export function stayScopeLabel(scope: "entire_place" | "rooms", rooms: number | null | undefined): string {
+  if (scope === "rooms") {
+    const n = rooms ?? 1;
+    return `${n} room${n === 1 ? "" : "s"}`;
+  }
+  return "Entire place";
+}

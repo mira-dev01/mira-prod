@@ -190,9 +190,18 @@ def build_fact_chunks(property_, faq_entries, policies=None) -> list[FactDraft]:
     host-edited answer wins over an identical imported sentence."""
     from app.services.policy_service import TOPIC_LABELS
 
+    from app.services import stay_scope
+
     drafts: list[FactDraft] = []
+    rents_by_the_room = stay_scope.offers_rooms(property_)
 
     for entry in faq_entries or []:
+        # The importer records whether the Airbnb listing it came from was the
+        # entire place or a room ("booking_scope"). Once the host rents this
+        # property both ways, that one-way statement would contradict the
+        # room-rental fact below, so the latter speaks for the property.
+        if rents_by_the_room and getattr(entry, "category", None) == "booking_scope":
+            continue
         drafts.extend(_faq_facts(entry.question, entry.answer, str(entry.id)))
     for item in property_.faq or []:
         drafts.extend(_faq_facts(item.get("question", ""), item.get("answer", ""), "legacy"))
@@ -217,6 +226,20 @@ def build_fact_chunks(property_, faq_entries, policies=None) -> list[FactDraft]:
         drafts.append(
             FactDraft(f"The minimum stay is {property_.minimum_nights} nights.", "structured", "minimum_nights")
         )
+
+    if rents_by_the_room:
+        drafts.append(
+            FactDraft(
+                f"This property can be booked as the entire place (sleeps up to {property_.max_guests} guests) or by "
+                f"the room: {property_.rentable_room_count} room{'s' if property_.rentable_room_count != 1 else ''} "
+                f"can be rented separately, with up to {property_.room_max_guests} "
+                f"guest{'s' if property_.room_max_guests != 1 else ''} per room.",
+                "structured",
+                "room_rental",
+            )
+        )
+        for piece in _pack_sentences(property_.room_details or ""):
+            drafts.append(FactDraft(f"Room: {piece}", "structured", "room_details"))
 
     if property_.usp:
         for piece in _pack_sentences(property_.usp):

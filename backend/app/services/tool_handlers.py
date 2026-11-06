@@ -22,6 +22,7 @@ from app.integrations import email_client, twilio_client
 from app.integrations.email_templates import build_escalation_email_html, build_photos_email_html
 from app.models.call_session import CallSession
 from app.models.property import Property
+from app.models.ticket import Ticket
 from app.models.user import User
 from app.schemas.tool import (
     CheckCalendarArgs,
@@ -52,6 +53,7 @@ from app.services import (
     payment_service,
     price_event_service,
     pricing_engine,
+    stay_scope,
     technician_service,
     ticket_service,
 )
@@ -275,6 +277,97 @@ async def _on_hold_answer(
     )
 
 
+def _resolve_scope(property_: Property, stay_scope_arg: str | None, rooms_arg: int | None) -> tuple[str, int | None]:
+    """(scope, rooms) a tool call is about. Anything but an explicit "rooms" is
+    the entire place -- including every call about a property that is not
+    rented by the room -- so existing behaviour is the default."""
+    if stay_scope_arg == stay_scope.ROOMS:
+        return stay_scope.ROOMS, rooms_arg or 1
+    return stay_scope.ENTIRE_PLACE, None
+
+
+def _room_bookings_phrase(conflicts) -> str:
+    rooms = sum(c.rooms_booked or 1 for c in conflicts if c.stay_scope == stay_scope.ROOMS)
+    return f"{rooms} room{'s' if rooms != 1 else ''}"
+
+
+async def _double_occupancy_answer(
+    db: AsyncSession,
+    property_: Property,
+    args: CheckCalendarArgs,
+    conflicts,
+    host_user_id: uuid.UUID | None,
+    call_session_id: uuid.UUID | None,
+    guest_profile_id: uuid.UUID | None,
+) -> str:
+    """The guest asked for the ENTIRE place on dates where one or more other
+    guests already have ROOMS in it. That is not a plain "unavailable": the
+    host may be able to move the room guests or decline the whole-place
+    request, and only the host can decide. So: the guest hears there is a
+    temporary hold on this booking, and the host gets one specific
+    double-occupancy escalation to resolve (once per call and dates, however
+    often the guest asks again), which also leaves a ticket that stays open
+    until the host closes it."""
+    details = "; ".join(
+        f"{c.check_in:%d %b} to {c.check_out:%d %b} ({c.rooms_booked or 1} room"
+        f"{'s' if (c.rooms_booked or 1) != 1 else ''}{', ' + c.guest_name if c.guest_name else ''})"
+        for c in conflicts
+        if c.stay_scope == stay_scope.ROOMS
+    )
+    phone, _ = await _caller_of(db, call_session_id)
+    reason = (
+        f"Double occupancy at {property_.name}: a guest wants the ENTIRE place from {args.check_in:%d %b %Y} to "
+        f"{args.check_out:%d %b %Y}, but it already has room bookings on those dates -- {details}. Mira has told the "
+        "guest there is a temporary hold on the whole-place booking while you resolve this. Please decide whether the "
+        "room booking(s) stay (and the whole-place request is declined) or the dates can be freed, and tell the guest."
+    )
+    already_raised = call_session_id is not None and (
+        await db.scalar(
+            select(Ticket.id).where(
+                Ticket.call_session_id == call_session_id,
+                Ticket.kind == "escalation",
+                Ticket.summary == reason[:255],
+            )
+        )
+        is not None
+    )
+    if host_user_id is not None and not already_raised:
+        try:
+            await handle_escalate_to_host(
+                db,
+                EscalateToHostArgs(
+                    property_id=str(property_.id),
+                    reason=reason,
+                    urgency="high",
+                    guest_phone=phone,
+                    call_summary=(
+                        f"Guest asked for the entire place at {property_.name}, {args.check_in:%d %b} to "
+                        f"{args.check_out:%d %b}, for {args.num_guests or 'an unspecified number of'} guests."
+                    ),
+                ),
+                call_session_id,
+                host_user_id,
+                guest_profile_id=guest_profile_id,
+            )
+        except Exception:  # noqa: BLE001 - the guest still hears the right thing; the host alert is best-effort here
+            logger.exception("double-occupancy escalation failed for property %s", property_.id)
+
+    rooms_left = ""
+    if stay_scope.offers_rooms(property_):
+        one_room = await calendar_service.scope_availability(
+            db, property_, stay_scope.ROOMS, args.check_in, args.check_out, 1
+        )
+        if one_room.available:
+            rooms_left = " Individual rooms are still open for those dates if a smaller group would do."
+    return (
+        f"{property_.name} can't be confirmed as the ENTIRE place for those dates right now: another guest has "
+        f"{_room_bookings_phrase(conflicts)} booked inside it. Tell the guest there is a TEMPORARY HOLD on this "
+        "booking -- the overlap needs the host's decision, so you can't confirm the whole place yet. The host has "
+        "been alerted about the double occupancy and will resolve it, and the guest will be updated with the "
+        f"outcome. Do not promise the dates and do not say who booked, how, or for how much.{rooms_left}"
+    )
+
+
 async def handle_check_calendar(
     db: AsyncSession,
     args: CheckCalendarArgs,
@@ -300,7 +393,11 @@ async def handle_check_calendar(
     if past_error := _past_dates_error(args.check_in):
         return past_error
 
-    if args.num_guests is not None and args.num_guests > property_.max_guests:
+    scope, rooms = _resolve_scope(property_, args.stay_scope, args.rooms)
+    if scope == stay_scope.ROOMS:
+        if error := stay_scope.validate_room_request(property_, rooms, args.num_guests):
+            return error
+    elif args.num_guests is not None and args.num_guests > property_.max_guests:
         return f"{property_.name} sleeps up to {property_.max_guests} guests, which is fewer than {args.num_guests}."
 
     nights_requested = (args.check_out - args.check_in).days
@@ -347,7 +444,13 @@ async def handle_check_calendar(
             "Would a longer stay work?"
         )
 
-    available = await calendar_service.is_available(db, property_.id, args.check_in, args.check_out)
+    if scope == stay_scope.ROOMS:
+        availability = await calendar_service.scope_availability(
+            db, property_, stay_scope.ROOMS, args.check_in, args.check_out, rooms
+        )
+        available = availability.available
+    else:
+        available = await calendar_service.is_available(db, property_.id, args.check_in, args.check_out)
     nights = (args.check_out - args.check_in).days
 
     if host_user_id is not None:
@@ -371,14 +474,40 @@ async def handle_check_calendar(
         on_checked(property_, available)
 
     if available:
+        what = f" ({stay_scope.scope_label(scope, rooms)})" if scope == stay_scope.ROOMS else ""
         return (
-            f"{property_.name} is AVAILABLE from {args.check_in.isoformat()} to {args.check_out.isoformat()} "
+            f"{property_.name}{what} is AVAILABLE from {args.check_in.isoformat()} to {args.check_out.isoformat()} "
             f"({nights} night{'s' if nights != 1 else ''})."
         )
 
     held = await _on_hold_answer(db, property_, args.check_in, args.check_out, call_session_id)
     if held is not None:
         return held
+
+    if scope == stay_scope.ROOMS:
+        reason = (
+            "the entire place is booked for part of those dates"
+            if availability.reason == "entire_place_taken"
+            else f"fewer than {rooms} room{'s' if rooms != 1 else ''} are free on every night"
+        )
+        window = await calendar_service.next_available_window_for_scope(
+            db, property_, stay_scope.ROOMS, args.check_in, nights, rooms
+        )
+        base = f"{property_.name} has no {stay_scope.scope_label(scope, rooms)} available for those dates ({reason})."
+        if window:
+            return f"{base} The next open window of {nights} night{'s' if nights != 1 else ''} is {window[0].isoformat()} to {window[1].isoformat()}."
+        return f"{base} Nothing similar opens up in the next 90 days."
+
+    # Whole place requested and the only thing in the way is other guests'
+    # ROOM bookings: that is a double occupancy for the host to resolve, not a
+    # plain "not available".
+    occupancy = await calendar_service.scope_availability(
+        db, property_, stay_scope.ENTIRE_PLACE, args.check_in, args.check_out
+    )
+    if occupancy.reason == "rooms_taken":
+        return await _double_occupancy_answer(
+            db, property_, args, occupancy.conflicts, host_user_id, call_session_id, guest_profile_id
+        )
 
     window = await calendar_service.next_available_window(db, property_.id, args.check_in, nights)
     if window:
@@ -430,6 +559,14 @@ async def handle_get_pricing(
     if has_exact_dates and (past_error := _past_dates_error(args.check_in)):
         return past_error
 
+    # Rent by the room: a room stay is priced by the same engine, handed the
+    # room rate (stay_scope.priced_property); for the entire place `priced`
+    # is the property itself, so that path is unchanged.
+    scope, rooms = _resolve_scope(property_, args.stay_scope, args.rooms)
+    if scope == stay_scope.ROOMS and (error := stay_scope.validate_room_request(property_, rooms, args.num_guests)):
+        return ToolBusinessError(error)
+    priced = stay_scope.priced_property(property_, scope, rooms)
+
     # Phase 6 (Negotiation engine) self-review fix: GOLDEN_RULES tells the
     # model get_pricing will surface a minimum-stay requirement -- this must
     # actually be true, not just check_calendar. Same check as
@@ -467,7 +604,7 @@ async def handle_get_pricing(
 
     breakdown = await pricing_engine.calculate_price(
         db,
-        property_,
+        priced,
         args.check_in,
         args.check_out,
         apply_discounts=args.apply_discounts,
@@ -498,8 +635,9 @@ async def handle_get_pricing(
     # pricing_engine.calculate_price) -- base_total only differs from total
     # when a length-of-stay discount applies, so that's the only case worth
     # spelling out separately.
+    subject = property_.name if scope == stay_scope.ENTIRE_PLACE else f"{property_.name} ({stay_scope.scope_label(scope, rooms)})"
     summary = (
-        f"For {property_.name}, that's ₹{breakdown.per_night_avg:,.0f} per night, "
+        f"For {subject}, that's ₹{breakdown.per_night_avg:,.0f} per night, "
         f"₹{breakdown.total:,.0f} total for {breakdown.nights} night(s)"
     )
     if breakdown.discount_amount:
@@ -581,6 +719,15 @@ async def handle_send_payment_link(
         return ToolBusinessError(
             "There is no confirmed price for this property and these exact dates yet. Get the exact dates, quote the price "
             "with get_pricing, and have the guest agree to it before sending a payment link."
+        )
+    if quote.get("stay_scope") == stay_scope.ROOMS:
+        # Payment holds block the dates for the whole property and the payment
+        # sweeper reads any overlapping booking as a clash, so a hold for a
+        # room would wrongly close the other rooms and raise false double-
+        # booking alerts. Room stays are confirmed by the host instead.
+        return ToolBusinessError(
+            "Online payment isn't available for room bookings. Tell the guest the host will confirm the room "
+            "booking and send the payment details. Make sure the host knows (escalate_to_host)."
         )
     guest_phone, lead_id = await _caller_of(db, call_session_id)
     guest_phone = _normalize_phone(phone) if phone else guest_phone
@@ -1318,6 +1465,10 @@ async def handle_negotiate_rate(
     if has_exact_dates and (past_error := _past_dates_error(args.check_in)):
         return past_error
 
+    scope, rooms = _resolve_scope(property_, args.stay_scope, args.rooms)
+    if scope == stay_scope.ROOMS and (error := stay_scope.validate_room_request(property_, rooms, args.num_guests)):
+        return ToolBusinessError(error)
+
     if host_user_id is not None:
         await lead_service.backfill_lead_from_engagement(
             db,
@@ -1333,7 +1484,7 @@ async def handle_negotiate_rate(
 
     result = await pricing_engine.negotiate_rate(
         db,
-        property_,
+        stay_scope.priced_property(property_, scope, rooms),
         args.check_in,
         args.check_out,
         args.guest_offer,

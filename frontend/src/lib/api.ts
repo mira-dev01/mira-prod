@@ -8,6 +8,7 @@ import type {
   AnalyticsTimeseriesMetric,
   BookingCreate,
   BookingKind,
+  StayScope,
   BookingOut,
   BookingReconciliation,
   CallHoursStatus,
@@ -325,6 +326,8 @@ export const api = {
       }),
     updateKind: (id: string, kind: BookingKind) =>
       request<BookingReconciliation>(`/bookings/${id}/kind`, { method: "PATCH", body: JSON.stringify({ kind }) }),
+    updateScope: (id: string, data: { stay_scope: StayScope; rooms_booked?: number | null }) =>
+      request<BookingReconciliation>(`/bookings/${id}/scope`, { method: "PATCH", body: JSON.stringify(data) }),
   },
   pricing: {
     rules: (params?: { startDate?: string; endDate?: string }) =>

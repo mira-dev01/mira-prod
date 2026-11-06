@@ -72,7 +72,8 @@ d7a2b5c9e1f3 -> e9b3c7d1a4f2   users.agent_config + properties.agent_config_over
 e9b3c7d1a4f2 -> a5d9e2c7b1f4   tickets table (durable follow-ups behind what the agent promises a guest)
 a5d9e2c7b1f4 -> b6e1d3f8a2c5   leads.busy_recovery_callback_due_at (busy-call no-callback check)
 b6e1d3f8a2c5 -> c7f2a9d4b8e1   policies + policy_documents (booking policies the agent answers from)
-c7f2a9d4b8e1 -> d8a3b6e1f4c7   payment_requests + hold_waiters + users.billing_config (payment links and date holds) (HEAD)
+c7f2a9d4b8e1 -> d8a3b6e1f4c7   payment_requests + hold_waiters + users.billing_config (payment links and date holds)
+d8a3b6e1f4c7 -> f4b8d2a6c1e9   rent by the room: properties.room_* + bookings.stay_scope/rooms_booked (HEAD)
 ```
 
 If a session ever fails with demo-login 500s or a missing-column error, check `alembic heads` against the running DB first — a DB left behind on an old revision is a common cause (see `project_state.md` at the repo root for the 2026-07-15 incident).
@@ -158,6 +159,9 @@ Unique on `(property_id, source_uid)`. iCal-synced or host-entered calendar data
 | `mira_attribution_call_session_id`, `mira_attribution_lead_id` | UUID FK, SET NULL | The matched conversation |
 | `mira_attribution_signals` | JSONB list | Why it matched, shown to the host |
 | `mira_attribution_reviewed_at` | DateTime, nullable | Host's Yes/No time |
+
+
+**Rent by the room** (`app/services/stay_scope.py`): one property row is bookable as the entire place (the existing `base_price`/`max_guests`/`ical_url`) and, when `room_rental_enabled`, by the room (`room_base_price` per room per night, `rentable_room_count`, `room_max_guests` per room, `room_details`, `room_ical_url` for a separate Airbnb room-listing calendar). `room_rental_enabled` false (every property by default) means nothing room-related is read anywhere. `bookings.stay_scope` (`entire_place` default | `rooms`) and `rooms_booked` say what a booking takes. `calendar_service.is_available` is unchanged (any overlapping booking blocks the whole place); `scope_availability` is the scope-aware check. A whole-place request over guests' room bookings is a "double occupancy": the guest hears a temporary hold and the host gets one high-urgency escalation + ticket (`tool_handlers._double_occupancy_answer`). Payment links are deliberately not offered for room stays (the payment sweeper reads any overlapping booking as a clash).
 
 ### `price_events` (`PriceEvent`, `app/models/price_event.py`)
 

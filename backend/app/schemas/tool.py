@@ -8,7 +8,7 @@ import re
 from datetime import date
 from typing import Literal
 
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.services.property.budget import BudgetBasis, BudgetConstraint, coerce_budget_basis, normalize_budget
 
@@ -48,11 +48,18 @@ def _normalize_phone(value: str) -> str:
     return digits[-10:] if len(digits) > 10 else digits
 
 
+StayScopeArg = Literal["entire_place", "rooms"]
+
+
 class CheckCalendarArgs(BaseModel):
     property_id: str
     check_in: date
     check_out: date
     num_guests: int | None = None
+    # Only meaningful for a property that is also rented by the room; left
+    # unset it is the entire place, exactly as before.
+    stay_scope: StayScopeArg | None = None
+    rooms: int | None = Field(default=None, ge=1)
 
 
 class GetPricingArgs(BaseModel):
@@ -71,6 +78,8 @@ class GetPricingArgs(BaseModel):
     nights: int | None = None
     num_guests: int
     apply_discounts: bool = True
+    stay_scope: StayScopeArg | None = None
+    rooms: int | None = Field(default=None, ge=1)
     # Phase 6 (Negotiation engine): only True if the GUEST explicitly asked
     # about early check-in / late checkout -- never set proactively just
     # because a property happens to have a fee configured for it. Quoting a
@@ -180,6 +189,8 @@ class NegotiateRateArgs(BaseModel):
     guest_offer: float | None = None
     num_guests: int | None = None
     guest_loyalty: GuestLoyalty = "new"
+    stay_scope: StayScopeArg | None = None
+    rooms: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")
     def _check_dates_xor_nights(self) -> "NegotiateRateArgs":

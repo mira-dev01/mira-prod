@@ -25,7 +25,7 @@ from app.models.guest_profile import GuestProfile
 from app.services.amenity_taxonomy import NOTABLE_AMENITY_TAGS
 from app.services.call_service import BROWSER_TEST_CALLER_NUMBER
 from app.schemas.agent_config import AgentConfig
-from app.services import agent_config_service, notification_preferences_service
+from app.services import agent_config_service, notification_preferences_service, stay_scope
 from app.services.guest_booking_service import BookingMatch
 from app.models.property import Property
 from app.models.user import User
@@ -881,6 +881,31 @@ def _persona_and_escalation_sections(host: User) -> list[str]:
     return sections
 
 
+def _stay_options_section(property_: Property) -> str:
+    """Only for a property that is rented BOTH as the entire place and by the
+    room (stay_scope.offers_rooms). "" for every other property, so their
+    prompts -- and the prompt-cache prefix -- are exactly what they were."""
+    if not stay_scope.offers_rooms(property_):
+        return ""
+    return (
+        f"- Stay options: this one property is rented TWO ways. THE ENTIRE PLACE: ₹{float(property_.base_price):,.0f} "
+        f"a night, up to {property_.max_guests} guests. BY THE ROOM: ₹{float(property_.room_base_price):,.0f} a night "
+        f"per room, {property_.rentable_room_count} room{'s' if property_.rentable_room_count != 1 else ''} "
+        f"available separately, up to {property_.room_max_guests} guest"
+        f"{'s' if property_.room_max_guests != 1 else ''} per room."
+    )
+
+
+STAY_OPTIONS_RULES = """
+Stay options (for any property marked as rented both as the entire place and by the room):
+- It is the SAME property either way -- one place, one calendar. The guest is choosing how much of it to book, not between two different properties.
+- Find out what they are coming for and how many people. A party, celebration, event or a group too big for the rooms alone -> recommend the ENTIRE PLACE at its price. A night stay for a few people -> recommend the number of ROOMS they need at the room price. Do not push rooms for a party. If you don't know yet, ask which it is before quoting.
+- Always pass stay_scope ("entire_place" or "rooms", plus rooms) to check_calendar, get_pricing and negotiate_rate for what the guest is actually booking, and say which one a price is for. A quote is for one way of booking only.
+- If check_calendar says there is a temporary hold on the entire place because of someone's room booking, tell the guest exactly that -- there is a temporary hold on this booking while the host resolves the overlap, and they will be updated. Never say who has the rooms, never promise those dates, and don't offer a payment link for them.
+- Payment links are not available for room bookings: say the host will confirm the room booking and send payment details, and make sure the host knows.
+"""
+
+
 def build_system_prompt(
     property_: Property,
     guest: GuestProfile | None,
@@ -912,6 +937,8 @@ def build_system_prompt(
         f"- max guests: {property_.max_guests}\n"
         f"- base nightly rate: ₹{float(property_.base_price):,.0f}"
     )
+    if stay_options := _stay_options_section(property_):
+        sections.append(stay_options + "\n" + STAY_OPTIONS_RULES)
 
     # Deliberately NOT inlined here: the description, house rules,
     # neighborhood info, amenities, FAQ answers and seasonal notes. They reach
@@ -1462,8 +1489,11 @@ def build_lead_system_prompt(
                 f"- {property_.display_name or property_.name} (property_id: {property_.id}) -- "
                 f"{property_.city or 'unknown city'}, ₹{float(property_.base_price):,.0f}/night, "
                 f"sleeps {property_.max_guests}"
+                + (" (entire place; also rentable by the room)" if stay_scope.offers_rooms(property_) else "")
             )
         sections.append("\nProperty portfolio:\n" + "\n".join(lines))
+        if any(stay_scope.offers_rooms(p) for p in properties):
+            sections.append(STAY_OPTIONS_RULES)
         locations_section = _locations_section(properties)
         if locations_section:
             sections.append(locations_section)

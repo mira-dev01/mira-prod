@@ -71,6 +71,10 @@ class PropertyCard:
     # evaluate_stay_prices) when it was evaluated -- None when the stay
     # length is unknown and nothing beyond base_price is known.
     stay_price: "StayPrice | None" = None
+    # Rent by the room: "" for a property rented only as the entire place (every
+    # property until a host turns room rental on). Otherwise the stay options
+    # and which one suits THIS guest -- see stay_options_note below.
+    stay_options_note: str = ""
 
     @property
     def nightly_rate(self) -> float:
@@ -300,3 +304,31 @@ def comparison_notes(
             notes[card.property_id] = f"sleeps {abs(guest_gap)} {direction} than {cheapest.spoken_name}"
 
     return notes
+
+
+def stay_options_note(property_, num_guests: int | None, purpose_of_stay: str | None) -> str:
+    """How a property rented both ways is described in a recommendation: the
+    two ways to book it with their prices, and which one fits this guest
+    (stay_scope.recommend_scope -- a party wants the entire place, a night stay
+    for a few people wants rooms). "" when the property is only rented as the
+    entire place, so nothing changes for any such property."""
+    from app.services import stay_scope
+
+    if not stay_scope.offers_rooms(property_):
+        return ""
+    room_price = float(property_.room_base_price)
+    note = (
+        f"Also rentable by the room: ₹{room_price:,.0f} a night per room "
+        f"({property_.rentable_room_count} room{'s' if property_.rentable_room_count != 1 else ''}, "
+        f"up to {property_.room_max_guests} guest{'s' if property_.room_max_guests != 1 else ''} each). "
+        f"The ₹{float(property_.base_price):,.0f} a night above is for the ENTIRE place."
+    )
+    pick = stay_scope.recommend_scope(property_, num_guests, purpose_of_stay)
+    if pick is None:
+        return note + " Ask whether it's a party or celebration (entire place) or just a stay (rooms) before pricing."
+    if pick.scope == stay_scope.ROOMS:
+        return note + (
+            f" Best fit for this guest: {pick.rooms} room{'s' if pick.rooms != 1 else ''} at "
+            f"₹{room_price * pick.rooms:,.0f} a night ({pick.reason})."
+        )
+    return note + f" Best fit for this guest: the ENTIRE place at ₹{float(property_.base_price):,.0f} a night ({pick.reason})."

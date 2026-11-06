@@ -13,7 +13,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import type { BookingOut, PropertyOut } from "@/lib/types";
+import { stayScopeLabel } from "@/lib/format";
+import type { BookingOut, PropertyOut, StayScope } from "@/lib/types";
 
 // Booking-source color mapping. Deliberately NOT drawn from the StatusTone
 // system (live/pending/progress/destructive) -- those tones carry a
@@ -58,6 +59,9 @@ export default function CalendarPage() {
   const [blockGuestPhone, setBlockGuestPhone] = useState<string | null>(null);
   const [blockPrice, setBlockPrice] = useState("");
   const [blockKind, setBlockKind] = useState<"reservation" | "blocked">("reservation");
+  // Only offered for a property that is also rented by the room.
+  const [blockScope, setBlockScope] = useState<StayScope>("entire_place");
+  const [blockRooms, setBlockRooms] = useState("1");
   const [submitting, setSubmitting] = useState(false);
 
   // Clicking a booked cell opens the booking's details (price, "Mira
@@ -124,7 +128,20 @@ export default function CalendarPage() {
     setBlockGuestPhone(null);
     setBlockPrice("");
     setBlockKind("reservation");
+    setBlockScope("entire_place");
+    setBlockRooms("1");
     setBlockOpen(true);
+  }
+
+  const blockPropertyOffersRooms = !!properties?.find((p) => p.id === blockPropertyId)?.room_rental_enabled;
+
+  /** What a cell stands for on a room-rented property: "E" when the entire place is taken, else the
+   *  number of rooms booked that night ("2R"). Properties not rented by the room show nothing extra. */
+  function scopeMark(propertyId: string, day: number): string | null {
+    const booked = allBookingsForDay(propertyId, day);
+    if (booked.length === 0) return null;
+    if (booked.some((b) => b.stay_scope !== "rooms")) return "E";
+    return `${booked.reduce((sum, b) => sum + (b.rooms_booked ?? 1), 0)}R`;
   }
 
   async function handleBlockDates(e: React.FormEvent) {
@@ -140,6 +157,8 @@ export default function CalendarPage() {
         guest_phone: blockGuestPhone,
         platform: "manual",
         kind: blockKind,
+        stay_scope: blockPropertyOffersRooms ? blockScope : "entire_place",
+        rooms_booked: blockPropertyOffersRooms && blockScope === "rooms" ? Number(blockRooms) : null,
         final_booking_price: blockKind === "reservation" && blockPrice ? Number(blockPrice) : null,
       });
       toast.success("Dates blocked");
@@ -221,6 +240,15 @@ export default function CalendarPage() {
             <span className="inline-block h-3 w-3 rounded-sm" style={{ background: bookingSourceColor.manual }} />
             Manual block
           </button>
+          {(properties ?? []).some((p) => p.room_rental_enabled) && (
+            <span
+              className="flex items-center gap-1"
+              title="On properties rented by the room: E = the entire place is booked, 2R = 2 rooms are booked that night"
+            >
+              <span className="rounded-sm border px-1 text-[10px] leading-4">E</span> entire place
+              <span className="ml-1 rounded-sm border px-1 text-[10px] leading-4">2R</span> rooms
+            </span>
+          )}
           {needsConfirmationCount > 0 && (
             <span
               className="flex items-center gap-1"
@@ -304,7 +332,7 @@ export default function CalendarPage() {
                         key={day}
                         title={
                           visibleBooking
-                            ? `${visibleBooking.platform} -- ${visibleBooking.guest_name ?? "no name"} (${visibleBooking.check_in} → ${visibleBooking.check_out})${showMarker ? " -- needs confirmation" : ""} -- click for details`
+                            ? `${visibleBooking.platform} -- ${visibleBooking.guest_name ?? "no name"} -- ${stayScopeLabel(visibleBooking.stay_scope, visibleBooking.rooms_booked)} (${visibleBooking.check_in} → ${visibleBooking.check_out})${showMarker ? " -- needs confirmation" : ""} -- click for details`
                             : hiddenByFilter
                               ? "Booking hidden by the source filter above"
                               : "Available -- click to block"
@@ -326,6 +354,11 @@ export default function CalendarPage() {
                           !visibleBooking && !hiddenByFilter && "hover:bg-accent"
                         )}
                       >
+                        {property.room_rental_enabled && visibleBooking && (
+                          <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-[10px] font-medium text-foreground/80">
+                            {scopeMark(property.id, day)}
+                          </span>
+                        )}
                         {showMarker && (
                           <span
                             aria-label="Needs confirmation"
@@ -421,6 +454,37 @@ export default function CalendarPage() {
               </SelectContent>
             </Select>
           </div>
+          {blockPropertyOffersRooms && (
+            <div className="space-y-2">
+              <Label>What is being booked?</Label>
+              <div className="flex items-center gap-2">
+                <Select value={blockScope} onValueChange={(v) => v && setBlockScope(v as StayScope)}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue>
+                      {(value: string) => (value === "rooms" ? "Some of the rooms" : "The entire place")}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="entire_place">The entire place</SelectItem>
+                    <SelectItem value="rooms">Some of the rooms</SelectItem>
+                  </SelectContent>
+                </Select>
+                {blockScope === "rooms" && (
+                  <Input
+                    type="number"
+                    min={1}
+                    className="w-24"
+                    aria-label="Number of rooms"
+                    value={blockRooms}
+                    onChange={(e) => setBlockRooms(e.target.value)}
+                  />
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Rooms leave the rest of the property bookable; the entire place closes all of it.
+              </p>
+            </div>
+          )}
           {blockKind === "reservation" && (
           <div className="space-y-2">
             <Label htmlFor="block-price">Final booking price (optional, total stay ₹)</Label>

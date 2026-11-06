@@ -118,8 +118,34 @@ _KB_FIELDS = frozenset(
         "check_out_time",
         "max_guests",
         "minimum_nights",
+        "room_rental_enabled",
+        "room_base_price",
+        "rentable_room_count",
+        "room_max_guests",
+        "room_details",
     }
 )
+
+
+_ROOM_RENTAL_FIELDS = ("room_rental_enabled", "room_base_price", "rentable_room_count", "room_max_guests")
+
+
+def _check_room_rental_complete(values: dict) -> None:
+    """Turning on renting by the room needs what a room is made of: a price,
+    how many rooms, and how many guests each sleeps. A half-filled tab would
+    leave the agent unable to price or offer a room, so it is refused up front
+    rather than silently doing nothing."""
+    if not values.get("room_rental_enabled"):
+        return
+    if not (
+        (values.get("room_base_price") or 0) > 0
+        and (values.get("rentable_room_count") or 0) > 0
+        and (values.get("room_max_guests") or 0) > 0
+    ):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "To rent by the room, set the price per room, how many rooms can be rented, and the guests per room.",
+        )
 
 
 async def _resync_facts(db: AsyncSession, property_: Property) -> None:
@@ -335,6 +361,7 @@ async def import_snapshot_records(user_id: uuid.UUID, records: list[dict]) -> li
 async def create_property(
     payload: PropertyCreate, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ) -> Property:
+    _check_room_rental_complete(payload.model_dump())
     property_ = Property(
         user_id=current_user.id,
         **payload.model_dump(exclude={"faq"}),
@@ -376,6 +403,8 @@ async def update_property(
 ) -> Property:
     property_ = await get_owned_property(db, property_id, current_user)
     updates = payload.model_dump(exclude_unset=True)
+    if updates.keys() & set(_ROOM_RENTAL_FIELDS):
+        _check_room_rental_complete({f: updates.get(f, getattr(property_, f)) for f in _ROOM_RENTAL_FIELDS})
     if "faq" in updates and updates["faq"] is not None:
         updates["faq"] = [item if isinstance(item, dict) else item.model_dump() for item in payload.faq]
     if "amenities" in updates:

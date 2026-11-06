@@ -1,10 +1,10 @@
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from typing import Literal
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.ical_client import fetch_ical
@@ -26,6 +26,114 @@ async def is_available(db: AsyncSession, property_id: uuid.UUID, check_in: date,
         )
     )
     return overlapping is None
+
+
+@dataclass(frozen=True)
+class ConflictingBooking:
+    check_in: date
+    check_out: date
+    stay_scope: str
+    rooms_booked: int | None
+    kind: str
+    guest_name: str | None
+
+
+@dataclass(frozen=True)
+class ScopeAvailability:
+    """Availability of a property for ONE way of booking it (the entire place,
+    or some of its rooms). `reason` is "" when available, else:
+
+    - "entire_place_taken": something that takes the whole property overlaps
+      (an entire-place booking, a host block, a payment hold).
+    - "rooms_taken": ENTIRE place requested, and the only thing in the way is
+      one or more guests' ROOM bookings. This is the double-occupancy case --
+      the dates are not simply gone, a human has to decide.
+    - "rooms_full": ROOMS requested, no entire-place booking, but not enough
+      rooms are left on at least one night."""
+
+    available: bool
+    reason: str = ""
+    conflicts: tuple[ConflictingBooking, ...] = ()
+
+
+async def scope_availability(
+    db: AsyncSession,
+    property_: Property,
+    scope: str,
+    check_in: date,
+    check_out: date,
+    rooms: int = 1,
+) -> ScopeAvailability:
+    """Same overlap predicate as is_available (status confirmed,
+    existing.check_in < check_out AND existing.check_out > check_in), but aware
+    of what each overlapping booking takes. An entire-place stay needs the
+    whole property free; a rooms stay needs no entire-place booking and enough
+    unbooked rooms on EVERY night. is_available itself is unchanged -- it still
+    answers "is the whole property free", which is what every other caller
+    (payments, recommendations) means."""
+    rows = (
+        await db.scalars(
+            select(Booking).where(
+                Booking.property_id == property_.id,
+                Booking.status == "confirmed",
+                Booking.check_in < check_out,
+                Booking.check_out > check_in,
+            )
+        )
+    ).all()
+    conflicts = tuple(
+        ConflictingBooking(b.check_in, b.check_out, b.stay_scope, b.rooms_booked, b.kind, b.guest_name)
+        for b in sorted(rows, key=lambda b: b.check_in)
+    )
+    if not rows:
+        return ScopeAvailability(True)
+
+    # A room booking only counts as a guest's rooms when a guest is behind it:
+    # a reservation, or something entered/held here (no iCal uid -- a host's
+    # manual entry or a payment hold). An Airbnb "Not available" event on a
+    # room feed is a calendar block with no guest and closes the whole listing.
+    def has_guest(b: Booking) -> bool:
+        return b.kind == "reservation" or b.source_uid is None
+
+    takes_whole_property = [b for b in rows if b.stay_scope != "rooms" or not has_guest(b)]
+    if scope == "rooms":
+        if any(b.stay_scope != "rooms" for b in rows):
+            return ScopeAvailability(False, "entire_place_taken", conflicts)
+        capacity = property_.rentable_room_count or 0
+        night = check_in
+        while night < check_out:
+            used = sum(
+                (b.rooms_booked or 1) if has_guest(b) else capacity
+                for b in rows
+                if b.check_in <= night < b.check_out
+            )
+            if used + rooms > capacity:
+                return ScopeAvailability(False, "rooms_full", conflicts)
+            night += timedelta(days=1)
+        return ScopeAvailability(True, "", conflicts)
+
+    if takes_whole_property:
+        return ScopeAvailability(False, "entire_place_taken", conflicts)
+    return ScopeAvailability(False, "rooms_taken", conflicts)
+
+
+async def next_available_window_for_scope(
+    db: AsyncSession,
+    property_: Property,
+    scope: str,
+    from_date: date,
+    nights: int,
+    rooms: int = 1,
+    horizon_days: int = 90,
+) -> tuple[date, date] | None:
+    """next_available_window for a given way of booking the property."""
+    candidate = from_date
+    for _ in range(horizon_days):
+        checkout = candidate + timedelta(days=nights)
+        if (await scope_availability(db, property_, scope, candidate, checkout, rooms)).available:
+            return candidate, checkout
+        candidate += timedelta(days=1)
+    return None
 
 
 AvailabilityStatus = Literal["full", "partial", "none"]
@@ -170,8 +278,24 @@ async def next_available_window(
 
 
 async def sync_property_ical(db: AsyncSession, property_: Property) -> int:
-    """Fetch the property's iCal feed and upsert events into bookings,
-    keyed by iCal UID for idempotency. Returns count of events processed.
+    """Sync the property's iCal feed(s) into bookings. The entire-place feed
+    (ical_url) is what it always was; a property rented by the room may also
+    have a separate room feed (room_ical_url), whose events are stored as room
+    bookings on this same property. Each feed only ever adds, updates and
+    removes its OWN bookings, so syncing one can never delete the other's.
+    Returns count of events processed."""
+    processed = 0
+    if property_.ical_url:
+        processed += await _sync_feed(db, property_, property_.ical_url, "entire_place")
+    if property_.room_ical_url:
+        processed += await _sync_feed(db, property_, property_.room_ical_url, "rooms")
+    return processed
+
+
+async def _sync_feed(db: AsyncSession, property_: Property, url: str, scope: str) -> int:
+    """Fetch one iCal feed and upsert events into bookings, keyed by iCal UID
+    for idempotency. `scope` is what the feed's bookings take: "entire_place"
+    or "rooms".
 
     Each NEWLY seen event is classified (reservation vs no-guest block) and
     run through booking reconciliation (find the matching Mira conversation,
@@ -180,10 +304,8 @@ async def sync_property_ical(db: AsyncSession, property_: Property) -> int:
     is logged and leaves the booking created as pending_confirmation, so it
     can never break or roll back the sync itself."""
     from app.services import booking_reconciliation_service as reconciliation
-    if not property_.ical_url:
-        return 0
 
-    events = await fetch_ical(property_.ical_url)
+    events = await fetch_ical(url)
     current_uids = {event.uid for event in events}
 
     existing_by_uid = {
@@ -198,6 +320,8 @@ async def sync_property_ical(db: AsyncSession, property_: Property) -> int:
     new_bookings: list[Booking] = []
     for event in events:
         existing = existing_by_uid.get(event.uid)
+        if existing and existing.stay_scope != scope:
+            continue  # the same UID already belongs to the other feed's booking; never fight over it
         if existing:
             existing.check_in = event.check_in
             existing.check_out = event.check_out
@@ -215,6 +339,9 @@ async def sync_property_ical(db: AsyncSession, property_: Property) -> int:
                 guest_name=event.summary,
                 guest_phone_last4=event.phone_last4,
                 kind=reconciliation.classify_ical_kind(event.summary),
+                stay_scope=scope,
+                # iCal carries no room count; one room until the host says otherwise.
+                rooms_booked=1 if scope == "rooms" else None,
             )
             db.add(booking)
             new_bookings.append(booking)
@@ -224,8 +351,10 @@ async def sync_property_ical(db: AsyncSession, property_: Property) -> int:
     # dates stayed permanently blocked in Mira even after Airbnb released
     # them, since this loop only ever upserted, never reconciled removals.
     # Confirmed live: dates Airbnb showed as open were still blocked here.
+    # Only this feed's own bookings (scope) -- the other feed's are not in
+    # `events` and must not be mistaken for cancellations.
     for source_uid, existing in existing_by_uid.items():
-        if source_uid not in current_uids:
+        if existing.stay_scope == scope and source_uid not in current_uids:
             await db.delete(existing)
 
     if new_bookings:
@@ -247,7 +376,7 @@ async def sync_property_ical(db: AsyncSession, property_: Property) -> int:
 
 
 async def sync_all_properties(db: AsyncSession) -> dict[str, int]:
-    properties = (await db.scalars(select(Property).where(Property.ical_url.isnot(None)))).all()
+    properties = (await db.scalars(select(Property).where(or_(Property.ical_url.isnot(None), Property.room_ical_url.isnot(None))))).all()
     results: dict[str, int] = {}
     for property_ in properties:
         try:

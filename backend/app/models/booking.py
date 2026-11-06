@@ -38,6 +38,16 @@ class Booking(UUIDPkMixin, TimestampMixin, Base):
     # analytics distinguishes them -- a block is neither a booked night nor
     # a booking with a price to confirm.
     kind: Mapped[str] = mapped_column(String(16), default="reservation", server_default="reservation")
+    # What was booked: "entire_place" (every pre-existing booking, and any
+    # block/hold -- it takes the whole property) | "rooms" (rooms_booked rooms
+    # of a property rented by the room; the rest of the property stays
+    # bookable). See app/services/stay_scope.py and calendar_service
+    # .scope_availability for how the two interact.
+    stay_scope: Mapped[str] = mapped_column(String(16), default="entire_place", server_default="entire_place")
+    # Number of rooms for a "rooms" booking; NULL for an entire-place one.
+    # iCal room bookings carry no room count, so they start at 1 and the host
+    # corrects it in the Calendar.
+    rooms_booked: Mapped[int | None] = mapped_column()
 
     # --- Pricing (see app/services/booking_reconciliation_service.py) ---
     # Three distinct prices, never collapsed into one field. All are stay

@@ -70,6 +70,17 @@ class PropertyCreate(BaseModel):
     max_guests: int = 4
     minimum_nights: int = Field(default=1, ge=1)
     saturday_minimum_stay_enabled: bool = False
+    room_rental_enabled: bool = False
+    room_base_price: float | None = Field(default=None, ge=0)
+    rentable_room_count: int | None = Field(default=None, ge=1)
+    room_max_guests: int | None = Field(default=None, ge=1)
+    room_details: str | None = None
+    room_ical_url: str | None = None
+
+    @field_validator("room_ical_url")
+    @classmethod
+    def _check_room_ical_url(cls, value: str | None) -> str | None:
+        return _validate_ical_url(value)
 
     @field_validator("exophone", "twilio_number")
     @classmethod
@@ -115,6 +126,12 @@ class PropertyUpdate(BaseModel):
     max_guests: int | None = None
     minimum_nights: int | None = Field(default=None, ge=1)
     saturday_minimum_stay_enabled: bool | None = None
+    room_rental_enabled: bool | None = None
+    room_base_price: float | None = Field(default=None, ge=0)
+    rentable_room_count: int | None = Field(default=None, ge=1)
+    room_max_guests: int | None = Field(default=None, ge=1)
+    room_details: str | None = None
+    room_ical_url: str | None = None
     exact_airbnb_pricing: bool | None = None
     is_premium: bool | None = None
     call_handling_mode: str | None = None
@@ -130,6 +147,11 @@ class PropertyUpdate(BaseModel):
     @field_validator("ical_url")
     @classmethod
     def _check_ical_url(cls, value: str | None) -> str | None:
+        return _validate_ical_url(value)
+
+    @field_validator("room_ical_url")
+    @classmethod
+    def _check_room_ical_url(cls, value: str | None) -> str | None:
         return _validate_ical_url(value)
 
     @field_validator("call_handling_mode")
@@ -252,6 +274,12 @@ class PropertyOut(BaseModel):
     max_guests: int
     minimum_nights: int
     saturday_minimum_stay_enabled: bool
+    room_rental_enabled: bool = False
+    room_base_price: float | None = None
+    rentable_room_count: int | None = None
+    room_max_guests: int | None = None
+    room_details: str | None = None
+    room_ical_url: str | None = None
     airbnb_listing_id: str | None
     smart_price_estimate: float | None
     smart_price_sample_size: int

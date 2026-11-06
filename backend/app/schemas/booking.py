@@ -12,6 +12,9 @@ PriceSource = Literal["mira_conversation", "host_confirmed", "host_entered", "ex
 PriceStatus = Literal["confirmed", "pending_confirmation", "unknown"]
 AttributionStatus = Literal["confirmed", "probable", "not_attributed", "unknown"]
 PriceChoice = Literal["mira_conversation", "outside_mira", "not_confirmed_yet"]
+# What a booking takes: the whole property, or some of its rooms (see
+# app/services/stay_scope.py).
+StayScope = Literal["entire_place", "rooms"]
 
 
 class BookingCreate(BaseModel):
@@ -22,6 +25,8 @@ class BookingCreate(BaseModel):
     check_out: date
     platform: str = "manual"
     kind: BookingKind = "reservation"
+    stay_scope: StayScope = "entire_place"
+    rooms_booked: int | None = Field(default=None, ge=1)
     # The host knows the price at the moment they block the dates
     # themselves -- captured once here (price_source=host_entered) instead
     # of asked for later.
@@ -34,6 +39,10 @@ class BookingCreate(BaseModel):
     def _check_out_after_check_in(self) -> "BookingCreate":
         if self.check_out <= self.check_in:
             raise ValueError("check_out must be after check_in")
+        if self.stay_scope == "entire_place":
+            self.rooms_booked = None
+        elif self.rooms_booked is None:
+            self.rooms_booked = 1
         return self
 
 
@@ -48,6 +57,8 @@ class BookingOut(BaseModel):
     platform: str
     status: str
     kind: str = "reservation"
+    stay_scope: str = "entire_place"
+    rooms_booked: int | None = None
     created_at: datetime
     initial_price: float | None = None
     negotiated_price: float | None = None
@@ -91,6 +102,22 @@ class BookingAttributionDecision(BaseModel):
 
 class BookingKindUpdate(BaseModel):
     kind: BookingKind
+
+
+class BookingScopeUpdate(BaseModel):
+    """Correct what a booking takes -- e.g. an Airbnb room booking arrives as
+    one room and the guest actually took two."""
+
+    stay_scope: StayScope
+    rooms_booked: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def _rooms_match_scope(self) -> "BookingScopeUpdate":
+        if self.stay_scope == "entire_place":
+            self.rooms_booked = None
+        elif self.rooms_booked is None:
+            self.rooms_booked = 1
+        return self
 
 
 class MatchedConversationOut(BaseModel):
