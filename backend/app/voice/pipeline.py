@@ -38,7 +38,7 @@ from pipecat.transports.smallwebrtc.connection import SmallWebRTCConnection
 from pipecat.transports.smallwebrtc.transport import SmallWebRTCTransport
 from pipecat.transports.websocket.fastapi import FastAPIWebsocketParams, FastAPIWebsocketTransport
 from pipecat.turns.user_stop import SpeechTimeoutUserTurnStopStrategy
-from pipecat.turns.user_turn_strategies import UserTurnStrategies
+from pipecat.turns.user_turn_strategies import UserTurnStrategies, default_user_turn_start_strategies
 from pipecat.workers.runner import WorkerRunner
 
 from sqlalchemy import select
@@ -78,6 +78,9 @@ from app.services import (
     usage_meter,
 )
 from app.voice.audio_input_observer import AudioInputContext, AudioInputObserver, BotSpeechTap
+from app.voice.backchannel_start_strategy import BackchannelAwareUserTurnStartStrategy
+from app.voice.barge_in_ducking import BargeInDuckingProcessor
+from app.voice.echo_canceller import EchoCancellerProcessor, EchoReference, tap_output_transport
 from app.voice.call_metrics import CallMetricsCollector
 from app.voice.conversation_quality import ConversationQuality
 from app.voice.conversation_state import ConversationState
@@ -1517,7 +1520,14 @@ async def _run_pipeline_inner(
         user_aggregator, assistant_aggregator = LLMContextAggregatorPair(
             context,
             user_params=LLMUserAggregatorParams(
-                user_turn_strategies=UserTurnStrategies(stop=[stop_strategy]),
+                user_turn_strategies=UserTurnStrategies(
+                    start=(
+                        [BackchannelAwareUserTurnStartStrategy(min_interrupt_secs=settings.backchannel_min_interrupt_secs)]
+                        if settings.backchannel_filter_enabled
+                        else default_user_turn_start_strategies()
+                    ),
+                    stop=[stop_strategy],
+                ),
                 vad_analyzer=create_vad_analyzer(_VAD_PARAMS),
             ),
         )
@@ -1530,11 +1540,23 @@ async def _run_pipeline_inner(
         # aggregator's turn controller). The tap sits after tts because the
         # text Mira actually speaks only ever flows downstream from there.
         telemetry_in = [audio_input_observer] if audio_input_observer is not None else []
-        telemetry_out = ([bot_speech_tap] if bot_speech_tap is not None else []) + [call_metrics]
+        ducking = [BargeInDuckingProcessor(duck_gain=settings.barge_in_duck_gain)] if settings.barge_in_ducking_enabled else []
+        # Ducking goes last so the telemetry taps still sit directly after tts
+        # (placement is load-bearing -- see test_call_telemetry_wiring).
+        telemetry_out = ([bot_speech_tap] if bot_speech_tap is not None else []) + [call_metrics] + ducking
+        echo_cancel = []
+        if settings.echo_cancellation_enabled and exotel_call_id:
+            try:
+                echo_reference = EchoReference()
+                tap_output_transport(transport.output(), echo_reference)
+                echo_cancel = [EchoCancellerProcessor(echo_reference)]
+            except Exception:
+                logger.exception("echo_canceller_setup_failed; continuing without it")
 
         pipeline = Pipeline(
             [
                 transport.input(),
+                *echo_cancel,
                 stt,
                 *telemetry_in,
                 low_confidence_transcript_guard,

@@ -457,6 +457,30 @@ class Settings(BaseSettings):
     # production config.
     turn_detection_strategy: Literal["vad_fixed", "hybrid_experimental"] = "vad_fixed"
 
+    # Backchannel-aware barge-in (app/voice/backchannel_start_strategy.py).
+    # Off by default: today's behavior (any VAD-detected sound interrupts
+    # Mira's in-progress speech) is unchanged unless this is enabled.
+    # When on, while Mira is speaking a guest sound only interrupts once it
+    # lasts backchannel_min_interrupt_secs, and a pure acknowledgement
+    # ("hmm", "haan", "okay") never opens a turn. Total barge-in latency is
+    # VAD start_secs (0.35s) + this value. Needs real-call validation before
+    # being turned on for production.
+    backchannel_filter_enabled: bool = False
+    backchannel_min_interrupt_secs: float = 0.5
+
+    # Volume ducking while the guest talks over Mira (app/voice/barge_in_ducking.py).
+    # Off by default; intended to be enabled together with the backchannel
+    # filter above. barge_in_duck_gain is the fraction of normal volume.
+    barge_in_ducking_enabled: bool = False
+    barge_in_duck_gain: float = 0.3
+
+    # Server-side acoustic echo cancellation for phone (Exotel) calls
+    # (app/voice/echo_canceller.py): subtracts Mira's own outgoing audio from
+    # the guest's incoming audio so a speakerphone guest doesn't make Mira
+    # interrupt herself. Off by default; browser test calls never use it
+    # (the browser already cancels echo). Needs real-call validation.
+    echo_cancellation_enabled: bool = False
+
     # Phase 1A audio-input telemetry (app/voice/audio_input_observer.py) --
     # observation only, never changes what Mira hears or says. On by default
     # so the shadow-week data actually accumulates; kill-switch exists only
