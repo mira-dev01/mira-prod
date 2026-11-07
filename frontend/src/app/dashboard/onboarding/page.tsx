@@ -31,20 +31,51 @@ const STEPS = ["What matters to you", "Your details", "Hosting profile", "Voice 
 // Only reachable once Clerk auth has already succeeded -- identity (email,
 // password) is Clerk's job now, not this form's.
 export default function OnboardingPage() {
-  const { refreshUser } = useAuth();
+  const { user, refreshUser } = useAuth();
   const router = useRouter();
   // The dashboard's gate (app/dashboard/layout.tsx) lets a host in only once the
   // server-side onboarding record is "completed". Finishing this form must
   // complete that record AND update the shared state before navigating, or the
   // gate still sees an unfinished host and sends them straight back to step one.
-  const { state: onboardingState, setState: setOnboardingState } = useOnboarding();
+  const { state: onboardingState, loading: onboardingLoading, setState: setOnboardingState } = useOnboarding();
   const [submitting, setSubmitting] = useState(false);
   const [step, setStep] = useState(0);
+  // Set if finishing an already-saved profile failed: show the form rather than
+  // bounce between here and the dashboard gate.
+  const [finishFailed, setFinishFailed] = useState(false);
 
-  // Already finished (e.g. a bookmarked /dashboard/onboarding): nothing to do here.
+  // This wizard is for brand-new hosts only. Anyone who already has a profile
+  // (onboarding finished, or the profile step saved a name + business number
+  // but the final "complete" call never landed) is sent to the dashboard --
+  // never shown the form again. If the state can't be loaded we also leave:
+  // the dashboard gate fails open the same way, and an unknown host must not
+  // be dropped into a form that would overwrite their saved profile.
+  const hasProfile = Boolean((user?.name ?? "").trim() && user?.lead_exophone);
+  // (Not while this form is itself submitting: saving the profile makes hasProfile
+  // true a moment before handleSubmit finishes the record and navigates.)
+  const alreadySetUp = !submitting && !finishFailed && (onboardingState?.status === "completed" || (onboardingState !== null && hasProfile));
+  const checkFailed = !onboardingLoading && onboardingState === null;
+  const finishingRef = useRef(false);
+
   useEffect(() => {
-    if (onboardingState?.status === "completed") router.replace("/dashboard");
-  }, [onboardingState?.status, router]);
+    if (checkFailed) {
+      router.replace("/dashboard");
+      return;
+    }
+    if (!alreadySetUp || finishingRef.current) return;
+    finishingRef.current = true;
+    (async () => {
+      try {
+        // A profile saved without the completion record: finish it, so the
+        // dashboard gate lets the host in instead of sending them back here.
+        if (onboardingState?.status !== "completed") setOnboardingState(await api.onboarding.complete());
+        router.replace("/dashboard");
+      } catch {
+        finishingRef.current = false;
+        setFinishFailed(true);
+      }
+    })();
+  }, [alreadySetUp, checkFailed, onboardingState?.status, router, setOnboardingState]);
 
   const [name, setName] = useState("");
   const [businessName, setBusinessName] = useState("");
@@ -152,6 +183,11 @@ export default function OnboardingPage() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  // Nothing of the form is shown until we know this really is a new host.
+  if (onboardingState === null || alreadySetUp) {
+    return <div className="flex flex-1 items-center justify-center p-4 text-sm text-muted-foreground">Loading…</div>;
   }
 
   return (

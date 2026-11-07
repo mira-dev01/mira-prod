@@ -160,12 +160,12 @@ The host's booking and house policies (cancellation, age limits, pets, …), hos
 
 | Method & path | Purpose | Auth |
 |---|---|---|
-| `GET /policies` | One row per topic (`state`: `everyone` / `some_differ` / `property_only` / `unset`, `override_count`, live `items`), the `drafts` waiting for review, uploaded `documents`, the host's `properties`, and the `topics` list | required |
+| `GET /policies` | One row per topic (`state`: `everyone` / `some_differ` / `property_only` / `unset`, `override_count`, live `items`), the `drafts` waiting for review, uploaded `documents`, the host's `properties` (each with derived `labels` such as "Parties welcome"/"No pets" and `policy_ids`, the live policies it actually follows), and the `topics` list | required |
 | `POST /policies` | Write a live policy `{topic, text, title?, property_id?}` (`property_id` null = host-wide). 422 if that topic already has one in that scope | required |
 | `POST /policies/scoped` | `{topic, text, title?, property_ids?}` — one live policy for the whole portfolio (no `property_ids`) or for each chosen property, **all or nothing** (422 naming any property that already has one for that topic). Returns the created policies | required |
 | `PATCH /policies/{id}` | Edit `text` / `title` / move to another `topic` (the title follows the move unless the host wrote their own); an active policy is re-synced to the knowledge base at once | required |
 | `DELETE /policies/{id}` | Remove (a live one is removed from the knowledge base; removing a property override returns that property to the host-wide policy) | required |
-| `POST /policies/{id}/approve` | Make a draft live; replaces a live policy of the same topic and scope (`replaced: true`) | required |
+| `POST /policies/{id}/approve` | Make a draft live; replaces a live policy of the same topic and scope (`replaced: true`). Optional body `{apply_to_all?, property_ids?}` overrides who it applies to while reviewing: `apply_to_all` → host-wide; `property_ids` → each chosen property's own (the draft becomes the first, the rest are copies). No body keeps the scope the document gave it | required |
 | `POST /policies/approve-all` | `{document_id?}` — approve every draft, or one document's | required |
 | `POST /policies/documents` | Multipart `file` (PDF, .docx, .xlsx, .csv, .txt, .md, PNG/JPG/WebP, ≤ 8 MB). Returns the `document`, the new `drafts` and `skipped` (already on file). 422 with a plain reason when it can't be read | required |
 

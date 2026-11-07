@@ -1025,6 +1025,7 @@ def build_voice_tools(
         cheaper_than_shown: bool = False,
         larger_than_shown: bool = False,
         more_premium_than_shown: bool = False,
+        hosting_gathering: bool = False,
     ):
         """Recommend properties from the portfolio matching the guest's needs.
         Do NOT call this again with the SAME criteria once the guest has
@@ -1079,6 +1080,12 @@ def build_voice_tools(
                 nicer/more premium/higher-end than what you already
                 recommended (e.g. "something more premium", "anything
                 nicer").
+            hosting_gathering: Set True ONLY when the guest has said they want
+                to host a party, event or get-together with people coming
+                over (not simply a group staying). Pass num_guests with it.
+                The result then contains only properties whose host policy
+                allows that, best fit first -- never decide this yourself.
+                Stays True for the rest of the call once the guest said it.
         """
         if await _collect_gate_blocks(
             params,
@@ -1128,6 +1135,7 @@ def build_voice_tools(
                 cheaper_than_shown,
                 larger_than_shown,
                 more_premium_than_shown,
+                hosting_gathering,
             ]
         ):
             locked_name = state.selected_property_name or "that property"
@@ -1298,6 +1306,9 @@ def build_voice_tools(
                 cheaper_than_shown=cheaper_than_shown,
                 larger_than_shown=larger_than_shown,
                 more_premium_than_shown=more_premium_than_shown,
+                # Said once, true for the rest of the call (a refinement like
+                # "anything cheaper?" must not drop the party requirement).
+                hosting_gathering=hosting_gathering or bool(state.slots.get("hosting_gathering")),
             )
             structured_result = await tool_handlers.handle_recommend_properties(
                 db,
@@ -1318,6 +1329,8 @@ def build_voice_tools(
             property_recommendation_guard.record_tool_result("recommend_properties", structured_result)
         if not num_guests_is_derived:
             state.set_slot("num_guests", effective_num_guests)
+        if hosting_gathering:
+            state.set_slot("hosting_gathering", True)
         if not budget_is_derived and effective_budget is not None:
             state.set_slot("budget", effective_budget)
             # Only stored alongside a real amount -- "how much per night?"

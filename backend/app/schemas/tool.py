@@ -246,6 +246,12 @@ class RecommendPropertiesArgs(BaseModel):
     cheaper_than_shown: bool = False
     larger_than_shown: bool = False
     more_premium_than_shown: bool = False
+    # The guest wants to HOST a party/event/get-together with people coming
+    # over, not just stay. A signal only the guest's words can set; what it
+    # does is deterministic (orchestrator): properties whose approved host
+    # policy doesn't allow it -- or caps guests below this group -- are left
+    # out, and the ones that explicitly allow it rank first.
+    hosting_gathering: bool = False
 
     @field_validator("budget_basis", mode="before")
     @classmethod

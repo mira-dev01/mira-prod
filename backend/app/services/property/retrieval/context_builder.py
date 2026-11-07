@@ -37,6 +37,7 @@ def build_recommendation_result(
     stay_prices: "dict[uuid.UUID, StayPrice] | None" = None,
     upsell: Property | None = None,
     upsell_reason: str = "",
+    policy_notes: "dict[uuid.UUID, str] | None" = None,
 ) -> RecommendationResult:
     """partially_available (Availability-first recommendations,
     Implementation 3): properties excluded from `properties` because
@@ -57,6 +58,7 @@ def build_recommendation_result(
     separately from `options` so they can only ever be rendered with an
     explicit over-budget label, never as a match."""
     stay_prices = stay_prices or {}
+    policy_notes = policy_notes or {}
 
     def _card(p: Property) -> PropertyCard:
         # The applicable stay price (offer included) rides on the card, so
@@ -65,6 +67,7 @@ def build_recommendation_result(
         return dataclasses.replace(
             build_property_card(p),
             stay_price=stay_prices.get(p.id),
+            policy_note=policy_notes.get(p.id, ""),
             stay_options_note=stay_options_note(
                 p, args.num_guests if args else None, args.purpose_of_stay if args else None
             ),

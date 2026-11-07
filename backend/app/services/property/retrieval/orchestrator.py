@@ -17,9 +17,10 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.policy import Policy
 from app.models.property import Property
 from app.schemas.tool import RecommendPropertiesArgs
-from app.services import calendar_service, pricing_engine
+from app.services import calendar_service, policy_stance, pricing_engine
 from app.services.pricing_engine import StayPrice
 from app.services.amenity_taxonomy import canonicalize_amenities
 from app.services.property.budget import UPSELL_MAX_OVER_BUDGET, BudgetConstraint
@@ -95,7 +96,12 @@ async def recommend_properties(
 
     base_stmt = filter_builder.build_base_filters(args, host_user_id)
     sql_results, combo_note = await sql_search.run_sql_search(
-        db, base_stmt, args, amenity_weights, candidate_pool=_BUDGET_CANDIDATE_POOL if budget_active else None
+        db,
+        base_stmt,
+        args,
+        amenity_weights,
+        # A party/event filter drops candidates after the query, so look at more than the cheapest few.
+        candidate_pool=_BUDGET_CANDIDATE_POOL if (budget_active or args.hosting_gathering) else None,
     )
 
     partially_available: list[tuple[Property, list[tuple[date, date]]]] = []
@@ -166,6 +172,14 @@ async def recommend_properties(
     merged = ranking.merge_and_rank(sql_results, semantic_results)
     candidate_count = len(merged)
 
+    # The host's own party/event policy, per property (see policy_stance).
+    # Only runs for a guest hosting a gathering, or a group big enough that
+    # the rule matters; never changes anything for an ordinary stay.
+    policy_notes: dict[uuid.UUID, str] = {}
+    gathering_blocked = False
+    if merged and (args.hosting_gathering or (args.num_guests or 0) >= policy_stance.GATHERING_ASK_MIN_GUESTS):
+        merged, policy_notes, gathering_blocked = await _apply_gathering_policy(db, merged, args, host_user_id)
+
     # Applicable stay pricing: needed for budget eligibility, and whenever
     # the stay length is known so the host's automatic length-of-stay
     # offers can be pitched. No live API calls -- see evaluate_stay_prices.
@@ -211,7 +225,7 @@ async def recommend_properties(
     # non-premium option happens to fall in the same price band). Same
     # "skip diversification, this order already means something" reasoning
     # as the combo_note branch below.
-    boost_ordering_active = bool(args.more_premium_than_shown or args.required_amenities)
+    boost_ordering_active = bool(args.more_premium_than_shown or args.required_amenities or args.hosting_gathering)
     if combo_note:
         # sql_search deliberately over-fetches to 4 on this path (no single
         # property sleeps the full group, so all 4 smaller units are worth
@@ -260,7 +274,7 @@ async def recommend_properties(
         offer_count=sum(1 for p in properties_to_show if p.id in stay_prices and stay_prices[p.id].offer_percent),
         upsell_count=1 if upsell is not None else 0,
     )
-    return context_builder.build_recommendation_result(
+    result = context_builder.build_recommendation_result(
         properties_to_show,
         combo_note if properties_to_show else "",
         args,
@@ -270,7 +284,50 @@ async def recommend_properties(
         stay_prices=stay_prices,
         upsell=upsell,
         upsell_reason=upsell_reason,
+        policy_notes=policy_notes,
     )
+    result.gathering_blocked = gathering_blocked
+    return result
+
+
+async def _apply_gathering_policy(
+    db: AsyncSession, merged: list[Property], args: RecommendPropertiesArgs, host_user_id: uuid.UUID
+) -> tuple[list[Property], dict[uuid.UUID, str], bool]:
+    """Returns (properties to keep, spoken-safe note per property, blocked).
+
+    A guest hosting a gathering (args.hosting_gathering): properties whose
+    approved policy says no -- or caps guests below this group -- are dropped,
+    the rest ranked host-says-yes first, then yes-with-conditions, then
+    nothing-on-file (never claimed to allow it). `blocked` is True when that
+    left nothing. Otherwise (just a big group) nothing is dropped; each
+    property that has a party rule gets it as a note so the agent never
+    oversells. Fails open: a lookup error leaves the list untouched."""
+    try:
+        policies = list(
+            (await db.scalars(select(Policy).where(Policy.user_id == host_user_id, Policy.status == "active"))).all()
+        )
+        properties = list((await db.scalars(select(Property).where(Property.user_id == host_user_id))).all())
+    except Exception:
+        await db.rollback()
+        logger.exception("party/event policy lookup failed; recommending without it")
+        return merged, {}, False
+    stances = policy_stance.stances_for_host(policies, properties, policy_stance.PARTIES)
+    if not args.hosting_gathering:
+        notes = {}
+        for property_ in merged:
+            stance = stances.get(property_.id)
+            if stance is not None:
+                notes[property_.id] = policy_stance.gathering_fit(stance, args.num_guests).note
+        return merged, notes, False
+    fits = {p.id: policy_stance.gathering_fit(stances.get(p.id), args.num_guests) for p in merged}
+    kept = sorted((p for p in merged if fits[p.id].eligible), key=lambda p: fits[p.id].tier)  # stable: price order within a tier
+    logger.info(
+        "recommend_properties gathering policy: %d of %d kept (hosting_gathering, num_guests=%s)",
+        len(kept),
+        len(merged),
+        args.num_guests,
+    )
+    return kept, {p.id: fits[p.id].note for p in kept}, not kept
 
 
 def _pick_upsell(

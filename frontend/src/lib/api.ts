@@ -459,7 +459,12 @@ export const api = {
     update: (id: string, data: { text?: string; title?: string; topic?: string }) =>
       request<PolicyOut>(`/policies/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
     remove: (id: string) => request<void>(`/policies/${id}`, { method: "DELETE" }),
-    approve: (id: string) => request<{ policy: PolicyOut; replaced: boolean }>(`/policies/${id}/approve`, { method: "POST" }),
+    /** Omit `scope` to keep the properties the document named; otherwise apply to all, or only the chosen ones. */
+    approve: (id: string, scope?: { apply_to_all?: boolean; property_ids?: string[] }) =>
+      request<{ policy: PolicyOut; replaced: boolean }>(`/policies/${id}/approve`, {
+        method: "POST",
+        ...(scope ? { body: JSON.stringify(scope) } : {}),
+      }),
     approveAll: (documentId?: string) =>
       request<{ approved: number }>("/policies/approve-all", {
         method: "POST",

@@ -71,6 +71,7 @@ from app.services import (
     guest_calling_notification,
     guest_memory_service,
     lead_service,
+    policy_stance,
     pricing_engine,
     missed_call_service,
     recovery_service,
@@ -2323,6 +2324,7 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
                     lead_user, properties, guest, active_booking, caller_phone=caller_number,
                     repeat_guest_discount=repeat_guest_discount,
                     payments_enabled=await payment_service.payments_enabled_for(lead_user),
+                    has_party_rules=await policy_stance.host_has_party_rules(db, lead_user.id, properties),
                 )
                 first_message = lead_first_message_for(lead_user)
                 property_id = None
@@ -2571,6 +2573,7 @@ async def run_voice_pipeline_twilio(websocket: WebSocket, call_data: CallData) -
                     lead_user, properties, guest, active_booking, caller_phone=caller_number,
                     repeat_guest_discount=repeat_guest_discount,
                     payments_enabled=await payment_service.payments_enabled_for(lead_user),
+                    has_party_rules=await policy_stance.host_has_party_rules(db, lead_user.id, properties),
                 )
                 first_message = lead_first_message_for(lead_user)
                 property_id = None
@@ -2696,6 +2699,7 @@ async def run_browser_lead_pipeline(connection: SmallWebRTCConnection, user: Use
         system_prompt = build_lead_system_prompt(
             user, properties, guest, active_booking, repeat_guest_discount=repeat_guest_discount,
             payments_enabled=await payment_service.payments_enabled_for(user),
+            has_party_rules=await policy_stance.host_has_party_rules(db, user.id, properties),
         )
         first_message = lead_first_message_for(user)
         call_session_id = session.id

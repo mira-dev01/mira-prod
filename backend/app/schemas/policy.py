@@ -75,10 +75,21 @@ class PolicyTopicOut(BaseModel):
     hint: str
 
 
+class PolicyLabelOut(BaseModel):
+    key: str
+    label: str
+
+
 class PolicyPropertyOut(BaseModel):
     id: uuid.UUID
     name: str
     city: str | None
+    # What this property's approved policies say about parties and pets
+    # (derived, see app/services/policy_stance.py).
+    labels: list[PolicyLabelOut] = []
+    # The live policies this property actually follows (host-wide ones that are
+    # about other properties only are not in it).
+    policy_ids: list[uuid.UUID] = []
 
 
 class PolicyOverviewOut(BaseModel):
@@ -94,6 +105,14 @@ class PolicyUploadOut(BaseModel):
     drafts: list[PolicyOut]
     # Policies in the file that are already live (or already waiting), left out.
     skipped: int
+
+
+class PolicyApproveIn(BaseModel):
+    """Optional: change who a draft applies to while approving it. Send
+    nothing to keep the scope the document gave it."""
+
+    apply_to_all: bool = False
+    property_ids: list[uuid.UUID] | None = Field(default=None, max_length=200)
 
 
 class PolicyApproveOut(BaseModel):

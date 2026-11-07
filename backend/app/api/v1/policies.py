@@ -9,6 +9,7 @@ from app.models.user import User
 from app.schemas.policy import (
     PolicyApproveAllIn,
     PolicyApproveAllOut,
+    PolicyApproveIn,
     PolicyApproveOut,
     PolicyCreate,
     PolicyCreateScoped,
@@ -121,10 +122,19 @@ async def update_policy(
 
 @router.post("/{policy_id}/approve", response_model=PolicyApproveOut)
 async def approve_policy(
-    policy_id: uuid.UUID, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+    policy_id: uuid.UUID,
+    payload: PolicyApproveIn | None = None,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ) -> dict:
     try:
-        policy, replaced = await policy_service.approve(db, current_user, policy_id)
+        policy, replaced = await policy_service.approve(
+            db,
+            current_user,
+            policy_id,
+            property_ids=payload.property_ids if payload else None,
+            all_properties=payload.apply_to_all if payload else False,
+        )
     except PolicyError as exc:
         raise _http(exc)
     return {"policy": await _out(db, current_user, policy), "replaced": replaced}

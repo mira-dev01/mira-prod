@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import logging
 import re
+from functools import lru_cache
 import uuid
 from collections import defaultdict
 
@@ -53,6 +54,39 @@ TOPICS: list[tuple[str, str, str]] = [
 ]
 TOPIC_LABELS = {key: label for key, label, _ in TOPICS}
 
+# What puts a sentence of free text (an imported house-rules paragraph) on a
+# policy topic. Used only to decide whether an approved policy already speaks
+# for that sentence, so it is dropped from the knowledge base rather than
+# contradicting the policy (see topics_in and property/chunking.py).
+_TOPIC_PATTERNS: dict[str, re.Pattern[str]] = {
+    topic: re.compile(pattern, re.IGNORECASE)
+    for topic, pattern in {
+        "check_in_out": r"check[- ]?(in|out)|early arrival|late departure",
+        "cancellation": r"\bcancel|\brefund|no[- ]show",
+        "payment": r"\badvance\b|\bpayment|\bupi\b|balance due",
+        "damage_deposit": r"security deposit|\bdamage",
+        "booking_limits": r"minimum (stay|nights?)|maximum (stay|guests?)|\bmin(imum)? stay|\bmax(imum)? guests?",
+        "age_restrictions": r"minimum age|\binfants?\b|\bchildren\b|\bkids\b|years old|age limit",
+        "id_requirements": r"\bid proof|photo id|aadh?aa?r|passport|government id|valid id",
+        "pets": r"\bpets?\b|\bdogs?\b|\bcats?\b",
+        "smoking": r"\bsmok|\balcohol|\bdrinking\b|\bdrugs?\b|\bliquor",
+        "parties_events": r"\bpart(y|ies)\b|\bevents?\b|\bgatherings?\b|loud music",
+        "visitors": r"\bvisitors?\b|extra guests?|unregistered guests?",
+        "quiet_hours": r"quiet hours|\bnoise\b|\bcurfew\b",
+    }.items()
+}
+
+
+def topics_in(text: str) -> set[str]:
+    """The policy topics a piece of free text talks about (possibly none)."""
+    return {topic for topic, pattern in _TOPIC_PATTERNS.items() if pattern.search(text or "")}
+
+
+# Said in a draft's review note when the document names a property that isn't
+# the host's. policy_stance reads the same words to know such a policy is about
+# somewhere else, so it never becomes a label or a recommendation filter.
+UNMATCHED_NOTE_MARK = "isn't one of your properties"
+
 TEXT_MAX = policy_documents.TEXT_MAX
 TITLE_MAX = policy_documents.TITLE_MAX
 
@@ -79,19 +113,83 @@ def effective(active: list[Policy], property_id: uuid.UUID | None) -> list[Polic
     return sorted(kept + own, key=lambda p: (p.topic, p.property_id is not None, str(p.id)))
 
 
+@lru_cache(maxsize=4096)
+def _norm_name(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", (value or "").lower()).strip()
+
+
+# Words that name a kind of place, not a particular one: a leading "The Villa"
+# must not make every sentence about "the villa" a sentence about that property.
+_GENERIC_NAME_WORDS = frozenset(
+    "the a an villa villas house home stay stays cottage apartment suite room rooms pool luxury modern modernistic "
+    "cosy cozy private beach farm homestay penthouse bhk spacez bungalow resort".split()
+)
+
+
+def _short_names(property_) -> tuple[str, ...]:
+    return _names_from(property_.spoken_name, property_.display_name, property_.name)
+
+
+@lru_cache(maxsize=4096)
+def _names_from(spoken: str | None, display: str | None, name: str | None) -> tuple[str, ...]:
+    """The ways a host would name this property in a sentence. Listings carry
+    long titles ("Casa Blu 4BHK Spacez Villa with Outdoor Pool & Garden") while
+    a host writes "Casa Blu", so the leading words of each name count: any
+    prefix of two or more words (or a one-word name), as long as it holds at
+    least one word that isn't generic ("villa", "the", ...)."""
+    names = {n for n in (spoken, display, name) if n}
+    names |= {re.split(r"[|\-\u2013,(]", n)[0] for n in list(names)}
+    out: set[str] = set()
+    for name in names:
+        tokens = _norm_name(name).split()
+        lengths = [1] if len(tokens) == 1 else range(2, len(tokens) + 1)
+        for n in lengths:
+            prefix = tokens[:n]
+            if any(t not in _GENERIC_NAME_WORDS and len(t) >= 3 and not t[0].isdigit() for t in prefix) and len(" ".join(prefix)) >= 4:
+                out.add(" ".join(prefix))
+    return tuple(sorted(out))
+
+
+def mentions_property(text: str, property_) -> bool:
+    haystack = f" {_norm_name(text)} "
+    return any(f" {name} " in haystack for name in _short_names(property_))
+
+
+_ONLY_WORD = re.compile(r"\bonly\b", re.IGNORECASE)
+
+
+def applicable(active: list[Policy], property_, siblings: list) -> list[Policy]:
+    """What one property follows, with host-wide policies read for who they are
+    really about. A host-wide policy that names some of the host's properties
+    ("Pets are not allowed at Deccan Escape") is a statement about those, so the
+    others do not carry it -- unless it says "only" ("Parties only at Casa Blu"),
+    which is as much about everyone else. One that names none applies to all,
+    except one a review note flagged as naming a place that isn't the host's and
+    that still names none of their properties -- that is about somewhere else.
+    Then the usual precedence (a property's own policy replaces the host-wide
+    one of the same topic) via effective()."""
+    kept = []
+    for policy in active:
+        if policy.property_id is None:
+            named = [s for s in siblings if mentions_property(policy.text, s)]
+            if named and property_.id not in {s.id for s in named} and not _ONLY_WORD.search(policy.text):
+                continue
+            if not named and any(UNMATCHED_NOTE_MARK in note for note in (policy.review_notes or [])):
+                continue  # about a place that isn't one of the host's: no property of theirs carries it
+        kept.append(policy)
+    return effective(kept, property_.id)
+
+
 async def effective_for_property(db: AsyncSession, property_) -> list[Policy]:
     """The active policies that apply to this property (used when its
     knowledge-base facts are rebuilt). Scoped to the property's own host."""
     rows = (
         await db.scalars(
-            select(Policy).where(
-                Policy.user_id == property_.user_id,
-                Policy.status == "active",
-                (Policy.property_id.is_(None)) | (Policy.property_id == property_.id),
-            )
+            select(Policy).where(Policy.user_id == property_.user_id, Policy.status == "active")
         )
     ).all()
-    return effective(list(rows), property_.id)
+    siblings = list((await db.scalars(select(Property).where(Property.user_id == property_.user_id))).all())
+    return applicable(list(rows), property_, siblings)
 
 
 async def resync(db: AsyncSession, user_id: uuid.UUID, property_ids: list[uuid.UUID] | None) -> int:
@@ -279,21 +377,64 @@ async def delete_policy(db: AsyncSession, user: User, policy_id: uuid.UUID) -> N
         await resync(db, user.id, scope)
 
 
-async def approve(db: AsyncSession, user: User, policy_id: uuid.UUID) -> tuple[Policy, bool]:
-    """Makes a draft live. If this scope already has an active policy for the
-    topic, the draft replaces it (returned flag = True)."""
+async def approve(
+    db: AsyncSession,
+    user: User,
+    policy_id: uuid.UUID,
+    *,
+    property_ids: list[uuid.UUID] | None = None,
+    all_properties: bool = False,
+) -> tuple[Policy, bool]:
+    """Makes a draft live. If a target scope already has an active policy for
+    the topic, the draft replaces it (returned flag = True).
+
+    By default the draft keeps the scope the document gave it. The host can
+    override that while reviewing: `all_properties` makes it a host-wide
+    policy, `property_ids` makes it each chosen property's own (the draft
+    becomes the first, the rest are copies). Returns the draft itself."""
     policy = await _get_owned(db, user.id, policy_id)
     if policy.status == "active":
         return policy, False
-    replaced = await _active_in_scope(db, user.id, policy.property_id, policy.topic)
-    if replaced is not None:
-        await db.delete(replaced)
+
+    targets: list[uuid.UUID | None]
+    if all_properties:
+        targets = [None]
+    elif property_ids:
+        targets = list(dict.fromkeys(property_ids))
+        for property_id in targets:
+            await _owned_property(db, user.id, property_id)
+    else:
+        targets = [policy.property_id]
+
+    replaced_any = False
+    for index, property_id in enumerate(targets):
+        replaced = await _active_in_scope(db, user.id, property_id, policy.topic)
+        if replaced is not None:
+            await db.delete(replaced)
+            await db.flush()
+            replaced_any = True
+        if index == 0:
+            policy.property_id = property_id
+            policy.status = "active"
+        else:
+            db.add(
+                Policy(
+                    user_id=user.id,
+                    property_id=property_id,
+                    source_document_id=policy.source_document_id,
+                    topic=policy.topic,
+                    title=policy.title,
+                    text=policy.text,
+                    status="active",
+                    source_excerpt=policy.source_excerpt,
+                    review_notes=[],
+                )
+            )
         await db.flush()
-    policy.status = "active"
     await db.commit()
-    await resync(db, user.id, _sync_scope(policy))
+    await resync(db, user.id, None if None in targets else [pid for pid in targets if pid is not None])
     await db.refresh(policy)
-    return policy, replaced is not None
+    return policy, replaced_any
 
 
 async def approve_all(db: AsyncSession, user: User, document_id: uuid.UUID | None = None) -> int:
@@ -387,7 +528,7 @@ async def ingest_document(
         elif item.excerpt and haystack is not None and _norm(item.excerpt) not in haystack:
             notes.append("Couldn't find this exact wording in the document -- check it against the original.")
         if unmatched:
-            notes.append("The document mentions " + ", ".join(unmatched) + ", which isn't one of your properties.")
+            notes.append("The document mentions " + ", ".join(unmatched) + f", which {UNMATCHED_NOTE_MARK}.")
         for property_id in ([p.id for p in targets] or [None]):
             if (property_id, item.topic, _norm(item.text)) in have:
                 skipped += 1
@@ -481,6 +622,14 @@ async def overview(db: AsyncSession, user: User) -> dict:
                 "items": [policy_out(p, names, filenames) for p in items],
             }
         )
+    from app.services import policy_stance
+
+    active = [p for p in policies if p.status == "active"]
+    labels = {
+        prop.id: [{"key": x.key, "label": x.label} for x in policy_stance.labels_for_property(active, prop, properties)]
+        for prop in properties
+    }
+    follows = {prop.id: [p.id for p in applicable(active, prop, properties)] for prop in properties}
     return {
         "rows": rows,
         "drafts": [policy_out(p, names, filenames) for p in policies if p.status == "draft"],
@@ -488,6 +637,6 @@ async def overview(db: AsyncSession, user: User) -> dict:
             {"id": d.id, "filename": d.filename, "item_count": d.item_count, "truncated": d.truncated, "created_at": d.created_at}
             for d in documents
         ],
-        "properties": [{"id": p.id, "name": names[p.id], "city": p.city} for p in properties],
+        "properties": [{"id": p.id, "name": names[p.id], "city": p.city, "labels": labels[p.id], "policy_ids": follows[p.id]} for p in properties],
         "topics": [{"key": k, "label": label, "hint": hint} for k, label, hint in TOPICS],
     }

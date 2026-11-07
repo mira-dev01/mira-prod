@@ -202,6 +202,112 @@ async def test_approving_a_draft_replaces_the_live_policy_for_the_same_topic(db_
     assert live == 1
 
 
+async def test_a_draft_can_be_approved_for_only_the_chosen_properties(db_session):
+    host = await _host(db_session)
+    a = await _property(db_session, host, "Sea View")
+    b = await _property(db_session, host, "Hill Cabin")
+    c = await _property(db_session, host, "Casa Blu")
+    draft = await _draft(db_session, host, text="Pets are not allowed.")  # the document said "everyone"
+
+    await policy_service.approve(db_session, host, draft.id, property_ids=[a.id, b.id])
+
+    assert _policy_facts(await _fact_texts(db_session, a)) == ["Policy (Pets): Pets are not allowed."]
+    assert _policy_facts(await _fact_texts(db_session, b)) == ["Policy (Pets): Pets are not allowed."]
+    assert _policy_facts(await _fact_texts(db_session, c)) == []
+    live = (await db_session.scalars(select(Policy).where(Policy.user_id == host.id, Policy.status == "active"))).all()
+    assert sorted(str(p.property_id) for p in live) == sorted([str(a.id), str(b.id)])
+
+
+async def test_a_property_draft_can_be_widened_to_everyone_on_approval(db_session):
+    host = await _host(db_session)
+    a, b = await _property(db_session, host, "Sea View"), await _property(db_session, host, "Hill Cabin")
+    draft = await _draft(db_session, host, text="Pets are not allowed.", property_id=a.id)
+
+    policy, _ = await policy_service.approve(db_session, host, draft.id, all_properties=True)
+
+    assert policy.property_id is None
+    assert _policy_facts(await _fact_texts(db_session, b)) == ["Policy (Pets): Pets are not allowed."]
+
+
+async def test_choosing_properties_replaces_only_their_own_live_policy(db_session):
+    host = await _host(db_session)
+    a, b = await _property(db_session, host, "Sea View"), await _property(db_session, host, "Hill Cabin")
+    await policy_service.create_policy(db_session, host, topic="pets", text="Pets are not allowed.")
+    await policy_service.create_policy(db_session, host, topic="pets", text="Dogs are welcome.", property_id=a.id)
+    draft = await _draft(db_session, host, text="Small dogs only.")
+
+    _, replaced = await policy_service.approve(db_session, host, draft.id, property_ids=[a.id])
+
+    assert replaced is True
+    assert _policy_facts(await _fact_texts(db_session, a)) == ["Policy (Pets): Small dogs only."]
+    assert _policy_facts(await _fact_texts(db_session, b)) == ["Policy (Pets): Pets are not allowed."]
+
+
+async def test_approving_for_another_hosts_property_is_refused(db_session):
+    host, other = await _host(db_session, "Host"), await _host(db_session, "Other")
+    theirs = await _property(db_session, other)
+    draft = await _draft(db_session, host)
+
+    with pytest.raises(PolicyError):
+        await policy_service.approve(db_session, host, draft.id, property_ids=[theirs.id])
+    await db_session.refresh(draft)
+    assert draft.status == "draft"
+
+
+async def test_an_approved_policy_wins_over_what_the_import_said_but_nothing_is_lost(db_session):
+    from app.models.faq_entry import FaqEntry
+
+    host = await _host(db_session)
+    prop = await _property(
+        db_session, host, check_in_time="15:00", check_out_time="10:00",
+        house_rules="No pets allowed. Please keep the garden clean. No smoking indoors.",
+    )
+    db_session.add_all(
+        [
+            FaqEntry(user_id=host.id, property_id=prop.id, question="What is the cancellation policy?",
+                     answer="This listing has a Flexible cancellation policy.", category="booking",
+                     status="verified", verified_by="airbnb_import"),
+            FaqEntry(user_id=host.id, property_id=prop.id, question="Is there parking?",
+                     answer="Yes, one car.", category="parking", status="verified", verified_by="airbnb_import"),
+        ]
+    )
+    await db_session.commit()
+    await policy_service.resync(db_session, host.id, None)
+    before = " ".join(await _fact_texts(db_session, prop))
+    assert "Flexible cancellation" in before and "Check-in time is 15:00" in before and "No pets allowed" in before
+
+    await policy_service.create_policy(db_session, host, topic="pets", text="Pets are welcome.")
+    await policy_service.create_policy(db_session, host, topic="cancellation", text="Free cancellation up to 7 days before.")
+    await policy_service.create_policy(db_session, host, topic="check_in_out", text="Check-in from 2 PM, check-out by 11 AM.")
+    facts = await _fact_texts(db_session, prop)
+    joined = " ".join(facts)
+
+    assert "Pets are welcome." in joined and "Free cancellation up to 7 days" in joined
+    assert "No pets allowed" not in joined  # contradicted by the pets policy
+    assert "Flexible cancellation" not in joined  # the imported answer yields to the policy
+    assert "Check-in time is 15:00" not in joined
+    # ...but what the policies don't speak for stays, and so does every FAQ row.
+    assert "Please keep the garden clean." in joined
+    assert "No smoking indoors." in joined
+    assert "Is there parking? A: Yes, one car." in joined or "Q: Is there parking? A: Yes, one car." in joined
+    rows = await db_session.scalar(select(func.count()).select_from(FaqEntry).where(FaqEntry.property_id == prop.id))
+    assert rows == 2
+
+    # Removing the policy brings the imported fact straight back.
+    pets = await db_session.scalar(select(Policy).where(Policy.user_id == host.id, Policy.topic == "pets"))
+    await policy_service.delete_policy(db_session, host, pets.id)
+    assert "No pets allowed" in " ".join(await _fact_texts(db_session, prop))
+
+
+async def test_a_check_in_policy_without_a_time_does_not_hide_the_times_on_file(db_session):
+    host = await _host(db_session)
+    prop = await _property(db_session, host, check_in_time="15:00", check_out_time="10:00")
+
+    await policy_service.create_policy(db_session, host, topic="check_in_out", text="Early check-in on request.")
+
+    assert "Check-in time is 15:00. Check-out time is 10:00." in await _fact_texts(db_session, prop)
+
+
 async def test_approve_all_handles_a_batch_and_a_single_documents_drafts(db_session):
     host = await _host(db_session)
     prop = await _property(db_session, host)

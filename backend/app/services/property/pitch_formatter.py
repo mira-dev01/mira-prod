@@ -79,6 +79,9 @@ class RecommendationResult:
     # must never render the same, or a crash becomes "nothing fits your
     # budget" (confirmed live 2026-09-25).
     failed: bool = False
+    # True when properties fit the group but every one was ruled out because
+    # the host's policy does not allow the party/event the guest described.
+    gathering_blocked: bool = False
 
 
 def recommendation_failed_result() -> RecommendationResult:
@@ -202,6 +205,7 @@ def format_property_pitch_line(card: PropertyCard, index: int) -> str:
         f"{index}. {card.spoken_name}, a {descriptor}{amenity_phrase} in {card.city or 'unlisted city'} "
         f"for ₹{card.nightly_rate:,.0f} a night{_stay_price_clause(card)}, sleeps {card.max_guests}{reason_clause}. "
         f"{card.stay_options_note + ' ' if card.stay_options_note else ''}"
+        f"{card.policy_note + ' ' if card.policy_note else ''}"
         f"(property_id: {card.property_id})"
     )
 
@@ -328,6 +332,12 @@ def render_recommendation_text(result: RecommendationResult) -> str:
     )
     if budget is not None and result.upsell is not None:
         near_lines.append(_format_upsell_line(result.upsell, result.upsell_reason, budget))
+    if result.gathering_blocked and not result.options:
+        return (
+            "None of the properties that fit this group allow a party or event under the host's policy. Say so "
+            "plainly; do not suggest any property for the party. Offer to connect them with the host, or to look "
+            "at a plain stay without the party."
+        )
     if result.not_found:
         if budget is not None:
             return (

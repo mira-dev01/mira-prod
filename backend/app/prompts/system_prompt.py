@@ -1448,6 +1448,28 @@ def _payment_section(payments_enabled: bool) -> str:
     )
 
 
+def _gathering_section(has_party_rules: bool) -> str:
+    """Only when the host has set party/event rules on at least one property.
+    Says WHEN to ask about the occasion and what to do with the answer -- never
+    what any property's rule is (that comes only from recommend_properties or
+    search_faq), and offers no example occasions."""
+    if not has_party_rules:
+        return ""
+    from app.services.policy_stance import GATHERING_ASK_MIN_GUESTS
+
+    return (
+        "\nPARTIES AND EVENTS: this host's properties have their own rules for parties and events.\n"
+        f"- When the group is {GATHERING_ASK_MIN_GUESTS} or more people, or the guest hints at a celebration or "
+        "function, ask what the occasion is -- one short question, offering no example occasions -- before you "
+        "recommend. Record what they say with update_lead (occasion).\n"
+        "- If people will be coming over for a party, event or get-together (not simply a group staying), call "
+        "recommend_properties with hosting_gathering=true and the group size. It returns only properties whose "
+        "host policy allows it, best fit first; recommend only from that result.\n"
+        "- Never say whether a property allows parties or events from memory -- only what recommend_properties "
+        "or search_faq returned. If it says no property allows it, say so plainly and offer the host.\n"
+    )
+
+
 def build_lead_system_prompt(
     user: User,
     properties: list[Property],
@@ -1456,6 +1478,7 @@ def build_lead_system_prompt(
     caller_phone: str | None = None,
     repeat_guest_discount: bool = False,
     payments_enabled: bool = False,
+    has_party_rules: bool = False,
 ) -> str:
     # Same cache-ordering reasoning as build_system_prompt above: the property
     # portfolio listing below is byte-identical across every call to this
@@ -1497,6 +1520,9 @@ def build_lead_system_prompt(
         locations_section = _locations_section(properties)
         if locations_section:
             sections.append(locations_section)
+        gathering_section = _gathering_section(has_party_rules)
+        if gathering_section:
+            sections.append(gathering_section)
     else:
         sections.append("\nNo properties are configured in the portfolio yet -- escalate any enquiry to the host.")
 

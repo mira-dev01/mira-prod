@@ -23,6 +23,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { PoliciesTab } from "@/components/policies-tab";
 import { PropertyFaqManager } from "@/components/property-faq-manager";
 import { PropertyFormFields } from "@/components/property-form-fields";
+import { PolicyLabelChips, PropertyPoliciesInEffect } from "@/components/property-policies-in-effect";
 import { PropertyRoomRentalTab } from "@/components/property-room-rental-tab";
 import { PropertyPhotoCarousel } from "@/components/property-photo-carousel";
 import { PropertyPhotosManager } from "@/components/property-photos-manager";
@@ -31,7 +32,7 @@ import { useAsync } from "@/hooks/use-async";
 import { api, ApiError, API_BASE_URL, getToken } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { matchesSearch } from "@/lib/utils";
-import type { AirbnbUrlImportStatus, FaqEntryOut, PropertyCreate, PropertyOut } from "@/lib/types";
+import type { AirbnbUrlImportStatus, FaqEntryOut, PolicyOverview, PropertyCreate, PropertyOut } from "@/lib/types";
 
 const emptyForm: PropertyCreate = {
   name: "",
@@ -102,7 +103,7 @@ function propertyToForm(property: PropertyOut): PropertyCreate {
   };
 }
 
-function PropertiesList() {
+function PropertiesList({ policies, onOpenPolicies }: { policies: PolicyOverview | null; onOpenPolicies: () => void }) {
   const { isInternalOrg, user } = useAuth();
   const perPropertyTransfer = user?.notification_preferences.transfer_number_mode === "per_property";
   const { data: properties, loading, refetch } = useAsync(() => api.properties.list(), []);
@@ -499,6 +500,7 @@ function PropertiesList() {
               <CardContent className="space-y-2 text-sm">
                 <p className="text-muted-foreground">{property.city ?? "No city set"}</p>
                 <p>₹{property.base_price.toLocaleString("en-IN")} / night · {property.max_guests} guests</p>
+                <PolicyLabelChips overview={policies} propertyId={property.id} />
                 {property.exophone && <p className="text-muted-foreground">{property.exophone}</p>}
                 {perPropertyTransfer && !property.host_transfer_phone && (
                   <p className="text-xs text-(--status-pending-strong)" onClick={(e) => e.stopPropagation()}>
@@ -585,6 +587,16 @@ function PropertiesList() {
                 </div>
               )}
               <PropertyFormFields form={editForm} onChange={setEditForm} />
+              {editing && (
+                <PropertyPoliciesInEffect
+                  overview={policies}
+                  propertyId={editing.id}
+                  onOpenPolicies={() => {
+                    setEditing(null);
+                    onOpenPolicies();
+                  }}
+                />
+              )}
               {editing &&
                 (loadingFaq ? (
                   <Skeleton className="h-24 w-full" />
@@ -613,14 +625,14 @@ function PropertiesPageTabs() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const requested = searchParams.get("tab");
-  const [tab, setTab] = useState<PropertiesTab>(TABS.includes(requested as PropertiesTab) ? (requested as PropertiesTab) : "properties");
+  // The URL is the single source of truth, so a link to ?tab=policies from anywhere on this page works too.
+  const tab: PropertiesTab = TABS.includes(requested as PropertiesTab) ? (requested as PropertiesTab) : "properties";
   // One fetch for the whole page so the tab can say how many policies are waiting for review.
   const policies = useAsync(() => api.policies.overview(), []);
   const toReview = policies.data?.drafts.length ?? 0;
 
   function handleTabChange(value: unknown) {
     if (typeof value !== "string" || !TABS.includes(value as PropertiesTab)) return;
-    setTab(value as PropertiesTab);
     router.replace(`/dashboard/properties?tab=${value}`, { scroll: false });
   }
 
@@ -634,7 +646,7 @@ function PropertiesPageTabs() {
         </TabsTrigger>
       </TabsList>
       <TabsContent value="properties" className="pt-4">
-        <PropertiesList />
+        <PropertiesList policies={policies.data} onOpenPolicies={() => handleTabChange("policies")} />
       </TabsContent>
       <TabsContent value="policies" className="pt-4">
         <PoliciesTab overview={policies.data} loading={policies.loading} onChanged={policies.refetch} />

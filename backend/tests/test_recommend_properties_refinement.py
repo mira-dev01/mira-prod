@@ -317,3 +317,65 @@ async def test_relative_refinement_flags_count_as_new_criteria_for_lock_backstop
     params = _FakeFunctionCallParams()
     await recommend_properties(params, cheaper_than_shown=True)
     assert "already looking at" not in params.result.lower()
+
+
+async def _party_rule(db_session, test_user, property_, text):
+    from app.models.policy import Policy
+
+    db_session.add(
+        Policy(user_id=test_user.id, property_id=property_.id, topic="parties_events", title="Parties & events",
+               text=text, status="active", review_notes=[])
+    )
+    await db_session.commit()
+
+
+async def test_a_party_request_through_the_tool_only_offers_properties_the_host_allows(db_session, test_user):
+    """The whole path a guest's "we want to throw a party" takes: tool argument
+    -> orchestrator filter -> the text the agent is given."""
+    cheap = await _property(db_session, test_user, name="Sea View", base_price=2000, max_guests=20)
+    dear = await _property(db_session, test_user, name="Casa Blu", base_price=9000, max_guests=20)
+    await _party_rule(db_session, test_user, cheap, "Parties are not allowed.")
+    await _party_rule(db_session, test_user, dear, "Parties are welcome.")
+
+    state = ConversationState()
+    tools = build_voice_tools(call_session_id=None, property_id=None, host_user_id=test_user.id, conversation_state=state)
+    recommend_properties = next(t for t in tools if t.__name__ == "recommend_properties")
+
+    params = _FakeFunctionCallParams()
+    await recommend_properties(params, num_guests=10, hosting_gathering=True)
+
+    assert "Casa Blu" in params.result and "Sea View" not in params.result
+    assert "Host policy on parties and events: Parties are welcome." in params.result
+    assert state.slots["hosting_gathering"] is True
+
+
+async def test_the_party_requirement_survives_a_later_refinement_that_omits_it(db_session, test_user):
+    cheap = await _property(db_session, test_user, name="Sea View", base_price=2000, max_guests=20)
+    dear = await _property(db_session, test_user, name="Casa Blu", base_price=9000, max_guests=20)
+    await _party_rule(db_session, test_user, cheap, "Parties are not allowed.")
+    await _party_rule(db_session, test_user, dear, "Parties are welcome.")
+
+    state = ConversationState()
+    state.set_slot("hosting_gathering", True)  # said earlier in the call
+    tools = build_voice_tools(call_session_id=None, property_id=None, host_user_id=test_user.id, conversation_state=state)
+    recommend_properties = next(t for t in tools if t.__name__ == "recommend_properties")
+
+    params = _FakeFunctionCallParams()
+    await recommend_properties(params, num_guests=10, more_premium_than_shown=True)  # no hosting_gathering this time
+
+    assert "Sea View" not in params.result
+
+
+async def test_an_ordinary_stay_through_the_tool_ignores_party_rules(db_session, test_user):
+    cheap = await _property(db_session, test_user, name="Sea View", base_price=2000, max_guests=20)
+    await _party_rule(db_session, test_user, cheap, "Parties are not allowed.")
+
+    state = ConversationState()
+    tools = build_voice_tools(call_session_id=None, property_id=None, host_user_id=test_user.id, conversation_state=state)
+    recommend_properties = next(t for t in tools if t.__name__ == "recommend_properties")
+
+    params = _FakeFunctionCallParams()
+    await recommend_properties(params, num_guests=4)
+
+    assert "Sea View" in params.result
+    assert "hosting_gathering" not in state.slots

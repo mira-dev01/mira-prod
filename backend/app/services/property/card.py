@@ -75,6 +75,10 @@ class PropertyCard:
     # property until a host turns room rental on). Otherwise the stay options
     # and which one suits THIS guest -- see stay_options_note below.
     stay_options_note: str = ""
+    # The host's own party/event policy for THIS property (verbatim), or an
+    # explicit "nothing on file" -- set only for a group that wants to host a
+    # gathering or is big enough that it matters. "" otherwise.
+    policy_note: str = ""
 
     @property
     def nightly_rate(self) -> float:

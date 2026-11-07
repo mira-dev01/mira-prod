@@ -188,12 +188,29 @@ def build_fact_chunks(property_, faq_entries, policies=None) -> list[FactDraft]:
     is the property's effective ACTIVE policies (policy_service.effective_for_
     property): each becomes "Policy (<topic>): ...". Order is FAQ first so a
     host-edited answer wins over an identical imported sentence."""
-    from app.services.policy_service import TOPIC_LABELS
+    from app.services.policy_service import TOPIC_LABELS, topics_in
 
     from app.services import stay_scope
 
     drafts: list[FactDraft] = []
     rents_by_the_room = stay_scope.offers_rooms(property_)
+
+    # The host's approved policies are the source of truth for their topics.
+    # Anything the import wrote about the same topic (an auto-imported FAQ, a
+    # sentence of the imported house rules, the default check-in times) is left
+    # out of the knowledge base while the policy stands, so Mira never says two
+    # different things. Nothing is deleted: the FAQ rows and property fields are
+    # untouched, and the facts come straight back if the policy is removed.
+    covered = {p.topic for p in policies or [] if p.topic != "other"}
+
+    def superseded(*texts: str) -> bool:
+        mentioned = topics_in(" ".join(texts))
+        return bool(mentioned) and mentioned <= covered
+
+    states_check_times = any(
+        p.topic == "check_in_out" and re.search(r"\d|noon|midnight", p.text or "", re.IGNORECASE)
+        for p in policies or []
+    )
 
     for entry in faq_entries or []:
         # The importer records whether the Airbnb listing it came from was the
@@ -201,6 +218,8 @@ def build_fact_chunks(property_, faq_entries, policies=None) -> list[FactDraft]:
         # property both ways, that one-way statement would contradict the
         # room-rental fact below, so the latter speaks for the property.
         if rents_by_the_room and getattr(entry, "category", None) == "booking_scope":
+            continue
+        if getattr(entry, "verified_by", None) == "airbnb_import" and superseded(entry.question, entry.answer):
             continue
         drafts.extend(_faq_facts(entry.question, entry.answer, str(entry.id)))
     for item in property_.faq or []:
@@ -211,13 +230,14 @@ def build_fact_chunks(property_, faq_entries, policies=None) -> list[FactDraft]:
         for piece in _pack_sentences(policy.text):
             drafts.append(FactDraft(f"Policy ({label}): {piece}", "policy", f"policy_{policy.id}"))
 
-    drafts.append(
-        FactDraft(
-            f"Check-in time is {property_.check_in_time}. Check-out time is {property_.check_out_time}.",
-            "structured",
-            "check_times",
+    if not states_check_times:
+        drafts.append(
+            FactDraft(
+                f"Check-in time is {property_.check_in_time}. Check-out time is {property_.check_out_time}.",
+                "structured",
+                "check_times",
+            )
         )
-    )
     if property_.max_guests:
         drafts.append(
             FactDraft(f"This property sleeps a maximum of {property_.max_guests} guests.", "structured", "max_guests")
@@ -246,7 +266,11 @@ def build_fact_chunks(property_, faq_entries, policies=None) -> list[FactDraft]:
             drafts.append(FactDraft(f"Description: {piece}", "description", "usp"))
 
     if property_.house_rules:
-        for piece in _pack_sentences(property_.house_rules):
+        # Judge sentence by sentence, so one superseded rule never takes an
+        # unrelated neighbour with it, then pack what is left.
+        sentences = [x.strip() for x in _SENTENCE_SPLIT_RE.split(property_.house_rules) if x and x.strip()]
+        remaining = " ".join(x for x in sentences if not superseded(x))
+        for piece in _pack_sentences(remaining):
             drafts.append(FactDraft(f"House rule: {piece}", "house_rules", "house_rules"))
 
     if property_.neighborhood_info:

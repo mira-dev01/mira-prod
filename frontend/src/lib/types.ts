@@ -874,8 +874,17 @@ export type PolicyOverview = {
   rows: PolicyRow[];
   drafts: PolicyOut[];
   documents: { id: string; filename: string; item_count: number; truncated: boolean; created_at: string }[];
-  properties: { id: string; name: string; city: string | null }[];
+  properties: PolicyProperty[];
   topics: { key: string; label: string; hint: string }[];
+};
+
+/** A property as the Policies tab sees it: what its approved policies say about parties/pets, and which live policies it follows. */
+export type PolicyProperty = {
+  id: string;
+  name: string;
+  city: string | null;
+  labels: { key: string; label: string }[];
+  policy_ids: string[];
 };
 
 export type PolicyUpload = { document: PolicyOverview["documents"][number]; drafts: PolicyOut[]; skipped: number };
