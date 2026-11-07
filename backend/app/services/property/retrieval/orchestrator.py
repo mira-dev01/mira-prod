@@ -21,6 +21,7 @@ from app.models.policy import Policy
 from app.models.property import Property
 from app.schemas.tool import RecommendPropertiesArgs
 from app.services import calendar_service, policy_stance, pricing_engine
+from app.services.geo import search as geo_search
 from app.services.pricing_engine import StayPrice
 from app.services.amenity_taxonomy import canonicalize_amenities
 from app.services.property.budget import UPSELL_MAX_OVER_BUDGET, BudgetConstraint
@@ -38,6 +39,9 @@ _MAX_COMBO_UNITS_SHOWN = 4
 # (evaluate_stay_prices is 2 DB queries + cached-rate lookups, no live API
 # calls, so pricing a few dozen candidates stays in the tens of ms).
 _BUDGET_CANDIDATE_POOL = 50
+# Properties within this many km of each other count as equally close when
+# ordering by distance, so price still breaks ties inside one neighbourhood.
+_GEO_DISTANCE_BUCKET_KM = 10.0
 
 
 async def recommend_properties(
@@ -94,14 +98,22 @@ async def recommend_properties(
         return RecommendationResult(options=[], budget=budget)
     budget_active = budget is not None and budget.is_applicable
 
-    base_stmt = filter_builder.build_base_filters(args, host_user_id)
+    geo = await _geo_match(db, args, host_user_id)
+    # Ordering by distance needs every candidate (the default query keeps only the cheapest few).
+    geo_ranked = geo is not None and bool(geo.distances_km)
+    base_stmt = filter_builder.build_base_filters(
+        args,
+        host_user_id,
+        extra_location_property_ids=geo.property_ids if geo is not None else None,
+        text_match_only_where=geo.unlocated if geo is not None else None,
+    )
     sql_results, combo_note = await sql_search.run_sql_search(
         db,
         base_stmt,
         args,
         amenity_weights,
         # A party/event filter drops candidates after the query, so look at more than the cheapest few.
-        candidate_pool=_BUDGET_CANDIDATE_POOL if (budget_active or args.hosting_gathering) else None,
+        candidate_pool=_BUDGET_CANDIDATE_POOL if (budget_active or args.hosting_gathering or geo_ranked) else None,
     )
 
     partially_available: list[tuple[Property, list[tuple[date, date]]]] = []
@@ -170,6 +182,9 @@ async def recommend_properties(
         semantic_results = await semantic_search.run_semantic_search(db, args.purpose_of_stay, candidate_ids)
 
     merged = ranking.merge_and_rank(sql_results, semantic_results)
+    if geo_ranked:
+        # Nearest first (stable: price order is kept within a neighbourhood).
+        merged = sorted(merged, key=lambda p: round(geo.distances_km.get(p.id, 1e6) / _GEO_DISTANCE_BUCKET_KM))
     candidate_count = len(merged)
 
     # The host's own party/event policy, per property (see policy_stance).
@@ -225,7 +240,9 @@ async def recommend_properties(
     # non-premium option happens to fall in the same price band). Same
     # "skip diversification, this order already means something" reasoning
     # as the combo_note branch below.
-    boost_ordering_active = bool(args.more_premium_than_shown or args.required_amenities or args.hosting_gathering)
+    boost_ordering_active = bool(
+        args.more_premium_than_shown or args.required_amenities or args.hosting_gathering or geo_ranked
+    )
     if combo_note:
         # sql_search deliberately over-fetches to 4 on this path (no single
         # property sleeps the full group, so all 4 smaller units are worth
@@ -285,9 +302,63 @@ async def recommend_properties(
         upsell=upsell,
         upsell_reason=upsell_reason,
         policy_notes=policy_notes,
+        location_notes=_location_notes(geo, properties_to_show),
     )
     result.gathering_blocked = gathering_blocked
+    if result.not_found and args.preferred_location:
+        await _describe_missing_location(db, result, args, geo, host_user_id)
     return result
+
+
+async def _geo_match(
+    db: AsyncSession, args: RecommendPropertiesArgs, host_user_id: uuid.UUID
+) -> "geo_search.GeoMatch | None":
+    """Where the guest's named area is on the map and which of the host's
+    properties are in/near it. Fails open: any error means the free-text
+    location match runs alone, exactly as before this existed."""
+    if not args.preferred_location or filter_builder._goa_region_localities(args.preferred_location):
+        return None  # North/South Goa already has its own locality list
+    try:
+        return await geo_search.match_properties(db, host_user_id, args.preferred_location)
+    except Exception:
+        await db.rollback()
+        logger.exception("location lookup failed; using the text location match only")
+        return None
+
+
+def _location_notes(geo: "geo_search.GeoMatch | None", properties: list[Property]) -> dict[uuid.UUID, str]:
+    """How far each shown property is from the place the guest named. Straight-line
+    km, said as such -- hill roads are much longer, so never a drive time."""
+    if geo is None or not geo.distances_km:
+        return {}
+    notes: dict[uuid.UUID, str] = {}
+    for p in properties:
+        distance = geo.distances_km.get(p.id)
+        if distance is None:
+            continue
+        km = max(1, round(distance))
+        if geo.farther:
+            notes[p.id] = f"the closest we have to {geo.location.label}, about {km} km away in a straight line"
+        else:
+            notes[p.id] = f"about {km} km from {geo.location.label} in a straight line"
+    return notes
+
+
+async def _describe_missing_location(
+    db: AsyncSession,
+    result: RecommendationResult,
+    args: RecommendPropertiesArgs,
+    geo: "geo_search.GeoMatch | None",
+    host_user_id: uuid.UUID,
+) -> None:
+    """Nothing matched the guest's area: say where the host DOES have properties,
+    so the reply offers real alternatives instead of a bare hand-off."""
+    result.missing_location = geo.location.label if geo is not None else args.preferred_location
+    try:
+        result.available_areas = await geo_search.list_areas(db, host_user_id)
+    except Exception:
+        await db.rollback()
+        logger.exception("could not list the host's areas")
 
 
 async def _apply_gathering_policy(

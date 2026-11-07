@@ -27,6 +27,7 @@ from app.schemas.property import (
 )
 from app.services import faq_service
 from app.services.airbnb_import import parse_airbnb_listing, parse_bright_data_listing
+from app.services.geo.property_location import ensure_property_location
 from app.services.amenity_taxonomy import canonicalize_amenities
 from app.services.calendar_service import sync_property_ical
 from app.services.property.chunking import sync_property_chunks, sync_property_facts
@@ -211,6 +212,7 @@ async def _upsert_property_from_parsed(
                 setattr(existing, key, value)
             await db.commit()
             await db.refresh(existing)
+            await ensure_property_location(db, existing)
             faq_count = await faq_service.sync_imported_faq_entries(db, user_id, existing.id, faq_entries)
             await sync_property_chunks(db, existing)
             return PropertyImportResult(
@@ -221,6 +223,7 @@ async def _upsert_property_from_parsed(
         db.add(property_)
         await db.commit()
         await db.refresh(property_)
+        await ensure_property_location(db, property_)
         faq_count = await faq_service.sync_imported_faq_entries(db, user_id, property_.id, faq_entries)
         await sync_property_chunks(db, property_)
         return PropertyImportResult(

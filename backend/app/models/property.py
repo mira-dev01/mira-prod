@@ -233,6 +233,20 @@ class Property(UUIDPkMixin, TimestampMixin, Base):
     airbnb_latitude: Mapped[float | None] = mapped_column(Numeric(9, 6))
     airbnb_longitude: Mapped[float | None] = mapped_column(Numeric(9, 6))
 
+    # Where the property actually is, for "anything near Kasol?" searches
+    # (app/services/geo/). Separate from airbnb_latitude/longitude on purpose:
+    # those drive the live-price bounding box and must only ever hold the
+    # listing's own Airbnb coordinates, while these may come from the host's
+    # website or a map pin. state/district are derived from the point (nearest
+    # gazetteer place), never typed -- they let a region query ("Himachal",
+    # "Kerala") match on a controlled value instead of free text.
+    latitude: Mapped[float | None] = mapped_column(Numeric(9, 6))
+    longitude: Mapped[float | None] = mapped_column(Numeric(9, 6))
+    state: Mapped[str | None] = mapped_column(String(80))
+    district: Mapped[str | None] = mapped_column(String(80))
+    # "host_website" | "host_pin" | "gazetteer" -- how much to trust the point.
+    location_source: Mapped[str | None] = mapped_column(String(24))
+
     # Call Ownership Schedule (Phase 1 -- storage only, no resolver/routing
     # logic yet; see docs/call-ownership-schedule.md once written). Answers
     # "who owns an inbound guest call for this property" -- one of three

@@ -27,6 +27,18 @@ from app.services.property.pitch_formatter import (
 )
 
 
+# Same cap card.match_reasons_for_card applies: one spoken clause, never a list.
+_MAX_REASONS = 2
+
+
+def _with_location_note(reasons: list[str], note: str | None) -> list[str]:
+    """Where it is relative to the area the guest asked about leads the reasons --
+    when a guest searched by area, that is the first thing they want to hear."""
+    if not note:
+        return reasons
+    return [note, *reasons][:_MAX_REASONS]
+
+
 def build_recommendation_result(
     properties: list[Property],
     combo_note: str = "",
@@ -38,6 +50,7 @@ def build_recommendation_result(
     upsell: Property | None = None,
     upsell_reason: str = "",
     policy_notes: "dict[uuid.UUID, str] | None" = None,
+    location_notes: "dict[uuid.UUID, str] | None" = None,
 ) -> RecommendationResult:
     """partially_available (Availability-first recommendations,
     Implementation 3): properties excluded from `properties` because
@@ -59,6 +72,7 @@ def build_recommendation_result(
     explicit over-budget label, never as a match."""
     stay_prices = stay_prices or {}
     policy_notes = policy_notes or {}
+    location_notes = location_notes or {}
 
     def _card(p: Property) -> PropertyCard:
         # The applicable stay price (offer included) rides on the card, so
@@ -107,7 +121,12 @@ def build_recommendation_result(
     # no fabricated reasons rather than erroring.
     if args is not None:
         cards = [
-            dataclasses.replace(card, match_reasons=match_reasons_for_card(card, args, budget)) for card in cards
+            dataclasses.replace(
+                card, match_reasons=_with_location_note(
+                    match_reasons_for_card(card, args, budget), location_notes.get(card.property_id)
+                )
+            )
+            for card in cards
         ]
         # Recommendation conversations ("Phase X"): required_amenities is now
         # a soft ranking preference (filter_builder.apply_amenity_boost), so

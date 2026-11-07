@@ -82,6 +82,12 @@ class RecommendationResult:
     # True when properties fit the group but every one was ruled out because
     # the host's policy does not allow the party/event the guest described.
     gathering_blocked: bool = False
+    # Set when nothing matched the area the guest named (see
+    # orchestrator._describe_missing_location): the area, and the states the
+    # host DOES have properties in, so the reply offers real alternatives
+    # instead of handing the guest to the host over a place we simply don't cover.
+    missing_location: str = ""
+    available_areas: list[str] = field(default_factory=list)
 
 
 def recommendation_failed_result() -> RecommendationResult:
@@ -320,6 +326,15 @@ def _offer_line(result: RecommendationResult) -> str:
     )
 
 
+def _missing_location_text(location: str, areas: list[str]) -> str:
+    where = f" We do have properties in {', '.join(areas)}." if areas else ""
+    return (
+        f"We don't have a property in or near {location}.{where} Say so plainly and offer to look at "
+        "another area instead -- do NOT hand the guest to the host just because this area isn't covered. "
+        "Only if they'd rather not look elsewhere, offer to connect them with the host."
+    )
+
+
 def render_recommendation_text(result: RecommendationResult) -> str:
     if result.failed:
         return RECOMMENDATION_FAILED_TEXT
@@ -338,6 +353,8 @@ def render_recommendation_text(result: RecommendationResult) -> str:
             "plainly; do not suggest any property for the party. Offer to connect them with the host, or to look "
             "at a plain stay without the party."
         )
+    if result.not_found and result.missing_location:
+        return _missing_location_text(result.missing_location, result.available_areas)
     if result.not_found:
         if budget is not None:
             return (

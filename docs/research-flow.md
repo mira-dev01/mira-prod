@@ -88,6 +88,18 @@ Lead temperature (`very_hot`/`hot`/`warm`/`cold`) is defined once in `app/servic
 
 Leads are deliberately **not** created up front when a call connects — see the note in `app/voice/pipeline.py`'s `_run_pipeline` — to avoid phantom "unknown guest" rows from browser/ICE reconnects. A lead only comes into existence from real qualification data during the call.
 
+## Location search by map position (`app/services/geo/`)
+
+`recommend_properties` used to match `preferred_location` only as free text against `Property.city`/`neighborhood_info`. Airbnb imports store a *village* as the city ("Pangan", "Jari"), so "Himachal" or "near Kasol" matched nothing and the model, told "let me connect you with the host directly", escalated a guest it had just quoted villas to (confirmed live 2026-11-07). Now:
+
+1. `geo.search.match_properties` resolves the phrase (`geo.gazetteer.resolve_location`, our own `places` table — no external call): a **state** ("Himachal", "Kashmir" → `Property.state` exact match) or a **place** ("near Kasol" → a point, then every located property within 50 km straight-line; if none, the closest within 150 km, flagged "the closest we have").
+2. A name is never resolved by text alone — "Jari" exists 14 times in India. Among candidates a real town (population ≥ 5000) wins, else the one nearest the host's own properties, else the most populous. A spelling-tolerant fuzzy match (consonant skeleton) only counts if it lands within 50 km of a host property, so a misheard word can't resolve to a random village.
+3. The result is a set of property ids handed to `filter_builder.build_base_filters`. **Located properties are judged by position only**; the free-text match still applies to *unlocated* ones (no point/state), so nothing regresses and a description that merely mentions an area can't pull in a distant villa.
+4. With a place resolved, results are ordered nearest-first (10 km buckets, price breaks ties) and each card leads with "about N km from Kasol in a straight line". Always straight-line — hill roads are far longer — never a drive time.
+5. Nothing matched → `RecommendationResult.missing_location` + `available_areas`: the reply says "we don't have a property in or near X; we do have properties in A, B" and is told **not** to hand off. The old fixed "connect you with the host" text remains for non-location misses.
+
+Fails open at every step (lookup error, empty gazetteer, host with no located properties → text match alone). Setup: apply the migration, `scripts/load_gazetteer.py`, then `scripts/set_property_locations.py` (a host's known coordinates) — new imports also try `guess_point_from_text`, which only accepts an unambiguous name.
+
 ## Airbnb import: two paths, one convergence point
 
 Both import paths ultimately call `_upsert_property_from_parsed()` in `app/api/v1/properties.py` — matches an existing `Property` by `(user_id, airbnb_listing_id)` (update) or creates a new one, then syncs FAQ entries (`faq_service.sync_imported_faq_entries`, replacing exactly the auto-generated FAQ categories: `AUTO_FAQ_CATEGORIES = {"layout", "neighbourhood", "booking", "reputation", "description", "safety"}`, without touching any host-added FAQ entries in other categories). Each import runs its own DB session per record — a batch import in `import_properties` doesn't let one bad record poison the rest (an async SQLAlchemy session doesn't reliably recover mid-request after a rollback).

@@ -7,7 +7,7 @@ itself is unchanged.
 
 import uuid
 
-from sqlalchemy import Select, or_, select
+from sqlalchemy import ColumnElement, Select, and_, or_, select
 
 from app.models.property import Property
 from app.schemas.tool import RecommendPropertiesArgs
@@ -88,7 +88,12 @@ def _city_synonyms(preferred_location: str) -> list[str]:
     return _CITY_SYNONYMS.get(preferred_location.strip().lower(), [])
 
 
-def build_base_filters(args: RecommendPropertiesArgs, host_user_id: uuid.UUID) -> Select:
+def build_base_filters(
+    args: RecommendPropertiesArgs,
+    host_user_id: uuid.UUID,
+    extra_location_property_ids: "set[uuid.UUID] | None" = None,
+    text_match_only_where: "ColumnElement[bool] | None" = None,
+) -> Select:
     """Budget/location/amenity filters only -- deliberately excludes the
     guest-count filter (see build_guest_count_filter below), so callers can
     reuse this as the "everything except how many people" base statement
@@ -151,6 +156,14 @@ def build_base_filters(args: RecommendPropertiesArgs, host_user_id: uuid.UUID) -
             location_filter = or_(
                 *[or_(Property.city.ilike(f"%{term}%"), Property.neighborhood_info.ilike(f"%{term}%")) for term in terms]
             )
+        if extra_location_property_ids is not None:
+            # Properties matched by map position / state (app/services/geo) are found
+            # by where they actually are ("Pangan" is a village, not "Himachal"). The
+            # free-text match stays for properties with no location data, but is NOT
+            # applied to located ones: a description that merely mentions the area
+            # must not pull in a property that is nowhere near it.
+            text_filter = location_filter if text_match_only_where is None else and_(location_filter, text_match_only_where)
+            location_filter = or_(text_filter, Property.id.in_(extra_location_property_ids))
         stmt = stmt.where(location_filter)
 
     # required_amenities is a SOFT ranking preference (see apply_amenity_boost

@@ -73,7 +73,8 @@ e9b3c7d1a4f2 -> a5d9e2c7b1f4   tickets table (durable follow-ups behind what the
 a5d9e2c7b1f4 -> b6e1d3f8a2c5   leads.busy_recovery_callback_due_at (busy-call no-callback check)
 b6e1d3f8a2c5 -> c7f2a9d4b8e1   policies + policy_documents (booking policies the agent answers from)
 c7f2a9d4b8e1 -> d8a3b6e1f4c7   payment_requests + hold_waiters + users.billing_config (payment links and date holds)
-d8a3b6e1f4c7 -> f4b8d2a6c1e9   rent by the room: properties.room_* + bookings.stay_scope/rooms_booked (HEAD)
+d8a3b6e1f4c7 -> f4b8d2a6c1e9   rent by the room: properties.room_* + bookings.stay_scope/rooms_booked
+f4b8d2a6c1e9 -> b7d3a1c9e5f2   gazetteer tables (places/place_aliases/admin_regions) + properties.latitude/longitude/state/district/location_source (HEAD)
 ```
 
 If a session ever fails with demo-login 500s or a missing-column error, check `alembic heads` against the running DB first — a DB left behind on an old revision is a common cause (see `project_state.md` at the repo root for the 2026-07-15 incident).
@@ -131,8 +132,21 @@ Unique on `(user_id, airbnb_listing_id)`.
 | `smart_price_estimate`, `smart_price_sample_size`, `smart_price_updated_at` | Numeric/Integer/DateTime, all nullable | daily comparable-listing median for this property's city, refreshed by `smart_pricing_service.py` — informational only, shown on the Pricing dashboard page, never fed into `calculate_price` |
 | `exact_airbnb_pricing` | Boolean, default `false` | when true, `pricing_engine.calculate_price` fetches this exact listing's live price for the exact requested dates (via `airbnb_listing_id` + SearchApi.io) instead of `base_price` math, and skips weekend-surge/cleaning-fee/tax markup entirely — for hosts on Airbnb Smart Pricing whose listed price is already final. See [research-flow.md](research-flow.md) |
 | `airbnb_latitude`, `airbnb_longitude` | Numeric(9,6), nullable | this listing's GPS coordinates, resolved once via SearchApi's `airbnb_property` engine and cached here permanently (a listing's location doesn't change) — used to build the tight `bounding_box` search that reliably finds this exact listing for a live price fetch. `NULL` until the first `exact_airbnb_pricing` live fetch for this property succeeds |
+| `latitude`, `longitude` | Numeric(9,6), nullable | where the property is, for "anything near Kasol?" search (`app/services/geo/`). **Deliberately separate from `airbnb_latitude/longitude`** (those only ever hold the Airbnb listing's own point for the live-price bounding box). Set from the host's website/map pin (`scripts/set_property_locations.py`) or, for an unambiguous name only, guessed at import (`geo.property_location.guess_point_from_text`). `NULL` = unlocated: such a property is still matched by the free-text location filter |
+| `state`, `district` | String(80), nullable | derived from the point (nearest gazetteer place), never typed — a region query ("Himachal") matches `state` exactly instead of free text |
+| `location_source` | String(24), nullable | `host_website` / `host_pin` / `gazetteer` — how far to trust the point |
 
 Relationships: `owner` (User), `bookings`, `call_sessions`, `technicians`, `pricing_rules`, `notifications` — all cascade delete-orphan on the property.
+
+### Gazetteer: `places`, `place_aliases`, `admin_regions` (`app/models/place.py`)
+
+Read-only reference data (GeoNames India, CC BY 4.0 — attribution required), loaded by `python -m scripts.load_gazetteer --download --dir <dir>` (replaces the tables in one transaction; `--admin1 11 39` loads only chosen states, the full set is ~114 MB with indexes). Empty until loaded — lookups then find nothing and `recommend_properties` uses the free-text location match alone, so deploying the migration first regresses nothing. Nothing on the live-call path writes to these tables or calls an external geocoder.
+
+| Table | Notes |
+|---|---|
+| `places` | one row per populated place (villages → cities): `name` (ASCII, spoken aloud), `name_norm` (exact key), `name_key` (consonant skeleton, so "Kasaul"/"Kasol" share a key), `lat`/`lng`, `admin1_code`/`admin2_code`, `population`. Indexed on `name_norm`, `name_key`, `(lat, lng)` |
+| `place_aliases` | alternate spellings (GeoNames' "Naini Tal" ↔ "Nainital"); PK `(place_id, alias_norm)` |
+| `admin_regions` | state (`IN.11` Himachal Pradesh) and district (`IN.11.026` Kullu) names, joined on the codes above |
 
 ### `bookings` (`Booking`, `app/models/booking.py`)
 

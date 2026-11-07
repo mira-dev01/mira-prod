@@ -18,6 +18,7 @@ from app.models.property import Property
 from app.models.property_chunk import PropertyChunk
 from app.models.technician import Technician
 from app.models.payment import HoldWaiter, PaymentRequest
+from app.models.place import AdminRegion, Place, PlaceAlias
 from app.models.policy import Policy, PolicyDocument
 from app.models.ticket import Ticket
 from app.models.unanswered_question import UnansweredQuestion
@@ -26,6 +27,7 @@ from app.models.user_ui_preference import UserUiPreference
 
 __all__ = [
     "AdminLoginCode",
+    "AdminRegion",
     "AdminServiceSetting",
     "Booking",
     "CallLease",
@@ -47,6 +49,8 @@ __all__ = [
     "Technician",
     "HoldWaiter",
     "PaymentRequest",
+    "Place",
+    "PlaceAlias",
     "Policy",
     "PolicyDocument",
     "Ticket",
