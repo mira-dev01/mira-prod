@@ -63,7 +63,7 @@ export function RecoveryAnalyticsCard() {
           {loading ? (
             <Skeleton className="h-9 w-16" />
           ) : (
-            <p className="font-heading text-[clamp(1.75rem,2.4vw,2.25rem)] leading-tight font-semibold tracking-tight text-primary tabular-nums">
+            <p className="font-heading text-[clamp(1.75rem,2.4vw,2.25rem)] leading-tight font-semibold tracking-tight tabular-nums">
               {metric.value ?? "—"}
             </p>
           )}

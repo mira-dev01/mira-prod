@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RightPanel } from "@/components/ui/right-panel";
+import { FieldRow, Sheet, SheetHeading, WideCell } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusChip } from "@/components/status-chip";
 import { useAsync } from "@/hooks/use-async";
@@ -55,21 +56,30 @@ function guestLabel(item: BookingReconciliation): string {
   return "Guest details not shared";
 }
 
-/** Booking header: property, dates, guest, conversation found or not. */
+/** Booking header: property as the block heading, then dates, scope, guest and whether a Mira conversation was found. */
 export function BookingSummary({ item }: { item: BookingReconciliation }) {
   const { booking, conversation } = item;
   const nights = nightsBetween(booking.check_in, booking.check_out);
   return (
-    <div className="space-y-1 rounded-lg border p-3 text-sm">
-      <p className="font-medium">{item.property_name}</p>
-      <p className="text-muted-foreground">
-        {formatStayDates(booking.check_in, booking.check_out)} · {nights} night{nights === 1 ? "" : "s"}
-        <span className="capitalize"> · {booking.platform}</span>
-      </p>
-      <p className="text-muted-foreground">Covers: {stayScopeLabel(booking.stay_scope, booking.rooms_booked)}</p>
-      <p className="text-muted-foreground">Guest: {guestLabel(item)}</p>
-      <p className="text-muted-foreground">Mira conversation: {conversation ? "Found" : "Not found"}</p>
-    </div>
+    <>
+      <SheetHeading title={item.property_name}>
+        <span className="capitalize">{booking.platform}</span> booking
+      </SheetHeading>
+      <FieldRow label="Dates">
+        <p className="text-sm">
+          {formatStayDates(booking.check_in, booking.check_out)} · {nights} night{nights === 1 ? "" : "s"}
+        </p>
+      </FieldRow>
+      <FieldRow label="Covers">
+        <p className="text-sm">{stayScopeLabel(booking.stay_scope, booking.rooms_booked)}</p>
+      </FieldRow>
+      <FieldRow label="Guest">
+        <p className="text-sm">{guestLabel(item)}</p>
+      </FieldRow>
+      <FieldRow label="Mira call">
+        <p className="text-sm">{conversation ? "Conversation found" : "No conversation found"}</p>
+      </FieldRow>
+    </>
   );
 }
 
@@ -79,16 +89,17 @@ function ConversationCard({ item }: { item: BookingReconciliation }) {
   if (!conversation) return null;
   const signals = booking.mira_attribution_signals.filter((s) => SIGNAL_LABELS[s]);
   return (
-    <div className="space-y-2 rounded-lg border bg-muted/30 p-3 text-sm">
+    <div className="space-y-2 text-sm">
       <div className="flex flex-wrap items-center gap-2">
         <MessageSquare className="size-4 text-muted-foreground" />
-        <span className="font-medium">{conversation.guest_name ?? conversation.guest_phone ?? "Guest"}</span>
+        <span className="font-semibold">{conversation.guest_name ?? conversation.guest_phone ?? "Guest"}</span>
         <StatusChip
           status={leadLabels.label(conversation.lead_temperature)}
-          tone={leadLabels.tone(conversation.lead_temperature)} className="normal-case"
+          tone={leadLabels.tone(conversation.lead_temperature)}
+          className="normal-case"
         />
         {conversation.conversation_at && (
-          <span className="text-xs text-muted-foreground">
+          <span className="text-[13px] text-muted-foreground">
             {new Date(conversation.conversation_at).toLocaleString("en-IN", {
               day: "numeric",
               month: "short",
@@ -100,12 +111,12 @@ function ConversationCard({ item }: { item: BookingReconciliation }) {
       </div>
       {conversation.summary && <p className="text-muted-foreground">{conversation.summary}</p>}
       {signals.length > 0 && (
-        <p className="text-xs text-muted-foreground">Why we think so: {signals.map((s) => SIGNAL_LABELS[s]).join(" · ")}</p>
+        <p className="text-[13px] text-muted-foreground">Why we think so: {signals.map((s) => SIGNAL_LABELS[s]).join(" · ")}</p>
       )}
       {conversation.call_session_id && (
         <Link
           href={`/dashboard/calls/${conversation.call_session_id}`}
-          className="text-xs font-medium text-foreground underline-offset-4 hover:underline"
+          className="text-[13px] font-semibold text-foreground underline underline-offset-4 hover:no-underline"
         >
           Open the call
         </Link>
@@ -144,7 +155,7 @@ export function MiraMatchControl({
   const status = booking.mira_attribution_status;
   return (
     <div className={cn("flex flex-wrap items-center gap-2", !compact && "justify-between")}>
-      <span className="text-sm font-medium">Mira match?</span>
+      <span className="text-sm font-semibold">Is this a Mira booking?</span>
       <div className="flex gap-2" role="group" aria-label="Was this booking from a Mira conversation?">
         <Button
           size="sm"
@@ -231,9 +242,9 @@ export function FinalPriceForm({
               if (option.value === "mira_conversation" && detected !== null) setAmount(String(Math.round(detected)));
             }}
             className={cn(
-              "flex w-full items-start gap-3 rounded-lg border p-3 text-left text-sm transition-colors",
+              "flex w-full items-start gap-3 border border-border p-3 text-left text-sm transition-colors",
               "disabled:cursor-not-allowed disabled:opacity-50",
-              choice === option.value ? "border-foreground/40 bg-accent" : "hover:bg-accent/60"
+              choice === option.value ? "border-foreground bg-accent" : "hover:bg-accent/60"
             )}
           >
             <span
@@ -245,8 +256,8 @@ export function FinalPriceForm({
               {choice === option.value && <span className="size-2 rounded-full bg-foreground" />}
             </span>
             <span>
-              <span className="block font-medium">{option.title}</span>
-              <span className="block text-muted-foreground">{option.description}</span>
+              <span className="block font-semibold">{option.title}</span>
+              <span className="block text-[13px] text-muted-foreground">{option.description}</span>
             </span>
           </button>
         ))}
@@ -274,13 +285,14 @@ export function FinalPriceForm({
 function PriceSummary({ item, onEdit }: { item: BookingReconciliation; onEdit: () => void }) {
   const { booking } = item;
   return (
-    <div className="flex items-start justify-between gap-3 rounded-lg border p-3 text-sm">
+    <div className="flex items-start justify-between gap-3">
       <div>
-        <p className="text-muted-foreground">Final booking price</p>
-        <p className="text-lg font-semibold">{formatINR(booking.final_booking_price)}</p>
-        <p className="text-xs text-muted-foreground">{PRICE_SOURCE_LABELS[booking.price_source] ?? ""}</p>
+        <p className="font-heading text-2xl leading-8 font-semibold tracking-tight text-primary tabular-nums">
+          {formatINR(booking.final_booking_price)}
+        </p>
+        <p className="text-[13px] text-muted-foreground">{PRICE_SOURCE_LABELS[booking.price_source] ?? ""}</p>
       </div>
-      <Button size="sm" variant="ghost" onClick={onEdit}>
+      <Button size="sm" variant="outline" onClick={onEdit}>
         Change
       </Button>
     </div>
@@ -317,14 +329,17 @@ function RoomsBookedControl({
   }
 
   return (
-    <section className="space-y-2">
-      <h3 className="text-sm font-medium">Rooms booked</h3>
+    <FieldRow
+      label="Rooms booked"
+      htmlFor="rooms-booked"
+      hint="The other rooms stay bookable. If a guest asks for the entire place on these dates, Mira holds it and asks you to resolve the double occupancy."
+    >
       <div className="flex items-center gap-2">
         <Input
+          id="rooms-booked"
           type="number"
           min={1}
           className="w-24"
-          aria-label="Rooms booked"
           value={value}
           onChange={(e) => setValue(e.target.value)}
         />
@@ -332,11 +347,7 @@ function RoomsBookedControl({
           {saving ? "Saving…" : "Save"}
         </Button>
       </div>
-      <p className="text-xs text-muted-foreground">
-        The other rooms stay bookable. If a guest asks for the entire place on these dates, Mira holds it and asks you to
-        resolve the double occupancy.
-      </p>
-    </section>
+    </FieldRow>
   );
 }
 
@@ -368,65 +379,68 @@ export function BookingReconciliationBody({
   const showPriceForm = isReservation && (editingPrice || booking.final_booking_price === null);
 
   return (
-    <div className="space-y-5">
-      <BookingSummary item={item} />
+    <Sheet>
+      <WideCell>
+        <BookingSummary item={item} />
 
-      {booking.stay_scope === "rooms" && <RoomsBookedControl key={booking.rooms_booked ?? 1} item={item} onChanged={onChanged} />}
+        {booking.stay_scope === "rooms" && <RoomsBookedControl key={booking.rooms_booked ?? 1} item={item} onChanged={onChanged} />}
 
-      {isReservation && item.conversation && (
-        <section className="space-y-3">
-          <ConversationCard item={item} />
-          <MiraMatchControl item={item} onDecided={onChanged} />
-        </section>
-      )}
+        {isReservation && item.conversation && (
+          <FieldRow label="Mira match">
+            <ConversationCard item={item} />
+            <MiraMatchControl item={item} onDecided={onChanged} />
+          </FieldRow>
+        )}
 
-      {isReservation ? (
-        <section className="space-y-3">
-          <h3 className="text-sm font-medium">Final booking price</h3>
-          {showPriceForm ? (
-            <>
-              {booking.price_status !== "confirmed" && booking.needs_price_confirmation && (
-                <p className="text-sm text-muted-foreground">
-                  {booking.detected_price !== null
-                    ? "Confirm the price this booking was made at."
-                    : "We couldn't confidently identify the final booking price."}
-                </p>
-              )}
-              <FinalPriceForm
-                // Re-seed the form whenever what it was seeded from changes
-                // (e.g. a "No" on Mira match withdraws the detected price).
-                key={`${booking.id}:${booking.detected_price ?? "none"}`}
-                item={item}
-                onSaved={(updated) => {
-                  setEditingPrice(false);
-                  onChanged(updated);
-                }}
-              />
-            </>
-          ) : (
-            <PriceSummary item={item} onEdit={() => setEditingPrice(true)} />
-          )}
-          <button
-            type="button"
-            onClick={() => setKind("blocked")}
-            className="text-xs text-muted-foreground underline-offset-4 hover:underline"
-          >
-            Not a guest booking? Mark as blocked dates
-          </button>
-        </section>
-      ) : (
-        <section className="space-y-2 text-sm text-muted-foreground">
-          <p>These dates are blocked with no guest stay, so they aren&apos;t counted as a booking in Analytics.</p>
-          <button
-            type="button"
-            onClick={() => setKind("reservation")}
-            className="text-xs text-foreground underline-offset-4 hover:underline"
-          >
-            This was a guest booking
-          </button>
-        </section>
-      )}
-    </div>
+        {isReservation ? (
+          <FieldRow label="Final price">
+            {showPriceForm ? (
+              <>
+                {booking.price_status !== "confirmed" && booking.needs_price_confirmation && (
+                  <p className="text-sm text-muted-foreground">
+                    {booking.detected_price !== null
+                      ? "Confirm the price this booking was made at."
+                      : "We couldn't confidently identify the final booking price."}
+                  </p>
+                )}
+                <FinalPriceForm
+                  // Re-seed the form whenever what it was seeded from changes
+                  // (e.g. a "No" on Mira match withdraws the detected price).
+                  key={`${booking.id}:${booking.detected_price ?? "none"}`}
+                  item={item}
+                  onSaved={(updated) => {
+                    setEditingPrice(false);
+                    onChanged(updated);
+                  }}
+                />
+              </>
+            ) : (
+              <PriceSummary item={item} onEdit={() => setEditingPrice(true)} />
+            )}
+            <button
+              type="button"
+              onClick={() => setKind("blocked")}
+              className="self-start text-[13px] text-muted-foreground underline underline-offset-4 hover:text-foreground hover:no-underline"
+            >
+              Not a guest booking? Mark as blocked dates
+            </button>
+          </FieldRow>
+        ) : (
+          <FieldRow label="Blocked dates">
+            <p className="text-sm text-muted-foreground">
+              These dates are blocked with no guest stay, so they aren&apos;t counted as a booking in Analytics.
+            </p>
+            <button
+              type="button"
+              onClick={() => setKind("reservation")}
+              className="self-start text-[13px] font-semibold text-foreground underline underline-offset-4 hover:no-underline"
+            >
+              This was a guest booking
+            </button>
+          </FieldRow>
+        )}
+      </WideCell>
+    </Sheet>
   );
 }
 
@@ -457,7 +471,7 @@ export function BookingReconciliationPanel({
       ) : error || !data ? (
         <p className="text-sm text-muted-foreground">Couldn&apos;t load this booking. Try again in a moment.</p>
       ) : (
-        <div className="space-y-5">
+        <div className="space-y-4">
           <BookingReconciliationBody
             key={data.booking.id}
             item={data}

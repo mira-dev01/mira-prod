@@ -5,14 +5,12 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { ArrowRight } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DefinitionRow } from "@/components/ui/definition-row";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Cell, CellTitle, Hint, Sheet, SheetHeading, SubField, WideCell } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AiTrainingSection } from "@/components/settings/ai-training-section";
 import { useAsync } from "@/hooks/use-async";
@@ -135,29 +133,108 @@ function PricingPageContent() {
     }
   }
 
+  const withSmartPrice = (properties ?? []).filter((p) => p.smart_price_estimate != null);
+  const n = approvedDiscountRulesCount;
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="page-title">{scopedPropertyId ? `Pricing — ${scopedProperty?.name ?? "…"}` : "Pricing"}</h1>
-        <p className="text-sm text-muted-foreground">
-          Rate preview, mirroring the get_pricing tool exactly — pulls the live Airbnb price via SearchApi for
-          properties with exact Airbnb pricing enabled, falling back to the stored base rate otherwise.
+        <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+          What Mira quotes a guest. It uses the live Airbnb price where Smart pricing is on, and the base rate otherwise.
         </p>
       </div>
 
-      {(() => {
-        const withSmartPrice = (properties ?? []).filter((p) => p.smart_price_estimate != null);
-        if (withSmartPrice.length === 0) return null;
-        return (
-          <Card className="max-w-3xl">
-            <CardHeader>
-              <CardTitle>Smart pricing</CardTitle>
-              <CardDescription>
-                Median nightly rate across comparable live Airbnb listings in the same city, refreshed daily via
-                SearchApi. Informational only — never applied automatically to quoted prices.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
+      <Sheet>
+        <Cell className="md:col-span-5">
+          <CellTitle>Quote calculator</CellTitle>
+          <form onSubmit={handleQuote} className="grid grid-cols-2 gap-4">
+            {!scopedPropertyId && (
+              <SubField label="Property" htmlFor="quote-property" className="col-span-2">
+                <Select value={quoteProperty} onValueChange={(v) => v && setQuoteProperty(v)} disabled={propertiesLoading}>
+                  <SelectTrigger id="quote-property" className="w-full">
+                    <SelectValue placeholder="Select property">
+                      {(value: string) => properties?.find((p) => p.id === value)?.name ?? "Select property"}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {properties?.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </SubField>
+            )}
+            <SubField label="Check-in" htmlFor="quote-check-in">
+              <Input id="quote-check-in" type="date" value={checkIn} onChange={(e) => setCheckIn(e.target.value)} required />
+            </SubField>
+            <SubField label="Check-out" htmlFor="quote-check-out">
+              <Input id="quote-check-out" type="date" value={checkOut} onChange={(e) => setCheckOut(e.target.value)} required />
+            </SubField>
+            <SubField label="Guests" htmlFor="quote-guests">
+              <Input
+                id="quote-guests"
+                type="number"
+                min={1}
+                value={numGuests}
+                onChange={(e) => setNumGuests(Number(e.target.value))}
+              />
+            </SubField>
+            <Button type="submit" variant="cta" className="self-end" disabled={quoting}>
+              {quoting ? "Calculating…" : "Calculate"}
+            </Button>
+          </form>
+        </Cell>
+
+        <Cell className="md:col-span-7">
+          <CellTitle>Quote</CellTitle>
+          {quote ? (
+            <div className="flex flex-1 flex-col">
+              <div className="space-y-2 pb-4 text-sm">
+                <DefinitionRow label="Nights" value={quote.nights} />
+                <DefinitionRow label="Base total" value={`₹${quote.base_total.toLocaleString("en-IN")}`} />
+                <DefinitionRow
+                  label="Discount"
+                  value={quote.discount_percent ? `${quote.discount_percent}% (-₹${quote.discount_amount.toLocaleString("en-IN")})` : "—"}
+                />
+              </div>
+              <div className="mt-auto flex items-baseline justify-between gap-3 border-t border-foreground pt-4">
+                <span className="text-xs font-bold tracking-[0.1em] uppercase">Total</span>
+                <span className="font-heading text-3xl leading-9 font-semibold tracking-tight text-primary tabular-nums">
+                  ₹{quote.total.toLocaleString("en-IN")}
+                </span>
+              </div>
+            </div>
+          ) : (
+            <Hint>Pick a property and dates to see what Mira would quote.</Hint>
+          )}
+        </Cell>
+
+        {n > 0 && (
+          <Cell className="flex-row flex-wrap items-center justify-between gap-x-6 gap-y-2 py-4">
+            <p className="text-sm">
+              <span className="font-semibold">Negotiation policy.</span> {n} approved discount rule{n === 1 ? "" : "s"} from
+              your Agent discount policy {n === 1 ? "applies" : "apply"} to live negotiations across all your properties.
+            </p>
+            <Link
+              href="/dashboard/agent"
+              className="flex items-center gap-1 text-sm font-semibold text-foreground underline underline-offset-4 hover:no-underline"
+            >
+              Review negotiation policy
+              <ArrowRight className="size-3.5" />
+            </Link>
+          </Cell>
+        )}
+
+        {withSmartPrice.length > 0 && (
+          <WideCell>
+            <SheetHeading title="Smart pricing">
+              Median nightly rate of comparable Airbnb listings in the same city, refreshed daily. For reference only;
+              never applied automatically to quotes.
+            </SheetHeading>
+            <div className="col-span-12 px-3 py-2">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -173,131 +250,46 @@ function PricingPageContent() {
                       <TableCell>{p.name}</TableCell>
                       <TableCell>₹{p.base_price.toLocaleString("en-IN")}/night</TableCell>
                       <TableCell>₹{p.smart_price_estimate!.toLocaleString("en-IN")}/night</TableCell>
-                      <TableCell className="text-muted-foreground">{p.smart_price_sample_size} listings in {p.city}</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {p.smart_price_sample_size} listings in {p.city}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
-            </CardContent>
-          </Card>
-        );
-      })()}
+            </div>
+          </WideCell>
+        )}
 
-      {objectionInsights && objectionInsights.by_tag.length > 0 && (
-        <Card className="max-w-3xl">
-          <CardHeader>
-            <CardTitle>Objection insights</CardTitle>
-            <CardDescription>
-              Conversion rate for calls where Mira identified this friction point, compared against your overall
-              conversion rate. A correlation from past calls, not a recommendation — informational only, never
-              applied automatically to pricing or negotiation.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Objection</TableHead>
-                  <TableHead>Calls</TableHead>
-                  <TableHead>Conversion rate</TableHead>
-                  <TableHead>vs. baseline</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {[...objectionInsights.by_tag]
-                  .sort((a, b) => b.total_calls - a.total_calls)
-                  .slice(0, 3)
-                  .map((row) => (
-                    <ObjectionInsightRow key={row.tag} row={row} baseline={objectionInsights.baseline} />
-                  ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
-
-      {approvedDiscountRulesCount > 0 && (
-        <Card className="max-w-2xl border-primary/30">
-          <CardHeader>
-            <CardTitle>Negotiation policy</CardTitle>
-            <CardDescription>
-              {approvedDiscountRulesCount} approved discount rule{approvedDiscountRulesCount === 1 ? "" : "s"} from
-              your Agent discount policy apply{approvedDiscountRulesCount === 1 ? "ies" : ""} to live negotiations across
-              all your properties.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Link
-              href="/dashboard/agent"
-              className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-            >
-              Review negotiation policy
-              <ArrowRight className="size-3.5" />
-            </Link>
-          </CardContent>
-        </Card>
-      )}
-
-      <Card className="max-w-xl">
-        <CardHeader>
-          <CardTitle>Quote calculator</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <form onSubmit={handleQuote} className="grid grid-cols-2 gap-4">
-            {!scopedPropertyId && (
-              <div className="col-span-2 space-y-2">
-                <Label>Property</Label>
-                <Select value={quoteProperty} onValueChange={(v) => v && setQuoteProperty(v)} disabled={propertiesLoading}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select property">
-                      {(value: string) => properties?.find((p) => p.id === value)?.name ?? "Select property"}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {properties?.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.name}
-                      </SelectItem>
+        {objectionInsights && objectionInsights.by_tag.length > 0 && (
+          <WideCell>
+            <SheetHeading title="Objection insights">
+              Conversion rate for calls where Mira noted this friction point, against your overall rate. Based on past
+              calls; never applied automatically to pricing or negotiation.
+            </SheetHeading>
+            <div className="col-span-12 px-3 py-2">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Objection</TableHead>
+                    <TableHead>Calls</TableHead>
+                    <TableHead>Conversion rate</TableHead>
+                    <TableHead>vs. baseline</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {[...objectionInsights.by_tag]
+                    .sort((a, b) => b.total_calls - a.total_calls)
+                    .slice(0, 3)
+                    .map((row) => (
+                      <ObjectionInsightRow key={row.tag} row={row} baseline={objectionInsights.baseline} />
                     ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            <div className="space-y-2">
-              <Label>Check-in</Label>
-              <Input type="date" value={checkIn} onChange={(e) => setCheckIn(e.target.value)} required />
+                </TableBody>
+              </Table>
             </div>
-            <div className="space-y-2">
-              <Label>Check-out</Label>
-              <Input type="date" value={checkOut} onChange={(e) => setCheckOut(e.target.value)} required />
-            </div>
-            <div className="space-y-2">
-              <Label>Guests</Label>
-              <Input type="number" min={1} value={numGuests} onChange={(e) => setNumGuests(Number(e.target.value))} />
-            </div>
-            <Button type="submit" className="col-span-2 self-end" disabled={quoting}>
-              Calculate
-            </Button>
-          </form>
-
-          {quote && (
-            <div className="space-y-1 rounded-md border p-4 text-sm">
-              <DefinitionRow label="Nights" value={quote.nights} />
-              <DefinitionRow label="Base total" value={`₹${quote.base_total.toLocaleString("en-IN")}`} />
-              <DefinitionRow
-                label="Discount"
-                value={quote.discount_percent ? `${quote.discount_percent}% (-₹${quote.discount_amount.toLocaleString("en-IN")})` : "—"}
-              />
-              <div className="flex items-center justify-between pt-2 font-semibold">
-                <span>Total</span>
-                <Badge variant="secondary" className="text-base">
-                  ₹{quote.total.toLocaleString("en-IN")}
-                </Badge>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          </WideCell>
+        )}
+      </Sheet>
 
       <AiTrainingSection />
     </div>

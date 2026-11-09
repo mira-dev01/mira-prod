@@ -138,7 +138,7 @@ export function NavigationEditor({ prefs, onClose }: { prefs: NavigationPreferen
         <p className="px-2 text-xs text-muted-foreground">
           {unavailable.map((i) => i.label).join(", ")} {unavailable.length === 1 ? "isn't" : "aren't"} available
           with your current features.{" "}
-          <Link href="/dashboard/settings?tab=features" className="text-primary hover:underline" onClick={onClose}>
+          <Link href="/dashboard/settings?tab=features" className="text-foreground underline underline-offset-2 hover:no-underline" onClick={onClose}>
             Features &amp; modules
           </Link>
         </p>
@@ -147,7 +147,7 @@ export function NavigationEditor({ prefs, onClose }: { prefs: NavigationPreferen
       {conflict && (
         <div className="space-y-1 rounded-md border px-2 py-2 text-xs">
           <p className="text-muted-foreground">This menu was changed in another tab or device.</p>
-          <button type="button" className="font-medium text-primary hover:underline" onClick={() => void refetch()}>
+          <button type="button" className="font-medium text-foreground underline underline-offset-2 hover:no-underline" onClick={() => void refetch()}>
             Load the latest version
           </button>
         </div>

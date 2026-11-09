@@ -37,7 +37,7 @@ export function CapabilityNotice({
       <p>
         {message}{" "}
         {cap.selectable && cap.state !== "unavailable" && (
-          <Link href="/dashboard/settings?tab=features" className="font-medium text-primary hover:underline">
+          <Link href="/dashboard/settings?tab=features" className="font-medium text-foreground underline underline-offset-2 hover:no-underline">
             Turn it on in Features &amp; modules
           </Link>
         )}

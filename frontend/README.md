@@ -53,7 +53,7 @@ Read [`../PRODUCT.md`](../PRODUCT.md) (who this is for) and [`../DESIGN.md`](../
 type, layout blocks, rules) before changing any UI.
 
 - **Look:** "Visible Grid" — the original parchment/terracotta palette (the user's; do not change it)
-  under a ruled 12-column layout, the Red Hat pair (Display for headings and key numbers, Text for the rest), flat hairline blocks, no shadows
+  under a ruled 12-column layout, the Red Hat pair (Display for headings and key numbers, Text for the rest) and Bricolage Grotesque for the "mira" wordmark only, flat hairline blocks, no shadows
   on the page.
 - **Tokens and primitives:** `src/app/globals.css` (colours, type roles, the faint construction-grid
   utility `.field-grid`), `src/components/ui/{card,tabs,button,input,badge}.tsx`.
@@ -61,8 +61,12 @@ type, layout blocks, rules) before changing any UI.
   `SheetHeading`, `CellFoot`, plus `CellCard` (hosts Card parts inside a Sheet) and `Toolbar` (search/filter strip above a list), `FieldRow`/`SubField` (labelled form rows) and `toggle-field.tsx` (a switch with a one-line hint); `segmented.tsx` for either/or choices. Blocks span whole columns and
   share ruled edges, so a row of blocks is always the same height.
 - **Status:** Settings, Overview (`src/app/dashboard/page.tsx`, `components/overview/*`), Leads
-  (`src/app/dashboard/leads/`, all four tabs), Calls (list and detail) and Properties (list, Policies tab
-  and the Edit/New property panel) are laid out in the new system. Every other page inherits
+  (`src/app/dashboard/leads/`, all four tabs), Calls (list and detail), Properties (list, Policies tab
+  and the Edit/New property panel), Calendar (grid, Block dates and booking panels) and Pricing (incl. the
+  discount-policy section shared with the Agent page) are laid out in the new system.
+- **Accent rule:** brick (`--primary`) is scarce. `Button` default is ink; `variant="cta"` (brick) is the single main
+  action of a view and the footer button of slide-over panels. Links, checkboxes and switches are ink; at most
+  one brick number per view. Every other page inherits
   the tokens and primitives but still needs its own pass, one page at a time. Cards shared between
   Overview and other pages take an `inSheet`/`className` prop so they sit in a Sheet without a second box.
 - **Copy:** a block carries a short title and its data; descriptions appear only where the title alone

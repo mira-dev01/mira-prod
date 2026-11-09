@@ -17,13 +17,27 @@ import type { Completeness, OverviewData } from "@/lib/types";
  * never shown as a zero: a null value renders as a quiet "—" with a note.
  */
 
-function Metric({ label, value, note, unavailable }: { label: string; value: string; note: string; unavailable?: boolean }) {
+function Metric({
+  label,
+  value,
+  note,
+  unavailable,
+  accent,
+}: {
+  label: string;
+  value: string;
+  note: string;
+  unavailable?: boolean;
+  /** The page's one hero number: the only headline figure in brick. */
+  accent?: boolean;
+}) {
   return (
     <Cell className="col-span-6 p-4 sm:p-5 xl:col-span-3">
       <CellTitle>{label}</CellTitle>
       <p
         className={cn(
-          "font-heading text-[clamp(1.75rem,2.4vw,2.25rem)] leading-tight font-semibold tracking-tight text-primary tabular-nums",
+          "font-heading text-[clamp(1.75rem,2.4vw,2.25rem)] leading-tight font-semibold tracking-tight tabular-nums",
+          accent && !unavailable && "text-primary",
           unavailable && "text-muted-foreground"
         )}
       >
@@ -108,6 +122,7 @@ export function PortfolioSnapshot({ data }: { data: OverviewData }) {
       <Metric label="Occupancy" value={formatPercent(p.occupancy)} unavailable={p.occupancy === null} note={occupancyNote} />
       <Metric
         label="Revenue"
+        accent
         value={p.revenue === null ? "—" : formatINRCompact(p.revenue)}
         unavailable={p.revenue === null}
         note={pricedNote(p.completeness, "No bookings")}

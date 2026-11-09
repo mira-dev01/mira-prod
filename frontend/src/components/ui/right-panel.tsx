@@ -100,7 +100,7 @@ function RightPanel({
 // Convenience footer action button -- most panels just need a single
 // primary submit button in the footer slot, same as DialogFooter's usage.
 function RightPanelFooterButton(props: React.ComponentProps<typeof Button>) {
-  return <Button className="w-full sm:w-auto" {...props} />;
+  return <Button variant="cta" className="w-full sm:w-auto" {...props} />;
 }
 
 export { RightPanel, RightPanelFooterButton };

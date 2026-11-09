@@ -153,7 +153,7 @@ export function TechniciansSection() {
                       </span>
                     </TableCell>
                     <TableCell>
-                      <a href={`tel:${tech.phone}`} className="inline-flex items-center gap-1.5 font-medium text-primary hover:underline">
+                      <a href={`tel:${tech.phone}`} className="inline-flex items-center gap-1.5 font-medium text-foreground underline underline-offset-2 hover:no-underline">
                         <Phone className="size-3.5" />
                         {tech.phone}
                       </a>

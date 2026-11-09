@@ -28,7 +28,7 @@ export function DashboardSection() {
           </p>
           <p className="text-muted-foreground">
             <span className="font-bold text-foreground">Turned off</span> changes what Mira does, and is managed in{" "}
-            <Link href="/dashboard/settings?tab=features" className="font-semibold text-primary hover:underline">
+            <Link href="/dashboard/settings?tab=features" className="font-semibold text-foreground underline underline-offset-2 hover:no-underline">
               Features &amp; modules
             </Link>
             . Pages and widgets that need a feature you&apos;ve turned off can&apos;t be added until it&apos;s back on.
@@ -91,7 +91,7 @@ function NavigationCard() {
                       <EyeOff className="size-3.5 text-muted-foreground" />
                       {item.label}
                     </span>
-                    <Link href={item.href} className="text-[13px] font-semibold text-primary hover:underline">
+                    <Link href={item.href} className="text-[13px] font-semibold text-foreground underline underline-offset-2 hover:no-underline">
                       Open
                     </Link>
                   </li>

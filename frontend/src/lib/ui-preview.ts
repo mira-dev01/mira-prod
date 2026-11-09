@@ -267,6 +267,47 @@ const callDetail = {
   ],
 };
 
+
+// Bookings placed in the current month so the calendar always has content.
+const ymd = (day: number) => {
+  const d = new Date(now);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+};
+const booking = (id: string, propertyIndex: number, from: number, to: number, over: Record<string, unknown> = {}) => ({
+  id, property_id: `preview-prop-${propertyIndex}`, guest_phone: "+919811100001", guest_phone_last4: "0001", guest_name: "Aarav Mehta",
+  check_in: ymd(from), check_out: ymd(to), platform: "airbnb", status: "confirmed", kind: "reservation", stay_scope: "entire_place",
+  rooms_booked: null, created_at: ago(200), initial_price: 30000, negotiated_price: 27000, final_booking_price: 135000, currency: "INR",
+  price_source: "host_entered", price_status: "confirmed", price_confirmed_at: ago(100), price_confirmed_by: "host",
+  mira_attribution_status: "none", mira_attribution_call_session_id: null, mira_attribution_lead_id: null, mira_attribution_signals: [],
+  needs_price_confirmation: false, needs_attribution_review: false, detected_price: null, ...over,
+});
+const bookingsFixture = [
+  booking("b1", 0, 3, 7),
+  booking("b2", 0, 15, 20, { platform: "manual", guest_name: "Priya Nair", final_booking_price: 118000, price_source: "mira_conversation", mira_attribution_status: "confirmed", mira_attribution_lead_id: "l1", mira_attribution_signals: ["same_property", "exact_dates", "phone_match"] }),
+  booking("b3", 1, 9, 12, { guest_name: "Rohan Gupta", final_booking_price: null, price_status: "pending", needs_price_confirmation: true, detected_price: 40500 }),
+  booking("b4", 1, 22, 26, { platform: "manual", kind: "blocked", guest_name: null, final_booking_price: null, price_status: "none" }),
+  booking("b5", 2, 1, 5, { guest_name: "Sana Khan" }),
+  booking("b6", 2, 12, 16, { stay_scope: "rooms", rooms_booked: 2, guest_name: "Meera Iyer" }),
+];
+const reconciliationFixture = {
+  booking: bookingsFixture[2], property_name: properties[1].name,
+  conversation: { lead_id: "l1", call_session_id: "c1", guest_name: "Rohan Gupta", guest_phone: "+919811100003", lead_temperature: "warm", conversation_at: ago(30), summary: "Asked for the cottage 9 to 12 November and was quoted ₹13,500 a night." },
+};
+const negotiationRules = [
+  { id: "n1", host_id: "preview-user", rule_type: "discount_guest_requests", condition: {}, discount_percent: 5, stages: [{ order: 0, value: 5 }, { order: 1, value: 8 }], label: null, property_ids: [], source: "ai_parsed", status: "approved", raw_source_text: null, created_at: ago(900) },
+  { id: "n2", host_id: "preview-user", rule_type: "minimum_stay_nights", condition: { weekend_min_nights: 2 }, discount_percent: null, stages: null, label: null, property_ids: ["preview-prop-0"], source: "ai_parsed", status: "approved", raw_source_text: null, created_at: ago(800) },
+  { id: "n3", host_id: "preview-user", rule_type: "early_checkin_fee", condition: { fee: 1500 }, discount_percent: null, stages: null, label: null, property_ids: [], source: "ai_parsed", status: "pending_validation", raw_source_text: null, created_at: ago(5) },
+  { id: "n4", host_id: "preview-user", rule_type: "discount_repeat_guest", condition: {}, discount_percent: 8, stages: null, label: null, property_ids: [], source: "ai_parsed", status: "pending_validation", raw_source_text: null, created_at: ago(5) },
+];
+const objectionInsights = {
+  by_tag: [
+    { tag: "PRICE_TOO_HIGH", total_calls: 18, resolved_count: 5, unresolved_count: 13, conversion_rate: 0.28 },
+    { tag: "DATES_UNAVAILABLE", total_calls: 9, resolved_count: 2, unresolved_count: 7, conversion_rate: 0.22 },
+    { tag: "AMENITY_MISSING", total_calls: 3, resolved_count: 2, unresolved_count: 1, conversion_rate: 0.67 },
+  ],
+  baseline: { total_calls: 87, resolved_count: 31, unresolved_count: 56, conversion_rate: 0.36 },
+};
+
 const routes: Array<[RegExp, unknown]> = [
   [/^\/analytics\/overview/, overview],
   [/^\/leads\/service-requests/, serviceRequests],
@@ -285,17 +326,23 @@ const routes: Array<[RegExp, unknown]> = [
   [/^\/notification-settings/, notificationSettings],
   [/^\/policies/, policies],
   [/^\/faq$/, faqEntries],
+  [/^\/bookings\/[^/]+\/reconciliation/, reconciliationFixture],
+  [/^\/bookings$/, bookingsFixture],
+  [/^\/guests/, []],
+  [/^\/negotiation-rules/, negotiationRules],
+  [/^\/analytics\/objection-insights/, objectionInsights],
   [/^\/properties/, properties],
   [/^\/technicians/, technicians],
   [/^\/billing/, billing],
   [/^\/payments/, []],
-  [/^\/negotiation-rules/, []],
   [/^\/notifications/, []],
 ];
 
 export async function previewResponse<T>(path: string, options: RequestInit): Promise<T> {
   const method = (options.method ?? "GET").toUpperCase();
   const clean = path.split("?")[0];
+  if (method === "POST" && /^\/pricing\/quote/.test(clean))
+    return { nights: 4, base_total: 120000, discount_percent: 5, discount_amount: 6000, total: 114000, per_night_avg: 28500 } as T;
   if (method !== "GET") return {} as T; // saves are accepted and ignored in preview
   const hit = routes.find(([re]) => re.test(clean));
   if (!hit) throw new ApiError(404, "Not available in design preview");

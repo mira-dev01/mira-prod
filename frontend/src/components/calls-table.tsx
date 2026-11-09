@@ -117,7 +117,7 @@ export function CallsTable({ calls, compact = false }: { calls: CallSessionOut[]
 
   return (
     <div className="h-full overflow-x-auto">
-      <Table className="h-full">
+      <Table className={cn("h-full", compact && "[&_td]:px-1.5 [&_th]:px-1.5 sm:[&_td]:px-2 sm:[&_th]:px-2")}>
         <TableHeader>
           <TableRow>
             <TableHead>Caller</TableHead>

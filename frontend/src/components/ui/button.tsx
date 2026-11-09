@@ -8,7 +8,9 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-[color-mix(in_oklch,var(--primary),black_14%)]",
+        default: "bg-foreground text-background hover:bg-[color-mix(in_oklch,var(--foreground),white_16%)]",
+        // The one main action of a view. Brick is the attention colour, so use it for a single button at a time.
+        cta: "bg-primary text-primary-foreground hover:bg-[color-mix(in_oklch,var(--primary),black_14%)]",
         outline:
           "border-foreground bg-background text-foreground hover:bg-accent aria-expanded:bg-accent",
         secondary:
@@ -17,7 +19,7 @@ const buttonVariants = cva(
           "hover:bg-accent hover:text-foreground aria-expanded:bg-accent",
         destructive:
           "border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/15",
-        link: "text-primary underline-offset-4 hover:underline",
+        link: "text-foreground underline underline-offset-4 hover:no-underline",
       },
       size: {
         default:

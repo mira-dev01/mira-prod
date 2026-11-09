@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Red_Hat_Display, Red_Hat_Text } from "next/font/google";
+import { Bricolage_Grotesque, Red_Hat_Display, Red_Hat_Text } from "next/font/google";
 import "./globals.css";
 import { ClerkProvider } from "@clerk/nextjs";
 import { AuthProvider } from "@/lib/auth-context";
@@ -16,6 +16,12 @@ const redHatText = Red_Hat_Text({
 });
 const redHatDisplay = Red_Hat_Display({
   variable: "--font-red-hat-display",
+  subsets: ["latin"],
+});
+// The "mira" wordmark only (.brand-logo in globals.css): an ink-trap grotesque
+// with enough character to read as the logo and not as UI type.
+const bricolage = Bricolage_Grotesque({
+  variable: "--font-bricolage",
   subsets: ["latin"],
 });
 
@@ -37,7 +43,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${redHatText.variable} ${redHatDisplay.variable} h-full antialiased`}
+      className={`${redHatText.variable} ${redHatDisplay.variable} ${bricolage.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-background">
         <ClerkProvider

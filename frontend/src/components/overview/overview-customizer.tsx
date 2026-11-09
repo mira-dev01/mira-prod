@@ -128,7 +128,7 @@ export function OverviewCustomizer({
       {conflict && (
         <p className="rounded-md border px-3 py-2 text-xs text-muted-foreground">
           This layout was changed in another tab or device.{" "}
-          <button type="button" className="font-medium text-primary hover:underline" onClick={onReload}>
+          <button type="button" className="font-medium text-foreground underline underline-offset-2 hover:no-underline" onClick={onReload}>
             Load the latest version
           </button>
         </p>
@@ -198,7 +198,7 @@ export function OverviewCustomizer({
             <p className="text-xs text-muted-foreground">
               {unavailable.map((w) => w.name).join(", ")} {unavailable.length === 1 ? "needs" : "need"} a feature
               that&apos;s off.{" "}
-              <Link href="/dashboard/settings?tab=features" className="text-primary hover:underline">
+              <Link href="/dashboard/settings?tab=features" className="text-foreground underline underline-offset-2 hover:no-underline">
                 Features &amp; modules
               </Link>
             </p>

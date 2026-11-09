@@ -208,7 +208,7 @@ function TransferModeChoice() {
       />
       <Link
         href="/dashboard/settings#transfer-numbers"
-        className="inline-flex items-center gap-1 text-[13px] font-semibold text-primary hover:underline"
+        className="inline-flex items-center gap-1 text-[13px] font-semibold text-foreground underline underline-offset-2 hover:no-underline"
       >
         Manage transfer numbers
         <ArrowRight className="size-3" />

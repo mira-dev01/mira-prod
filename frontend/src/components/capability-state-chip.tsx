@@ -62,7 +62,7 @@ export function CapabilityActions({
             <span className="text-foreground">{r.label}</span>
           </span>
           {linkActions && (
-            <Link href={r.action_route} className="flex shrink-0 items-center gap-1 font-semibold text-primary hover:underline">
+            <Link href={r.action_route} className="flex shrink-0 items-center gap-1 font-semibold text-foreground underline underline-offset-2 hover:no-underline">
               {r.action_label}
               <ArrowRight className="size-3" />
             </Link>

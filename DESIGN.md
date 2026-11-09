@@ -136,14 +136,14 @@ Ink is a warm near-black on parchment, with lighter cream-paper blocks, and a si
 - One typeface, hierarchy by weight, size and tracked caps.
 - Terracotta means active/primary/selected only; state colors mean state only.
 
-**Scope, honestly.** The Visible Grid was built and verified on the Settings, Overview, Leads, Calls and Properties surfaces (pages, `components/settings/*`, `components/overview/*`, the Leads tabs, `components/property-*.tsx`, `policies-tab.tsx`). The shared tokens (the user's parchment and terracotta colors, font, radius, shadows) and primitives (Button, Input, Badge, Card, Tabs, sidebar) are global, so other dashboard pages already inherit the new palette and font. The Sheet/Cell layout system, the construction grid, the type roles for headings and values, and the segmented control have NOT been applied to the remaining pages (Calendar, Pricing, Guests, FAQ, Analytics, Agent). Those pages have not been redesigned and may still use the older card layouts and spacing.
+**Scope, honestly.** The Visible Grid was built and verified on the Settings, Overview, Leads, Calls, Properties, Calendar and Pricing surfaces (pages, `components/settings/*`, `components/overview/*`, the Leads tabs, `components/property-*.tsx`, `policies-tab.tsx`). The shared tokens (the user's parchment and terracotta colors, font, radius, shadows) and primitives (Button, Input, Badge, Card, Tabs, sidebar) are global, so other dashboard pages already inherit the new palette and font. The Sheet/Cell layout system, the construction grid, the type roles for headings and values, and the segmented control have NOT been applied to the remaining pages (Guests, FAQ, Analytics, Agent; the Agent page already shares the new discount-policy section). Those pages have not been redesigned and may still use the older card layouts and spacing.
 
 ## Colors
 
 A warm parchment-and-cream palette with one terracotta accent and a muted, earthy state set. **This palette is the user's own (the original parchment + terracotta, kept at their request after the blue version was rejected). It must not be changed or replaced when extending the system.**
 
 ### Primary
-- **Deep brick terracotta** (`#a63a24`, chosen 2026-11-09 over the original `#b8452f` for 6.0:1 on cream paper, so text and numbers pass AA on tinted washes too): active tab bar, primary button, selected segment, links and action links, focus ring, sidebar primary, switches that are on, and the key numbers (the Overview headline metrics and recovery stats). The only accent. It is also the destructive color (same value), so destructive actions are told apart by label and tint (10% wash, red-brown text), never by hue.
+- **Deep brick terracotta** (`#a63a24`, chosen 2026-11-09 over the original `#b8452f` for 6.0:1 on cream paper, so text and numbers pass AA on tinted washes too). The one accent, and a deliberately scarce one: it exists to draw the eye, so it only appears on (1) the single main action of a view (`Button variant="cta"`, and the footer button of a slide-over panel), (2) the one hero number of a view (Overview's Revenue, a quote's Total, a booking's final price), (3) alerts that need attention (destructive actions, "High" urgency, open counts), (4) the active-tab mark and today's marker on the calendar, and (5) the focus ring. It is also the destructive color (same value), so destructive actions are told apart by label and tint (10% wash), never by hue.
 
 ### Neutral
 - **Ink** (`#2a2420`): text, block borders, outline-button stroke, tab-list rule, sidebar border.
@@ -162,13 +162,13 @@ A warm parchment-and-cream palette with one terracotta accent and a muted, earth
 - **Brand mark amber** (`--accent-warm` `#d9a441`): the drawn star beside the wordmark.
 
 ### Named Rules
-**The One Terracotta Rule.** Terracotta is the only accent: active tab, primary action, links, key numbers and selection. Never use it for decoration, and never introduce a second accent.
+**The Scarce Brick Rule.** Brick is the only accent and it draws attention, so it is rationed: at most one filled brick button and one brick number in view at a time. Everything routine is ink: the default button is ink-filled, links are ink and underlined, checkboxes and switches that are on are ink, headline metrics are ink. Never use brick for decoration or to make a screen feel branded, and never introduce a second accent.
 **The State-Only Rule.** Sage, amber and red appear only where something reports status; each pairs with a label or dot, never color alone.
 **The Palette Is Theirs Rule.** The parchment and terracotta palette is the user's decision; do not swap it for another.
 
 ## Typography
 
-**Fonts:** two Red Hat families (variable, `next/font`, `--font-red-hat-text` and `--font-red-hat-display`) with sans-serif fallback. **Red Hat Display** for the page title, block headings, the "mira" wordmark and key numbers (`font-heading`); **Red Hat Text** for everything else: body, labels, table heads, hints. Monospace falls back to the system stack.
+**Fonts:** two Red Hat families (variable, `next/font`, `--font-red-hat-text` and `--font-red-hat-display`) with sans-serif fallback. **Red Hat Display** for the page title, block headings and key numbers (`font-heading`); **Red Hat Text** for everything else: body, labels, table heads, hints. The "mira" wordmark alone is set in **Bricolage Grotesque** (`--font-bricolage`, `.brand-logo`, 800, chosen 2026-11-09), so the logo reads as a logo and not as UI type. Monospace falls back to the system stack.
 
 **Character:** geometric and upbeat, strong at large sizes (chosen 2026-11-09 from two rounds of pairings); the weight axis does the work, so Tailwind medium/semibold/bold interpolate on each file.
 
@@ -187,7 +187,7 @@ A warm parchment-and-cream palette with one terracotta accent and a muted, earth
 
 ## Layout
 
-Settings, Overview, Leads, Calls and Properties content sits on `Sheet`: `grid grid-cols-12` with a top and left ink border, the 12-column hairline background (`background-size: calc(100% / 12)`, hidden below 768px where blocks stack). `Cell` (default full width, 20px padding, 12px gap, narrowed with `md:col-span-*`) and `WideCell` (subgrid, no padding, built from rows) close the grid with right and bottom ink borders, so neighbours share one rule and stretch to equal height. `SheetRow` puts name and hint in columns 1 to 4 (3 at md) and controls in columns 5 to 12 (4 to 12 at md). `CellFoot` pins fine print to a block's bottom behind a soft rule with a shared `min-h-[6.5rem]` at lg so rules align across a row. `SheetFooter` right-aligns actions on a soft rule. `CellCard` is a Cell that hosts Card parts (CardHeader/CardContent) for cards shared with other pages; `FieldRow` is a form row (the field name as a real `<label>` plus a one-line hint on the left, inputs on the right) and `SubField` one labelled input inside it; `ToggleField` is a switch line with a hint. The right-hand `RightPanel` uses the same ink rules and 20px bold title, so edit panels hold `Sheet` blocks directly. `Toolbar` is the full-width ruled strip above a list (search, filters, view switch, date picker). Lists inside a Cell use ruled rows (`ListRow` `boxed` = soft bottom rule, no box); stat cells are `col-span-6` on phones and `xl:col-span-3` or `xl:col-span-2` on desktop.
+Settings, Overview, Leads, Calls, Properties, Calendar and Pricing content sits on `Sheet`: `grid grid-cols-12` with a top and left ink border, the 12-column hairline background (`background-size: calc(100% / 12)`, hidden below 768px where blocks stack). `Cell` (default full width, 20px padding, 12px gap, narrowed with `md:col-span-*`) and `WideCell` (subgrid, no padding, built from rows) close the grid with right and bottom ink borders, so neighbours share one rule and stretch to equal height. `SheetRow` puts name and hint in columns 1 to 4 (3 at md) and controls in columns 5 to 12 (4 to 12 at md). `CellFoot` pins fine print to a block's bottom behind a soft rule with a shared `min-h-[6.5rem]` at lg so rules align across a row. `SheetFooter` right-aligns actions on a soft rule. `CellCard` is a Cell that hosts Card parts (CardHeader/CardContent) for cards shared with other pages; `FieldRow` is a form row (the field name as a real `<label>` plus a one-line hint on the left, inputs on the right) and `SubField` one labelled input inside it; `ToggleField` is a switch line with a hint. The right-hand `RightPanel` uses the same ink rules and 20px bold title, so edit panels hold `Sheet` blocks directly. `Toolbar` is the full-width ruled strip above a list (search, filters, view switch, date picker). Lists inside a Cell use ruled rows (`ListRow` `boxed` = soft bottom rule, no box); stat cells are `col-span-6` on phones and `xl:col-span-3` or `xl:col-span-2` on desktop.
 
 Spacing is Tailwind's 4px unit on even steps (2/4/6/8/10/12/16/20/24); odd steps only for optical correction. Main content padding is 16px, 24px at md. The sidebar is 224px (`w-56`) at md and up; below md it becomes a fixed 56px top bar plus a slide-in drawer.
 
@@ -209,8 +209,9 @@ Small and square-leaning. Base radius 0.25rem (4px); derived sm 0.15rem, md 0.2r
 
 ### Buttons
 - **Shape:** `rounded-md`, 36px high default (32 sm, 24 xs, 40 lg), 14px/600 text, no shadow.
-- **Primary:** Terracotta fill, white text; hover darkens 14% toward black.
-- **Outline:** cream paper, ink border; hover Sand. **Secondary:** cream paper with soft border. **Ghost** hover wash. **Destructive:** terracotta 10% tint, terracotta text. **Link:** terracotta, underline on hover.
+- **Default:** ink fill, cream text; hover lightens 16%. The routine action (Save, Approve, Analyze).
+- **CTA (`variant="cta"`):** brick fill, white text; hover darkens 14% toward black. The single main action of a view, and the footer button of slide-over panels. Use sparingly.
+- **Outline:** cream paper, ink border; hover Sand. **Secondary:** cream paper with soft border. **Ghost** hover wash. **Destructive:** terracotta 10% tint, terracotta text. **Link:** ink, underlined; underline drops on hover.
 - **Focus / press:** 2px terracotta outline offset 2px; active nudges 1px down. Disabled 50% opacity.
 
 ### Inputs / Fields
@@ -231,7 +232,7 @@ A two or three-way selector drawn as one ink-bordered control (`rounded-md`, 2px
 Badge (24px, `rounded-sm`, 12px/600) with a 6px dot, label capitalized. Capability states map: Ready to sage, Needs setup to amber, Off/Available to neutral, Unavailable to slate. Requirement lines use a 6px dot (amber to do, grey optional, red blocked) with terracotta action links.
 
 ### Brand mark
-Eight-point star drawn as a square-capped 2px stroke SVG in amber (`--accent-warm`), beside the lowercase bold "mira" wordmark (700, tracking -0.04em).
+Eight-point star drawn as a square-capped 2px stroke SVG in amber (`--accent-warm`), beside the lowercase extra-bold "mira" wordmark in Bricolage Grotesque (800, tracking -0.04em).
 
 ## Do's and Don'ts
 

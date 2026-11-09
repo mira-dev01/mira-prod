@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Cell, CellTitle, Hint, Sheet, SubField } from "@/components/ui/sheet";
 import { CapabilityNotice } from "@/components/capability-notice";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DictationTextarea } from "@/components/ui/dictation-textarea";
@@ -337,10 +338,9 @@ export function AiTrainingSection() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="font-heading text-base leading-snug font-medium">Discounts and negotiation</h2>
-        <p className="text-sm text-muted-foreground">
-          Tell Mira when she can offer a discount, minimum stays and fees. Review what she learns before it goes
-          live.
+        <h2 className="font-heading text-xl leading-7 font-bold tracking-tight">Discounts and negotiation</h2>
+        <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+          Tell Mira when she can offer a discount, minimum stays and fees. Review what she learns before it goes live.
         </p>
       </div>
       <CapabilityNotice
@@ -348,284 +348,256 @@ export function AiTrainingSection() {
         whenOff="Discount negotiation is off, so Mira holds the quoted price and offers to connect guests with you instead of discounting. Your rules are kept and apply again when you turn it back on."
       />
 
-      <div className="grid gap-6 lg:grid-cols-5 lg:items-start">
-        <div className="lg:col-span-3">
-          <Card>
-            <CardHeader>
-              <CardTitle>Negotiation policy</CardTitle>
-              <CardDescription>
-                Describe how you handle discounts, minimum stays, and fees, in your own words. Mira turns this into
-                specific rules for you to review below -- nothing changes until you approve it.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleParsePolicy} className="space-y-3">
-                <DictationTextarea
-                  placeholder="e.g. If a guest doesn't ask for a discount, I keep my price as offered. If they push back, I can go down to 5%. Guests who've stayed at more than one of my properties get 8% off. Saturdays need a 2-night minimum. Early check-in is an extra 1,500 rupees."
-                  value={policyText}
-                  onValueChange={setPolicyText}
-                  className="min-h-32"
-                />
-                <Button type="submit" disabled={parsing || !policyText.trim()}>
-                  {parsing ? "Analyzing..." : "Analyze policy"}
-                </Button>
-              </form>
-              {user?.discount_policy_text && (
-                <p className="mt-3 text-xs text-muted-foreground">
-                  Last saved policy: &quot;{user.discount_policy_text}&quot;
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+      <Sheet>
+        <Cell className="md:col-span-7">
+          <CellTitle>Negotiation policy</CellTitle>
+          <Hint>
+            Describe how you handle discounts, minimum stays and fees in your own words. Mira turns it into rules for you
+            to review. Nothing changes until you approve.
+          </Hint>
+          <form onSubmit={handleParsePolicy} className="space-y-3">
+            <DictationTextarea
+              placeholder="e.g. If a guest doesn't ask for a discount, I keep my price as offered. If they push back, I can go down to 5%. Guests who've stayed at more than one of my properties get 8% off. Saturdays need a 2-night minimum. Early check-in is an extra 1,500 rupees."
+              value={policyText}
+              onValueChange={setPolicyText}
+              className="min-h-32"
+              aria-label="Negotiation policy"
+            />
+            <Button type="submit" disabled={parsing || !policyText.trim()}>
+              {parsing ? "Analyzing..." : "Analyze policy"}
+            </Button>
+          </form>
+          {user?.discount_policy_text && (
+            <Hint>Last saved policy: &quot;{user.discount_policy_text}&quot;</Hint>
+          )}
+        </Cell>
 
-        <div className="space-y-6 lg:sticky lg:top-6 lg:col-span-2 lg:self-start">
-          <Card>
-            <CardHeader>
-              <CardTitle>Pending validation</CardTitle>
-              <CardDescription>
-                Rules Mira drafted from your policy text above. Discount rules apply portfolio-wide once
-                approved; stay-pricing rules need properties selected first.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {rulesLoading ? (
-                <Skeleton className="h-24 w-full" />
-              ) : pendingRules.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Nothing waiting on review right now.</p>
-              ) : (
-                <div className="space-y-3">
-                  {pendingRules.map((rule) => (
-                    <ListRow key={rule.id} variant="boxed">
-                      <ListRowHeader>
-                        <span className="text-sm font-medium">{ruleTypeLabel(rule)}</span>
-                        <StatusChip status={rule.status.replace("_", " ")} tone="pending" />
-                      </ListRowHeader>
-                      <ListRowBody>
-                        <p className="text-sm text-muted-foreground">{ruleConditionSummary(rule)}</p>
-                        {!isDiscountTrigger(rule) && properties && properties.length > 0 && (
-                          <div className="mt-2 space-y-1">
-                            <label className="flex items-center gap-2 text-sm font-medium">
-                              <Checkbox
-                                checked={selectedFor(rule).length === properties.length}
-                                onCheckedChange={(checked) =>
-                                  toggleAllForRule(
-                                    rule,
-                                    properties.map((p) => p.id),
-                                    checked === true
-                                  )
-                                }
-                              />
-                              Select all
-                            </label>
-                            {properties.map((property) => (
-                              <label key={property.id} className="flex items-center gap-2 text-sm">
-                                <Checkbox
-                                  checked={selectedFor(rule).includes(property.id)}
-                                  onCheckedChange={(checked) =>
-                                    togglePropertyForRule(rule, property.id, checked === true)
-                                  }
-                                />
-                                {property.name}
-                              </label>
-                            ))}
-                          </div>
-                        )}
-                      </ListRowBody>
-                      <ListRowFooter className="gap-2">
-                        <Button size="sm" disabled={savingRuleId === rule.id} onClick={() => handleApprove(rule)}>
-                          Approve
-                        </Button>
-                        {(isDiscountTrigger(rule) || rule.rule_type === "custom") && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={savingRuleId === rule.id}
-                            onClick={() => openEdit(rule)}
-                          >
-                            Edit
-                          </Button>
-                        )}
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={savingRuleId === rule.id}
-                          onClick={() => handleUpdateStatus(rule, "rejected")}
-                        >
-                          Reject
-                        </Button>
-                      </ListRowFooter>
-                    </ListRow>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Reviewed rules</CardTitle>
-              <CardDescription>Approved rules are what Mira actually applies today.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {rulesLoading ? (
-                <Skeleton className="h-16 w-full" />
-              ) : decidedRules.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No rules reviewed yet.</p>
-              ) : (
-                <div className="space-y-3">
-                  {decidedRules.map((rule) => (
-                    <ListRow key={rule.id} variant="divider">
-                      <ListRowHeader>
-                        <span className="text-sm font-medium">{ruleTypeLabel(rule)}</span>
-                        <StatusChip status={rule.status} tone={statusTone(rule.status)} />
-                      </ListRowHeader>
-                      <ListRowBody>
-                        <p className="text-sm text-muted-foreground">
-                          {ruleConditionSummary(rule)}
-                          {rule.source === "host_edited" && " · edited by you"}
-                          {rule.status === "approved" &&
-                            !isDiscountTrigger(rule) &&
-                            ` · ${rule.property_ids.length} propert${rule.property_ids.length === 1 ? "y" : "ies"}`}
-                        </p>
-                      </ListRowBody>
-                      <ListRowFooter className="gap-2">
-                        <Button size="sm" variant="outline" onClick={() => openEdit(rule)}>
-                          Edit
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={savingRuleId === rule.id}
-                          onClick={() => handleRemoveRule(rule)}
-                        >
-                          Remove
-                        </Button>
-                      </ListRowFooter>
-                    </ListRow>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {editingRule && (
-            <Card className="border-primary/40">
-              <CardHeader>
-                <CardTitle>Edit -- {ruleTypeLabel(editingRule)}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={handleSaveEdit} className="space-y-3">
-                  {editStageValues ? (
-                    <div className="space-y-2">
-                      <Label>Negotiation stages</Label>
-                      <p className="text-xs text-muted-foreground">
-                        The order below is the sequence Mira offers as the guest keeps pushing back --
-                        stage 1 first, then stage 2, and so on.
-                      </p>
-                      <div className="space-y-2">
-                        {editStageValues.map((value, i) => (
-                          <div key={i} className="flex items-center gap-2">
-                            <span className="w-16 text-sm text-muted-foreground">Stage {i + 1}</span>
-                            <Input
-                              type="number"
-                              min={0}
-                              max={100}
-                              value={value}
-                              onChange={(e) => updateStageValue(i, e.target.value)}
-                              className="w-24"
+        <Cell className="md:col-span-5">
+          <div className="flex items-center justify-between gap-3">
+            <CellTitle>Pending validation</CellTitle>
+            {pendingRules.length > 0 && <Badge variant="outline">{pendingRules.length}</Badge>}
+          </div>
+          <Hint>Discount rules apply to all properties once approved. Stay-pricing rules need properties picked first.</Hint>
+          {rulesLoading ? (
+            <Skeleton className="h-24 w-full" />
+          ) : pendingRules.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nothing waiting on review.</p>
+          ) : (
+            <div>
+              {pendingRules.map((rule) => (
+                <ListRow key={rule.id} variant="boxed">
+                  <ListRowHeader>
+                    <span className="text-sm font-semibold">{ruleTypeLabel(rule)}</span>
+                    <StatusChip status={rule.status.replace("_", " ")} tone="pending" />
+                  </ListRowHeader>
+                  <ListRowBody>
+                    <p className="text-sm text-muted-foreground">{ruleConditionSummary(rule)}</p>
+                    {!isDiscountTrigger(rule) && properties && properties.length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        <label className="flex items-center gap-2 text-sm font-medium">
+                          <Checkbox
+                            checked={selectedFor(rule).length === properties.length}
+                            onCheckedChange={(checked) =>
+                              toggleAllForRule(
+                                rule,
+                                properties.map((p) => p.id),
+                                checked === true
+                              )
+                            }
+                          />
+                          Select all
+                        </label>
+                        {properties.map((property) => (
+                          <label key={property.id} className="flex items-center gap-2 text-sm">
+                            <Checkbox
+                              checked={selectedFor(rule).includes(property.id)}
+                              onCheckedChange={(checked) => togglePropertyForRule(rule, property.id, checked === true)}
                             />
-                            <span className="text-sm text-muted-foreground">%</span>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => removeStage(i)}
-                              disabled={editStageValues.length <= 2}
-                            >
-                              Remove
-                            </Button>
-                          </div>
+                            {property.name}
+                          </label>
                         ))}
                       </div>
-                      <div className="flex items-center gap-3">
-                        <Button type="button" size="sm" variant="outline" onClick={addStage}>
-                          Add stage
-                        </Button>
-                        <Button type="button" size="sm" variant="ghost" onClick={convertEditToFlat}>
-                          Switch to a single flat discount instead
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex flex-wrap items-end gap-3">
-                      <div className="space-y-2">
-                        <Label htmlFor="discount-percent">Discount %</Label>
+                    )}
+                  </ListRowBody>
+                  <ListRowFooter className="gap-2">
+                    <Button size="sm" disabled={savingRuleId === rule.id} onClick={() => handleApprove(rule)}>
+                      Approve
+                    </Button>
+                    {(isDiscountTrigger(rule) || rule.rule_type === "custom") && (
+                      <Button size="sm" variant="outline" disabled={savingRuleId === rule.id} onClick={() => openEdit(rule)}>
+                        Edit
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={savingRuleId === rule.id}
+                      onClick={() => handleUpdateStatus(rule, "rejected")}
+                    >
+                      Reject
+                    </Button>
+                  </ListRowFooter>
+                </ListRow>
+              ))}
+            </div>
+          )}
+        </Cell>
+
+        {editingRule && (
+          <Cell>
+            <CellTitle>Edit: {ruleTypeLabel(editingRule)}</CellTitle>
+            <form onSubmit={handleSaveEdit} className="space-y-4">
+              {editStageValues ? (
+                <div className="space-y-3">
+                  <Label>Negotiation stages</Label>
+                  <Hint>
+                    The order is the sequence Mira offers as the guest keeps pushing back: stage 1 first, then stage 2,
+                    and so on.
+                  </Hint>
+                  <div className="space-y-2">
+                    {editStageValues.map((value, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <span className="w-16 text-sm text-muted-foreground">Stage {i + 1}</span>
                         <Input
-                          id="discount-percent"
                           type="number"
                           min={0}
                           max={100}
-                          value={editDiscountPercent}
-                          onChange={(e) => setEditDiscountPercent(e.target.value)}
-                          className="w-28"
+                          value={value}
+                          onChange={(e) => updateStageValue(i, e.target.value)}
+                          className="w-24"
+                          aria-label={`Stage ${i + 1} discount percent`}
                         />
-                      </div>
-                      {(editingRule.rule_type === "discount_guest_requests" || editingRule.rule_type === "custom") && (
-                        <Button type="button" size="sm" variant="ghost" onClick={convertEditToStaged}>
-                          Turn into negotiation stages instead
+                        <span className="text-sm text-muted-foreground">%</span>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => removeStage(i)}
+                          disabled={editStageValues.length <= 2}
+                        >
+                          Remove
                         </Button>
-                      )}
-                    </div>
-                  )}
-                  {/* "custom" (Phase 4E fix) is property-scoped -- without
-                      this, saving from the edit form (staged or flat)
-                      would silently approve with whatever property_ids
-                      the row already has, which is [] for a fresh
-                      AI-parsed draft and therefore matches nothing. Same
-                      checkbox mechanism/state as the pending-list's own
-                      approve flow (selectedFor/togglePropertyForRule). */}
-                  {editingRule.rule_type === "custom" && properties && properties.length > 0 && (
-                    <div className="space-y-1">
-                      <Label>Applies to</Label>
-                      <label className="flex items-center gap-2 text-sm font-medium">
-                        <Checkbox
-                          checked={selectedFor(editingRule).length === properties.length}
-                          onCheckedChange={(checked) =>
-                            toggleAllForRule(
-                              editingRule,
-                              properties.map((p) => p.id),
-                              checked === true
-                            )
-                          }
-                        />
-                        Select all
-                      </label>
-                      {properties.map((property) => (
-                        <label key={property.id} className="flex items-center gap-2 text-sm">
-                          <Checkbox
-                            checked={selectedFor(editingRule).includes(property.id)}
-                            onCheckedChange={(checked) => togglePropertyForRule(editingRule, property.id, checked === true)}
-                          />
-                          {property.name}
-                        </label>
-                      ))}
-                    </div>
-                  )}
-                  <div className="flex items-center gap-3">
-                    <Button type="submit" disabled={savingRuleId === editingRule.id}>
-                      Save and approve
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <Button type="button" size="sm" variant="outline" onClick={addStage}>
+                      Add stage
                     </Button>
-                    <Button type="button" variant="outline" onClick={() => setEditingRule(null)}>
-                      Cancel
+                    <Button type="button" size="sm" variant="ghost" onClick={convertEditToFlat}>
+                      Switch to a single flat discount instead
                     </Button>
                   </div>
-                </form>
-              </CardContent>
-            </Card>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-end gap-3">
+                  <SubField label="Discount %" htmlFor="discount-percent">
+                    <Input
+                      id="discount-percent"
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={editDiscountPercent}
+                      onChange={(e) => setEditDiscountPercent(e.target.value)}
+                      className="w-28"
+                    />
+                  </SubField>
+                  {(editingRule.rule_type === "discount_guest_requests" || editingRule.rule_type === "custom") && (
+                    <Button type="button" size="sm" variant="ghost" onClick={convertEditToStaged}>
+                      Turn into negotiation stages instead
+                    </Button>
+                  )}
+                </div>
+              )}
+              {/* "custom" (Phase 4E fix) is property-scoped -- without
+                  this, saving from the edit form (staged or flat)
+                  would silently approve with whatever property_ids
+                  the row already has, which is [] for a fresh
+                  AI-parsed draft and therefore matches nothing. Same
+                  checkbox mechanism/state as the pending-list's own
+                  approve flow (selectedFor/togglePropertyForRule). */}
+              {editingRule.rule_type === "custom" && properties && properties.length > 0 && (
+                <div className="space-y-1">
+                  <Label>Applies to</Label>
+                  <label className="flex items-center gap-2 text-sm font-medium">
+                    <Checkbox
+                      checked={selectedFor(editingRule).length === properties.length}
+                      onCheckedChange={(checked) =>
+                        toggleAllForRule(
+                          editingRule,
+                          properties.map((p) => p.id),
+                          checked === true
+                        )
+                      }
+                    />
+                    Select all
+                  </label>
+                  {properties.map((property) => (
+                    <label key={property.id} className="flex items-center gap-2 text-sm">
+                      <Checkbox
+                        checked={selectedFor(editingRule).includes(property.id)}
+                        onCheckedChange={(checked) => togglePropertyForRule(editingRule, property.id, checked === true)}
+                      />
+                      {property.name}
+                    </label>
+                  ))}
+                </div>
+              )}
+              <div className="flex items-center gap-3">
+                <Button type="submit" disabled={savingRuleId === editingRule.id}>
+                  Save and approve
+                </Button>
+                <Button type="button" variant="outline" onClick={() => setEditingRule(null)}>
+                  Cancel
+                </Button>
+              </div>
+            </form>
+          </Cell>
+        )}
+
+        <Cell>
+          <CellTitle>Reviewed rules</CellTitle>
+          <Hint>Approved rules are what Mira applies today.</Hint>
+          {rulesLoading ? (
+            <Skeleton className="h-16 w-full" />
+          ) : decidedRules.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No rules reviewed yet.</p>
+          ) : (
+            <div>
+              {decidedRules.map((rule) => (
+                <ListRow key={rule.id} variant="boxed">
+                  <ListRowHeader>
+                    <span className="text-sm font-semibold">{ruleTypeLabel(rule)}</span>
+                    <StatusChip status={rule.status} tone={statusTone(rule.status)} />
+                  </ListRowHeader>
+                  <ListRowBody>
+                    <p className="text-sm text-muted-foreground">
+                      {ruleConditionSummary(rule)}
+                      {rule.source === "host_edited" && " · edited by you"}
+                      {rule.status === "approved" &&
+                        !isDiscountTrigger(rule) &&
+                        ` · ${rule.property_ids.length} propert${rule.property_ids.length === 1 ? "y" : "ies"}`}
+                    </p>
+                  </ListRowBody>
+                  <ListRowFooter className="gap-2">
+                    <Button size="sm" variant="outline" onClick={() => openEdit(rule)}>
+                      Edit
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={savingRuleId === rule.id}
+                      onClick={() => handleRemoveRule(rule)}
+                    >
+                      Remove
+                    </Button>
+                  </ListRowFooter>
+                </ListRow>
+              ))}
+            </div>
           )}
-        </div>
-      </div>
+        </Cell>
+      </Sheet>
     </div>
   );
 }

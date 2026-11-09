@@ -281,7 +281,7 @@ export function BillingTab() {
         <Cell>
           <p className="text-sm">
             Online payments are switched off, so Mira won&apos;t send payment links.{" "}
-            <Link href="/dashboard/settings?tab=features" className="font-semibold text-primary underline underline-offset-2">
+            <Link href="/dashboard/settings?tab=features" className="font-semibold text-foreground underline underline-offset-2">
               Turn them on in Settings → Features
             </Link>
             .

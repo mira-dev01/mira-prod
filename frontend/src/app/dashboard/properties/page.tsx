@@ -413,7 +413,9 @@ function PropertiesList({ policies, onOpenPolicies }: { policies: PolicyOverview
               <TalkToMiraDialog open={talkOpen} onOpenChange={setTalkOpen} />
             </>
           )}
-          <Button onClick={() => setOpen(true)}>Add property</Button>
+          <Button variant="cta" onClick={() => setOpen(true)}>
+            Add property
+          </Button>
           <RightPanel
             open={open}
             onOpenChange={setOpen}

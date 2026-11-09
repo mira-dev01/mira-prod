@@ -12,7 +12,7 @@
   --font-display: var(--font-red-hat-display);
   --font-heading: var(--font-display);
   --font-subheading: var(--font-red-hat-text);
-  --font-brand: var(--font-red-hat-display);
+  --font-brand: var(--font-bricolage);
   --color-status-live: var(--status-live);
   --color-status-pending: var(--status-pending);
   --color-status-pending-strong: var(--status-pending-strong);
@@ -223,10 +223,10 @@
   }
 
   /* Brand wordmark only ("mira" in the sidebar, login card, public gallery
-     header): bold lowercase Red Hat Display, tightly tracked. */
+     header): extra-bold lowercase Bricolage Grotesque, tightly tracked. */
   .brand-logo {
     font-family: var(--font-brand);
-    font-weight: 700;
+    font-weight: 800;
     font-size: 1.25em;
     letter-spacing: -0.04em;
     font-style: normal;
