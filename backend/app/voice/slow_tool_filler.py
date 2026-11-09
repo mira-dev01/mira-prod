@@ -21,8 +21,10 @@ covering these two tools is exact_airbnb_pricing properties, where
 calculate_price falls through to a live SearchApi.io fetch
 (app/integrations/searchapi_client.py: up to two sequential HTTP calls,
 each a 15s client timeout -- fetch_property_coordinates then
-fetch_listing_total_price -- so a worst case near 30s is architecturally
-possible, not just theoretical) before falling back to Property.base_price
+fetch_listing_total_price -- so a worst case near 30s WAS architecturally
+possible; it is now capped by settings.live_pricing_budget_seconds, see
+pricing_engine._live_total_within_budget, so this filler covers a
+few-second wait, not half a minute) before falling back to Property.base_price
 on any failure. check_calendar and search_faq are deliberately NOT
 included -- both are DB-only with no equivalent external-API long-tail
 risk (confirmed: no searchapi_client/httpx import anywhere in

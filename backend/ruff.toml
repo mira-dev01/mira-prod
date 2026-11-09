@@ -1,0 +1,16 @@
+# CI lint gate: rules that indicate real defects, not style.
+#   E9   syntax / IO errors            F63  invalid comparisons / assertions
+#   F7   misplaced statements          F82  undefined names (NameError at runtime)
+#   F811 redefinition of unused name (usually a shadowed function or test)
+# Unused imports/variables (F401, F841) are deliberately NOT gated here: there are ~30 of them
+# today across app/ and tests/, and mixing a mass import cleanup into unrelated changes makes
+# real edits hard to review. Clean them up in their own change, then add F401/F841 here.
+target-version = "py312"
+
+[lint]
+select = ["E9", "F63", "F7", "F82", "F811"]
+
+[lint.per-file-ignores]
+# SQLAlchemy relationships reference sibling models by STRING name ("Property", "User", ...);
+# those are resolved by the ORM at mapper-configuration time, not by Python, so F821 is noise.
+"app/models/*" = ["F821"]

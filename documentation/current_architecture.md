@@ -11,7 +11,9 @@ merged into `main`/`shagun` as of this date (the Redis-backed `CallCoordinator`/
 Recovery/WhatsApp-reply subsystem that was flagged uncommitted as of 2026-08-09 has since landed —
 no subsystem described in this file is uncommitted local-only work anymore).
 
-**Since 2026-09-22**: location search now matches by map position (§8 — `app/services/geo/`, a local `places` gazetteer, `properties.latitude/longitude/state`; see [../docs/research-flow.md](../docs/research-flow.md)); §2 gained three optional full-duplex pieces, off by default (backchannel filter, volume ducking, echo cancellation — [../docs/agents.md](../docs/agents.md)); the host dashboard's Settings page moved to a new layout system ([../DESIGN.md](../DESIGN.md)); Render was retired as a deploy target (Railway `dev`/`production` + Vercel — [../docs/architecture.md](../docs/architecture.md)).
+**Since 2026-09-22 (feature work)**: location search now matches by map position (§8 — `app/services/geo/`, a local `places` gazetteer, `properties.latitude/longitude/state`; see [../docs/research-flow.md](../docs/research-flow.md)); §2 gained three optional full-duplex pieces, off by default (backchannel filter, volume ducking, echo cancellation — [../docs/agents.md](../docs/agents.md)); the host dashboard's Settings page moved to a new layout system ([../DESIGN.md](../DESIGN.md)); Render was retired as a deploy target (Railway `dev`/`production` + Vercel — [../docs/architecture.md](../docs/architecture.md)).
+
+**Since 2026-09-22 (the 2026-11-09 security/reliability/hygiene pass — uncommitted local work at the time of writing, see [project_state.md](project_state.md))**: the call lease is released the moment the guest disconnects (`_CallLeaseGuard`, §3); post-call work runs as isolated steps and a *failed* classification never deletes a lead (§1, §5); the voice LLM fails over on 5xx/timeouts/stalls (not just 429), speaks a "one moment" line while doing so and holds the silence watchdog (§7); live pricing is capped at 4s and flagged as an estimate on fallback (§7); "Take Call" reaches a call on another process over Redis pub/sub (§4b); detached tasks use `background.spawn`, background LLM calls use shared clients (§9); Clerk tokens are verified with `iss`/`azp`/`exp` checks and several unauthenticated/unscoped endpoints were closed ([../docs/vapt-plan.md](../docs/vapt-plan.md)).
 
 **Since 2026-08-09**: §2 gained the low-confidence transcript guard; §4b's live handoff now covers
 Lead Agent (portfolio-wide) calls too, plus a new guest-initiated `request_host_transfer` tool;
@@ -37,7 +39,9 @@ CallCoordinator.acquire_or_reject  (Redis lease: is this host/property already o
     │       ↓
     │   STT → guards/state → LLM → tools → guards → TTS
     │       ↓
-    │   on_pipeline_finished: transcript, classification, summary, lead backfill, guest memory
+    │   guest disconnects → lease released at once (_CallLeaseGuard)
+    │   on_pipeline_finished: isolated post-call steps (_PostCallSteps) — transcript, classification,
+    │   summary, tickets, telemetry, lead backfill/cleanup; then guest memory + summary email (detached)
     │
     └── BUSY_RECOVERY
             ↓
@@ -143,6 +147,15 @@ have a live call?" — nothing else. It does not send WhatsApp, does not create
   once the Redis-backed implementation has run in production long enough to trust. **Do not add
   new writers to this table.** See [docs/database.md](../docs/database.md#call_leases-calllease-appmodelscall_leasepy--staged-for-removal-not-written-to).
 
+**Lease release timing.** The lease is released the moment the guest is gone — `_CallLeaseGuard`
+(`app/voice/pipeline.py`) releases it exactly once from whichever fires first: the transport's
+`on_client_disconnected`, the start of `on_pipeline_finished` (before classification/summary), or
+`_run_pipeline`'s `finally` (the safety net for construction failures/crashes). It used to be released
+only in that `finally`, i.e. after every post-call LLM call and DB write, so a guest who hung up and
+redialed straight away was told "busy". Release stays token-checked, idempotent, and fires the
+availability-recovery trigger only for the release that actually freed the lease. Any new teardown
+path must go through the guard, never call `call_coordinator.release` directly.
+
 Full design rationale: `app/services/call_coordinator.py`'s own module docstring (unusually
 complete — read it before touching this file) and
 [docs/agents.md](../docs/agents.md#busy-call-recovery).
@@ -155,7 +168,7 @@ all. The rejected call is handled entirely outside the live-call path:
 1. `app/voice/pipeline.py`'s `BUSY_RECOVERY` branch plays a short pre-recorded clip
    (`app/voice/ringing_audio.py`'s `play_busy_message`) and hangs up.
 2. `RecoveryService.handle_busy_recovery` (`app/services/recovery_service.py`) fires detached
-   (`asyncio.create_task`), strictly after the accept/reject decision's DB session has closed.
+   (`background.spawn`), strictly after the accept/reject decision's DB session has closed.
 3. It reuses the **same primitives** a normal in-call escalation already uses — no new entity
    types: `GuestProfile` (`call_service.get_or_create_guest_profile`), `Lead`
    (`lead_service.upsert_lead`, `recovery_reason="BUSY_CALL"`, `status` stays the normal `"open"`
@@ -203,13 +216,16 @@ Mira:
    `app/services/guest_calling_notification.py` sends the host a WhatsApp with a signed, single-use
    *Take Call* link the moment a MIRA-owned `CallSession` exists. `app/api/v1/take_call.py`'s
    `POST` handler does an atomic claim (`CallSession.handoff_status` `NULL -> "requested"`) and
-   fires `app/voice/handoff_signal.py`'s in-process `asyncio.Event`. The live pipeline's
+   calls `handoff_signal.request_handoff_anywhere`, which sets the live call's `asyncio.Event` directly if the call runs in this process and otherwise publishes on Redis (`mira:handoff_requested`, `app/integrations/redis_signal_client.py`) for the process that owns it. The live pipeline's
    `_wait_and_trigger_handoff` task then speaks a fixed handoff phrase
    (`pipeline._HOST_HANDOFF_PHRASE`) and ends the Voicebot leg with
    `EndFrame(reason="host_handoff")` — `on_pipeline_finished` special-cases this to **not** hang up
    the Exotel call, so Exotel's flow continues to the Connect applet, which dials the host.
-   - `handoff_signal.py` is **single-process only** (documented) — works because the backend runs
-     one uvicorn worker; multi-worker would need Redis pub/sub.
+   - **Cross-process as of 2026-11-09**: one Redis pub/sub listener per process (`handoff_signal.run_listener`,
+     started in `lifespan`) turns a published `call_session_id` into a local `Event.set()`, so Take Call works
+     with several replicas or with voice split from the API. Best-effort — the claim is durable in Postgres
+     first — and an undeliverable signal is logged (`handoff_signal_not_delivered`), not silent. Without
+     `REDIS_URL` it degrades to same-process only.
    - `_HOST_HANDOFF_PHRASE` is host-configurable via `User.agent_handoff_phrase` + a "Live call
      handoff phrase" field on the AI Training tab (`system_prompt.resolve_host_handoff_phrase`
      resolves it once at pipeline start, with the same loop-in-host guard the escalation phrase
@@ -315,6 +331,18 @@ prompt.
 - **Provider**: Groq primary (`gpt-oss-120b` + fallback chain via `GROQ_MODELS`), Anthropic/OpenRouter
   configurable, OpenRouter as last resort if every Groq model is marked down. Full detail:
   [docs/agents.md](../docs/agents.md#groq-multi-model-fallback).
+- **Failover is not regeneration.** `_FallbackGroqLLMService` moves to the next model when a request
+  *cannot be started or produces nothing*: 429, 5xx/404/408, dropped connection, timeout, or no first
+  chunk within `LLM_FIRST_CHUNK_TIMEOUT_SECONDS` (3s). No already-generated reply is ever re-asked or
+  rewritten, so the "no hidden LLM regeneration" invariant (§9) holds. While it happens, Mira speaks a
+  fixed "one moment" line (`TTSSpeakFrame`, `append_to_context=False`) and the silence watchdog is held,
+  so the retried reply is a seamless continuation and the guest is never nudged with "Are you there?";
+  if every model fails she apologises and asks the guest to repeat. Only a 429 or a retired model marks a
+  model down for *other* callers. (`_ReplyGap`, `app/voice/pipeline.py`.)
+- **Live pricing is time-boxed.** `get_pricing`/`negotiate_rate` wait at most `LIVE_PRICING_BUDGET_SECONDS`
+  (4s) for the live SearchApi rate; past that the quote comes from the static `base_price`, flagged
+  `is_estimate`/`live_rate_unavailable` (no payment link, honest spoken caveat) while the lookup finishes
+  in the background and fills the cache. See [docs/research-flow.md](../docs/research-flow.md).
 - **Streaming**: real, native LLM token streaming through the pipeline — every guard from
   `RepetitionGuardProcessor` through `ResponseShapeValidatorProcessor` forwards `LLMTextFrame`s
   immediately as they arrive rather than buffering a full response first (see §2 and
@@ -361,11 +389,19 @@ Full schema: [docs/database.md](../docs/database.md). Summary of what lives wher
 - The pipeline must not contain business logic for concurrency coordination — it only ever sees
   `CallCoordinator`'s two-value `Decision`.
 - Time-of-day call-ownership routing is decided *only* by `call_ownership.resolve_effective_call_owner`
-  (pure, one function) and the live handoff is signalled *only* via `handoff_signal`'s in-process
-  Event — the pipeline never re-derives ownership for itself (§4b).
-- Redis cache semantics (fail-open, optional) and Redis lease semantics (correctness-bearing,
-  explicit fail-open policy owned by `call_coordinator.py`) are separate and must not be merged
-  into one client module.
+  (pure, one function) and the live handoff is signalled *only* via `handoff_signal` (an in-process
+  Event, plus a Redis pub/sub hop when the call is on another process) — the pipeline never re-derives
+  ownership for itself (§4b).
+- Redis cache semantics (fail-open, optional), Redis lease semantics (correctness-bearing, explicit
+  fail-open policy owned by `call_coordinator.py`) and Redis pub/sub semantics (best-effort
+  notification, `redis_signal_client.py`) are separate and must not be merged into one client module.
+- The lease is released when the guest is gone, not after post-call work, and only via `_CallLeaseGuard`.
+- Post-call work is isolated step by step (`_PostCallSteps`): one failure never skips the rest, a step
+  with a missing input is skipped rather than run on a guess, and a classifier that itself failed
+  (`classification_failed`) is "could not tell", never "junk" — it must not delete a lead.
+- Detached tasks go through `app/utils/background.spawn` (a bare, result-discarding
+  `asyncio.create_task` can be garbage-collected mid-flight; a test enforces this). Background LLM calls
+  use the shared clients in `app/integrations/llm_clients.py`; the live voice LLM keeps its own.
 - Validators (`StyleComplianceMonitor`, and any future validator) must not introduce hidden LLM
   regeneration — correction is deterministic rewrite/truncation or a next-turn prompt nudge only.
 - `ConversationStyle` is responsible for *how* Mira speaks; `ConversationState` is responsible for
@@ -386,6 +422,13 @@ The ones most relevant to the subsystems described in this file:
 - A Redis outage degrades busy-call protection (fails open, logged loudly) rather than rejecting
   live calls — check for `lease_redis_unavailable` in logs if concurrent-call protection seems
   absent.
+- A guest redialing right after hanging up is told "busy" → the lease isn't being released at disconnect;
+  check for `call_lease_release reason=…` lines (should be `client_disconnected` or `pipeline_finished`, not
+  only `teardown`).
+- Take Call pressed but the call carries on → look for `handoff_signal_not_delivered`; the claim is still
+  in Postgres. Usually Redis is unreachable while the call lives on another process, or the call had already ended.
+- A call's classification/summary/tickets are missing → `post_call_step_failed step=…` (with traceback) names
+  the step; the other steps still ran. See [../docs/observability.md](../docs/observability.md).
 - A lease that's never renewed expires at 45s — if `_renew_call_lease_periodically` isn't running
   (e.g. a future refactor drops the background task), every call longer than 45s silently loses
   busy-call protection with no error and no failing test (this exact regression happened once

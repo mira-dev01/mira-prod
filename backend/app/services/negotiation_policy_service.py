@@ -26,6 +26,7 @@ import json
 import logging
 
 from app.config import settings
+from app.integrations import llm_clients
 from app.models.negotiation_rule import NegotiationRule
 
 logger = logging.getLogger(__name__)
@@ -215,9 +216,7 @@ def _extract_json_rules(raw_text: str) -> list[dict]:
 
 
 async def _call_groq(prompt: str) -> str:
-    from groq import AsyncGroq
-
-    client = AsyncGroq(api_key=settings.groq_api_key)
+    client = llm_clients.groq_client(llm_clients.DOCUMENT)
     response = await client.chat.completions.create(
         model=settings.groq_model,
         messages=[{"role": "user", "content": prompt}],
@@ -227,9 +226,7 @@ async def _call_groq(prompt: str) -> str:
 
 
 async def _call_anthropic(prompt: str) -> str:
-    from anthropic import AsyncAnthropic
-
-    client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+    client = llm_clients.anthropic_client(llm_clients.DOCUMENT)
     response = await client.messages.create(
         model=settings.anthropic_model,
         max_tokens=1024,
@@ -239,9 +236,7 @@ async def _call_anthropic(prompt: str) -> str:
 
 
 async def _call_openrouter(prompt: str) -> str:
-    from openai import AsyncOpenAI
-
-    client = AsyncOpenAI(api_key=settings.openrouter_api_key, base_url="https://openrouter.ai/api/v1")
+    client = llm_clients.openrouter_client(llm_clients.DOCUMENT)
     response = await client.chat.completions.create(
         model=settings.openrouter_model,
         messages=[{"role": "user", "content": prompt}],

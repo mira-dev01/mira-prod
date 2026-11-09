@@ -12,7 +12,7 @@ from app.auth.dependencies import get_current_user
 from app.database import AsyncSessionLocal, get_db
 from app.models.user import User
 from app.schemas.notification import NotificationOut
-from app.services.notification_service import list_notifications, mark_read
+from app.services.notification_service import list_notifications, mark_read_owned
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -28,8 +28,15 @@ async def get_notifications(
 
 
 @router.post("/{notification_id}/read", response_model=NotificationOut)
-async def read_notification(notification_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    notification = await mark_read(db, notification_id)
+async def read_notification(
+    notification_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    # Authenticated + ownership-checked: a notification carries guest
+    # details, so another host's id must be indistinguishable from a
+    # nonexistent one (same 404).
+    notification = await mark_read_owned(db, notification_id, current_user)
     if notification is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Notification not found")
     return notification

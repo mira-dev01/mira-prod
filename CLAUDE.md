@@ -9,6 +9,9 @@ Detailed docs live in `docs/`:
 - [docs/research-flow.md](docs/research-flow.md) — pricing/negotiation logic, host discount policy, lead qualification, Airbnb import.
 - [docs/api.md](docs/api.md) — REST endpoint reference, grouped by domain.
 - [docs/observability.md](docs/observability.md) — service health monitoring (admin home page status, incidents, urgent/resolved/daily-digest emails), JSON logs, how to add a new monitored service.
+- [docs/deployment.md](docs/deployment.md) — hosting (Railway backend with `dev` + `production` environments, Vercel frontend, Supabase Postgres on `dev` / Neon on `production`, Redis), which branch deploys, the pre-deploy checklist, CI, the dependency lock file.
+- [docs/vapt-plan.md](docs/vapt-plan.md) — security assessment/pen-test plan: attack surface, phases, what is already fixed vs. open.
+- [docs/event-loop-split-plan.md](docs/event-loop-split-plan.md) — phased plan to isolate live-call audio from API/scheduler/post-call work (not started; Phase 3's Take-Call-over-Redis part is done).
 - [docs/how-it-works.md](docs/how-it-works.md) — function-level walkthrough: two full traces (property search, host escalation), a complete logging/observability map, every guardrail mechanically explained, and a file-by-file reference for all of `backend/app/`.
 
 And in `documentation/`:
@@ -42,6 +45,11 @@ invariants a coding session must not violate.
   is the single authority on "does this host/property already have a live call?" — Redis-backed,
   atomic `SET NX`/Lua-script operations, no check-then-act race window. Never add a second place
   that decides this.
+- **The lease is released the moment the guest is gone, not after post-call work.** `_CallLeaseGuard` (`app/voice/pipeline.py`) releases exactly once from whichever fires first — transport client-disconnect, the start of `on_pipeline_finished`, or `_run_pipeline`'s `finally` safety net — so a guest who redials immediately reaches Mira instead of hearing "busy" while classification/summary run. Any new teardown path must go through the guard, never call `call_coordinator.release` directly.
+- **Detached work goes through `app/utils/background.spawn`, never a bare `asyncio.create_task(...)`.** The event loop only weakly references tasks, so an unreferenced one can be garbage-collected mid-flight — silently losing an escalation email, a WhatsApp, the guest-memory update or the busy-recovery message. `spawn` keeps a strong reference and logs failures. `tests/test_background_tasks_hygiene.py` fails the build if a result-discarding `asyncio.create_task`/`ensure_future` appears anywhere in `app/`. (Tasks you keep and later cancel — lease renewal, ringing tone — hold their own reference and are fine.)
+- **Post-call work is isolated step by step.** `on_pipeline_finished` runs finalize → classify → summarize → promises → telemetry → lead backfill/cleanup through `_PostCallSteps` (`app/voice/pipeline.py`): a failing step logs its traceback, rolls back the shared session and the rest still run. A step whose input is missing is *skipped*, never run on a guess — lead cleanup in particular must never run on an unknown classification (it would delete a real lead as "unqualified"). Add new post-call work as another `async with steps.step(...)`.
+- **Background LLM calls use the shared clients in `app/integrations/llm_clients.py`** (one client per provider per profile per event loop, explicit time limits, closed at shutdown) — never `AsyncGroq(...)`/`AsyncOpenAI(...)` per request. Post-call classification/summary additionally run under a concurrency cap and can use their own Groq model/key (`POST_CALL_*`) so a burst of finished calls cannot consume the rate limit a live call needs. The live voice LLM keeps its own client in `pipeline.py`.
+- **Take Call reaches the live call across processes.** `handoff_signal.request_handoff_anywhere` sets the Event directly when the call is in this process and otherwise publishes on Redis (`app/integrations/redis_signal_client.py`, channel `mira:handoff_requested`); one listener per process (`handoff_signal.run_listener`, started in `lifespan`) turns it into a local Event. Best-effort by design — the claim is durable in Postgres first — and a delivery failure is logged (`handoff_signal_not_delivered`), not silent.
 - **The pipeline must not contain business logic for concurrency coordination.**
   `app/voice/pipeline.py` only ever sees `CallCoordinator.acquire_or_reject`'s two-value
   `Decision` (`START_PIPELINE`/`BUSY_RECOVERY`) — never lease internals, never a reason code.
@@ -84,7 +92,7 @@ mira-prod/
 ├── backend/          FastAPI + Python 3.12
 │   ├── app/
 │   │   ├── api/v1/   REST endpoints (one file per domain) + webhooks/exotel
-│   │   ├── auth/     JWT auth (dependencies, security/utils)
+│   │   ├── auth/     Clerk session-token verification (dependencies.py) + admin OTP/JWT (admin.py)
 │   │   ├── config.py pydantic-settings; all env vars documented here
 │   │   ├── database.py  SQLAlchemy async engine + session factory
 │   │   ├── integrations/ Exotel client, iCal fetcher
@@ -136,13 +144,15 @@ python -m scripts.load_gazetteer --download --dir /tmp/geonames --admin1 11 12 2
 python -m scripts.set_property_locations --user-email <host email> --file scripts/data/hushstays_locations.json   # preview; add --apply
 ```
 
-Deployment: backend on Railway (`dev` and `production` environments, each with its own database), frontend on Vercel — see [docs/architecture.md](docs/architecture.md). Render is no longer used.
+Deployment: backend on Railway (`dev` and `production` environments, each with its own database), frontend on Vercel — see [docs/architecture.md](docs/architecture.md) and [docs/deployment.md](docs/deployment.md) (hosting, which branch deploys, pre-deploy checklist, CI, dependency lock file). Render is no longer used.
+
+**Tests are hermetic and CI runs them.** `backend/tests/conftest.py` rebuilds `settings` as if there were no `.env` (a developer `.env` holds real Exotel/Twilio/Groq/OpenRouter credentials; tests used to call them), so a run is identical locally and in CI and never spends money. Tests that deliberately call real APIs are marked `live_api` and run only with `RUN_LIVE_TESTS=1`. `.github/workflows/ci.yml` runs `ruff check .` (`backend/ruff.toml`: real-defect rules) and `pytest` on every push/PR. Dependencies install from `backend/requirements.lock` (exact + hashed); regenerate it with the `uv pip compile …` command in `docs/deployment.md` after editing `requirements.txt` — CI rejects a stale lock. Which branch deploys, and the pre-deploy checklist: [docs/deployment.md](docs/deployment.md).
 
 ## Key env vars (`backend/app/config.py`)
 
 | Var | Notes |
 |---|---|
-| `DATABASE_URL` | Auto-rewritten to `postgresql+asyncpg://` scheme on startup |
+| `DATABASE_URL` | Auto-rewritten to `postgresql+asyncpg://` scheme on startup. Railway `dev`: Supabase **session-mode** pooler (port 5432); `production`: Neon — see `DB_POOL_*` below for sizing |
 | `LLM_PROVIDER` | `groq` (default) / `anthropic` / `openrouter` |
 | `GROQ_MODEL` | Configured default/first choice, `openai/gpt-oss-120b` |
 | `GROQ_MODELS` | JSON-array string; the fallback chain `_build_llm()` walks — see [docs/agents.md](docs/agents.md) |
@@ -172,6 +182,11 @@ Deployment: backend on Railway (`dev` and `production` environments, each with i
 | `KB_GUARD_MODE` | Knowledge grounding guard: `off` / `shadow` (default — logs `kb_guard_would_block`, changes nothing) / `enforce` (replaces an unsupported spoken sentence with the not-on-file line and logs a `guard_blocked` gap). Run shadow ~a week, review false positives, then enforce. See [docs/agents.md](docs/agents.md). |
 | `KB_FOUND_COSINE` / `KB_POSSIBLE_COSINE` / `KB_FOUND_COVERAGE` / `KB_POSSIBLE_COVERAGE` / `KB_EMBEDDING_TIMEOUT_SECONDS` | `search_faq` retrieval thresholds (starting points — tune with `python -m scripts.tune_kb_retrieval` against a real `OPENROUTER_API_KEY`; golden questions live in `backend/tests/kb_golden_set.py`). Embedding failure/timeout degrades to lexical-only matching, never to model knowledge. |
 | `LLM_TEMPERATURE` | Sampling temperature for the voice LLM (default 0.5; negative = provider default). |
+| `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` / `DB_POOL_TIMEOUT` / `DB_POOL_RECYCLE_SECONDS` | Postgres pool per process (defaults 5 / 10 / 30s / 1800s — the first three equal SQLAlchemy's old implicit defaults). Capacity = size + overflow; against Supabase's **session-mode** pooler (port 5432) every pooled connection is a slot of the plan's limit, so keep `(size + overflow) × replicas` below it. The 60s DB health job warns (`db_pool_pressure`) at 80% checked out. |
+| `POST_CALL_GROQ_MODEL` / `POST_CALL_GROQ_API_KEY` / `POST_CALL_LLM_MAX_CONCURRENCY` | Post-call classification + summary vs. the live voice LLM's Groq quota. Model and key unset = same as `GROQ_MODEL`/`GROQ_API_KEY` (no behaviour change); setting a different model (e.g. `openai/gpt-oss-20b`) puts them in a separate per-model rate-limit bucket — a quality trade-off for you to choose. Concurrency cap default 2. A Groq failure now falls back to OpenRouter when configured, instead of degrading straight to UNKNOWN. |
+| `LLM_FIRST_CHUNK_TIMEOUT_SECONDS` | Default 3.0. How long a Groq model gets to produce its first streamed chunk before `_FallbackGroqLLMService` fails over to the next model in `GROQ_MODELS` (the last model gets 3×). Failover now also covers provider 5xx/404/408, connection errors and timeouts — not just 429 — so a stalled or erroring model no longer means dead air. Other 4xx are not retried. Only a 429 or a retired-model 404 marks the model "down" in `llm_health` for other callers; a 5xx, dropped connection or slow first token fails over for that turn only (so one blip can't pin everyone to a weaker fallback model). On the first failover of a turn Mira speaks a fixed "one moment" filler (`TTSSpeakFrame`, `append_to_context=False`, so the model just continues the conversation) and holds the silence watchdog (`hold_nudges`/`release_nudges`) so a slow retry is never answered with "Hello? Are you there?"; if every model fails she apologises and asks the guest to repeat (`_ReplyGap` in `app/voice/pipeline.py`). |
+| `LIVE_PRICING_BUDGET_SECONDS` | Default 4.0. Hard ceiling on how long `get_pricing`/`negotiate_rate` wait for the live SearchApi.io rate (`pricing_engine._live_total_within_budget`). Past it the call is answered from the static `base_price`, flagged `is_estimate` + `live_rate_unavailable` (so no payment link is sent off it and the spoken caveat says so), while the lookup keeps running in the background and warms the cache for the guest's next question. Replaces the old unbounded 2×15s path. |
+| `TAKE_CALL_TOKEN_SECRET` / `EXOTEL_WEBHOOK_TOKEN` | **Production refuses to boot** if either is blank/`change-me`, or if `TAKE_CALL_TOKEN_SECRET` is under 32 bytes (`config.py` validator). Twilio webhook tokens left at `change-me` fail *closed* in production (every request rejected) instead of crashing startup. |
 | `LOG_FORMAT` | `auto` (default: one JSON object per line unless `ENVIRONMENT` is development/local/test) / `json` / `text`. JSON lines carry `call_session_id`/`host_id`/`request_id`/`service`, so Railway can filter by `@call_session_id:<id>`. |
 | `ADMIN_EMAILS` / `ADMIN_JWT_SECRET` | Internal `/admin` panel login (`app/api/v1/admin_auth.py`): emailed one-time code (via Resend) → HS256 admin JWT. Separate from host Clerk auth on purpose. `ADMIN_JWT_SECRET` has no default — unset disables admin login entirely (admin routes 404). Allowlist re-checked on every request. |
 | `NEON_API_KEY` / `NEON_PROJECT_ID` | Optional — Neon compute/storage usage card on `/admin/balances` (`app/integrations/billing_clients.py`). Unset = card shows "not configured". |

@@ -16,7 +16,6 @@ Nothing here may break a live call: callers wrap it in try/except, and it
 never raises on a duplicate.
 """
 
-import asyncio
 import uuid
 
 from sqlalchemy import select
@@ -26,6 +25,7 @@ from app.models.notification import Notification
 from app.models.property import Property
 from app.models.unanswered_question import UnansweredQuestion
 from app.services import embedding_service, notification_service
+from app.utils import background
 
 _NOTIFICATION_PREFIX = "Mira couldn't answer"
 _MAX_QUESTIONS_IN_NOTIFICATION = 5
@@ -71,7 +71,7 @@ async def log_kb_gap(
     await db.refresh(gap)
     # Knowledge Memory: embedding computed fire-and-forget AFTER the commit
     # (own session), so it never adds latency to the live guest turn.
-    asyncio.create_task(embedding_service.backfill_unanswered_question_embedding(gap.id, gap.question))
+    background.spawn(embedding_service.backfill_unanswered_question_embedding(gap.id, gap.question))
 
     await _notify_host(db, user_id, property_id, call_session_id, question)
     return gap

@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.integrations import redis_client
 from app.integrations.searchapi_client import (
     fetch_listing_total_price,
@@ -26,6 +27,7 @@ from app.models.pricing_rule import PricingRule
 from app.models.property import Property
 from app.models.user import User
 from app.services import negotiation_policy
+from app.utils import background
 
 if TYPE_CHECKING:
     from app.voice.conversation_state import NegotiationEvent
@@ -62,6 +64,12 @@ class PriceBreakdown:
     # guest-facing summary must say so and caveat it as an estimate rather
     # than presenting it with the same confidence as a dates-anchored quote.
     is_estimate: bool = False
+    # Exact dates were asked on an Airbnb-smart-priced property but the live
+    # rate could not be fetched in time, so this figure is the static
+    # base_price (is_estimate is also True so a payment link is never sent
+    # off it). Distinct from the nights-only case above because the guest DID
+    # give exact dates -- the spoken caveat differs.
+    live_rate_unavailable: bool = False
 
 
 async def _approved_negotiation_rules(db: AsyncSession, host_id: uuid.UUID | None) -> list[NegotiationRule]:
@@ -281,6 +289,124 @@ async def _sum_cached_nightly_rates(listing_id: str, check_in: date, check_out: 
     return round(total, 2)
 
 
+@dataclass(frozen=True)
+class _LiveTotal:
+    """Outcome of one live-rate resolution. `coordinates` is set only when
+    this run had to look the listing's GPS position up (so it can be saved
+    on the Property and never fetched again)."""
+
+    total: float | None
+    coordinates: tuple[float, float] | None = None
+
+
+# One resolution per (listing, dates) at a time: a guest asking the same
+# pricing question again while the first lookup is still running joins it
+# instead of spending a second SearchApi request on the same question.
+_LIVE_INFLIGHT: dict[tuple, "asyncio.Task[_LiveTotal]"] = {}
+
+
+async def _live_total_for_dates(
+    listing_id: str, latitude: float | None, longitude: float | None, check_in: date, check_out: date
+) -> _LiveTotal:
+    """Cache of pre-fetched nightly rates first, else coordinates (if not yet
+    known) + one live per-listing price lookup. Pure I/O on primitives -- it
+    touches no ORM object or request-scoped DB session, because it can
+    outlive the call that started it (see _live_total_within_budget)."""
+    cached_total = await _sum_cached_nightly_rates(listing_id, check_in, check_out)
+    if cached_total is not None:
+        return _LiveTotal(cached_total)
+
+    new_coordinates: tuple[float, float] | None = None
+    if latitude is None or longitude is None:
+        # A listing's location doesn't change, so this is a one-time cost per
+        # property -- persisted by the caller. A plain city search does NOT
+        # reliably include a specific listing (see searchapi_client), which
+        # is why the price lookup needs these coordinates.
+        new_coordinates = await fetch_property_coordinates(listing_id)
+        if new_coordinates is None:
+            return _LiveTotal(None)
+        latitude, longitude = new_coordinates
+
+    total = await fetch_listing_total_price(float(latitude), float(longitude), listing_id, check_in, check_out)
+    return _LiveTotal(total, new_coordinates)
+
+
+async def _persist_coordinates(property_id: uuid.UUID, lookup: "asyncio.Task[_LiveTotal]") -> None:
+    """Saves coordinates a timed-out lookup eventually learned, on its OWN
+    short session (the request's session is long gone by then), so the next
+    pricing question for this property doesn't pay for that lookup again."""
+    try:
+        # The lookup is usually still running when a timeout hands it to us:
+        # wait for it (it has its own HTTP timeouts, so this is bounded)
+        # rather than reading a result that doesn't exist yet.
+        await asyncio.wait([lookup])
+        result = lookup.result()
+        if result.coordinates is None:
+            return
+        from app.database import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as session:
+            row = await session.get(Property, property_id)
+            if row is not None and row.airbnb_latitude is None:
+                row.airbnb_latitude, row.airbnb_longitude = result.coordinates
+                await session.commit()
+    except Exception:
+        logger.debug("Could not persist coordinates from a late live-price lookup", exc_info=True)
+
+
+async def _live_total_within_budget(
+    db: AsyncSession, property_: Property, check_in: date, check_out: date
+) -> tuple[float | None, bool]:
+    """Resolves a live rate for these exact dates, but never makes the guest
+    wait longer than settings.live_pricing_budget_seconds for it.
+
+    Returns (total_or_None, timed_out). On a timeout the lookup is NOT
+    cancelled: it keeps running in the background (a SearchApi request is
+    already paid for), populates the Redis cache when it lands, and saves any
+    coordinates it learned -- so the guest's next question about the same
+    dates is answered instantly and exactly. The caller falls back to the
+    static base_price (marked as an estimate) for THIS answer. Never raises:
+    any failure is simply "no live rate".
+    """
+    listing_id = property_.airbnb_listing_id
+    key = (listing_id, check_in, check_out)
+    task = _LIVE_INFLIGHT.get(key)
+    if task is None or task.done():
+        task = asyncio.ensure_future(
+            _live_total_for_dates(listing_id, property_.airbnb_latitude, property_.airbnb_longitude, check_in, check_out)
+        )
+        _LIVE_INFLIGHT[key] = task
+
+        def _forget(finished: "asyncio.Task[_LiveTotal]", _key=key) -> None:
+            if _LIVE_INFLIGHT.get(_key) is finished:
+                _LIVE_INFLIGHT.pop(_key, None)
+            if not finished.cancelled():
+                finished.exception()  # mark retrieved; failures are handled by callers
+
+        task.add_done_callback(_forget)
+
+    try:
+        result = await asyncio.wait_for(asyncio.shield(task), timeout=settings.live_pricing_budget_seconds)
+    except asyncio.TimeoutError:
+        logger.warning(
+            "live_pricing_budget_exceeded property_id=%s listing_id=%s budget_s=%.1f -- quoting the static rate "
+            "now; the lookup finishes in the background and warms the cache",
+            property_.id,
+            listing_id,
+            settings.live_pricing_budget_seconds,
+        )
+        background.spawn(_persist_coordinates(property_.id, task))
+        return None, True
+    except Exception:
+        logger.warning("live_pricing_lookup_failed property_id=%s", property_.id, exc_info=True)
+        return None, False
+
+    if result.coordinates is not None and property_.airbnb_latitude is None:
+        property_.airbnb_latitude, property_.airbnb_longitude = result.coordinates
+        await db.commit()
+    return result.total, False
+
+
 async def calculate_price(
     db: AsyncSession,
     property_: Property,
@@ -333,6 +459,11 @@ async def calculate_price(
     # non-smart-pricing property's nights-only quote is exactly as firm as
     # a dates-anchored one (both are always base_price*nights).
     is_estimate = not exact_dates and bool(property_.exact_airbnb_pricing)
+    # True when exact dates were asked on a smart-pricing property but no live
+    # rate could be had in time (timeout, SearchApi down, listing not
+    # bookable): the figure then comes from the stale static base_price, so
+    # it must not be presented -- or paid for -- as a firm live rate.
+    live_rate_unavailable = False
     if property_.exact_airbnb_pricing and property_.airbnb_listing_id:
         # Airbnb Smart Pricing changes the listing's rate daily/per-date --
         # no static base_price can stay accurate for a host on it (confirmed
@@ -340,51 +471,36 @@ async def calculate_price(
         # manually corrected). Fetch this exact listing's current price for
         # these exact dates instead of trusting the stored number.
         if exact_dates:
-            # Try the daily cache-warm job's near-term window first (see
-            # smart_pricing_service.refresh_live_pricing_cache) -- if it
-            # fully covers these dates, this is instant with zero live API
-            # calls, no mid-call latency. Only falls through to a live fetch
-            # (below) for dates outside that cached window.
-            live_total = await _sum_cached_nightly_rates(property_.airbnb_listing_id, check_in, check_out)
-
-            if live_total is None:
-                # Coordinates are cached permanently once resolved (a
-                # listing's location doesn't change) -- otherwise this is a
-                # single live API call per pricing question, scoped to a
-                # tight bounding_box around the listing's own coordinates. A
-                # plain city-wide search does NOT reliably include this
-                # specific listing (confirmed live: a real 20-listing city
-                # search for a real listing never included it) -- see
-                # searchapi_client.fetch_listing_total_price.
-                #
-                # Falls back to the static base_price/night math below on
-                # any failure (coordinates unresolvable, listing not
-                # bookable for these exact dates, API down) -- never blocks
-                # a live pricing quote on this call succeeding.
-                if property_.airbnb_latitude is None or property_.airbnb_longitude is None:
-                    coords = await fetch_property_coordinates(property_.airbnb_listing_id)
-                    if coords is not None:
-                        property_.airbnb_latitude, property_.airbnb_longitude = coords
-                        await db.commit()
-
-                if property_.airbnb_latitude is not None and property_.airbnb_longitude is not None:
-                    live_total = await fetch_listing_total_price(
-                        float(property_.airbnb_latitude),
-                        float(property_.airbnb_longitude),
-                        property_.airbnb_listing_id,
-                        check_in,
-                        check_out,
-                    )
+            # Cache of the daily warm job first, then (on a miss) coordinates
+            # + one live SearchApi price lookup -- all inside a hard time
+            # budget (settings.live_pricing_budget_seconds, see
+            # _live_total_within_budget). This used to be unbounded: two
+            # sequential 15s HTTP calls meant a guest could wait ~30s in
+            # silence for a price. Now it either answers within the budget
+            # or falls back to the static base_price math below, marked as an
+            # estimate, while the lookup finishes in the background and
+            # warms the cache for the guest's next question.
+            live_total, _ = await _live_total_within_budget(db, property_, check_in, check_out)
+            live_rate_unavailable = live_total is None
         elif window_start is not None:
             # Nights-only quote, but the guest's own loose window happens to
             # start within the already-warm cache -- a cache-only probe
             # (never a live fetch, see docstring above), so this costs
             # nothing even when it misses.
             probe_check_out = window_start + timedelta(days=resolved_nights)
-            live_total = await _sum_cached_nightly_rates(property_.airbnb_listing_id, window_start, probe_check_out)
+            try:
+                live_total = await asyncio.wait_for(
+                    _sum_cached_nightly_rates(property_.airbnb_listing_id, window_start, probe_check_out),
+                    timeout=settings.live_pricing_budget_seconds,
+                )
+            except asyncio.TimeoutError:
+                live_total = None
 
     if live_total is not None:
         is_estimate = False
+        live_rate_unavailable = False
+    elif live_rate_unavailable:
+        is_estimate = True
     discount_percent = 0.0
     if apply_discounts:
         discount_percent = await _length_of_stay_discount_percent(db, property_.id, resolved_nights, host_id=host_id)
@@ -412,6 +528,7 @@ async def calculate_price(
         late_checkout_fee=late_checkout_fee,
         per_night_avg=round(total / resolved_nights, 2) if resolved_nights else base_price,
         is_estimate=is_estimate,
+        live_rate_unavailable=live_rate_unavailable,
     )
 
 
@@ -573,6 +690,8 @@ class NegotiationResult:
     # appends a caveat to the spoken message when this is True, same as
     # handle_get_pricing does for a plain quote.
     is_estimate: bool = False
+    # Mirrors PriceBreakdown.live_rate_unavailable (see there).
+    live_rate_unavailable: bool = False
 
 
 @dataclass
@@ -716,6 +835,7 @@ async def negotiate_rate(
             floor_price=asking_price,
             refused=not accepted,
             is_estimate=breakdown.is_estimate,
+            live_rate_unavailable=breakdown.live_rate_unavailable,
             message=(
                 f"Great -- ₹{guest_offer:,.0f} total for {breakdown.nights} nights at {property_.name} works."
                 if accepted
@@ -735,6 +855,7 @@ async def negotiate_rate(
             floor_price=asking_price,
             refused=True,
             is_estimate=breakdown.is_estimate,
+            live_rate_unavailable=breakdown.live_rate_unavailable,
             message=(
                 f"I checked, but ₹{asking_price:,.0f} for {breakdown.nights} nights is already our best price "
                 f"on {property_.name} -- I'm not able to offer a further discount. Happy to connect you with "
@@ -890,6 +1011,7 @@ async def negotiate_rate(
             progressed_this_event=False,
             exhausted=exhausted,
             is_estimate=breakdown.is_estimate,
+            live_rate_unavailable=breakdown.live_rate_unavailable,
             message=(
                 f"Good news -- for {property_.name}, I can bring it down to ₹{floor_price / breakdown.nights:,.0f} "
                 f"per night, ₹{floor_price:,.0f} total over {breakdown.nights} nights "
@@ -909,6 +1031,7 @@ async def negotiate_rate(
             progressed_this_event=progressed_this_event,
             exhausted=exhausted,
             is_estimate=breakdown.is_estimate,
+            live_rate_unavailable=breakdown.live_rate_unavailable,
             message=(
                 f"Good news -- I was able to accept ₹{guest_offer / breakdown.nights:,.0f} per night for "
                 f"{property_.name}, ₹{guest_offer:,.0f} total over {breakdown.nights} nights."
@@ -926,6 +1049,7 @@ async def negotiate_rate(
         progressed_this_event=progressed_this_event,
         exhausted=exhausted,
         is_estimate=breakdown.is_estimate,
+        live_rate_unavailable=breakdown.live_rate_unavailable,
         message=(
             f"I checked, but ₹{guest_offer:,.0f} is a bit below what I can do on {property_.name}. "
             f"The best I can offer is ₹{floor_price / breakdown.nights:,.0f} per night, "

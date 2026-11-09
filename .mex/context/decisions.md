@@ -15,7 +15,7 @@ edges:
     condition: when a decision relates to technology choice
   - target: context/voice-pipeline.md
     condition: when a decision relates to voice pipeline behavior or LLM routing
-last_updated: 2026-08-08
+last_updated: 2026-11-09
 ---
 
 # Decisions

@@ -14,6 +14,8 @@ from sqlalchemy.orm import selectinload
 
 from app.models.lead import Lead
 from app.models.notification import Notification
+from app.models.property import Property
+from app.models.user import User
 
 
 async def create_notification(
@@ -80,6 +82,29 @@ async def list_notifications(
     if since is not None:
         stmt = stmt.where(Notification.created_at > since)
     return list((await db.scalars(stmt)).all())
+
+
+async def mark_read_owned(db: AsyncSession, notification_id: uuid.UUID, user: User) -> Notification | None:
+    """mark_read, but only for a notification this host owns -- via its
+    property (property_id) or, for portfolio-wide busy-recovery rows with no
+    property, via its lead (lead_id -> Lead.user_id), the same two ownership
+    paths list_notifications uses. Returns None for "doesn't exist" AND
+    "exists but isn't yours" alike, so the endpoint answers both with the
+    same 404 and never reveals that another host's notification id is real.
+    """
+    notification = await db.get(Notification, notification_id)
+    if notification is None:
+        return None
+    owned = False
+    if notification.property_id is not None:
+        owner_id = await db.scalar(select(Property.user_id).where(Property.id == notification.property_id))
+        owned = owner_id == user.id
+    if not owned and notification.lead_id is not None:
+        lead_owner_id = await db.scalar(select(Lead.user_id).where(Lead.id == notification.lead_id))
+        owned = lead_owner_id == user.id
+    if not owned:
+        return None
+    return await mark_read(db, notification_id)
 
 
 async def mark_read(db: AsyncSession, notification_id: uuid.UUID) -> Notification | None:

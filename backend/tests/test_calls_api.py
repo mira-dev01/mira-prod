@@ -136,6 +136,10 @@ async def test_call_includes_duration_and_lead_name_phone(test_user, client, aut
     lead = Lead(user_id=test_user.id, call_session_id=session.id, guest_name="Rohan", phone="9123456780")
     db_session.add(lead)
     await db_session.commit()
+    # CallSession.lead navigates via call_sessions.lead_id (a lead can span several calls), which
+    # lead_service sets when it creates/reuses a lead -- link it the way production does.
+    session.lead_id = lead.id
+    await db_session.commit()
 
     resp = await client.get(f"/api/v1/calls/{session.id}", headers=auth_headers)
     assert resp.status_code == 200
@@ -144,7 +148,8 @@ async def test_call_includes_duration_and_lead_name_phone(test_user, client, aut
     assert body["guest_phone"] == "9123456780"
     assert body["duration_minutes"] == 4.5
 
-    list_resp = await client.get("/api/v1/calls", headers=auth_headers)
+    # caller_number="browser-test" is hidden from the default list (include_test_calls=false).
+    list_resp = await client.get("/api/v1/calls?include_test_calls=true", headers=auth_headers)
     assert list_resp.status_code == 200
     matching = next(c for c in list_resp.json() if c["id"] == str(session.id))
     assert matching["guest_name"] == "Rohan"

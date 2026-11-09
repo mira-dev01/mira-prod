@@ -40,3 +40,27 @@ def test_default_pool_settings_match_previous_implicit_sqlalchemy_defaults():
     assert settings.db_pool_size == 5
     assert settings.db_max_overflow == 10
     assert settings.db_pool_timeout == 30.0
+
+
+def test_pool_stats_reports_usage_against_the_configured_capacity():
+    from app.database import pool_stats
+
+    stats = pool_stats()
+    assert stats["capacity"] == settings.db_pool_size + settings.db_max_overflow
+    assert 0 <= stats["checked_out"] <= stats["capacity"]
+
+
+def test_pool_pressure_warns_only_when_most_connections_are_checked_out(monkeypatch, caplog):
+    import logging
+
+    from app import main
+
+    monkeypatch.setattr(main, "pool_stats", lambda: {"checked_out": 3, "overflow": 0, "capacity": 15})
+    with caplog.at_level(logging.WARNING):
+        main._log_db_pool_pressure()
+    assert not [r for r in caplog.records if "db_pool_pressure" in r.getMessage()]
+
+    monkeypatch.setattr(main, "pool_stats", lambda: {"checked_out": 13, "overflow": 8, "capacity": 15})
+    with caplog.at_level(logging.WARNING):
+        main._log_db_pool_pressure()
+    assert [r for r in caplog.records if "db_pool_pressure" in r.getMessage()]

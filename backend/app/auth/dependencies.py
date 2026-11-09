@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import logging
 from functools import lru_cache
@@ -38,24 +39,76 @@ def _is_internal_org(environment: str, clerk_dev_org_id: str | None, active_org_
     return True
 
 
-def _clerk_jwks_url() -> str:
+def _clerk_frontend_domain() -> str:
     # Clerk's publishable key is base64("<frontend-api-domain>$") -- decoding
-    # it gives this Clerk instance's JWKS endpoint without a separately
-    # hardcoded/configured domain.
+    # it gives this Clerk instance's frontend API domain without a separately
+    # hardcoded/configured value. Both the JWKS endpoint and the token's
+    # issuer ("iss") are derived from it.
     if not settings.clerk_publishable_key:
         raise RuntimeError("CLERK_PUBLISHABLE_KEY is not configured")
     key_body = settings.clerk_publishable_key.split("_", 2)[-1]
     padded = key_body + "=" * (-len(key_body) % 4)
-    domain = base64.b64decode(padded).decode().rstrip("$")
-    return f"https://{domain}/.well-known/jwks.json"
+    return base64.b64decode(padded).decode().rstrip("$")
+
+
+def _clerk_jwks_url() -> str:
+    return f"https://{_clerk_frontend_domain()}/.well-known/jwks.json"
+
+
+def _clerk_issuer() -> str:
+    return f"https://{_clerk_frontend_domain()}"
 
 
 @lru_cache
 def _jwk_client() -> jwt.PyJWKClient:
     # PyJWKClient caches keys internally and only re-fetches the JWKS on a
     # cache miss (e.g. Clerk rotating signing keys) -- one client, reused
-    # for the life of the process, not re-created per request.
-    return jwt.PyJWKClient(_clerk_jwks_url())
+    # for the life of the process, not re-created per request. The explicit
+    # timeout bounds the blocking fetch (which runs in a worker thread, see
+    # _verify_session_token) so a slow Clerk can't pin a thread for the
+    # library's 30s default.
+    return jwt.PyJWKClient(_clerk_jwks_url(), timeout=5)
+
+
+def _allowed_authorized_parties() -> set[str]:
+    return {origin.rstrip("/") for origin in settings.cors_allowed_origins if origin}
+
+
+def _verify_session_token(token: str) -> dict:
+    """Verifies a Clerk session JWT per Clerk's manual-verification checklist
+    (clerk.com/docs/backend-requests/manual-jwt) and returns its claims.
+    Raises jwt.PyJWTError on ANY failure; callers map that to a 401.
+
+    Checks, each of which closes a distinct token-substitution attack:
+    - signature against Clerk's JWKS, RS256 only (the algorithm list is
+      pinned so an attacker can't downgrade to "none" or to HS256 keyed by
+      the public key);
+    - `exp`, `iat`, `sub` are REQUIRED claims -- a validly-signed token with
+      no expiry would otherwise be accepted forever; `nbf` is checked when
+      present, with a few seconds of clock-skew leeway;
+    - `iss` must be THIS Clerk instance -- a token signed by a different
+      Clerk instance's keys can't be replayed here;
+    - `azp` (the origin that requested the token), when present, must be one
+      of our own frontend origins -- Clerk's guard against a token minted
+      for another site's session being replayed against this API. Origins
+      come from the same list CORS already trusts, so any origin the browser
+      can legitimately call us from is accepted and nothing else.
+    Blocking (JWKS fetch on a cache miss) -- always call via
+    asyncio.to_thread from async code.
+    """
+    signing_key = _jwk_client().get_signing_key_from_jwt(token)
+    payload = jwt.decode(
+        token,
+        signing_key.key,
+        algorithms=["RS256"],
+        issuer=_clerk_issuer(),
+        leeway=5,
+        options={"require": ["exp", "iat", "sub"]},
+    )
+    azp = payload.get("azp")
+    if azp is not None and str(azp).rstrip("/") not in _allowed_authorized_parties():
+        raise jwt.InvalidTokenError("azp is not an authorized party")
+    return payload
 
 
 async def _resolve_local_user(db: AsyncSession, clerk_user_id: str) -> User | None:
@@ -85,6 +138,16 @@ async def _resolve_local_user(db: AsyncSession, clerk_user_id: str) -> User | No
 
     existing = await db.scalar(select(User).where(User.email == email))
     if existing is not None:
+        # Only an UNLINKED legacy row may be claimed by email. A row already
+        # bound to a different Clerk identity must never be re-pointed here:
+        # that would let anyone who controls an address-alike Clerk account
+        # take over another host's data. (fetch_user_email also only returns
+        # an address Clerk has VERIFIED, so owning the email is proven.)
+        if existing.clerk_user_id is not None and existing.clerk_user_id != clerk_user_id:
+            logger.warning(
+                "Refusing to relink user %s already bound to a different Clerk identity", existing.id
+            )
+            return None
         existing.clerk_user_id = clerk_user_id
         await db.commit()
         await db.refresh(existing)
@@ -105,8 +168,9 @@ async def get_current_user(
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
 
     try:
-        signing_key = _jwk_client().get_signing_key_from_jwt(credentials.credentials)
-        payload = jwt.decode(credentials.credentials, signing_key.key, algorithms=["RS256"])
+        # Off the event loop: the JWKS lookup is a blocking HTTP request on
+        # a key-cache miss, and this loop is also carrying live call audio.
+        payload = await asyncio.to_thread(_verify_session_token, credentials.credentials)
     except jwt.PyJWTError:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token")
 

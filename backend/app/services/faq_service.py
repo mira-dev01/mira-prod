@@ -3,14 +3,15 @@ dashboard (app/api/v1/faq.py) or auto-generated on Airbnb import
 (app/services/airbnb_import.py); search_faq (the voice tool) only reads.
 """
 
-import asyncio
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
 
+from fastapi import HTTPException, status as http_status
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.utils import background
 from app.api.v1.common import DateRange
 from app.config import settings
 from app.models.faq_entry import FaqEntry
@@ -526,6 +527,14 @@ async def faq_gap_analytics(db: AsyncSession, user_id: uuid.UUID, bucket: str = 
     return {"most_frequent": most_frequent, "by_property": by_property, "over_time": over_time}
 
 
+# A spoken answer / intro is seconds long (~0.5 MB as webm-opus); 8 MB leaves
+# generous headroom for a long dictation while bounding memory and the
+# per-clip Sarvam cost.
+MAX_TRANSCRIBE_AUDIO_BYTES = 8 * 1024 * 1024
+# MediaRecorder labels audio-only webm/mp4 as video/* on some browsers.
+_ALLOWED_AUDIO_VIDEO_CONTAINERS = {"video/webm", "video/mp4"}
+
+
 async def transcribe_gap_answer_audio(audio) -> str:
     """Transcribes a host's recorded voice answer (dashboard FAQ Learning
     Engine "answer via voice" flow) to text via Sarvam's plain batch/REST
@@ -541,8 +550,18 @@ async def transcribe_gap_answer_audio(audio) -> str:
     """
     from sarvamai import AsyncSarvamAI
 
+    content_type = (audio.content_type or "").lower()
+    if not (content_type.startswith("audio/") or content_type in _ALLOWED_AUDIO_VIDEO_CONTAINERS):
+        raise HTTPException(http_status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Unsupported audio format")
+    if audio.size is not None and audio.size > MAX_TRANSCRIBE_AUDIO_BYTES:
+        raise HTTPException(http_status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Audio clip is too large")
+    # Read one byte past the cap so an upload with no declared size is still
+    # caught without ever holding more than cap+1 bytes in memory.
+    audio_bytes = await audio.read(MAX_TRANSCRIBE_AUDIO_BYTES + 1)
+    if len(audio_bytes) > MAX_TRANSCRIBE_AUDIO_BYTES:
+        raise HTTPException(http_status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Audio clip is too large")
+
     client = AsyncSarvamAI(api_subscription_key=settings.sarvam_api_key)
-    audio_bytes = await audio.read()
     response = await client.speech_to_text.transcribe(
         file=(audio.filename, audio_bytes, audio.content_type),
         model=settings.sarvam_stt_model,
@@ -623,6 +642,6 @@ async def answer_faq_gap(
 
     for row in entries:
         if row.question_embedding is None:
-            asyncio.create_task(embedding_service.backfill_faq_entry_embedding(row.id, row.question))
+            background.spawn(embedding_service.backfill_faq_entry_embedding(row.id, row.question))
 
     return entry

@@ -11,6 +11,7 @@ from app.integrations.bright_data_client import BrightDataError
 from app.models.user import User
 from app.schemas.user import CallHoursStatus, HostOnboarding, HostOnboardingResponse, UserOut, UserUpdate
 from app.services import call_ownership, faq_service
+from app.utils.rate_limit import transcribe_rate_limit
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -19,13 +20,19 @@ _ALLOWED_PHOTO_TYPES = {"image/jpeg", "image/png", "image/webp", "image/heic", "
 
 
 @router.post("/register-host/transcribe-intro")
-async def transcribe_registration_intro(audio: UploadFile = File(...)) -> dict:
+async def transcribe_registration_intro(
+    audio: UploadFile = File(...),
+    current_user: User = Depends(transcribe_rate_limit),
+) -> dict:
     """Transcribes a prospective host's recorded voice agent intro (the
-    "Add your voice agent's intro" onboarding step) to text. Unauthenticated
-    -- reuses the same transcribe_gap_answer_audio helper as the logged-in
-    /faq/gaps/{gap_id}/answer-voice path, just without the auth dependency,
-    since the onboarding wizard may call this before the host has finished
-    setting up their Clerk session.
+    "Add your voice agent's intro" onboarding step) to text.
+
+    Requires a Clerk session: the only caller is the dashboard onboarding
+    page, which runs after sign-up (get_current_user creates the local User
+    row on first sight, so a brand-new host is already authenticated here).
+    It used to be open to the internet, which let anyone run up the Sarvam
+    bill; now it is authenticated, size-capped and rate-limited per user
+    (see faq_service.transcribe_gap_answer_audio and utils/rate_limit.py).
     """
     text = await faq_service.transcribe_gap_answer_audio(audio)
     if not text:

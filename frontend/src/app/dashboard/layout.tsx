@@ -75,7 +75,10 @@ function OnboardingGate({ children }: { children: React.ReactNode }) {
           sidebar along with it despite its own `sticky` (sticky only has
           room to work inside a scroll container shorter than its content).
           fixed inset-0 takes this completely out of that flow -- it's
-          always exactly the viewport, independent of body/content height. */}
+          always exactly the viewport, independent of body/content height.
+          SidebarNav's desktop rail is a fixed 64px in this row (its expanded
+          panel overlays <main>, see components/rail-sidebar.tsx), so <main>
+          never reflows when the sidebar opens. */}
       <div className="fixed inset-0 flex overflow-hidden">
         <SidebarNav />
         <main className="min-h-0 flex-1 overflow-y-auto p-4 pt-[calc(3.5rem+1rem)] md:p-6 md:pt-6">

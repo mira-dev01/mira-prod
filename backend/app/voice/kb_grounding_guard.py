@@ -55,7 +55,6 @@ changes nothing; "enforce" rewrites; "off" doesn't install the guard.
 Fails open on its own errors -- a guard bug must never silence a live call.
 """
 
-import asyncio
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -70,6 +69,7 @@ from pipecat.frames.frames import (
 )
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
+from app.utils import background
 from app.services.amenity_taxonomy import _AMENITY_SYNONYMS, canonicalize_amenity
 
 # --- number / measure extraction -------------------------------------------
@@ -627,7 +627,7 @@ class KnowledgeGroundingGuardProcessor(FrameProcessor):
                 question = ""
         question = (question or sentence).strip()[:500]
         try:
-            asyncio.create_task(self._gap_sink(question, source))
+            background.spawn(self._gap_sink(question, source))
         except Exception:
             logger.exception("KnowledgeGroundingGuard could not schedule gap logging")
 

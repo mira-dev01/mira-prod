@@ -22,6 +22,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 _ASYNCPG_UNSUPPORTED_QUERY_PARAMS = ("sslmode", "ssl", "channel_binding")
 
 
+PLACEHOLDER_SECRET = "change-me"
+
+
+def is_placeholder_secret(value: str | None) -> bool:
+    """True for an unset/blank secret or the repo's "change-me" default."""
+    return not value or not value.strip() or value.strip().lower() == PLACEHOLDER_SECRET
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
@@ -49,6 +57,27 @@ class Settings(BaseSettings):
     # query-string value. Render's own internal DB URL has no such param, so
     # this correctly stays False there and TLS isn't forced on it.
     database_requires_ssl: bool = False
+
+    # Postgres connection pool, set on purpose instead of inheriting SQLAlchemy's
+    # silent defaults. The defaults below EQUAL those library defaults, so this
+    # changes nothing until an env var overrides it; only recycle is a new,
+    # deliberate addition (previously connections were never retired by age).
+    #
+    # Capacity per process = db_pool_size + db_max_overflow. Every live call, every
+    # dashboard request and every open dashboard tab's SSE poll (one short query
+    # every ~2s) draws from it. Against Supabase's session-mode pooler
+    # (DATABASE_URL on port 5432) each pooled connection is a slot of the plan's
+    # pooler limit, so keep (pool_size + max_overflow) x replicas below it, and
+    # leave room for alembic/migrations. (Transaction-mode pooler, port 6543,
+    # would additionally need asyncpg's statement_cache_size=0.)
+    # db_pool_timeout is how long a request waits for a free connection before
+    # failing -- 30s is far too long to hold a live call, lower it if you prefer
+    # a fast error. db_pool_recycle_seconds retires connections older than that,
+    # below the pooler/idle-timeout so a stale socket is never reused.
+    db_pool_size: int = 5
+    db_max_overflow: int = 10
+    db_pool_timeout: float = 30.0
+    db_pool_recycle_seconds: int = 1800
 
     @model_validator(mode="before")
     @classmethod
@@ -94,6 +123,14 @@ class Settings(BaseSettings):
     # llama-3.3-70b-versatile was deprecated by Groq on 2026-06-17;
     # openai/gpt-oss-120b is Groq's recommended replacement.
     groq_model: str = "openai/gpt-oss-120b"
+    # Post-call classification/summary vs. the live voice LLM: see
+    # app/integrations/llm_clients.py. A separate model or key keeps a burst of
+    # finished calls from consuming the rate limit a call still in progress
+    # needs. Both unset = same model/key as before.
+    post_call_groq_model: str | None = None
+    post_call_groq_api_key: str | None = None
+    # At most this many post-call LLM requests at once per process.
+    post_call_llm_max_concurrency: int = 2
     # Fallback chain tried in order when llm_provider="groq". groq_model
     # (above) stays as the configured default/first choice -- this list is
     # what _build_llm() in app/voice/pipeline.py actually walks, skipping any
@@ -601,6 +638,19 @@ class Settings(BaseSettings):
     # match, and the lower bound for a "possibly relevant" fact.
     kb_found_cosine: float = 0.45
     kb_possible_cosine: float = 0.32
+    # Voice LLM failover: how long a Groq model gets to produce its FIRST chunk
+    # before the call moves on to the next model in GROQ_MODELS (the last
+    # model gets 3x this). Too low and a slow-but-healthy reasoning model gets
+    # bounced; too high and a stalled provider means dead air.
+    llm_first_chunk_timeout_seconds: float = 3.0
+
+    # Hard ceiling on how long a live pricing question may wait for the paid
+    # SearchApi.io rate lookup (coordinates + per-listing price) before the
+    # call is answered from the static base_price instead, marked as an
+    # estimate. The lookup keeps running in the background and warms the cache
+    # for the guest's next question. Was effectively unbounded (2 x 15s).
+    live_pricing_budget_seconds: float = 4.0
+
     # Lexical coverage (fraction of the query's content words found in a
     # fact) at/above which a fact is a confident / a possible match.
     kb_found_coverage: float = 0.6
@@ -609,6 +659,39 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.environment.lower() == "production"
+
+    @model_validator(mode="after")
+    def _refuse_placeholder_secrets_in_production(self) -> "Settings":
+        """Production must not boot on a placeholder credential.
+
+        take_call_token_secret is the HMAC key behind the WhatsApp "Take
+        Call" links and exotel_webhook_token is the only thing authenticating
+        Exotel's callbacks/voice websocket. Left at the "change-me" default
+        both are public knowledge: anyone could forge a take-call link or
+        open a call websocket. A loud boot failure on a bad deploy is far
+        cheaper than silently running with them. (The optional Twilio
+        tokens are NOT checked here -- an unused integration may legitimately
+        leave them unset; instead webhook_auth fails closed for them.)
+        """
+        if not self.is_production:
+            return self
+        problems = [
+            name
+            for name, value in (
+                ("TAKE_CALL_TOKEN_SECRET", self.take_call_token_secret),
+                ("EXOTEL_WEBHOOK_TOKEN", self.exotel_webhook_token),
+            )
+            if is_placeholder_secret(value)
+        ]
+        if len(self.take_call_token_secret.encode()) < 32 and "TAKE_CALL_TOKEN_SECRET" not in problems:
+            problems.append("TAKE_CALL_TOKEN_SECRET (shorter than 32 bytes)")
+        if problems:
+            raise ValueError(
+                "Refusing to start in production with placeholder/weak secrets: "
+                + ", ".join(problems)
+                + ". Set real random values (e.g. `openssl rand -hex 32`)."
+            )
+        return self
 
 
 @lru_cache

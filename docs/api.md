@@ -1,16 +1,19 @@
 # REST API Reference
 
-All routes are mounted under `/api/v1` (`app/main.py`). Unless noted, **Auth** = `get_current_user` (JWT bearer, `Authorization: Bearer <token>`) via `app/auth/dependencies.py`. All routes scope results to the authenticated user's own data (`current_user.id`) unless stated otherwise. See [architecture.md](architecture.md) for the auth mechanism and CORS setup, [agents.md](agents.md) for the voice pipeline itself, and [database.md](database.md) for the underlying tables.
+All routes are mounted under `/api/v1` (`app/main.py`). Unless noted, **Auth** = `get_current_user` (a Clerk session token as `Authorization: Bearer <token>`; RS256, `iss`/`azp`/`exp` checked — see [architecture.md](architecture.md)'s Authentication) via `app/auth/dependencies.py`. All routes scope results to the authenticated user's own data (`current_user.id`) unless stated otherwise. See [architecture.md](architecture.md) for the auth mechanism and CORS setup, [agents.md](agents.md) for the voice pipeline itself, and [database.md](database.md) for the underlying tables.
 
 ## `auth.py` — `/auth`
 
+Sign-up and sign-in are Clerk's (the old `/auth/register`, `/auth/register-host` and `/auth/login` password/JWT endpoints no longer exist). The first authenticated request from a new Clerk identity creates the local `User` row (`get_current_user`).
+
 | Method & path | Purpose | Auth |
 |---|---|---|
-| `POST /auth/register` | Create a basic user account, returns a JWT | none |
-| `POST /auth/register-host` | Full host registration (business profile, optional `ical_url`); triggers a Bright Data Airbnb import in the background if listing URLs are given | none |
-| `POST /auth/login` | Email+password → JWT | none |
 | `GET /auth/me` | Current user profile | required |
 | `PATCH /auth/me` | Update profile fields (agent customization, notification email, discount policy text, etc.) | required |
+| `POST /auth/me/photo` · `POST /auth/me/banner` | Upload the host's profile photo / banner image (10 MB cap, image types only) | required |
+| `GET /auth/me/call-hours-status` | The account's live call-routing decision right now (Mira vs. host), from the same resolver the Exotel call-routing webhook uses | required |
+| `POST /auth/onboarding` | Post-signup onboarding: fills the business/Airbnb-import fields Clerk's form doesn't collect and starts the first Airbnb scrape (returns a `snapshot_id` to poll via `GET /properties/import-airbnb-urls/{snapshot_id}`). 409 if the business number is already registered | required |
+| `POST /auth/register-host/transcribe-intro` | Transcribes the host's recorded voice-agent intro (onboarding step) to text via Sarvam batch STT. **Authenticated** (it used to be open to anyone), audio ≤ 8 MB, `audio/*` (or `video/webm`/`video/mp4`) only, rate-limited to 12 clips/min per user (`app/utils/rate_limit.py`) | required |
 
 ## `properties.py` — `/properties`
 
@@ -26,6 +29,9 @@ All routes are mounted under `/api/v1` (`app/main.py`). Unless noted, **Auth** =
 | `POST /properties/import` | Bulk-create/update from uploaded scraped Airbnb JSON files (advanced/legacy path) | required |
 | `POST /properties/import-airbnb-urls` | Trigger a Bright Data async scrape for pasted Airbnb listing URLs → `snapshot_id` | required |
 | `GET /properties/import-airbnb-urls/{snapshot_id}` | Poll scrape status; on `"ready"`, upserts properties (safe to re-poll — updates, not duplicates) | required |
+| `PUT /properties/transfer-numbers` | Host transfer numbers per group of properties (Settings → Your account); replaces every assignment in one transaction | required |
+| `POST /properties/{id}/renormalize-name` · `POST /properties/renormalize-names` | Re-derive `display_name`/`spoken_name`/type/style/brand from the raw (Airbnb) name — one property, or all of the host's own | required, must own the property |
+| `GET /properties/{id}/gallery` | Public guest-facing photo gallery data (the `send_photos` tool's link target). Exposes only `PropertyGalleryOut` fields; the property UUID is the only secret | none |
 
 See [research-flow.md](research-flow.md) for the two import paths' internals.
 
@@ -42,6 +48,7 @@ See [research-flow.md](research-flow.md) for the two import paths' internals.
 | `PATCH /bookings/{id}/price` | Host's final-price answer. `choice`: `mira_conversation` (detected price, or a corrected `final_booking_price`; stored as `price_source=host_confirmed`), `outside_mira` (`final_booking_price` required; `host_entered`), `not_confirmed_yet` (stays `pending_confirmation`, not asked again). 422 for a missing amount or blocked dates | required |
 | `PATCH /bookings/{id}/attribution` | Host's "Mira match?" answer, `{is_mira_match}`. Yes → `confirmed` (lead moves to `booked`); No → `not_attributed`, and conversation-derived prices are withdrawn. 422 if the booking has no matched conversation | required |
 | `PATCH /bookings/{id}/kind` | `reservation` ⇄ `blocked` (an iCal block that was really a stay, or vice versa) | required |
+| `PATCH /bookings/{id}/scope` | Host correction of what a booking takes — the entire place or N rooms (an Airbnb room booking arrives as one room) | required, must own the booking |
 
 `POST /bookings` also accepts `kind`, `final_booking_price` (→ `host_entered`, confirmed) and `lead_id` (booking created by closing a Mira lead → attribution `confirmed`). See `app/services/booking_reconciliation_service.py` for the attribution and price-detection rules.
 
@@ -78,14 +85,16 @@ See [research-flow.md](research-flow.md) for the two import paths' internals.
 | `DELETE /pricing/rules/{id}` | Delete a pricing rule | required |
 | `POST /pricing/quote` | Get a price quote for a property/date-range/guest-count (dashboard-facing equivalent of the voice `get_pricing` tool) | required |
 
-## `host_discount_rules.py` — `/host-discount-rules`
+## `negotiation_rules.py` — `/negotiation-rules`
+
+(Formerly `/host-discount-rules`.)
 
 | Method & path | Purpose | Auth |
 |---|---|---|
-| `GET /host-discount-rules` | List the host's discount rules (any status) | required |
-| `POST /host-discount-rules/parse` | LLM-parse `discount_policy_text` into draft `pending_validation` rules | required |
-| `PATCH /host-discount-rules/{id}` | Edit/approve a rule (only `status="approved"` rows are used by negotiation) | required, must own the rule |
-| `DELETE /host-discount-rules/{id}` | Delete a rule | required, must own the rule |
+| `GET /negotiation-rules` | List the host's negotiation/pricing rules (any status) | required |
+| `POST /negotiation-rules/parse` | LLM-parse the host's free-text policy into draft `pending_validation` rules (also saves the raw text on `User.discount_policy_text`) | required |
+| `PATCH /negotiation-rules/{id}` | Edit/approve a rule (only `status="approved"` rows are read by `pricing_engine`) | required, must own the rule |
+| `DELETE /negotiation-rules/{id}` | Delete a rule | required, must own the rule |
 
 See [research-flow.md](research-flow.md) for how these rules feed `negotiate_rate`.
 
@@ -97,13 +106,16 @@ See [research-flow.md](research-flow.md) for how these rules feed `negotiate_rat
 | `GET /analytics/timeseries` | Bucketed time series for one metric: `total_calls`, `completed_calls`, `escalated_calls`, `pipeline_value`, `open_leads`. Params: `metric`, `start_date`, `end_date`, `include_test_calls` | required |
 | `GET /analytics/dashboard` | Everything on the host Analytics page in one response: `portfolio` (occupancy, revenue, ADR, RevPAR, upcoming revenue, `completeness`, previous-period `comparison`), `funnel`, `impact` (counts CONFIRMED attribution only), `guest_intent`, `pricing` (sample-size gated), `needs_confirmation`. Financial metrics read `Booking.final_booking_price` only. Definitions are on each function in `app/services/analytics_service.py`. Params: `start_date`/`end_date` (default last 30 days IST, max 1 year), `property_id`, `include_test_calls`, `compare` | required |
 | `GET /analytics/recovery` | Busy Call Recovery funnel/KPIs (Opportunities page's Recovery Analytics card): `busy_calls` (one per rejected call attempt, from `Notification(channel="busy_recovery")` — not `Lead`, which dedups repeat attempts from the same guest), `recovered` (distinct leads with a `busy_recovery_reply` notification), `converted`/`lost` (recovery leads with `status="booked"`/`"closed"`), `avg_recovery_time_seconds` (first rejection → guest's first reply, per lead, averaged), `avg_host_response_seconds` (notification created → first marked read, via `Notification.responded_at`), `recovery_rate`/`conversion_rate`, and a `funnel` array (`busy_calls`→`recovered`→`converted`). Scoped by `Lead.user_id` (not `property_id.in_(owned_property_ids)`) since a reply notification can have `property_id=NULL`. Params: `days` (default 30), `start_date`/`end_date` (override `days`) | required |
+| `GET /analytics/overview` | The Overview page's snapshot + "Needs your attention" in one request (which numbers follow the date range vs. current state: see `analytics_service.overview`) | required |
+| `GET /analytics/quality-events` | Cross-call guard/validator firing analytics (read-only) | required |
+| `GET /analytics/objection-insights` | Conversion rate by `CallSummary.objection_tags` (read-only, informational — no write path back into the agent) | required |
 
 ## `notifications.py` — `/notifications`
 
 | Method & path | Purpose | Auth |
 |---|---|---|
 | `GET /notifications` | List notifications (Live Requests feed source) | required |
-| `POST /notifications/{id}/read` | Mark a notification read | none applied at the route (no `current_user` dependency present) |
+| `POST /notifications/{id}/read` | Mark a notification read | required, **must own it** — via its property, or (portfolio-wide busy-recovery rows) its lead. Another host's id gets the same 404 as a nonexistent one (it used to have no auth at all) |
 | `GET /notifications/stream` | Server-sent/polling stream of notifications | required |
 
 ## `leads.py` — `/leads`
@@ -113,6 +125,7 @@ See [research-flow.md](research-flow.md) for how these rules feed `negotiate_rat
 | `GET /leads` | List leads; filters: `start_date`, `end_date` | required |
 | `GET /leads/{id}` | Get one lead | required |
 | `PATCH /leads/{id}` | Update a lead — this is the **only** place `Lead.status` (open/contacted/booked/closed) is ever set; the voice agent never touches it | required |
+| `GET /leads/service-requests` · `POST /leads/service-requests/dismiss` | List / dismiss guest service requests raised during calls | required |
 
 ## `faq.py` — `/faq`
 
@@ -186,15 +199,55 @@ The host's Agent rules (what Mira collects, what makes a lead hot, how a booking
 |---|---|---|
 | `WS /voice/exotel/ws/{token}` | Real Exotel call websocket (raw-PCM media protocol). Configured directly in the Exotel Voicebot Applet as `wss://<backend>/api/v1/voice/exotel/ws/<EXOTEL_WEBHOOK_TOKEN>` -- token is a PATH segment, not a query param: Exotel's Voicebot Applet strips query strings from the configured WSS URL before connecting (confirmed live) | `token` path segment (`EXOTEL_WEBHOOK_TOKEN`), not JWT |
 | `POST /voice/test/offer` | WebRTC offer/answer signaling for the in-dashboard "talk to Mira" test. Omit `property_id` for the portfolio-wide Lead Agent; include it for Guest Support on one property | required |
-| `GET /voice/test` | Standalone browser test page (mic in/speaker out), opened with `?token=<JWT>&property_id=<optional>` | `token` query param (JWT), not a bearer header |
+| `GET /voice/test` | Standalone browser test page (mic in/speaker out), opened with `?token=<session token>&property_id=<optional UUID>`. `property_id` must be a UUID (400 otherwise); the token and ids are emitted as escaped JSON literals (they used to be pasted raw into the page — a reflected XSS); the response is `Cache-Control: no-store` + `Referrer-Policy: no-referrer`. The page then calls `POST /voice/test/offer` with that token | `token` query param (the page authenticates its own API calls) — planned: replace the long-lived session token in the URL with a short-lived ticket ([vapt-plan.md](vapt-plan.md)) |
+| `POST /voice/transcribe` | General "dictate into this field" transcription (the dashboard mic button). Same limits as the other speech-to-text endpoints: ≤ 8 MB audio, 12 clips/min per user | required |
+| `POST /voice/twilio/incoming/{token}` · `WS /voice/twilio/ws/{token}` | Twilio Voice fallback telephony path (TwiML webhook, then media websocket) | shared-secret `token` path segment (rejected in production while it is still `change-me`) |
 
 See [agents.md](agents.md) for what runs behind these endpoints.
+
+## `take_call.py` — `/take-call`
+
+The WhatsApp "Take Call" link a host taps when a guest is calling. HTML pages, no bearer token: the link carries an HMAC-signed token (`app/services/take_call_token.py`, key `TAKE_CALL_TOKEN_SECRET` — production refuses to boot without a real one).
+
+| Method & path | Purpose | Auth |
+|---|---|---|
+| `GET /take-call?token=…` | Confirmation page. Read-only: validates the token and that the call is still active | signed `token` |
+| `POST /take-call?token=…` | The atomic claim (`UPDATE … WHERE handoff_status IS NULL`), then `request_handoff_anywhere` tells the live call — directly if it runs in this process, via Redis pub/sub otherwise | signed `token` |
+
+## `capabilities.py` — `/capabilities`
+
+| Method & path | Purpose | Auth |
+|---|---|---|
+| `GET /capabilities/catalog` | The capability registry (identical for every host) | required |
+| `GET /capabilities` | Every capability's activation, readiness and blockers for the authenticated host | required |
+| `PATCH /capabilities/{id}` | Enable/disable, record setup progress, or update capability config; returns the full list (one change can alter another's state) | required |
+
+## `onboarding.py` — `/onboarding`
+
+| Method & path | Purpose | Auth |
+|---|---|---|
+| `GET /onboarding` · `PUT /onboarding` | Read / save the host's onboarding progress | required |
+| `POST /onboarding/first-property` | Start (or re-attach to) the server-side import of the host's first Airbnb listing; the server finishes it even if the browser leaves — poll `GET /onboarding` | required |
+| `POST /onboarding/complete` | Mark onboarding done | required |
+
+## `preferences.py` — `/preferences`
+
+Per-host UI layout, each as `GET` / `PUT` / `DELETE` (reset): `/preferences/navigation`, `/preferences/overview-widgets`, `/preferences/analytics-widgets`. All required.
+
+## `notification_settings.py` — `/notification-settings`
+
+| Method & path | Purpose | Auth |
+|---|---|---|
+| `GET /notification-settings` · `PATCH /notification-settings` | How/where the host is told about escalations and call summaries (labels, group number, email toggle) | required |
+| `POST /notification-settings/preview` | Render a draft call-summary email with sample data through the real renderer | required |
 
 ## `webhooks/exotel.py` — `/webhooks/exotel`
 
 | Method & path | Purpose | Auth |
 |---|---|---|
 | `POST /webhooks/exotel/call-status` | Exotel's call-status/passthru callback (call lifecycle: busy/no-answer/failed, recording URL). Independent of the live voice websocket — used for `call_sessions` logging via `call_service.attach_exotel_call` | `token` query param (`EXOTEL_WEBHOOK_TOKEN`), verified via `verify_webhook_token` |
+| `GET /webhooks/exotel/call-routing` | Exotel Passthru: decides whether this inbound call is answered by Mira or routed to the host (call ownership). Fails closed toward Mira on every error path | `token` query param |
+| `GET /webhooks/exotel/connect-routing` | Exotel Connect applet's dynamic target: the host number for a live Mira → host handoff, or the configured destination | `token` query param |
 
 ## `webhooks/whatsapp.py` — `/webhooks/whatsapp`
 
@@ -216,6 +269,9 @@ Not host-facing and not Clerk-authenticated. Login is an emailed one-time code f
 | GET | `/admin/hosts/{user_id}` | One host in full: the roster row, profile, their Agent settings, capabilities, per-property numbers/calls/open questions, 15 latest calls, open tickets, pending questions (oldest first, max 25), 10 latest escalations. 404 for an unknown host. |
 | GET | `/admin/balances?refresh=` | Prepaid (Sarvam, Exotel: entered amount − metered spend since entry), postpaid (Groq: month spend vs budget), quota (Resend) and live provider balances (Twilio, OpenRouter, SearchApi, Bright Data, Cloudinary, Neon — `app/integrations/billing_clients.py`, cached 5 min). |
 | GET / PUT | `/admin/settings/services[/{account}]` | Prepaid amounts, unit prices, USD→INR rate (`fx`). Entering a prepaid amount restarts its "spent since" clock. |
+| GET | `/admin/health` · `/admin/health/stream` | Service-health snapshot for the admin home page; the stream is Server-Sent Events (one snapshot immediately, then one per monitor tick or on change) read with `fetch()` streaming because `EventSource` can't send the admin Bearer header. See [observability.md](observability.md). |
+| POST | `/admin/health/digest` | Send the daily health digest to every `ALERT_EMAILS` recipient now (also the quickest way to confirm alert delivery works). |
+| PUT | `/admin/settings/services/{account}` | Update one account's prepaid amount / unit prices / FX (the PUT half of the row above). |
 
 ## `GET /health` and `GET /api/v1/health/llm`
 
@@ -223,5 +279,5 @@ Not domain-grouped — defined directly in `app/main.py`.
 
 | Method & path | Purpose | Auth |
 |---|---|---|
-| `GET /health` | Plain liveness check (`healthCheckPath` on both Railway and Render) | none |
+| `GET /health` | Plain liveness check (`healthcheckPath` in `backend/railway.json`) | none |
 | `GET /api/v1/health/llm` | Per-Groq-model health/latency snapshot from the last periodic check (see [agents.md](agents.md)) | none |

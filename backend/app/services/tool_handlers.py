@@ -5,19 +5,18 @@ tool result and is what it will speak to the guest, so results are phrased
 for that, not as raw JSON.
 """
 
-import asyncio
 import logging
 import uuid
 from datetime import date, timedelta
-from typing import TYPE_CHECKING, Callable
+from typing import Callable
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-if TYPE_CHECKING:
-    from app.voice.conversation_state import NegotiationEvent
+from app.voice.conversation_state import NegotiationEvent
 
 from app.config import settings
+from app.utils import background
 from app.integrations import email_client, twilio_client
 from app.integrations.email_templates import build_escalation_email_html, build_photos_email_html
 from app.models.call_session import CallSession
@@ -662,7 +661,18 @@ async def handle_get_pricing(
     # that this is a ballpark off the base rate, not a locked live-Airbnb
     # figure, and point them to the natural next step -- never leave the
     # model to imply this number is as firm as a dates-anchored quote.
-    if breakdown.is_estimate:
+    if breakdown.live_rate_unavailable:
+        # Exact dates WERE given, but the live Airbnb rate could not be had
+        # inside the call's time budget (pricing_engine.
+        # _live_total_within_budget), so the figure above is the standard
+        # rate. Say so plainly; asking again shortly is a real option because
+        # the lookup keeps running and fills the cache for the next question.
+        summary += (
+            " Heads up -- I couldn't pull the live rate for those exact dates just now, so that's based on our "
+            "standard rate and the final price may differ a little. If you'd like the precise figure, ask me to "
+            "check again in a moment, or I can have the host confirm it."
+        )
+    elif breakdown.is_estimate:
         summary += (
             " Heads up -- since your dates aren't locked in yet, that's a ballpark based on our base rate; "
             "the actual price can run a bit higher or lower depending on demand for those dates. Call back, "
@@ -912,7 +922,7 @@ async def handle_send_whatsapp(
     # host to email); the host simply won't see this one on WhatsApp until
     # TWILIO_ENABLED is back on. See config.py's twilio_enabled.
     if settings.twilio_enabled:
-        asyncio.create_task(
+        background.spawn(
             _send_whatsapp_or_open_ticket(
                 args.phone,
                 args.message,
@@ -988,7 +998,7 @@ async def handle_send_photos(
     # customer-service session window -- see twilio_account_sid's docstring
     # in config.py.
     if settings.twilio_enabled:
-        asyncio.create_task(
+        background.spawn(
             _send_whatsapp_or_open_ticket(
                 args.guest_phone,
                 f"Here are photos of {property_.name} -- {gallery_url}",
@@ -1012,7 +1022,7 @@ async def handle_send_photos(
     )
     host_user = await db.get(User, host_user_id)
     if host_user is not None:
-        asyncio.create_task(
+        background.spawn(
             _send_escalation_email(
                 host_user.notification_email or host_user.email,
                 subject=f"Photos requested — {property_.name}",
@@ -1144,7 +1154,7 @@ async def handle_escalate_to_host(
         prefs = notification_preferences_service.get(host_user)
         lead_label = notification_preferences_service.lead_label(prefs, lead.lead_temperature)
         if prefs.escalation_email:
-            asyncio.create_task(
+            background.spawn(
                 _send_escalation_email(
                     host_user.notification_email or host_user.email,
                     subject=f"[{lead_label}] {args.urgency.title()} escalation — {subject_line}",
@@ -1169,7 +1179,7 @@ async def handle_escalate_to_host(
         # guest-facing return string below never promises "on WhatsApp".
         host_phone = notification_preferences_service.host_transfer_phone(host_user, property_)
         if host_phone and settings.twilio_enabled:
-            asyncio.create_task(
+            background.spawn(
                 _send_escalation_whatsapp(
                     host_phone,
                     urgency=args.urgency,
@@ -1517,7 +1527,13 @@ async def handle_negotiate_rate(
     # estimate (the host's own discount policy still applies) -- this only
     # tells the guest the FIGURE being negotiated is provisional, not that
     # negotiation itself is blocked.
-    if result.is_estimate:
+    if result.live_rate_unavailable:
+        message += (
+            " Just a heads-up -- I couldn't pull the live rate for those exact dates just now, so this is worked "
+            "out from our standard rate and the final price may differ a little. I can check again in a moment "
+            "for the precise figure."
+        )
+    elif result.is_estimate:
         message += (
             " Just a heads-up -- since your dates aren't locked in yet, this is worked out from our base "
             "rate as a ballpark, so the exact live price could land a little differently. Once you're closer "

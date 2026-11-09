@@ -10,12 +10,13 @@ creating a PropertyChunk row entirely rather than embedding an empty
 string.
 """
 
-import asyncio
 import re
 from dataclasses import dataclass, field
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.utils import background
 
 CHUNK_TYPES = ("overview", "amenities", "location", "house_rules", "reviews")
 
@@ -121,7 +122,7 @@ async def sync_property_chunks(db: AsyncSession, property_) -> None:
     # an avoidable N+1 (one extra SELECT per chunk on every import).
 
     for chunk in new_chunks:
-        asyncio.create_task(embedding_service.backfill_property_chunk_embedding(chunk.id, chunk.text))
+        background.spawn(embedding_service.backfill_property_chunk_embedding(chunk.id, chunk.text))
 
 
 # --- Knowledge-base facts ---------------------------------------------------
@@ -383,5 +384,5 @@ async def sync_property_facts(db: AsyncSession, property_) -> int:
 
     to_embed = [(row.id, row.text) for row in new_rows if row.embedding is None]
     if to_embed:
-        asyncio.create_task(embedding_service.backfill_property_chunk_embeddings(to_embed))
+        background.spawn(embedding_service.backfill_property_chunk_embeddings(to_embed))
     return len(new_rows)

@@ -27,6 +27,7 @@ import zipfile
 from dataclasses import dataclass, field
 
 from app.config import settings
+from app.integrations import llm_clients
 
 logger = logging.getLogger(__name__)
 
@@ -354,9 +355,9 @@ async def _call_groq_for_rules(prompt: str) -> str:
     """Groq with the settings this job needs: deterministic, a reply budget big
     enough for every rule in a section, and low reasoning effort on reasoning
     models (so the budget goes to the answer, not to thinking)."""
-    from groq import AsyncGroq, BadRequestError
+    from groq import BadRequestError
 
-    client = AsyncGroq(api_key=settings.groq_api_key)
+    client = llm_clients.groq_client(llm_clients.DOCUMENT)
     args: dict = {
         "model": settings.groq_model,
         "messages": [{"role": "user", "content": prompt}],
@@ -394,9 +395,7 @@ async def _call_vision_llm(prompt: str, image: bytes, mime: str) -> str:
         raise PolicyParseError(
             "Reading images isn't set up yet. Upload a PDF, Word, Excel or text file instead."
         )
-    from openai import AsyncOpenAI
-
-    client = AsyncOpenAI(api_key=settings.openrouter_api_key, base_url="https://openrouter.ai/api/v1")
+    client = llm_clients.openrouter_client(llm_clients.DOCUMENT)
     url = f"data:{mime};base64,{base64.b64encode(image).decode()}"
     response = await asyncio.wait_for(
         client.chat.completions.create(

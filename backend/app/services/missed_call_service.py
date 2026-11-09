@@ -17,13 +17,13 @@ worker, which is acceptable for an alert.
 Never raises: it runs on teardown and webhook paths.
 """
 
-import asyncio
 import logging
 import uuid
 from datetime import timedelta
 
 from sqlalchemy import select
 
+from app.utils import background
 from app.config import settings
 from app.database import AsyncSessionLocal
 from app.models.call_session import CallSession
@@ -48,17 +48,13 @@ REASONS = {
 _host_throttle = Throttle(ALERT_WINDOW)
 _admin_throttle = Throttle(ALERT_WINDOW)
 
-# Detached alert tasks are kept here so they are not garbage-collected mid-send.
-_background: set[asyncio.Task] = set()
 
 
 def spawn_alert(call_session_id: uuid.UUID | None, reason_key: str, detail: str | None = None) -> None:
     """Fire-and-forget, for callers that must not wait on network sends."""
     if call_session_id is None:
         return
-    task = asyncio.create_task(alert_failed_call(call_session_id, reason_key, detail))
-    _background.add(task)
-    task.add_done_callback(_background.discard)
+    background.spawn(alert_failed_call(call_session_id, reason_key, detail))
 
 
 async def alert_failed_call(call_session_id: uuid.UUID, reason_key: str, detail: str | None = None) -> None:

@@ -15,11 +15,12 @@ app/services/tool_handlers.py) -> Sarvam TTS.
 import asyncio
 import logging
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 import aiohttp
 from fastapi import WebSocket
-from openai import RateLimitError
+from openai import APIConnectionError, APIStatusError, RateLimitError
 from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.frames.frames import EndFrame, ErrorFrame, TTSSpeakFrame
 from pipecat.pipeline.pipeline import Pipeline
@@ -59,6 +60,7 @@ from app.prompts.system_prompt import (
     resolve_host_handoff_phrase,
 )
 from app.schemas.call_classification import QUALIFIED_CALL_TYPES, ClassificationResult
+from app.utils import background as _background
 from app.services import (
     payment_service,
     call_classification_service,
@@ -117,27 +119,14 @@ from app.voice.vad import create_vad_analyzer
 
 logger = logging.getLogger(__name__)
 
-# Holds strong references to detached "fire and forget" tasks created below
-# (currently the Exotel hangup task, spawned from both on_pipeline_finished
-# and _run_pipeline's own construction-failure safety net -- see
-# _hangup_exotel_call) for their entire lifetime. asyncio.create_task()
-# itself only returns a Task; per
-# asyncio's own documentation, if nothing keeps a reference to that Task
-# object, it "can be garbage collected at any time, even before it's done" --
-# discarding the return value (as `asyncio.create_task(coro())` does with no
-# assignment) is exactly that case. This set is that reference: each task
-# adds itself on creation and removes itself via a done-callback once it
-# actually finishes, so the set's steady-state size is just "how many of
-# these are in flight right now," not an ever-growing leak.
-_background_tasks: set[asyncio.Task] = set()
-
-
-def _spawn_background_task(coro) -> asyncio.Task:
-    """asyncio.create_task() that survives GC -- see _background_tasks."""
-    task = asyncio.create_task(coro)
-    _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
-    return task
+# Detached "fire and forget" tasks (Exotel hangup, guest-memory update, summary
+# email, host/guest WhatsApps, busy recovery) go through the shared
+# app/utils/background.spawn, which keeps a strong reference until each task
+# finishes (a bare asyncio.create_task can be garbage collected mid-flight)
+# and logs any failure. Aliased here so call sites in this module and the
+# existing tests keep their names.
+_background_tasks = _background.tasks
+_spawn_background_task = _background.spawn
 
 
 async def _hangup_exotel_call(exotel_call_id: str) -> None:
@@ -268,6 +257,154 @@ def _pick_groq_model() -> str:
     return settings.groq_models[0]
 
 
+def _marks_model_down(error: BaseException) -> bool:
+    """Whether a failure should mark the model down in llm_health, i.e. steer
+    EVERY new call away from it until the 60s health check clears it. Only a
+    rate limit (the original, proven case) or a retired model id (404) does.
+    A one-off 5xx, a dropped connection, or this call's own first-chunk
+    deadline fails over for THIS turn only: marking the primary model down on
+    a blip would pin other callers to a weaker fallback model (poor at tool
+    calling) for up to a minute. A genuinely dead provider is still caught by
+    the periodic health check."""
+    if isinstance(error, RateLimitError):
+        return True
+    return isinstance(error, APIStatusError) and error.status_code == 404
+
+
+def _is_failover_error(error: BaseException) -> bool:
+    """Whether a failed Groq completion is worth retrying on the NEXT model
+    in the chain. Rate limits were always handled; the rest were not, so a
+    provider 5xx, a dropped connection, a request timeout or a stalled
+    first token left the guest in dead air until the turn gave up.
+
+    Retryable: 429; any 5xx/408 (provider-side); 404 (a model id Groq has
+    retired -- the next model can still answer); connection errors and
+    timeouts (APITimeoutError is an APIConnectionError); and our own
+    first-chunk deadline (asyncio.TimeoutError). NOT retryable: other 4xx
+    (400 bad request, 401/403 auth) -- those are about the request or the
+    key, not the model, so retrying elsewhere only adds latency.
+    """
+    if isinstance(error, (RateLimitError, APIConnectionError, asyncio.TimeoutError)):
+        return True
+    if isinstance(error, APIStatusError):
+        return error.status_code >= 500 or error.status_code in (404, 408)
+    return False
+
+
+_NO_FIRST_CHUNK = object()
+
+
+class _PeekedStream:
+    """A completion stream whose first chunk has already been read (to prove
+    the model is actually producing output), handed back to pipecat as an
+    ordinary async-iterable with close(): replays that chunk, then the rest.
+    """
+
+    def __init__(self, stream, iterator, first_chunk):
+        self._stream = stream
+        self._iterator = iterator
+        self._first_chunk = first_chunk
+
+    def __aiter__(self):
+        return self._replay()
+
+    async def _replay(self):
+        if self._first_chunk is not _NO_FIRST_CHUNK:
+            yield self._first_chunk
+        async for chunk in self._iterator:
+            yield chunk
+
+    async def close(self) -> None:
+        await _close_stream_quietly(self._stream, self._iterator)
+
+
+async def _close_stream_quietly(stream, iterator=None) -> None:
+    """Best-effort close of a completion stream (and its iterator, first, so
+    cleanup cascades through httpx's nested generators). Never raises."""
+    try:
+        if iterator is not None and hasattr(iterator, "aclose"):
+            await iterator.aclose()
+        if hasattr(stream, "close"):
+            await stream.close()
+        elif hasattr(stream, "aclose"):
+            await stream.aclose()
+    except Exception:
+        logger.debug("Ignoring error while closing LLM stream", exc_info=True)
+
+
+# Spoken (deterministically, never LLM-generated) while the voice LLM fails over
+# to the next model, so the guest hears Mira is still on it instead of dead air.
+# Same conventions as slow_tool_filler.py: fixed lines, rotated per call,
+# English only (no safe gender-correct Hindi line exists in this codebase yet --
+# see that module's language note), append_to_context=False so the model never
+# sees them and simply continues the conversation when its reply arrives.
+_LLM_FAILOVER_FILLER_TEXTS = [
+    "One moment please.",
+    "Just a second, let me check that.",
+    "Bear with me for just a moment.",
+]
+# Spoken only when EVERY model in the chain failed -- the one case where no
+# real reply is coming. It hands the turn back to the guest instead of leaving
+# them in silence (or being nudged with "Hello? Are you there?" for a gap Mira
+# caused), so the conversation carries on from where it was.
+_LLM_TOTAL_FAILURE_TEXT = "Sorry, I'm having a little trouble on my end. Could you please say that once more?"
+
+
+class _ReplyGap:
+    """Bridges the dead air while the voice LLM fails over, for ONE turn.
+
+    - The first failover speaks a short filler (once per turn, however many
+      models are tried) and holds the silence watchdog, so a slow retry is
+      never mistaken for an unresponsive guest ("Hello? Are you there?").
+    - If every model fails, it hands the turn back with a spoken apology.
+    - close() always releases the hold, including when the guest interrupts
+      (cancellation), so the watchdog is never left disabled.
+    Both spoken lines use append_to_context=False: the model's context stays
+    exactly as it was, so a successful retry answers the guest's actual
+    question as if nothing happened.
+    """
+
+    def __init__(self, service: "_FallbackGroqLLMService") -> None:
+        self._service = service
+        self._filler_spoken = False
+        self._held = False
+
+    async def on_failover(self) -> None:
+        if self._filler_spoken:
+            return
+        self._filler_spoken = True
+        service = self._service
+        if service._hold_nudges is not None:
+            try:
+                await service._hold_nudges()
+                self._held = True
+            except Exception:
+                logger.exception("Could not hold the silence watchdog for an LLM failover")
+        index = service._next_failover_filler_index
+        service._next_failover_filler_index += 1
+        text = _LLM_FAILOVER_FILLER_TEXTS[index % len(_LLM_FAILOVER_FILLER_TEXTS)]
+        try:
+            await service.push_frame(TTSSpeakFrame(text, append_to_context=False))
+            logger.info("llm_failover_filler_spoken")
+        except Exception:
+            logger.exception("Could not speak the LLM failover filler")
+
+    async def on_total_failure(self) -> None:
+        try:
+            await self._service.push_frame(TTSSpeakFrame(_LLM_TOTAL_FAILURE_TEXT, append_to_context=False))
+            logger.warning("llm_total_failure_apology_spoken")
+        except Exception:
+            logger.exception("Could not speak the LLM total-failure line")
+
+    def close(self) -> None:
+        if self._held and self._service._release_nudges is not None:
+            try:
+                self._service._release_nudges()
+            except Exception:
+                logger.exception("Could not release the silence watchdog hold")
+            self._held = False
+
+
 class _FallbackGroqLLMService(GroqLLMService):
     """GroqLLMService that retries a live 429 against the next model in
     settings.groq_models immediately, in the same call, instead of failing
@@ -277,6 +414,21 @@ class _FallbackGroqLLMService(GroqLLMService):
     covers the gap where a model goes bad *between* checks, which is
     exactly what produced the 429 in production logs on 2026-07-04.
     """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Wired by _run_pipeline_inner once the silence watchdog exists (see
+        # set_reply_gap_hooks); None in tests / when no watchdog is in play.
+        self._hold_nudges = None
+        self._release_nudges = None
+        self._next_failover_filler_index = 0
+
+    def set_reply_gap_hooks(self, *, hold_nudges, release_nudges) -> None:
+        """hold_nudges: async callable; release_nudges: sync callable. Used by
+        _ReplyGap to keep the silence watchdog quiet while a failover retry
+        is in flight."""
+        self._hold_nudges = hold_nudges
+        self._release_nudges = release_nudges
 
     def create_client(self, api_key=None, base_url=None, **kwargs):
         # BaseOpenAILLMService.create_client (the implementation
@@ -299,16 +451,37 @@ class _FallbackGroqLLMService(GroqLLMService):
         import httpx
         from openai import AsyncOpenAI, DefaultAsyncHttpxClient
 
+        # timeout: the SDK default is 10 MINUTES with no read bound, so a
+        # provider that accepted the request and then went quiet stalled the
+        # turn forever. connect is short (a dead provider should fail over
+        # in a couple of seconds); read bounds the gap BETWEEN chunks, i.e.
+        # a stream that stalls mid-reply. The tighter time-to-first-chunk
+        # deadline that drives failover lives in get_chat_completions.
         return AsyncOpenAI(
             api_key=api_key,
             base_url=base_url,
             max_retries=0,
+            timeout=httpx.Timeout(10.0, connect=3.0),
             http_client=DefaultAsyncHttpxClient(
                 limits=httpx.Limits(max_keepalive_connections=100, max_connections=1000, keepalive_expiry=None)
             ),
         )
 
     async def get_chat_completions(self, context):
+        gap = _ReplyGap(self)
+        try:
+            return await self._complete_with_failover(context, gap)
+        except Exception:
+            # Every model failed (or a non-retryable error): no reply is
+            # coming, so hand the turn back to the guest out loud rather than
+            # leaving silence. CancelledError (the guest interrupting) is a
+            # BaseException and deliberately not caught here.
+            await gap.on_total_failure()
+            raise
+        finally:
+            gap.close()
+
+    async def _complete_with_failover(self, context, gap: "_ReplyGap"):
         from app.main import llm_health
 
         # Start from whichever model _build_llm already picked (the first
@@ -320,9 +493,10 @@ class _FallbackGroqLLMService(GroqLLMService):
         starting_model = self._settings.model
         ordered_models = [starting_model, *[m for m in settings.groq_models if m != starting_model]]
 
-        last_error: RateLimitError | None = None
+        last_error: BaseException | None = None
+        last_index = len(ordered_models) - 1
 
-        for model in ordered_models:
+        for index, model in enumerate(ordered_models):
             self._settings.model = model
             # reasoning_format isn't a typed parameter on the OpenAI/Groq SDK's
             # AsyncCompletions.create() -- passing it as a bare kwarg (like
@@ -338,22 +512,54 @@ class _FallbackGroqLLMService(GroqLLMService):
                 if "gpt-oss" in model
                 else {}
             )
+            # Every model but the last must prove it is producing output
+            # within the first-chunk deadline, or we move on to the next one.
+            # The last has nowhere left to go, so it gets a longer leash
+            # rather than being cut off into certain silence.
+            deadline = settings.llm_first_chunk_timeout_seconds * (3 if index == last_index else 1)
             try:
-                return await super().get_chat_completions(context)
-            except RateLimitError as e:
-                logger.warning("Groq model %s hit a live 429 mid-call, trying next in chain: %s", model, e)
-                llm_health[model] = {
-                    "ok": False,
-                    "latency_s": None,
-                    "checked_at": datetime.now(timezone.utc).isoformat(),
-                    "error": str(e),
-                }
+                return await asyncio.wait_for(self._open_stream_and_peek(context), timeout=deadline)
+            except Exception as e:
+                if not _is_failover_error(e):
+                    raise
+                logger.warning(
+                    "Groq model %s failed mid-call (%s: %s), trying next in chain",
+                    model,
+                    type(e).__name__,
+                    str(e) or "no response within %.1fs" % deadline,
+                )
+                if _marks_model_down(e):
+                    llm_health[model] = {
+                        "ok": False,
+                        "latency_s": None,
+                        "checked_at": datetime.now(timezone.utc).isoformat(),
+                        "error": str(e) or type(e).__name__,
+                    }
                 last_error = e
+                if index < last_index:
+                    # Another model is about to be tried: cover the gap.
+                    await gap.on_failover()
 
-        # Every model in the chain 429'd within this single call -- raise the
+        # Every model in the chain failed within this single call -- raise the
         # last error rather than looping forever or silently returning
         # nothing, same failure mode as before this fallback existed.
         raise last_error
+
+    async def _open_stream_and_peek(self, context):
+        """Opens the completion and waits for its first chunk, so a model that
+        accepts the request and then never answers is detected here (and
+        failed over) instead of leaving the guest in silence. Closes the
+        half-open stream if the caller's deadline cancels this mid-wait."""
+        stream = await super().get_chat_completions(context)
+        iterator = stream.__aiter__()
+        try:
+            first_chunk = await iterator.__anext__()
+        except StopAsyncIteration:
+            first_chunk = _NO_FIRST_CHUNK
+        except BaseException:
+            await _close_stream_quietly(stream, iterator)
+            raise
+        return _PeekedStream(stream, iterator, first_chunk)
 
 
 class _ReconnectingSarvamSTTService(SarvamSTTService):
@@ -675,6 +881,151 @@ async def _renew_call_lease_periodically(
         )
 
 
+class _PostCallStepSkipped(Exception):
+    """Raised by _PostCallSteps.require() when a step's input is missing."""
+
+
+class _PostCallSteps:
+    """Runs each post-call step on its own, so one failure cannot take the
+    rest of on_pipeline_finished down with it.
+
+    The handler used to run classification, summary, ticket reconciliation,
+    telemetry, lead backfill and lead cleanup as one straight line: the first
+    exception skipped everything after it, and pipecat logged a single line
+    with no traceback. Now each step is isolated: a failure is logged WITH its
+    traceback, the shared DB session is rolled back (a failed statement leaves
+    it unusable for the next step), and the remaining steps still run. A step
+    that depends on an earlier result calls require() and is skipped -- not
+    run with a guess -- when that result is missing; in particular lead
+    cleanup must never run on an unknown classification, or a real lead could
+    be deleted as "unqualified".
+    """
+
+    def __init__(self, call_session_id: uuid.UUID) -> None:
+        self._call_session_id = call_session_id
+        self.completed: list[str] = []
+        self.failed: list[str] = []
+        self.skipped: list[str] = []
+
+    @staticmethod
+    def require(value, what: str) -> None:
+        if value is None:
+            raise _PostCallStepSkipped(f"{what} unavailable")
+
+    @asynccontextmanager
+    async def step(self, name: str, db=None):
+        try:
+            yield
+        except _PostCallStepSkipped as skip:
+            self.skipped.append(name)
+            logger.warning(
+                "post_call_step_skipped step=%s call_session_id=%s reason=%s", name, self._call_session_id, skip
+            )
+        except Exception:
+            self.failed.append(name)
+            logger.exception("post_call_step_failed step=%s call_session_id=%s", name, self._call_session_id)
+            if db is not None:
+                try:
+                    await db.rollback()
+                except Exception:
+                    logger.exception("post_call_rollback_failed step=%s", name)
+        else:
+            self.completed.append(name)
+
+    def log_summary(self) -> None:
+        log = logger.warning if (self.failed or self.skipped) else logger.info
+        log(
+            "post_call_steps call_session_id=%s completed=%s failed=%s skipped=%s",
+            self._call_session_id,
+            self.completed,
+            self.failed,
+            self.skipped,
+        )
+
+
+class _CallLeaseGuard:
+    """Releases a call's CallCoordinator lease exactly once, from whichever
+    teardown path gets there first.
+
+    The lease used to be released only in _run_pipeline's `finally`, which
+    runs after runner.run() returns -- i.e. after on_pipeline_finished has
+    finished its post-call work (classification + summary LLM calls, ticket
+    reconciliation, telemetry writes: many seconds). A guest who hung up and
+    redialed straight away was told "busy" for that whole window even though
+    nothing about the line was occupied any more. The line is free the moment
+    the guest is gone, so release is now also triggered at that moment
+    (transport client-disconnect, and the start of on_pipeline_finished);
+    the `finally` release remains as the safety net for every other exit
+    (a construction failure, a crash). All callers go through release(), so
+    the lease-release + availability-recovery trigger below can only ever
+    run once per call.
+
+    Never raises: it is called from teardown paths that must not be derailed
+    by Redis being unreachable (CallCoordinator.release already fails open).
+    """
+
+    def __init__(
+        self,
+        host_user_id: uuid.UUID,
+        property_id: uuid.UUID | None,
+        token: str | None,
+        renewal_task: asyncio.Task | None = None,
+    ) -> None:
+        self._host_user_id = host_user_id
+        self._property_id = property_id
+        self._token = token
+        self._renewal_task = renewal_task
+        self._released = False
+
+    async def release(self, reason: str) -> None:
+        if self._token is None or self._released:
+            return
+        # Flag first: a second teardown path arriving while the Redis call
+        # below is in flight must see "already handled" and return, not
+        # issue a duplicate release.
+        self._released = True
+        if self._renewal_task is not None and not self._renewal_task.done():
+            self._renewal_task.cancel()
+
+        try:
+            lease_actually_released = await call_coordinator.release(
+                self._host_user_id, self._property_id, self._token
+            )
+        except Exception:
+            lease_actually_released = False
+            logger.exception(
+                "Failed to release CallCoordinator lease for host_user_id=%s property_id=%s",
+                self._host_user_id,
+                self._property_id,
+            )
+        logger.info(
+            "call_lease_release reason=%s released=%s host_user_id=%s property_id=%s",
+            reason,
+            lease_actually_released,
+            self._host_user_id,
+            self._property_id,
+        )
+
+        # Busy Call Recovery, availability half: fires ONLY when THIS call's
+        # release() actually freed the (host, property) lease (True only for
+        # that case -- False for a Redis outage, a stale token, or a token
+        # that never held anything). CallCoordinator/lease state is
+        # deliberately the trigger, not "pipeline finished" -- a call that
+        # never held the lease must never tell a busy-recovery guest "Mira
+        # is available now" while Mira is, per CallCoordinator, still busy.
+        # Detached (_spawn_background_task): process_availability_recovery
+        # does its own WhatsApp sends, which must never delay teardown.
+        if lease_actually_released:
+            logger.info(
+                "availability_processing_triggered host_user_id=%s property_id=%s",
+                self._host_user_id,
+                self._property_id,
+            )
+            _spawn_background_task(
+                recovery_service.process_availability_recovery(self._host_user_id, self._property_id)
+            )
+
+
 async def _run_pipeline(
     transport: BaseTransport,
     property_id: uuid.UUID | None,
@@ -717,6 +1068,7 @@ async def _run_pipeline(
         if call_lease_token is not None
         else None
     )
+    lease_guard = _CallLeaseGuard(host_user_id, property_id, call_lease_token, renewal_task)
     handoff_outcome = _HandoffOutcome()
     # Services that already failed during this call (health is counted per
     # call, not per error -- see _run_pipeline_inner's on_error handlers).
@@ -739,6 +1091,7 @@ async def _run_pipeline(
             handoff_outcome=handoff_outcome,
             host_handoff_phrase=host_handoff_phrase,
             failed_services=failed_services,
+            release_call_lease=lease_guard.release,
         )
     except asyncio.CancelledError:
         # Not a system failure -- normal shutdown path (e.g. worker restart,
@@ -894,44 +1247,10 @@ async def _run_pipeline(
         # an unnecessary Redis round trip. Redis migration: no DB session
         # here anymore -- release() is a single atomic Lua call, not a
         # Postgres UPDATE.
-        if call_lease_token is not None:
-            try:
-                lease_actually_released = await call_coordinator.release(host_user_id, property_id, call_lease_token)
-            except Exception:
-                lease_actually_released = False
-                logger.exception(
-                    "Failed to release CallCoordinator lease for host_user_id=%s property_id=%s",
-                    host_user_id,
-                    property_id,
-                )
-
-            # Busy Call Recovery, availability half: fires ONLY when THIS
-            # call's release() call actually freed the (host, property)
-            # lease (release() returns True only for that case -- False
-            # for a Redis outage, a stale token, or a token that never held
-            # anything; see call_coordinator.release's own docstring for
-            # why that distinction is safe to expose). CallCoordinator/
-            # lease state is deliberately the trigger, not "pipeline
-            # finished" or "on_pipeline_finished ran" -- a call that never
-            # actually held the lease (e.g. BUSY_RECOVERY's own fail-open
-            # path) or a stale/duplicate release must never fire this, or
-            # a busy-recovery guest could be told "Mira is available now"
-            # while Mira is, from CallCoordinator's own source of truth,
-            # still busy. Fired detached (_spawn_background_task, same
-            # GC-safety mechanism as the Exotel hangup task above) --
-            # process_availability_recovery does its own WhatsApp sends,
-            # which must never delay this already-ending call's teardown.
-            # CallCoordinator itself has no idea this happens: this is
-            # pipeline.py, the lease-owning caller, reacting to release()'s
-            # own return value -- see recovery_service.py's own docstring
-            # for the CallCoordinator-stays-unaware half of this contract.
-            if lease_actually_released:
-                logger.info(
-                    "availability_processing_triggered host_user_id=%s property_id=%s",
-                    host_user_id,
-                    property_id,
-                )
-                _spawn_background_task(recovery_service.process_availability_recovery(host_user_id, property_id))
+        # Normally a no-op by now (the lease was already released when the
+        # guest disconnected / the pipeline finished -- see _CallLeaseGuard);
+        # this is the safety net for exits that never reached either.
+        await lease_guard.release("teardown")
 
 
 async def _wait_and_trigger_handoff(
@@ -1173,7 +1492,14 @@ async def _run_pipeline_inner(
     handoff_outcome: _HandoffOutcome | None = None,
     host_handoff_phrase: str = _HOST_HANDOFF_PHRASE,
     failed_services: set[str] | None = None,
+    release_call_lease=None,
 ) -> None:
+    # `release_call_lease` is _CallLeaseGuard.release (async, idempotent,
+    # never raises); None for calls that hold no lease (browser tests).
+    async def _release_lease(reason: str) -> None:
+        if release_call_lease is not None:
+            await release_call_lease(reason)
+
     # Attributes every out-of-pipeline paid request made during/after this
     # call (tool-triggered WhatsApp/SearchApi, post-call summary LLM, ...) to
     # this call and host -- see usage_meter.bind_usage_context.
@@ -1393,6 +1719,13 @@ async def _run_pipeline_inner(
             ),
         )
         llm = _build_llm()
+        if isinstance(llm, _FallbackGroqLLMService):
+            # LLM failover speaks a short filler and must keep the silence
+            # watchdog from nudging "Hello? Are you there?" while the retry
+            # is in flight -- see _ReplyGap.
+            llm.set_reply_gap_hooks(
+                hold_nudges=silence_watchdog.hold_nudges, release_nudges=silence_watchdog.release_nudges
+            )
 
         # Service health (app/observability/health.py) -- observation only.
         # Counted per CALL: the first STT/TTS error in a call is recorded
@@ -1669,6 +2002,14 @@ async def _run_pipeline_inner(
                     call_session_id,
                 )
 
+            # The call itself is over (Mira ended it, the guest hung up, or a
+            # host handoff began): free the line before the slow post-call
+            # work below (classification/summary LLM calls, DB writes) so a
+            # guest who redials immediately reaches Mira instead of hearing
+            # "busy". Idempotent -- a no-op if the client-disconnect path
+            # already released it.
+            await _release_lease("pipeline_finished")
+
             transcript = "\n".join(
                 f"{message.get('role')}: {message.get('content')}"
                 for message in context.messages
@@ -1676,6 +2017,13 @@ async def _run_pipeline_inner(
                 and message.get("content") is not None  # skip tool-call turns (content=null)
             )
             async with AsyncSessionLocal() as finalize_db:
+                # Results that later steps depend on start unset: a failed step leaves them None,
+                # and dependants skip (steps.require) rather than act on a guess.
+                finalized_session = None
+                duration_seconds = None
+                classification = None
+                summary = None
+                steps = _PostCallSteps(call_session_id)
                 # Phase 8 fix: finalize_call_session defaults status to
                 # "completed" -- correct for every normal end, but WRONG for
                 # an intentional host handoff, where the guest's call is
@@ -1696,13 +2044,12 @@ async def _run_pipeline_inner(
                 # (app/api/v1/analytics.py) should not count a call that
                 # hasn't actually ended yet from the guest's perspective.
                 finalize_status = "in_progress" if is_host_handoff else "completed"
-                finalized_session = await call_service.finalize_call_session(
-                    finalize_db, call_session_id, transcript, status=finalize_status
-                )
-
-                duration_seconds = None
-                if finalized_session is not None and finalized_session.started_at and finalized_session.ended_at:
-                    duration_seconds = (finalized_session.ended_at - finalized_session.started_at).total_seconds()
+                async with steps.step("finalize_call_session", finalize_db):
+                    finalized_session = await call_service.finalize_call_session(
+                        finalize_db, call_session_id, transcript, status=finalize_status
+                    )
+                    if finalized_session is not None and finalized_session.started_at and finalized_session.ended_at:
+                        duration_seconds = (finalized_session.ended_at - finalized_session.started_at).total_seconds()
 
                 # Observability only -- logs the real duration of EVERY call
                 # that reaches this handler (normal end, host handoff, or
@@ -1736,122 +2083,129 @@ async def _run_pipeline_inner(
                 # same mechanism, same place in the handler. See schemas/
                 # call_classification.py's OUTCOME_CALL_TYPES comment for why
                 # these bypass the LLM classifier entirely.
-                if is_host_handoff:
-                    # Mira spoke the handoff phrase and ended its leg so
-                    # Exotel's Connect applet can dial the host (see
-                    # _wait_and_trigger_handoff / _HOST_HANDOFF_END_REASON).
-                    # That the call WAS transferred is certain here. Whether
-                    # the host then actually picked up (TRANSFERRED_TO_HOST)
-                    # vs. missed it (TRANSFERRED_TO_HOST_MISSED) needs the
-                    # Connect-leg's own outcome, which nothing reports back
-                    # yet (Phase 2 -- an Exotel Connect StatusCallback would
-                    # split these two). Until then every handoff is recorded
-                    # as TRANSFERRED_TO_HOST: the host needs it on the Calls
-                    # tab as a transfer regardless, and this is the more
-                    # common case. NOTE the row also stays status=
-                    # "in_progress" (set by finalize_status above) because
-                    # exotel_connect_routing requires that to route the
-                    # handoff -- only the Phase 2 callback can move it to a
-                    # terminal status.
-                    classification = ClassificationResult(
-                        call_type="TRANSFERRED_TO_HOST",
-                        confidence=1.0,
-                        reason="Host took over the call; Mira handed off the live call to the host's phone.",
-                    )
-                elif getattr(frame, "reason", None) == "silent caller":
-                    # silence_watchdog.py's _on_timeout, EndWorkerFrame(
-                    # reason="silent caller") -- the guest never responded.
-                    # (A call that timed out on silence usually has an
-                    # emptyish transcript anyway, which classify_call's own
-                    # _pre_check would otherwise just degrade to the
-                    # unrelated-sounding "INCOMPLETE".)
-                    classification = ClassificationResult(
-                        call_type="UNRESPONSIVE", confidence=1.0, reason="Guest did not respond to Mira's prompts."
-                    )
-                else:
-                    # Awaited inline (not fire-and-forget like guest memory
-                    # below) because lead suppression a few lines down is
-                    # gated on this result -- the guest has already
-                    # disconnected by the time on_pipeline_finished fires,
-                    # so this latency is invisible to them, it only delays
-                    # how quickly the row settles.
-                    classification = await call_classification_service.classify_call(transcript, duration_seconds)
-                await call_service.set_call_classification(finalize_db, call_session_id, classification)
+                async with steps.step("classify_and_store", finalize_db):
+                    if is_host_handoff:
+                        # Mira spoke the handoff phrase and ended its leg so
+                        # Exotel's Connect applet can dial the host (see
+                        # _wait_and_trigger_handoff / _HOST_HANDOFF_END_REASON).
+                        # That the call WAS transferred is certain here. Whether
+                        # the host then actually picked up (TRANSFERRED_TO_HOST)
+                        # vs. missed it (TRANSFERRED_TO_HOST_MISSED) needs the
+                        # Connect-leg's own outcome, which nothing reports back
+                        # yet (Phase 2 -- an Exotel Connect StatusCallback would
+                        # split these two). Until then every handoff is recorded
+                        # as TRANSFERRED_TO_HOST: the host needs it on the Calls
+                        # tab as a transfer regardless, and this is the more
+                        # common case. NOTE the row also stays status=
+                        # "in_progress" (set by finalize_status above) because
+                        # exotel_connect_routing requires that to route the
+                        # handoff -- only the Phase 2 callback can move it to a
+                        # terminal status.
+                        classification = ClassificationResult(
+                            call_type="TRANSFERRED_TO_HOST",
+                            confidence=1.0,
+                            reason="Host took over the call; Mira handed off the live call to the host's phone.",
+                        )
+                    elif getattr(frame, "reason", None) == "silent caller":
+                        # silence_watchdog.py's _on_timeout, EndWorkerFrame(
+                        # reason="silent caller") -- the guest never responded.
+                        # (A call that timed out on silence usually has an
+                        # emptyish transcript anyway, which classify_call's own
+                        # _pre_check would otherwise just degrade to the
+                        # unrelated-sounding "INCOMPLETE".)
+                        classification = ClassificationResult(
+                            call_type="UNRESPONSIVE", confidence=1.0, reason="Guest did not respond to Mira's prompts."
+                        )
+                    else:
+                        # Awaited inline (not fire-and-forget like guest memory
+                        # below) because lead suppression a few lines down is
+                        # gated on this result -- the guest has already
+                        # disconnected by the time on_pipeline_finished fires,
+                        # so this latency is invisible to them, it only delays
+                        # how quickly the row settles.
+                        classification = await call_classification_service.classify_call(transcript, duration_seconds)
+                    await call_service.set_call_classification(finalize_db, call_session_id, classification)
 
                 # Same one-shot-LLM-after-call-ends shape as classification
                 # above, and just as safe to await inline -- summarize_call
                 # never raises (see call_summary_service.py), so this can't
                 # itself crash on_pipeline_finished.
-                summary = await call_summary_service.summarize_call(transcript, duration_seconds)
-                await call_service.set_call_summary(finalize_db, call_session_id, summary)
+                async with steps.step("summarize_and_store", finalize_db):
+                    summary = await call_summary_service.summarize_call(transcript, duration_seconds)
+                    await call_service.set_call_summary(finalize_db, call_session_id, summary)
                 # A guest who spoke and was never answered (the model or speech
                 # system failed quietly) is a missed guest too: alert the host
                 # and admins so someone rings them back.
-                if (
-                    not is_host_handoff
-                    and call_metrics.user_turns >= 1
-                    and call_metrics.bot_replies == 0
-                    and (duration_seconds or 0) >= _NEVER_ANSWERED_MIN_SECONDS
-                    and any(m.get("role") == "user" for m in context.messages)
-                ):
-                    missed_call_service.spawn_alert(call_session_id, "never_answered")
+                async with steps.step("never_answered_alert"):
+                    if (
+                        not is_host_handoff
+                        and call_metrics.user_turns >= 1
+                        and call_metrics.bot_replies == 0
+                        and (duration_seconds or 0) >= _NEVER_ANSWERED_MIN_SECONDS
+                        and any(m.get("role") == "user" for m in context.messages)
+                    ):
+                        missed_call_service.spawn_alert(call_session_id, "never_answered")
 
                 # Anything Mira promised in words that no tool recorded gets a
                 # ticket now, so a promise cannot silently disappear.
-                await ticket_service.reconcile_promises(
-                    finalize_db,
-                    host_user_id=host_user_id,
-                    call_session_id=call_session_id,
-                    promises=summary.promises_made,
-                )
+                async with steps.step("reconcile_promises", finalize_db):
+                    steps.require(summary, "summary")
+                    await ticket_service.reconcile_promises(
+                        finalize_db,
+                        host_user_id=host_user_id,
+                        call_session_id=call_session_id,
+                        promises=summary.promises_made,
+                    )
 
                 # Persists this call's guard/validator firings plus the two
                 # internal telemetry records and metered usage -- purely for
                 # cross-call analytics / the admin panel, never read back
                 # into a live call. Never raises (see the helper), so it
                 # can't crash on_pipeline_finished.
-                await _persist_call_telemetry(
-                    finalize_db,
-                    call_session_id=call_session_id,
-                    host_user_id=host_user_id,
-                    conversation_quality=conversation_quality,
-                    audio_input_observer=audio_input_observer,
-                    call_metrics=call_metrics,
-                    end_frame=frame,
-                    duration_seconds=duration_seconds,
-                )
+                async with steps.step("persist_telemetry", finalize_db):
+                    await _persist_call_telemetry(
+                        finalize_db,
+                        call_session_id=call_session_id,
+                        host_user_id=host_user_id,
+                        conversation_quality=conversation_quality,
+                        audio_input_observer=audio_input_observer,
+                        call_metrics=call_metrics,
+                        end_frame=frame,
+                        duration_seconds=duration_seconds,
+                    )
 
-                if any(m.get("role") == "user" for m in context.messages):
-                    # Backfill the real caller's phone (from Exotel) and the
-                    # property this call was about onto the lead the agent
-                    # created during the call. backfill_lead only fills blank
-                    # fields and NEVER creates a lead -- so a call where the
-                    # agent captured nothing leaves no row (no "unknown guest"
-                    # phantom), while a genuine phone lead still gets the
-                    # caller's number even if the guest never said it aloud.
-                    backfill: dict = {}
-                    if caller_number and caller_number != call_service.BROWSER_TEST_CALLER_NUMBER:
-                        backfill["phone"] = caller_number
-                    if property_name:
-                        backfill["properties_discussed"] = [property_name]
-                    # Guest Memory's on-file name (kept fresh across calls by
-                    # guest_memory_service.update_guest_memory_from_call) for
-                    # a returning guest who didn't restate their name this
-                    # call -- backfill_lead only fills a still-blank field,
-                    # so this never overwrites a name the guest actually gave
-                    # during THIS call. Without this, a call with no spoken
-                    # name left Lead.guest_name blank, and the dashboard's
-                    # Calls page fell back to CallSession's own computed
-                    # guest_name property instead -- same profile name, but
-                    # only the Calls page read it that way, not Leads.
-                    if guest_known_name:
-                        backfill["guest_name"] = guest_known_name
-                    if backfill:
-                        await lead_service.backfill_lead(finalize_db, call_session_id, **backfill)
-                else:
-                    # A connection blip that never became a conversation --
-                    # drop any near-empty lead a stray tool call may have made.
-                    await lead_service.delete_if_empty(finalize_db, call_session_id)
+                async with steps.step("lead_backfill_or_cleanup", finalize_db):
+                    if any(m.get("role") == "user" for m in context.messages):
+                        # Backfill the real caller's phone (from Exotel) and the
+                        # property this call was about onto the lead the agent
+                        # created during the call. backfill_lead only fills blank
+                        # fields and NEVER creates a lead -- so a call where the
+                        # agent captured nothing leaves no row (no "unknown guest"
+                        # phantom), while a genuine phone lead still gets the
+                        # caller's number even if the guest never said it aloud.
+                        backfill: dict = {}
+                        if caller_number and caller_number != call_service.BROWSER_TEST_CALLER_NUMBER:
+                            backfill["phone"] = caller_number
+                        if property_name:
+                            backfill["properties_discussed"] = [property_name]
+                        # Guest Memory's on-file name (kept fresh across calls by
+                        # guest_memory_service.update_guest_memory_from_call) for
+                        # a returning guest who didn't restate their name this
+                        # call -- backfill_lead only fills a still-blank field,
+                        # so this never overwrites a name the guest actually gave
+                        # during THIS call. Without this, a call with no spoken
+                        # name left Lead.guest_name blank, and the dashboard's
+                        # Calls page fell back to CallSession's own computed
+                        # guest_name property instead -- same profile name, but
+                        # only the Calls page read it that way, not Leads.
+                        if guest_known_name:
+                            backfill["guest_name"] = guest_known_name
+                        if backfill:
+                            await lead_service.backfill_lead(finalize_db, call_session_id, **backfill)
+                    else:
+                        # A connection blip that never became a conversation --
+                        # drop any near-empty lead a stray tool call may have made.
+                        await lead_service.delete_if_empty(finalize_db, call_session_id)
 
                 # ESCALATED_NO_TRANSFER outcome label: escalate_to_host
                 # (tool_handlers.py) fires mid-call, well before this handler
@@ -1870,14 +2224,16 @@ async def _run_pipeline_inner(
                 # to a bare "escalated" label. Skipped for a host handoff,
                 # which already carries its own TRANSFERRED_TO_HOST label
                 # from the branch above and takes precedence.
-                if classification.call_type not in QUALIFIED_CALL_TYPES and not is_host_handoff:
-                    if await lead_service.was_escalated_during_call(finalize_db, call_session_id):
-                        classification = ClassificationResult(
-                            call_type="ESCALATED_NO_TRANSFER",
-                            confidence=1.0,
-                            reason="escalate_to_host was called during this call; no live transfer followed.",
-                        )
-                        await call_service.set_call_classification(finalize_db, call_session_id, classification)
+                async with steps.step("escalation_label", finalize_db):
+                    steps.require(classification, "classification")
+                    if classification.call_type not in QUALIFIED_CALL_TYPES and not is_host_handoff:
+                        if await lead_service.was_escalated_during_call(finalize_db, call_session_id):
+                            classification = ClassificationResult(
+                                call_type="ESCALATED_NO_TRANSFER",
+                                confidence=1.0,
+                                reason="escalate_to_host was called during this call; no live transfer followed.",
+                            )
+                            await call_service.set_call_classification(finalize_db, call_session_id, classification)
 
                 # Classification overrides whatever the live tool calls did --
                 # a JUNK/INCOMPLETE/UNKNOWN call must never surface as a Lead,
@@ -1896,12 +2252,20 @@ async def _run_pipeline_inner(
                 # follow-up the label exists to flag. (MISSED_AGENT_BUSY /
                 # MISSED_SYSTEM_FAILURE never reach here -- their branches
                 # return / raise before on_pipeline_finished.)
-                _keep_lead_outcomes = {"TRANSFERRED_TO_HOST", "ESCALATED_NO_TRANSFER"}
-                if (
-                    classification.call_type not in QUALIFIED_CALL_TYPES
-                    and classification.call_type not in _keep_lead_outcomes
-                ):
-                    await lead_service.delete_for_unqualified_call(finalize_db, call_session_id)
+                async with steps.step("unqualified_lead_cleanup", finalize_db):
+                    steps.require(classification, "classification")
+                    # classify_call degrades to UNKNOWN when the classifier ITSELF failed (timeout,
+                    # Groq 429/outage). That means "could not tell", not "junk": deleting the lead
+                    # on it would let an LLM hiccup silently destroy a genuine guest opportunity.
+                    if classification.classification_failed:
+                        raise _PostCallStepSkipped("classification failed -- keeping any lead rather than deleting it")
+                    _keep_lead_outcomes = {"TRANSFERRED_TO_HOST", "ESCALATED_NO_TRANSFER"}
+                    if (
+                        classification.call_type not in QUALIFIED_CALL_TYPES
+                        and classification.call_type not in _keep_lead_outcomes
+                    ):
+                        await lead_service.delete_for_unqualified_call(finalize_db, call_session_id)
+                steps.log_summary()
 
             # Guest Memory (memory-architecture-plan.md section 1) -- fire
             # detached in its own session, after the lead backfill/cleanup
@@ -1918,7 +2282,7 @@ async def _run_pipeline_inner(
                 except Exception:
                     logger.exception("Guest memory update failed for call_session_id=%s", call_session_id)
 
-            asyncio.create_task(_update_guest_memory())
+            _spawn_background_task(_update_guest_memory())
 
             # Host-facing call summary email -- one per call that reaches
             # this handler normally, independent of whether it was
@@ -1937,7 +2301,7 @@ async def _run_pipeline_inner(
                     async with AsyncSessionLocal() as summary_email_db:
                         await call_summary_email.send_call_summary_email(summary_email_db, call_session_id)
 
-                asyncio.create_task(_send_call_summary_email())
+                _spawn_background_task(_send_call_summary_email())
 
         greeting_sent = False
 
@@ -1985,6 +2349,9 @@ async def _run_pipeline_inner(
         @transport.event_handler("on_client_disconnected")
         async def _on_client_disconnected(transport, client):
             logger.info("transport_client_disconnected -- cancelling pipeline")
+            # The guest is gone, so the line is free NOW -- not after the
+            # post-call work in on_pipeline_finished. See _CallLeaseGuard.
+            await _release_lease("client_disconnected")
             await worker.cancel()
 
         # The ringing-tone task (see app/voice/ringing_audio.py) writes
@@ -2292,7 +2659,7 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
                 # guest's call. See guest_calling_notification.py's own
                 # docstring for the full reasoning (re-checks MIRA
                 # ownership itself, idempotent per call_session_id).
-                asyncio.create_task(
+                _spawn_background_task(
                     guest_calling_notification.maybe_notify_guest_calling(
                         property_.id, session.id, caller_number
                     )
@@ -2346,7 +2713,7 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
     # the BUSY_RECOVERY branch above, so nothing here can add latency to
     # their experience.
     if busy_recovery_args is not None:
-        asyncio.create_task(recovery_service.handle_busy_recovery(**busy_recovery_args))
+        _spawn_background_task(recovery_service.handle_busy_recovery(**busy_recovery_args))
         return
 
     serializer = DiagnosticExotelFrameSerializer(stream_sid=call_data.stream_id, call_sid=exotel_call_id)
@@ -2541,7 +2908,7 @@ async def run_voice_pipeline_twilio(websocket: WebSocket, call_data: CallData) -
                 )
                 # Phase 5: same "guest is calling Mira" notification as the
                 # Exotel path above -- see that call site's comment.
-                asyncio.create_task(
+                _spawn_background_task(
                     guest_calling_notification.maybe_notify_guest_calling(
                         property_.id, session.id, caller_number
                     )
@@ -2588,7 +2955,7 @@ async def run_voice_pipeline_twilio(websocket: WebSocket, call_data: CallData) -
             call_session_id = session.id
 
     if busy_recovery_args is not None:
-        asyncio.create_task(recovery_service.handle_busy_recovery(**busy_recovery_args))
+        _spawn_background_task(recovery_service.handle_busy_recovery(**busy_recovery_args))
         return
 
     serializer = TwilioFrameSerializer(

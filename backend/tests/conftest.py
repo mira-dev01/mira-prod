@@ -15,10 +15,39 @@ os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 
 import uuid
 
+import pytest
 import pytest_asyncio
 from fastapi import Depends, HTTPException, Request, status
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
+
+from app.config import Settings, settings
+
+# Hermetic by construction. Settings() reads backend/.env, which on a developer
+# machine holds REAL credentials and environment-specific values (Exotel, Twilio,
+# Groq, OpenRouter, a TURN relay, TWILIO_ENABLED=false, ...). Left alone, the suite
+# quietly calls live paid services -- it has been seen POSTing to Exotel's production
+# API and burning OpenRouter requests -- and it behaves differently from CI, where
+# there is no .env, so "passes locally, fails in CI" (or the reverse) is guaranteed.
+# Rebuild the global settings exactly as if there were no .env file: field defaults
+# plus the environment variables this module sets above. A test that needs a
+# credential sets it explicitly (monkeypatch.setattr(settings, "groq_api_key", ...)).
+#
+# RUN_LIVE_TESTS=1 opts out (and un-skips the `live_api` tests, which call real services).
+_LIVE = os.environ.get("RUN_LIVE_TESTS") == "1"
+if not _LIVE:
+    _no_dotenv = Settings(_env_file=None)
+    for _field in Settings.model_fields:
+        setattr(settings, _field, getattr(_no_dotenv, _field))
+
+
+def pytest_collection_modifyitems(config, items):
+    if _LIVE:
+        return
+    skip_live = pytest.mark.skip(reason="calls real external services; set RUN_LIVE_TESTS=1 to run")
+    for item in items:
+        if "live_api" in item.keywords:
+            item.add_marker(skip_live)
 
 from app.auth.dependencies import get_current_user
 from app.database import AsyncSessionLocal, Base, engine, get_db

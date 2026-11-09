@@ -66,7 +66,23 @@ INFO  LLM health OK (openrouter/openai/gpt-oss-120b, ...)
 
 **Check**: `RedundantContextGuardProcessor` — if it dropped a legitimate `LLMContextFrame`, Mira gets no completion trigger for that turn.
 
-**Check**: is DB alive? (`_check_db_health` ping failures in logs = Neon suspended). First query after Neon wakes adds 2-5s.
+**Check**: is DB alive? (`_check_db_health` ping failures in logs, or Neon's idle auto-suspend in production / a paused free-tier Supabase project). The first query after a wake-up adds 2-5s. Also look for `db_pool_pressure` (≥80% of the connection pool checked out — requests wait up to `DB_POOL_TIMEOUT` for a connection).
+
+**Check**: did the LLM fail over? Look for `Groq model … failed mid-call (…)` followed by `llm_failover_filler_spoken` (Mira said "one moment") or `llm_total_failure_apology_spoken` (every model failed — she asked the guest to repeat). A model that is slow to its first chunk (> `LLM_FIRST_CHUNK_TIMEOUT_SECONDS`) is skipped for that turn only.
+
+**Check**: a slow price answer? `live_pricing_budget_exceeded` means the live SearchApi lookup took longer than `LIVE_PRICING_BUDGET_SECONDS` (4s) and the quote came from the static rate (flagged as an estimate); the lookup keeps running and fills the cache.
+
+### Guest redialed right after hanging up and heard "busy"
+
+**Check**: `call_lease_release reason=…` lines — the lease should be released at `client_disconnected` or `pipeline_finished`, not only at `teardown` (the `finally` safety net). If it was only released at `teardown`, the guard wasn't reached (a construction failure or crash). The lease is per host/property: a *second simultaneous* call to the same property is rejected as busy by design.
+
+### Take Call pressed but nothing happened on the call
+
+**Check**: `handoff_signal_not_delivered` — the claim is safe in Postgres but no live call received the signal (call already ended, or Redis unreachable while the call is on another process). Look for `redis_signal_listener_subscribed` / `redis_signal_listener_lost` on the process that owns the call.
+
+### Classification / summary / tickets missing after a call
+
+**Check**: `post_call_step_failed step=…` (logged with a traceback) names the step; the others still ran. `post_call_steps … completed=[…] failed=[…] skipped=[…]` is the per-call summary line. A *failed* classification (`classification_failed`) keeps the lead rather than deleting it.
 
 ### Call Ended Early / Prematurely
 

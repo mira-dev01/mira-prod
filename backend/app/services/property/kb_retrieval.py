@@ -36,6 +36,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.utils import background
 from app.models.faq_entry import FaqEntry
 from app.models.policy import Policy
 from app.models.property import Property
@@ -234,7 +235,7 @@ async def _schedule_lazy_sync(property_id: uuid.UUID) -> None:
         except Exception:
             logger.exception("kb_fact_lazy_sync_failed property_id={}", property_id)
 
-    asyncio.create_task(_run())
+    background.spawn(_run())
 
 
 async def load_property_facts(db: AsyncSession, property_: Property) -> list[Fact]:

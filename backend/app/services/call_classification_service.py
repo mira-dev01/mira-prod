@@ -36,6 +36,7 @@ import json
 import logging
 
 from app.config import settings
+from app.integrations import llm_clients
 from app.services import usage_meter
 from app.schemas.call_classification import CallType, ClassificationResult
 
@@ -119,22 +120,19 @@ def _parse_classification_response(raw_text: str) -> ClassificationResult:
 
 
 async def _call_groq(prompt: str) -> str:
-    from groq import AsyncGroq
-
-    client = AsyncGroq(api_key=settings.groq_api_key)
+    client = llm_clients.post_call_groq_client()
+    model = llm_clients.post_call_groq_model()
     response = await client.chat.completions.create(
-        model=settings.groq_model,
+        model=model,
         messages=[{"role": "user", "content": prompt}],
         response_format={"type": "json_object"},
     )
-    usage_meter.record_llm_response_usage("groq", response, model=settings.groq_model, purpose="call_classification")
+    usage_meter.record_llm_response_usage("groq", response, model=model, purpose="call_classification")
     return response.choices[0].message.content or ""
 
 
 async def _call_anthropic(prompt: str) -> str:
-    from anthropic import AsyncAnthropic
-
-    client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+    client = llm_clients.anthropic_client()
     response = await client.messages.create(
         model=settings.anthropic_model,
         max_tokens=256,
@@ -147,9 +145,7 @@ async def _call_anthropic(prompt: str) -> str:
 
 
 async def _call_openrouter(prompt: str) -> str:
-    from openai import AsyncOpenAI
-
-    client = AsyncOpenAI(api_key=settings.openrouter_api_key, base_url="https://openrouter.ai/api/v1")
+    client = llm_clients.openrouter_client()
     response = await client.chat.completions.create(
         model=settings.openrouter_model,
         messages=[{"role": "user", "content": prompt}],
@@ -166,7 +162,14 @@ async def _call_llm_with_fallback(transcript: str) -> str:
     if settings.llm_provider == "anthropic" and settings.anthropic_api_key:
         return await _call_anthropic(prompt)
     if settings.groq_api_key:
-        return await _call_groq(prompt)
+        try:
+            return await _call_groq(prompt)
+        except Exception as exc:
+            # A Groq 429/outage must not be the end of it when another provider is
+            # configured: try it before giving up (the caller degrades to UNKNOWN on failure).
+            if not settings.openrouter_api_key:
+                raise
+            logger.warning("post-call Groq request failed (%s: %s); falling back to OpenRouter", type(exc).__name__, exc)
     if settings.openrouter_api_key:
         return await _call_openrouter(prompt)
     raise CallClassificationError("No LLM provider is configured (GROQ_API_KEY/ANTHROPIC_API_KEY/OPENROUTER_API_KEY)")
@@ -183,8 +186,14 @@ async def classify_call(transcript: str | None, duration_seconds: float | None) 
         return pre
 
     try:
-        raw = await asyncio.wait_for(_call_llm_with_fallback(transcript or ""), timeout=15)
+        # The slot is taken BEFORE the timeout starts: time spent queued behind other
+        # post-call LLM requests (a burst of calls ending together) must not eat the
+        # request's own budget and turn into a spurious failure.
+        async with llm_clients.post_call_slot():
+            raw = await asyncio.wait_for(_call_llm_with_fallback(transcript or ""), timeout=15)
         return _parse_classification_response(raw)
     except Exception:
         logger.exception("Call classification failed")
-        return ClassificationResult(call_type="UNKNOWN", confidence=0.0, reason="Classification failed.")
+        return ClassificationResult(
+            call_type="UNKNOWN", confidence=0.0, reason="Classification failed.", classification_failed=True
+        )

@@ -40,7 +40,6 @@ send) is itself fired via its own asyncio.create_task, so a Twilio API
 hiccup can't even delay this function's own remaining DB writes.
 """
 
-import asyncio
 import logging
 import uuid
 from dataclasses import dataclass
@@ -50,6 +49,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.utils import background
 from app.database import AsyncSessionLocal
 from app.integrations import twilio_client
 from app.models.lead import Lead
@@ -308,10 +308,10 @@ async def _handle_busy_recovery(
     # tool_handlers._send_escalation_whatsapp -- "reuse existing template
     # architecture" means this shape, not just this one template.
     if caller_number:
-        asyncio.create_task(_send_guest_recovery_whatsapp(caller_number, property_name))
+        background.spawn(_send_guest_recovery_whatsapp(caller_number, property_name))
 
         if host_phone:
-            asyncio.create_task(_send_host_recovery_whatsapp(host_phone, property_name, dialed_number, caller_number))
+            background.spawn(_send_host_recovery_whatsapp(host_phone, property_name, dialed_number, caller_number))
 
     return RecoveryMetadata(
         lead_id=lead.id,

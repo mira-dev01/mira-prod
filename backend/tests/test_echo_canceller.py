@@ -1,3 +1,4 @@
+import importlib.util
 import math
 import random
 
@@ -44,6 +45,13 @@ def _rms(x):
     return float(np.sqrt(np.mean(x**2))) if len(x) else 0.0
 
 
+# The real canceller is the optional native `aec-audio-processing` package (Dockerfile installs it
+# best-effort; the processor fails open without it). The attenuation test only means anything when
+# the package is actually present.
+_has_aec = importlib.util.find_spec("aec_audio_processing") is not None
+
+
+@pytest.mark.skipif(not _has_aec, reason="optional aec-audio-processing package is not installed")
 @pytest.mark.asyncio
 async def test_pure_echo_is_strongly_attenuated_after_convergence():
     far = _speechlike(8, seed=1)

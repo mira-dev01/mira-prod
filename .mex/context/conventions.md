@@ -18,7 +18,7 @@ edges:
     condition: when adding a new API endpoint
   - target: patterns/add-model.md
     condition: when adding a new database model or migration
-last_updated: 2026-08-08
+last_updated: 2026-11-09
 ---
 
 # Conventions
@@ -103,8 +103,10 @@ async def handle_check_calendar(...) -> dict:
 ```python
 # In lifespan(), before scheduler.start():
 scheduler.add_job(_my_job, "interval", minutes=30, id="my_job_id")
-# For immediate startup run:
-asyncio.create_task(_my_job())
+# For immediate startup run (spawn, never a bare create_task — an unreferenced task can be
+# garbage-collected mid-flight):
+from app.utils import background
+background.spawn(_my_job())
 ```
 
 ## Verify Checklist
@@ -119,3 +121,7 @@ Before presenting any code change:
 - [ ] New scheduled job added in `lifespan()` in `app/main.py`, not started ad-hoc elsewhere
 - [ ] Frontend API calls go through `frontend/src/lib/api.ts`, not raw `fetch()`
 - [ ] Guard processors are pass-through on normal turns; activate only on the specific condition they exist for
+- [ ] Detached work uses `background.spawn(...)`, not a bare `asyncio.create_task(...)` (`tests/test_background_tasks_hygiene.py` fails otherwise)
+- [ ] Background LLM calls use `app/integrations/llm_clients.py`, not a new `AsyncGroq/AsyncOpenAI(...)` per request
+- [ ] New post-call work is its own `async with steps.step(...)`; anything destructive is skipped when its input is missing or the classifier failed
+- [ ] Tests don't touch real services (conftest clears credentials); `ruff check .` passes

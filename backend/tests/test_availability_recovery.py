@@ -41,6 +41,7 @@ async def _busy_lead(db_session, test_property, phone="+919999900001"):
 def _mock_twilio(monkeypatch):
     monkeypatch.setattr(settings, "twilio_account_sid", "test-sid")
     monkeypatch.setattr(settings, "twilio_auth_token", "test-token")
+    monkeypatch.setattr(settings, "twilio_whatsapp_from", "whatsapp:+14155238886")  # a configured sender
     monkeypatch.setattr(settings, "twilio_availability_template_sid", None)  # plain-text path by default
     return respx.post("https://api.twilio.com/2010-04-01/Accounts/test-sid/Messages.json").mock(
         return_value=Response(200, json={"sid": "SM123", "status": "queued"})
@@ -180,6 +181,7 @@ async def test_whatsapp_failure_preserves_pending_recovery(test_property, db_ses
     monkeypatch.setattr(settings, "twilio_account_sid", "test-sid")
     monkeypatch.setattr(settings, "twilio_auth_token", "test-token")
     monkeypatch.setattr(settings, "twilio_availability_template_sid", None)
+    monkeypatch.setattr(settings, "twilio_whatsapp_from", "whatsapp:+14155238886")  # a configured sender
     lead = await _busy_lead(db_session, test_property)
 
     with respx.mock:
@@ -200,6 +202,7 @@ async def test_retry_can_eventually_send_after_a_prior_failure(test_property, db
     monkeypatch.setattr(settings, "twilio_account_sid", "test-sid")
     monkeypatch.setattr(settings, "twilio_auth_token", "test-token")
     monkeypatch.setattr(settings, "twilio_availability_template_sid", None)
+    monkeypatch.setattr(settings, "twilio_whatsapp_from", "whatsapp:+14155238886")  # a configured sender
     lead = await _busy_lead(db_session, test_property)
 
     route = respx.post("https://api.twilio.com/2010-04-01/Accounts/test-sid/Messages.json")
@@ -245,6 +248,7 @@ async def test_call_teardown_is_unaffected_by_availability_whatsapp_failure(test
     monkeypatch.setattr(settings, "twilio_account_sid", "test-sid")
     monkeypatch.setattr(settings, "twilio_auth_token", "test-token")
     monkeypatch.setattr(settings, "twilio_availability_template_sid", None)
+    monkeypatch.setattr(settings, "twilio_whatsapp_from", "whatsapp:+14155238886")  # a configured sender
     respx.post("https://api.twilio.com/2010-04-01/Accounts/test-sid/Messages.json").mock(
         side_effect=Exception("network exploded")
     )
@@ -293,6 +297,7 @@ async def test_expired_recovery_does_not_receive_stale_availability_message(test
     monkeypatch.setattr(settings, "twilio_account_sid", "test-sid")
     monkeypatch.setattr(settings, "twilio_auth_token", "test-token")
     monkeypatch.setattr(settings, "twilio_availability_template_sid", None)
+    monkeypatch.setattr(settings, "twilio_whatsapp_from", "whatsapp:+14155238886")  # a configured sender
     lead = await _busy_lead(db_session, test_property)
     # Backdate past AVAILABILITY_WINDOW (30 minutes) -- simulates Mira
     # staying busy far longer than the "call back in 5 mins" premise
@@ -332,6 +337,7 @@ async def test_stale_processing_claim_is_reclaimable_after_worker_crash(test_pro
         monkeypatch.setattr(settings, "twilio_account_sid", "test-sid")
         monkeypatch.setattr(settings, "twilio_auth_token", "test-token")
         monkeypatch.setattr(settings, "twilio_availability_template_sid", None)
+        monkeypatch.setattr(settings, "twilio_whatsapp_from", "whatsapp:+14155238886")  # a configured sender
         route = respx.post("https://api.twilio.com/2010-04-01/Accounts/test-sid/Messages.json").mock(
             return_value=Response(200, json={"sid": "SM321", "status": "queued"})
         )
@@ -355,6 +361,7 @@ async def test_fresh_processing_claim_is_not_reclaimed_while_still_in_flight(tes
         monkeypatch.setattr(settings, "twilio_account_sid", "test-sid")
         monkeypatch.setattr(settings, "twilio_auth_token", "test-token")
         monkeypatch.setattr(settings, "twilio_availability_template_sid", None)
+        monkeypatch.setattr(settings, "twilio_whatsapp_from", "whatsapp:+14155238886")  # a configured sender
         route = respx.post("https://api.twilio.com/2010-04-01/Accounts/test-sid/Messages.json").mock(
             return_value=Response(200, json={"sid": "SM654", "status": "queued"})
         )

@@ -16,7 +16,7 @@ edges:
     condition: when understanding how components connect during setup
   - target: context/decisions.md
     condition: when understanding why a specific setup step or constraint exists
-last_updated: 2026-08-08
+last_updated: 2026-11-09
 ---
 
 # Setup
@@ -24,14 +24,15 @@ last_updated: 2026-08-08
 ## Prerequisites
 
 - **Python 3.12** — exact version; asyncpg and pipecat-ai have 3.12-specific behaviors
-- **PostgreSQL** — local instance or Neon URL; a real running Postgres is required for `pytest` (no in-memory substitute)
+- **PostgreSQL** — local instance (development) or a hosted URL (Supabase on Railway `dev`, Neon on `production`); `pytest` needs a real local Postgres database `mira_test` (user/password `mira`/`mira`) — no in-memory substitute
+- **Redis** — a local `redis-server` on the default port is required for `pytest` (the call-lease Lua scripts are tested against the real thing)
 - **Node.js 20+** — for the Next.js frontend
 - **Git** — monorepo: `backend/` and `frontend/` are separate roots
 
 ## First-time Setup
 
-1. **Backend deps**: `cd backend && pip install -r requirements.txt`
-2. **Env file**: `cp .env.example .env` — fill in at minimum: `DATABASE_URL`, `JWT_SECRET_KEY`, `SARVAM_API_KEY`, `GROQ_API_KEY`
+1. **Backend deps**: `cd backend && pip install -r requirements.lock` (exact, hash-verified — what Docker and CI use; `requirements.txt` holds the ranges it is compiled from)
+2. **Env file**: `cp .env.example .env` — fill in at minimum: `DATABASE_URL`, `CLERK_PUBLISHABLE_KEY` + `CLERK_SECRET_KEY` (every authenticated request), `SARVAM_API_KEY`, `GROQ_API_KEY`. In production also `TAKE_CALL_TOKEN_SECRET` and `EXOTEL_WEBHOOK_TOKEN` (real random values — the app refuses to start without them)
 3. **Migrations**: `alembic upgrade head` (run from `backend/`; needs `DATABASE_URL` resolvable)
 4. **Demo data** (optional): `DATABASE_URL="postgresql://..." python3 seed_demo.py` — creates `demo@mira.ai` / `MiraDemo2024` with 12 Indian properties
 5. **Backend dev server**: `uvicorn app.main:app --reload` (from `backend/`)
@@ -42,7 +43,8 @@ last_updated: 2026-08-08
 
 **Required:**
 - `DATABASE_URL` — PostgreSQL connection string; auto-rewritten to `postgresql+asyncpg://` by `config.py`; `sslmode` query param stripped and converted to `database_requires_ssl` bool
-- `JWT_SECRET_KEY` — JWT signing key (HS256); min 32 chars recommended
+- `CLERK_PUBLISHABLE_KEY` / `CLERK_SECRET_KEY` — Clerk session-token verification (JWKS and issuer are derived from the publishable key) and first-login email lookup
+- `TAKE_CALL_TOKEN_SECRET` — HMAC key for the WhatsApp "Take Call" links; **≥ 32 bytes in production** (`openssl rand -hex 32`)
 - `SARVAM_API_KEY` — STT + TTS for the voice pipeline (required for any voice call)
 
 **Conditionally required:**
@@ -53,10 +55,10 @@ last_updated: 2026-08-08
 - `TURN_URL_TLS` — optional TURNS-over-TCP:443 relay for mobile networks that block UDP
 
 **Optional (unset = graceful degradation):**
-- `REDIS_URL` — pricing cache; unset = caching inert (currently not set on Railway)
+- `REDIS_URL` — TTL cache (pricing, query embeddings), CallCoordinator call leases and the Take Call pub/sub signal; unset = cache/pub-sub no-op, and lease protection degrades to "always start the call" (logged loudly)
 - `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_WHATSAPP_FROM` — WhatsApp delivery; unset = in-app notifications only
 - `TWILIO_ESCALATION_TEMPLATE_SID` — gives escalation WhatsApp a "Go to Dashboard" button; unset = plain-text message with bare URL
-- `SMTP_HOST` / `SMTP_PORT` / `SMTP_USERNAME` / `SMTP_PASSWORD` / `SMTP_FROM_EMAIL` — email escalations; unset = email skipped (also currently broken on Railway Trial tier — port 587 blocked)
+- `RESEND_API_KEY` / `RESEND_FROM_EMAIL` — host email via Resend's HTTPS API (Railway blocks SMTP); unset = email skipped, in-app notification still created. The sender domain must be verified in Resend
 - `BRIGHT_DATA_API_KEY` — Airbnb listing import; unset = import fails with a clear error
 - `SEARCHAPI_API_KEY` — live Airbnb pricing for `exact_airbnb_pricing` properties; unset = computed pricing used
 - `CORS_EXTRA_ORIGINS` — comma-separated extra CORS origins beyond `FRONTEND_BASE_URL`

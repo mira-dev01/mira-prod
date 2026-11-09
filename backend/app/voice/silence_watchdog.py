@@ -209,6 +209,9 @@ class SilenceWatchdogProcessor(FrameProcessor):
 
         self._prompts_sent = 0
         self._timer_task: asyncio.Task | None = None
+        # See hold_nudges(): monotonic deadline until which the silence clock
+        # may not be (re)started because Mira is mid-recovery on a reply.
+        self._nudges_held_until = 0.0
         self._ended = False
         self._end_requested = False
 
@@ -250,6 +253,25 @@ class SilenceWatchdogProcessor(FrameProcessor):
         would otherwise race the actual hangup -- see that module's docstring
         for the failure mode this closes."""
         return self._end_requested or self._ended
+
+    async def hold_nudges(self, max_seconds: float = 30.0) -> None:
+        """Suspends the silence clock while Mira is working to produce a reply
+        the guest is waiting for (an LLM failover: filler spoken, next model
+        being tried). Without this the clock restarts when the filler line
+        finishes, and a slow retry would make Mira say "Hello? Are you
+        there?" to a guest who is simply waiting on her. Cancels any running
+        timer and refuses to start a new one until release_nudges(), or
+        `max_seconds` at the latest -- the deadline means a hold that is
+        somehow never released can delay a nudge, never disable the watchdog
+        (and with it the unresponsive-caller hangup) for the rest of the call."""
+        self._nudges_held_until = time.monotonic() + max_seconds
+        await self._cancel_timer()
+
+    def release_nudges(self) -> None:
+        """Ends hold_nudges(). Deliberately does NOT start the clock: the
+        reply that follows is a normal bot turn, and BotStoppedSpeakingFrame
+        at its end restarts it exactly as it always has."""
+        self._nudges_held_until = 0.0
 
     async def request_end_after_current_turn(self) -> None:
         """Called by the end_call tool (app/voice/tools.py) once the LLM has
@@ -496,6 +518,9 @@ class SilenceWatchdogProcessor(FrameProcessor):
 
     async def _restart_timer(self):
         await self._cancel_timer()
+        if time.monotonic() < self._nudges_held_until:
+            logger.debug("silence_watchdog_timer_not_started_nudges_held")
+            return
         self._timer_task = self.create_task(self._on_timeout(), "silence_watchdog_timer")
 
     async def _cancel_timer(self):

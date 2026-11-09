@@ -13,16 +13,20 @@ import {
   Users,
   Building,
   Receipt,
+  UserRound,
   Wallet,
+  LogOut,
   X,
   type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useAdmin } from "@/components/admin/admin-context";
+import { RailBrand, RailLabel, RailSection, RailSidebar, useRail } from "@/components/rail-sidebar";
 
 // Same rail/drawer structure as components/sidebar-nav.tsx (the host
-// dashboard), grouped into the admin panel's three areas.
+// dashboard) -- an icon-only rail that widens on hover (components/
+// rail-sidebar.tsx) -- grouped into the admin panel's three areas.
 const groups: { title: string; links: { href: string; label: string; icon: LucideIcon }[] }[] = [
   { title: "Monitor", links: [{ href: "/admin", label: "Overview", icon: LayoutDashboard }] },
   {
@@ -56,12 +60,16 @@ function Logo() {
 function Links({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const { email, logout } = useAdmin();
+  // Rail vs. mobile drawer paddings -- see components/rail-sidebar.tsx.
+  const { rail } = useRail();
   return (
     <>
-      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto">
+      <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden">
         {groups.map((group) => (
           <div key={group.title} className="flex flex-col gap-1">
-            <span className="text-micro px-2 pb-1 pt-3">{group.title}</span>
+            <RailSection heightClass="h-8" topSpaceClass="pt-3">
+              {group.title}
+            </RailSection>
             {group.links.map((link) => {
               const active = link.href === "/admin" ? pathname === "/admin" : pathname.startsWith(link.href);
               const Icon = link.icon;
@@ -71,22 +79,36 @@ function Links({ onNavigate }: { onNavigate?: () => void }) {
                   href={link.href}
                   onClick={onNavigate}
                   className={cn(
-                    "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors duration-150 hover:bg-accent hover:text-accent-foreground",
+                    "flex items-center gap-2 overflow-hidden rounded-lg py-2 text-sm transition-colors duration-150 hover:bg-accent hover:text-accent-foreground",
+                    rail ? "px-4" : "px-3",
                     active ? "bg-accent font-medium text-accent-foreground" : "font-normal text-muted-foreground"
                   )}
                 >
                   <Icon className="size-4 shrink-0" />
-                  {link.label}
+                  <RailLabel>{link.label}</RailLabel>
                 </Link>
               );
             })}
           </div>
         ))}
       </nav>
-      <div className="space-y-2 border-t pt-4">
-        <p className="truncate px-2 text-xs text-muted-foreground">{email}</p>
-        <Button variant="outline" size="sm" className="w-full" onClick={logout}>
-          Log out
+      <div className="shrink-0 space-y-2 border-t pt-4">
+        {rail ? (
+          <div className="flex items-center gap-2 overflow-hidden px-4 py-1.5" title={email}>
+            <UserRound className="size-4 shrink-0 text-muted-foreground" />
+            <RailLabel className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{email}</RailLabel>
+          </div>
+        ) : (
+          <p className="truncate px-2 text-xs text-muted-foreground">{email}</p>
+        )}
+        <Button
+          variant="outline"
+          size="sm"
+          className={cn("w-full overflow-hidden", rail && "justify-start gap-2 px-[15px]")}
+          onClick={logout}
+        >
+          {rail && <LogOut className="size-4 shrink-0" />}
+          <RailLabel>Log out</RailLabel>
         </Button>
       </div>
     </>
@@ -102,13 +124,10 @@ export function AdminSidebar() {
 
   return (
     <>
-      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r bg-card p-4 md:flex">
-        <div className="mb-4 px-2">
-          <Logo />
-          <p className="mt-0.5 text-xs text-muted-foreground">Admin console</p>
-        </div>
+      <RailSidebar expandedWidthClass="w-60">
+        <RailBrand subtitle="Admin console" />
         <Links />
-      </aside>
+      </RailSidebar>
 
       <Drawer.Root open={open} onOpenChange={setOpen} swipeDirection="left">
         <header className="fixed left-0 right-0 top-0 z-40 flex h-14 items-center justify-between border-b bg-card px-4 md:hidden">

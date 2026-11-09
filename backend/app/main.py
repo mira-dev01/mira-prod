@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import time
 from contextlib import asynccontextmanager
@@ -10,6 +9,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
+from app.integrations import llm_clients
+from app.utils import background
+from app.voice import handoff_signal
 from app.api.v1 import (
     analytics,
     auth,
@@ -38,7 +40,7 @@ from app.api.v1 import (
 from app.api.v1.webhooks import exotel, whatsapp
 from app.api.v1 import admin, admin_auth
 from app.config import settings
-from app.database import AsyncSessionLocal, engine
+from app.database import AsyncSessionLocal, engine, pool_stats
 from app.observability import health, http_hook, probes
 from app.observability.logging_setup import configure_logging
 from app.observability.middleware import ObservabilityMiddleware, install_db_hook
@@ -91,10 +93,17 @@ def _on_scheduler_event(event) -> None:
 
 
 async def _scheduled_ical_sync() -> None:
-    async with AsyncSessionLocal() as db:
-        results = await sync_all_properties(db)
+    # Every sibling startup/scheduled task (_check_db_health,
+    # _backfill_property_display_names, ...) wraps its own work; this one did not,
+    # so a failing feed surfaced only as asyncio's terse "Task exception was never
+    # retrieved" (or, on the scheduler, a job error) with no structured log line.
+    try:
+        async with AsyncSessionLocal() as db:
+            results = await sync_all_properties(db)
         if results:
             logger.info("iCal sync complete: %s", results)
+    except Exception:
+        logger.exception("Scheduled iCal sync failed")
 
 
 async def _backfill_property_display_names() -> None:
@@ -153,25 +162,40 @@ async def _scheduled_live_pricing_cache_refresh() -> None:
         await refresh_live_pricing_cache(db)
 
 
+def _log_db_pool_pressure() -> None:
+    """Warns when most of this process's DB connections are checked out --
+    the early sign (before requests start waiting on db_pool_timeout) that
+    live calls and dashboard polling are competing for connections."""
+    stats = pool_stats()
+    if stats["checked_out"] >= 0.8 * stats["capacity"]:
+        logger.warning(
+            "db_pool_pressure checked_out=%s capacity=%s overflow=%s -- raise DB_POOL_SIZE/DB_MAX_OVERFLOW "
+            "(mind the pooler's connection limit) or find what is holding connections",
+            stats["checked_out"], stats["capacity"], stats["overflow"],
+        )
+    else:
+        logger.debug("db_pool checked_out=%s capacity=%s", stats["checked_out"], stats["capacity"])
+
+
 async def _check_db_health() -> None:
-    # Neon (like most serverless Postgres) suspends its compute after a few
-    # minutes of inactivity -- the first query after that wakes it back up,
-    # which costs multiple seconds. That wake-up was landing squarely on the
-    # first DB query of a voice pipeline (run_browser_lead_pipeline /
-    # run_voice_pipeline's guest/session lookups), showing up as an
-    # unexplained multi-second gap before the greeting with nothing logged
-    # in between. A trivial periodic ping, well under Neon's autosuspend
-    # window, keeps the connection warm so a real call never pays that cost.
-    # Same rationale as _check_llm_health above, applied to the DB instead
-    # of the LLM route. Failures are logged only -- never fatal.
-    #
-    # Doubles as the Postgres health probe for the /admin status page (every
-    # 60s now, down from 3 min, so an outage shows within ~2 minutes).
+    # Two jobs in one 60s query:
+    #  1. Keeps the connection warm. Serverless Postgres suspends idle compute (Neon after a
+    #     few minutes; a Supabase free-tier project is paused after ~a week of inactivity, and
+    #     a paid project is never paused), and the first query after a wake-up costs multiple
+    #     seconds -- landing on the first DB query of a voice pipeline as an unexplained gap
+    #     before the greeting. A trivial ping well under the idle window prevents that.
+    #  2. Is the Postgres health probe for the /admin status page (60s, so an outage shows
+    #     within ~2 minutes), and reports connection-pool pressure (_log_db_pool_pressure).
+    # Cost note: against an always-on paid database the ping costs nothing extra. On a plan
+    # billed by compute-hours (Neon) it keeps the compute running 24/7 -- right for a voice
+    # product, but check the plan's allowance. It holds one pooled connection for ~1ms/min.
+    # Failures are logged only -- never fatal.
     started = time.monotonic()
     try:
         async with AsyncSessionLocal() as db:
             await db.execute(text("SELECT 1"))
         health.record_probe("postgres", "ok", latency_ms=(time.monotonic() - started) * 1000)
+        _log_db_pool_pressure()
     except Exception as e:
         logger.warning("DB keep-alive ping failed: %s", e)
         health.record_probe("postgres", "down", error=f"{type(e).__name__}: {e}")
@@ -207,9 +231,9 @@ async def _check_llm_health() -> None:
 
 async def _ping_llm_routes() -> None:
     if settings.llm_provider == "groq" and settings.groq_api_key:
-        from groq import AsyncGroq
-
-        client = AsyncGroq(api_key=settings.groq_api_key)
+        # Shared client (llm_clients.PROBE: short timeout, no hidden retries) --
+        # a real measurement of the route, and no per-minute client to close.
+        client = llm_clients.groq_client(llm_clients.PROBE)
         for model in settings.groq_models:
             # reasoning_effort is gpt-oss-specific -- other models (e.g.
             # llama-3.1-8b-instant) reject it with a 400, which would
@@ -238,13 +262,10 @@ async def _ping_llm_routes() -> None:
                     "error": str(e),
                 }
                 logger.warning("LLM health check failed for groq/%s (non-fatal): %s", model, e)
-        await client.close()
 
     if settings.llm_provider == "openrouter" and settings.openrouter_api_key:
-        from openai import AsyncOpenAI
-
         started = time.monotonic()
-        client = AsyncOpenAI(api_key=settings.openrouter_api_key, base_url="https://openrouter.ai/api/v1")
+        client = llm_clients.openrouter_client(llm_clients.PROBE)
         extra = {"reasoning_effort": "low"} if "gpt-oss" in settings.openrouter_model else {}
         key = f"openrouter/{settings.openrouter_model}"
         try:
@@ -269,7 +290,6 @@ async def _ping_llm_routes() -> None:
                 "error": str(e),
             }
             logger.warning("LLM health check failed for %s (non-fatal): %s", key, e)
-        await client.close()
 
 
 @asynccontextmanager
@@ -330,13 +350,14 @@ async def lifespan(app: FastAPI):
     )
     scheduler.add_listener(_on_scheduler_event, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR | EVENT_JOB_MISSED)
     scheduler.start()
-    asyncio.create_task(health_monitor_service.probe_cycle())
-    asyncio.create_task(health_monitor_service.credits_cycle())
-    asyncio.create_task(_scheduled_ical_sync())   # kick off one sync immediately, don't block startup on it
-    asyncio.create_task(_check_llm_health())      # pre-warm + health-check LLM routes so first caller doesn't wait
-    asyncio.create_task(_check_db_health())       # pre-warm the DB connection so the first caller doesn't wait
-    asyncio.create_task(_backfill_property_display_names())  # self-heal any pre-existing NULL display_name rows
-    asyncio.create_task(_reconcile_stuck_call_sessions())    # self-heal any CallSession stuck at in_progress from before this deploy
+    handoff_listener = background.spawn(handoff_signal.run_listener(), name="handoff_listener")
+    background.spawn(health_monitor_service.probe_cycle())
+    background.spawn(health_monitor_service.credits_cycle())
+    background.spawn(_scheduled_ical_sync())   # kick off one sync immediately, don't block startup on it
+    background.spawn(_check_llm_health())      # pre-warm + health-check LLM routes so first caller doesn't wait
+    background.spawn(_check_db_health())       # pre-warm the DB connection so the first caller doesn't wait
+    background.spawn(_backfill_property_display_names())  # self-heal any pre-existing NULL display_name rows
+    background.spawn(_reconcile_stuck_call_sessions())    # self-heal any CallSession stuck at in_progress from before this deploy
     try:
         from importlib.metadata import version as _pkg_version
 
@@ -347,6 +368,8 @@ async def lifespan(app: FastAPI):
         logger.info("MIRA backend started (env=%s)", settings.environment)
     yield
     scheduler.shutdown(wait=False)
+    handoff_listener.cancel()
+    await llm_clients.aclose_all()
 
 
 app = FastAPI(title="MIRA API", version="0.1.0", lifespan=lifespan)

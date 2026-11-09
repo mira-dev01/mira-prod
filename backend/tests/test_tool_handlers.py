@@ -559,7 +559,8 @@ async def test_escalate_to_host_also_saves_lead_so_it_isnt_left_empty(test_prope
 
     leads = await lead_service.list_leads(db_session, test_property.user_id)
     assert len(leads) == 1
-    assert leads[0].phone == "+919999999999"
+    # EscalateToHostArgs normalises a phone to its last 10 digits (schemas/tool.py _normalize_phone).
+    assert leads[0].phone == "9999999999"
     assert "12,987" in leads[0].conversation_summary
     assert leads[0].escalated is True
 

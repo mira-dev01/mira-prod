@@ -15,10 +15,13 @@ avoids a per-page-load embedding API call: the dashboard's gap list must
 never make a live external call just to render.
 """
 
+import hashlib
 import logging
 import math
 
 from app.config import settings
+from app.integrations import redis_client
+from app.integrations import llm_clients
 from app.services import usage_meter
 
 logger = logging.getLogger(__name__)
@@ -40,24 +43,51 @@ class EmbeddingError(Exception):
     pass
 
 
+# An embedding of a given text under a given model never changes, so a cached one
+# is as good as a fresh one for as long as the model id is the same -- the TTL only
+# bounds how long an unused entry occupies Redis.
+_EMBEDDING_CACHE_TTL_SECONDS = 30 * 24 * 3600
+
+
+def _embedding_cache_key(text: str) -> str:
+    """Cache key for one text: case- and whitespace-insensitive (an embedding
+    captures meaning, not surface formatting, so "Romantic  Getaway " and
+    "romantic getaway" share an entry) and scoped to the model so changing
+    EMBEDDING_MODEL can never serve vectors from the old one."""
+    normalized = " ".join(text.lower().split())
+    digest = hashlib.sha256(normalized.encode()).hexdigest()
+    return f"embedding:{EMBEDDING_MODEL}:{digest}"
+
+
 async def get_embedding(text: str) -> list[float] | None:
     """Returns None (never raises) on any failure -- semantic dedup is a
     nice-to-have UX layer on top of the FAQ Learning Engine, which already
     works correctly without it (see section 3.4). A missing embedding just
     means that one gap/entry falls back to no semantic suggestion, not a
-    broken page."""
+    broken page.
+
+    Served from the Redis cache when the same text was embedded before
+    (guests ask the same questions again and again), which saves a paid,
+    network-bound request -- and, on the live search_faq path, the cold-route
+    latency that request can add. A cache miss, a Redis outage or no REDIS_URL
+    all just fall through to the live call (redis_client fails open); a failed
+    call is never cached."""
     if not settings.openrouter_api_key:
         return None
+    cache_key = _embedding_cache_key(text)
+    cached = await redis_client.cache_get_json(cache_key)
+    if cached is not None:
+        return cached
     try:
-        from openai import AsyncOpenAI
-
-        client = AsyncOpenAI(api_key=settings.openrouter_api_key, base_url="https://openrouter.ai/api/v1")
+        client = llm_clients.openrouter_client(llm_clients.EMBEDDING)
         response = await client.embeddings.create(model=EMBEDDING_MODEL, input=text)
         usage_meter.record_llm_response_usage("openrouter", response, model=EMBEDDING_MODEL, purpose="embedding")
-        return response.data[0].embedding
+        embedding = response.data[0].embedding
     except Exception:
         logger.exception("Embedding request failed for text=%r -- semantic dedup will skip this item", text[:80])
         return None
+    await redis_client.cache_set_json(cache_key, embedding, _EMBEDDING_CACHE_TTL_SECONDS)
+    return embedding
 
 
 def cosine_similarity(a: list[float], b: list[float]) -> float:

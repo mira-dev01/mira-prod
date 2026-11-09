@@ -23,7 +23,15 @@ allocation cost for the overwhelming majority of calls, matching Phase 1's
 """
 
 import asyncio
+import logging
 import uuid
+
+from app.integrations import redis_signal_client
+
+logger = logging.getLogger(__name__)
+
+# Redis pub/sub channel carrying "call_session_id" strings.
+HANDOFF_CHANNEL = "mira:handoff_requested"
 
 _handoff_events: dict[uuid.UUID, asyncio.Event] = {}
 
@@ -67,6 +75,47 @@ def request_handoff(call_session_id: uuid.UUID) -> bool:
         return False
     event.set()
     return True
+
+
+async def request_handoff_anywhere(call_session_id: uuid.UUID) -> bool:
+    """request_handoff() that also works when the live call is running in a
+    DIFFERENT process than the one handling this request (a second replica, or
+    the voice service split from the API): if the call is registered here the
+    Event is set directly; otherwise the request is published on Redis and the
+    process that owns the call (see run_listener) sets it there.
+
+    Returns True when something is known to have received it. False means no
+    live pipeline was reachable -- the call already ended, or Redis is down /
+    unconfigured while the call lives elsewhere. The claim itself is already
+    durable in Postgres and unaffected; this logs a warning on False so a
+    Take Call that could not reach its call is no longer a silent failure."""
+    if request_handoff(call_session_id):
+        return True
+    receivers = await redis_signal_client.publish(HANDOFF_CHANNEL, str(call_session_id))
+    if receivers > 0:
+        return True
+    logger.warning(
+        "handoff_signal_not_delivered call_session_id=%s -- no live pipeline registered here and no Redis "
+        "subscriber received it (call already ended, or Redis unavailable while the call is on another process)",
+        call_session_id,
+    )
+    return False
+
+
+def _on_remote_request(message: str) -> None:
+    """Listener callback: a published call_session_id -> set its Event if the
+    call lives in THIS process; ignore it otherwise (another process owns it)."""
+    try:
+        request_handoff(uuid.UUID(message))
+    except ValueError:
+        logger.warning("handoff_signal_ignored_malformed_message message=%r", message)
+
+
+async def run_listener() -> None:
+    """Long-lived task, started once per process at application startup: turns
+    handoff requests published by OTHER processes into local Event.set() calls.
+    One Redis subscription per process, not per call."""
+    await redis_signal_client.listen(HANDOFF_CHANNEL, _on_remote_request)
 
 
 async def wait_for_handoff_request(call_session_id: uuid.UUID) -> None:

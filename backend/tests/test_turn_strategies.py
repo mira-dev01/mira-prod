@@ -32,8 +32,18 @@ def test_is_complete_full_sentence_with_terminal_punctuation():
     assert _is_incomplete("Two nights please.") is False
 
 
-def test_is_complete_short_but_punctuated():
-    assert _is_incomplete("Yes.") is False
+def test_short_answer_with_only_a_period_is_still_incomplete():
+    # A lone "." is Sarvam's default sentence-final mark and is added on almost any
+    # falling-pitch pause, mid-thought included ("...my phone number is 9." was read
+    # as complete on a single digit, confirmed live), so it must not rescue a short
+    # utterance from the length check. See _is_incomplete's own comment.
+    assert _is_incomplete("Yes.") is True
+
+
+def test_short_answer_with_confident_punctuation_is_complete():
+    # "?" / "!" are deliberate completeness signals STT only adds when confident.
+    assert _is_incomplete("Yes!") is False
+    assert _is_incomplete("Kasauli?") is False
 
 
 def test_strategy_instantiates_with_defaults():

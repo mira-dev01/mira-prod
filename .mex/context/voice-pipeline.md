@@ -24,7 +24,7 @@ edges:
     condition: when modifying the pipeline — adding a guard, tuning a param, adding a tool
   - target: patterns/debug-voice-call.md
     condition: when diagnosing a voice call failure from logs
-last_updated: 2026-08-08
+last_updated: 2026-11-09
 ---
 
 # Voice Pipeline
@@ -50,7 +50,7 @@ transport.input()
   → user_aggregator
   → RedundantContextGuardProcessor (drops duplicate LLMContextFrame re-invocations)
   → StatePromptSyncProcessor (injects ConversationState as LLM context hints)
-  → LLM (_FallbackGroqLLMService — health-checked model selection + live 429 fallback)
+  → LLM (_FallbackGroqLLMService — health-checked model selection + live failover on 429/5xx/timeout/stall, "one moment" filler)
   → RepetitionGuardProcessor (drops near-duplicate sentences in degenerate completions)
   → MetaCommentaryGuardProcessor (drops narrator/stage-direction parentheticals)
   → PropertyRecommendationGuardProcessor (strips leaked UUIDs; verifies property names + prices spoken)
@@ -79,7 +79,8 @@ All guard processors are **pass-through by default** — zero latency on normal 
 ## LLM Routing — Groq Fallback Chain
 
 1. **Model selection**: `_pick_groq_model()` returns first model in `settings.groq_models` not marked down in `llm_health` (populated by `_check_llm_health` in `main.py` every 60s).
-2. **Live 429 handling**: `_FallbackGroqLLMService` sets `max_retries=0` on the Groq client (prevents SDK retry against the same rate-limited model) and retries the next model in `settings.groq_models` immediately on `RateLimitError`.
+2. **Live failover**: `_FallbackGroqLLMService` sets `max_retries=0` and an explicit timeout on the Groq client, waits for the first streamed chunk (`LLM_FIRST_CHUNK_TIMEOUT_SECONDS`, default 3s; last model 3×) and moves to the next model in `settings.groq_models` on a 429, any 5xx/404/408, a dropped connection, a timeout or a stalled first token. Other 4xx are not retried. Only a 429/404 marks a model down in `llm_health` for other callers.
+   - **No dead air**: on the first failover of a turn Mira speaks a fixed "one moment" line (`TTSSpeakFrame`, `append_to_context=False`) and the silence watchdog is held (`hold_nudges`), so the retried reply is a seamless continuation and she never asks "are you there?". If every model fails she apologises and asks the guest to repeat. (`_ReplyGap`.)
 3. **Last resort**: if all Groq models are down, `_build_llm()` falls through to `_build_openrouter_llm` (`OpenAILLMService` pointed at OpenRouter; `max_completion_tokens=900`).
 4. **Key params for gpt-oss models only**: `reasoning_effort: "low"` (disables hidden chain-of-thought pass — real multi-second latency source), `reasoning_format: "hidden"` on Groq / `extra_body={"reasoning": {"exclude": True}}` on OpenRouter (prevents chain-of-thought from appearing in the reply text). Both must go via `extra_body`, not bare kwargs.
 5. **`max_completion_tokens=400`** on Groq (added 2026-07-27): confirmed live that a degenerate completion reached 3072 tokens on a long noisy call; 400 bounds it while giving real headroom.
@@ -112,7 +113,7 @@ All guard processors are **pass-through by default** — zero latency on normal 
 ## Silence Watchdog
 
 `SilenceWatchdogProcessor` sits immediately after STT. Two behaviors:
-1. **Silent caller**: nudges after 9.0s silence, ends call after 2nd unanswered nudge. Blank/whitespace transcripts never reset the timer.
+1. **Silent caller**: nudges after 9.0s silence, ends call after 2nd unanswered nudge. Blank/whitespace transcripts never reset the timer. Nudges are suspended (`hold_nudges`, auto-expires after 30s) while the LLM is failing over.
 2. **Graceful end-of-call**: `end_call` and `decline_irrelevant_call` tools call `request_end_after_current_turn()` — the next `BotStoppedSpeakingFrame` fires `EndWorkerFrame`. If the guest speaks again while pending, the request is cancelled.
 
 ## Bot Speaks First (Greeting)
@@ -136,7 +137,7 @@ Bound via `build_voice_tools()` factory closure. All results are natural-languag
 | `negotiate_rate` | `handle_negotiate_rate` | Never volunteer a discount unprompted |
 | `recommend_properties` | `handle_recommend_properties` | Numbered newline-separated list (not `\|`-joined); Goa region expands to locality names |
 | `search_faq` | `handle_search_faq` | Tiered: verified FaqEntry → legacy faq JSON → full property context block |
-| `escalate_to_host` | `handle_escalate_to_host` | In-app notification + detached SMTP email + Twilio WhatsApp; arms EscalationPhraseGuard |
+| `escalate_to_host` | `handle_escalate_to_host` | In-app notification + detached Resend email + Twilio WhatsApp (detached via `background.spawn`); arms EscalationPhraseGuard |
 | `send_whatsapp` | `handle_send_whatsapp` | Twilio sandbox; 24h customer-service window applies |
 | `send_photos` | `handle_send_photos` | Cloudinary gallery link via WhatsApp + email fallback |
 | `dispatch_technician` | `handle_dispatch_technician` | Falls back to host notification if no technician on file |

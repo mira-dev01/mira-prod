@@ -81,3 +81,8 @@ class ClassificationResult(BaseModel):
     call_type: CallType
     confidence: float
     reason: str
+    # True ONLY for the degraded result classify_call returns when the classifier itself
+    # failed (timeout, provider 429/outage, no provider configured). That is "we could not
+    # tell", not a finding that the call was junk -- callers must not act destructively on it
+    # (on_pipeline_finished keeps the lead instead of deleting it as "unqualified").
+    classification_failed: bool = False

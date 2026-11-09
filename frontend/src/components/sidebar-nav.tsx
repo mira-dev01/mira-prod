@@ -16,6 +16,7 @@ import {
   UserRound,
   HelpCircle,
   Settings,
+  LogOut,
   Menu,
   X,
   type LucideIcon,
@@ -23,6 +24,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { RailBrand, RailLabel, RailSection, RailSidebar, useRail } from "@/components/rail-sidebar";
 import { TalkToMiraDialog } from "@/components/talk-to-mira-dialog";
 import { useAuth } from "@/lib/auth-context";
 import { hrefsForInterests } from "@/lib/use-cases";
@@ -80,6 +82,10 @@ function MiraLogo() {
 function NavLinks({ onNavigate, onTalkToMira }: { onNavigate?: () => void; onTalkToMira: () => void }) {
   const pathname = usePathname();
   const { user, logout, isInternalOrg } = useAuth();
+  // In the desktop rail every row is padded so its icon's centre lands on the
+  // rail's centre line (see rail-sidebar.tsx); the mobile drawer keeps its
+  // original paddings and always-visible labels.
+  const { rail } = useRail();
 
   function renderLink(link: (typeof links)[number]) {
     const active =
@@ -93,12 +99,13 @@ function NavLinks({ onNavigate, onTalkToMira }: { onNavigate?: () => void; onTal
         href={link.href}
         onClick={onNavigate}
         className={cn(
-          "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors duration-150 hover:bg-accent hover:text-accent-foreground",
+          "flex items-center gap-2 overflow-hidden rounded-lg py-2 text-sm transition-colors duration-150 hover:bg-accent hover:text-accent-foreground",
+          rail ? "px-4" : "px-3",
           active ? "bg-accent font-medium text-accent-foreground" : "font-normal text-muted-foreground"
         )}
       >
         <Icon className="size-4 shrink-0" />
-        {link.label}
+        <RailLabel>{link.label}</RailLabel>
       </Link>
     );
   }
@@ -122,7 +129,7 @@ function NavLinks({ onNavigate, onTalkToMira }: { onNavigate?: () => void; onTal
 
   return (
     <>
-      <nav className="flex flex-1 flex-col gap-1">
+      <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden">
         {isInternalOrg && (
           <button
             type="button"
@@ -130,43 +137,55 @@ function NavLinks({ onNavigate, onTalkToMira }: { onNavigate?: () => void; onTal
               onTalkToMira();
               onNavigate?.();
             }}
-            className="rounded-lg px-3 py-2 text-left text-sm font-medium text-accent-foreground transition-colors duration-150 hover:bg-accent"
+            className={cn(
+              "flex items-center gap-2 overflow-hidden rounded-lg py-2 text-left text-sm font-medium text-accent-foreground transition-colors duration-150 hover:bg-accent",
+              rail ? "px-4" : "px-3"
+            )}
           >
-            <MiraMark className="mr-1.5 inline-block size-3.5 align-[-1px] text-(--accent-warm)" />
-            Talk to Mira
+            <MiraMark className="size-4 shrink-0 text-(--accent-warm)" />
+            <RailLabel>Talk to Mira</RailLabel>
           </button>
         )}
         {focusLinks.length === 0 ? (
           <>
-            <span className="text-micro px-2 pb-1 pt-2">Main</span>
+            <RailSection>Main</RailSection>
             {links.map(renderLink)}
           </>
         ) : (
           <>
             {renderLink(overviewLink)}
-            <span className="text-micro px-2 pb-1 pt-2">Your focus</span>
+            <RailSection>Your focus</RailSection>
             {focusLinks.map(renderLink)}
-            <span className="text-micro px-2 pb-1 pt-2">Workspace</span>
+            <RailSection>Workspace</RailSection>
             {workspaceLinks.map(renderLink)}
           </>
         )}
       </nav>
-      <div className="space-y-2 border-t pt-4">
+      <div className="shrink-0 space-y-2 border-t pt-4">
         <Link
           href="/dashboard/profile"
           onClick={onNavigate}
-          className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors duration-150 hover:bg-accent"
+          className={cn(
+            "flex items-center gap-2 overflow-hidden rounded-lg py-1.5 transition-colors duration-150 hover:bg-accent",
+            rail ? "px-3" : "px-2"
+          )}
         >
           <Avatar size="sm">
             <AvatarImage src={user?.photo_url ?? undefined} alt="" />
             <AvatarFallback>{(user?.name ?? user?.email ?? "?").charAt(0).toUpperCase()}</AvatarFallback>
           </Avatar>
-          <span className="min-w-0 flex-1 truncate text-xs font-medium">
+          <RailLabel className="min-w-0 flex-1 truncate text-xs font-medium">
             {user?.name || user?.business_name || user?.email}
-          </span>
+          </RailLabel>
         </Link>
-        <Button variant="outline" size="sm" className="w-full" onClick={logout}>
-          Log out
+        <Button
+          variant="outline"
+          size="sm"
+          className={cn("w-full overflow-hidden", rail && "justify-start gap-2 px-[15px]")}
+          onClick={logout}
+        >
+          {rail && <LogOut className="size-4 shrink-0" />}
+          <RailLabel>Log out</RailLabel>
         </Button>
       </div>
     </>
@@ -187,20 +206,19 @@ export function SidebarNav() {
 
   return (
     <>
-      {/* ── Desktop sidebar (md+): a permanently visible rail, not a
-          dismissible overlay, so it stays plain markup rather than a Drawer
+      {/* ── Desktop sidebar (md+): an icon-only rail that widens on hover /
+          keyboard focus, overlaying <main> rather than pushing it (see
+          components/rail-sidebar.tsx). The page layout only ever sees the
+          rail's fixed 64px, so <main> gets the width a permanently expanded
+          sidebar used to take. Stays plain markup rather than a Drawer
           instance (Drawer's backdrop/focus-trap/scroll-lock machinery is for
-          the mobile overlay case below). sticky top-0 (on top of h-screen)
-          anchors it to the viewport rather than the document flow, so it
-          can never scroll out of view even if some page's content pushes
-          the surrounding layout taller than the viewport. ── */}
-      <aside className="sticky top-0 hidden h-screen w-56 shrink-0 flex-col border-r bg-card p-4 md:flex">
-        <div className="mb-6 px-2">
-          <MiraLogo />
-          <p className="mt-0.5 text-xs text-muted-foreground">Host dashboard</p>
-        </div>
+          the mobile overlay case below). It fills the height of the
+          `fixed inset-0` layout row (dashboard/layout.tsx), so it can never
+          scroll out of view. ── */}
+      <RailSidebar expandedWidthClass="w-56">
+        <RailBrand subtitle="Host dashboard" />
         <NavLinks onTalkToMira={() => setTalkOpen(true)} />
-      </aside>
+      </RailSidebar>
 
       {/* ── Mobile top bar + slide-in drawer, built on @base-ui/react's
           Drawer primitive: portal, backdrop, focus trap, scroll lock, and

@@ -26,6 +26,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from app.config import settings
+from app.integrations import llm_clients
 
 logger = logging.getLogger(__name__)
 
@@ -321,9 +322,7 @@ def _parse_llm_json(raw_text: str) -> NormalizedName | None:
 
 
 async def _call_groq(prompt: str) -> str:
-    from groq import AsyncGroq
-
-    client = AsyncGroq(api_key=settings.groq_api_key)
+    client = llm_clients.groq_client(llm_clients.BACKGROUND)
     response = await client.chat.completions.create(
         model=settings.groq_model,
         messages=[{"role": "user", "content": prompt}],
@@ -333,9 +332,7 @@ async def _call_groq(prompt: str) -> str:
 
 
 async def _call_anthropic(prompt: str) -> str:
-    from anthropic import AsyncAnthropic
-
-    client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+    client = llm_clients.anthropic_client(llm_clients.BACKGROUND)
     response = await client.messages.create(
         model=settings.anthropic_model,
         max_tokens=512,
@@ -345,9 +342,7 @@ async def _call_anthropic(prompt: str) -> str:
 
 
 async def _call_openrouter(prompt: str) -> str:
-    from openai import AsyncOpenAI
-
-    client = AsyncOpenAI(api_key=settings.openrouter_api_key, base_url="https://openrouter.ai/api/v1")
+    client = llm_clients.openrouter_client(llm_clients.BACKGROUND)
     response = await client.chat.completions.create(
         model=settings.openrouter_model,
         messages=[{"role": "user", "content": prompt}],

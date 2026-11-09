@@ -1269,3 +1269,52 @@ async def test_goodbye_line_is_marked_append_to_context_true():
     goodbye_frame = speak_frames[-1]
     assert "end the call" in goodbye_frame.text.lower()
     assert goodbye_frame.append_to_context is True
+
+
+@pytest.mark.asyncio
+async def test_held_nudges_are_not_sent_while_a_reply_is_being_recovered():
+    """An LLM failover speaks a filler line; the bot-stopped frame at its end
+    must NOT start the silence clock, or a slow retry earns the waiting guest
+    a "Hello? Are you there?"."""
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=0.1, max_prompts=2)
+    await watchdog.hold_nudges()
+
+    down_frames, _ = await run_test(
+        watchdog,
+        frames_to_send=[
+            BotStartedSpeakingFrame(),  # the filler starts...
+            BotStoppedSpeakingFrame(),  # ...and ends: would normally arm the clock
+            SleepFrame(sleep=0.6),  # six timeout periods with the retry still pending
+        ],
+        expected_down_frames=[BotStartedSpeakingFrame, BotStoppedSpeakingFrame],
+    )
+    assert not [f for f in down_frames if isinstance(f, TTSSpeakFrame)]
+
+
+@pytest.mark.asyncio
+async def test_released_hold_lets_the_normal_clock_resume_after_the_real_reply():
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=0.1, max_prompts=2)
+    await watchdog.hold_nudges()
+    watchdog.release_nudges()  # the retry produced a reply
+
+    down_frames, _ = await run_test(
+        watchdog,
+        frames_to_send=[BotStoppedSpeakingFrame(), SleepFrame(sleep=0.15)],  # reply finished playing
+    )
+    assert [f.text for f in down_frames if isinstance(f, TTSSpeakFrame)][:1] == ["Hello?"]
+
+
+@pytest.mark.asyncio
+async def test_a_hold_that_is_never_released_expires_instead_of_disabling_the_watchdog():
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=0.1, max_prompts=2)
+    await watchdog.hold_nudges(max_seconds=0.15)
+
+    down_frames, _ = await run_test(
+        watchdog,
+        frames_to_send=[
+            SleepFrame(sleep=0.25),  # hold has expired
+            BotStoppedSpeakingFrame(),
+            SleepFrame(sleep=0.15),
+        ],
+    )
+    assert any(isinstance(f, TTSSpeakFrame) for f in down_frames)

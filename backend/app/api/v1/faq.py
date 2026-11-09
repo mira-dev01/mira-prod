@@ -1,14 +1,15 @@
-import asyncio
 import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.utils import background
 from app.api.v1.common import DateRange, date_range_query, get_owned_property
 from app.auth.dependencies import get_current_user
 from app.database import get_db
 from app.models.faq_entry import FaqEntry
 from app.models.user import User
+from app.utils.rate_limit import transcribe_rate_limit
 from app.schemas.faq_entry import FaqEntryCreate, FaqEntryOut, FaqEntryUpdate, FaqScopeIn
 from app.schemas.faq_gap import FaqGapAnalyticsOut, FaqGapAnswerIn, FaqGapOut
 from app.services import embedding_service, faq_service
@@ -95,7 +96,7 @@ async def update_faq_entry(
         await faq_service.resync_property_facts(db, previous_property_id)
     if question_changed:
         for row in [entry, *siblings]:
-            asyncio.create_task(embedding_service.backfill_faq_entry_embedding(row.id, row.question))
+            background.spawn(embedding_service.backfill_faq_entry_embedding(row.id, row.question))
     return entry
 
 
@@ -207,7 +208,7 @@ async def answer_faq_gap_voice(
     property_ids: list[uuid.UUID] = Query(default=[]),
     question: str | None = Query(default=None, max_length=500),
     audio: UploadFile = File(...),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(transcribe_rate_limit),
     db: AsyncSession = Depends(get_db),
 ) -> FaqEntry:
     gap = await faq_service.get_owned_unanswered_question(db, gap_id, current_user.id)

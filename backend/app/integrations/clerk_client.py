@@ -32,11 +32,13 @@ async def fetch_user_email(clerk_user_id: str, timeout: float = 10.0) -> str | N
             raise ClerkError(f"fetch user failed ({response.status_code}): {response.text}")
         data = response.json()
 
+    # Only a VERIFIED address counts. The caller may link this email to an
+    # existing local account (migration path), so an unverified address --
+    # one the Clerk user merely typed in -- would let anyone claim another
+    # host's account by signing up with their email. Primary address first;
+    # no fallback to an arbitrary or unverified entry.
     primary_id = data.get("primary_email_address_id")
     for entry in data.get("email_addresses") or []:
-        if entry.get("id") == primary_id:
+        if entry.get("id") == primary_id and (entry.get("verification") or {}).get("status") == "verified":
             return entry.get("email_address")
-    # Fall back to the first email on file if Clerk ever omits/mismatches
-    # primary_email_address_id -- better than failing a real login over it.
-    emails = data.get("email_addresses") or []
-    return emails[0].get("email_address") if emails else None
+    return None

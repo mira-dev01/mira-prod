@@ -28,7 +28,6 @@ settings.backend_base_url must be the real public URL (not the localhost
 default) for step 1's generated wss:// URL to actually be reachable.
 """
 
-import asyncio
 import json
 import logging
 import uuid
@@ -59,6 +58,9 @@ from app.voice.pipeline import (
     run_voice_pipeline_twilio,
 )
 
+from app.utils import background
+from app.utils.rate_limit import transcribe_rate_limit
+
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/voice", tags=["voice"])
 
@@ -66,7 +68,7 @@ router = APIRouter(prefix="/voice", tags=["voice"])
 @router.post("/transcribe")
 async def transcribe_dictation(
     audio: UploadFile = File(...),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(transcribe_rate_limit),
 ) -> dict:
     """General-purpose "dictate into this field" transcription -- the mic
     button on dashboard text fields (see frontend's use-dictation.ts hook)
@@ -206,18 +208,34 @@ async def browser_test_offer(
 
     if payload.property_id is not None:
         property_ = await get_owned_property(db, payload.property_id, current_user)
-        asyncio.create_task(run_browser_voice_pipeline(connection, property_))
+        background.spawn(run_browser_voice_pipeline(connection, property_))
     else:
-        asyncio.create_task(run_browser_lead_pipeline(connection, current_user))
+        background.spawn(run_browser_lead_pipeline(connection, current_user))
 
     return BrowserOfferResponse(sdp=answer["sdp"], type=answer["type"])
 
 
+def _js_string_literal(value: str) -> str:
+    """A JSON string literal that is safe to drop inside an inline <script>:
+    json.dumps handles quotes/backslashes/newlines, and the extra escapes
+    stop "</script>" or an HTML comment opener from ending the script block.
+    Without this, a crafted ?token= or ?property_id= value broke out of the
+    JS string and ran attacker script on the backend's origin (reflected
+    XSS)."""
+    return json.dumps(value).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+
+
 @router.get("/test", response_class=HTMLResponse)
-async def browser_test_page(token: str, property_id: str = "") -> str:
+async def browser_test_page(token: str, property_id: str = "") -> HTMLResponse:
     """Minimal mic-in/speaker-out WebRTC test page. Opened from the
     dashboard with the host's JWT and, optionally, a property id (omit to
     test the Lead Agent across the host's full portfolio instead)."""
+    if property_id:
+        try:
+            property_id = str(uuid.UUID(property_id))
+        except ValueError:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid property_id")
+
     # Reuses _ice_servers() (not a separate hand-rolled list) so this page's
     # ICE config can never drift out of sync with what the /test/offer
     # endpoint actually offers.
@@ -226,12 +244,19 @@ async def browser_test_page(token: str, property_id: str = "") -> str:
         for server in _ice_servers()
     ]
 
-    return (
+    # Order matters: the caller-controlled token is substituted LAST, so a
+    # token that itself contains a placeholder string ("__ICE_SERVERS__")
+    # can never be re-expanded into server-side JSON that breaks out of its
+    # string literal. property_id is a validated UUID by this point.
+    html = (
         _TEST_PAGE_TEMPLATE
-        .replace("__PROPERTY_ID__", property_id)
-        .replace("__TOKEN__", token)
-        .replace("__ICE_SERVERS__", json.dumps(ice_servers))
+        .replace("__ICE_SERVERS__", json.dumps(ice_servers).replace("<", "\\u003c"))
+        .replace("__PROPERTY_ID__", _js_string_literal(property_id))
+        .replace("__TOKEN__", _js_string_literal(token))
     )
+    # The URL carries the session token (the page needs it to call
+    # /test/offer), so keep it out of Referer headers and caches.
+    return HTMLResponse(html, headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
 
 
 _TEST_PAGE_TEMPLATE = """<!DOCTYPE html>
@@ -363,8 +388,8 @@ _TEST_PAGE_TEMPLATE = """<!DOCTYPE html>
   <audio id="remoteAudio" autoplay></audio>
 
   <script>
-    const propertyId = "__PROPERTY_ID__";
-    const token = "__TOKEN__";
+    const propertyId = __PROPERTY_ID__;
+    const token = __TOKEN__;
     if (!propertyId) {
       document.getElementById("modeChip").textContent = "MIRA \\u00b7 Lead Agent test";
       document.getElementById("hint").textContent =

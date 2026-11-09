@@ -7,9 +7,14 @@ requirement."""
 
 import uuid
 
+import pytest
+
 from app.models.faq_entry import FaqEntry
 from app.models.unanswered_question import UnansweredQuestion
 from app.services import embedding_service, faq_service
+
+# These deliberately call the REAL OpenRouter embeddings API (see the docstring above).
+pytestmark = pytest.mark.live_api
 
 
 async def test_semantically_similar_gaps_are_merged(db_session, test_user):

@@ -282,9 +282,9 @@ async def take_call_claim(token: str, db: AsyncSession = Depends(get_db)) -> HTM
         property_id,
         host_user_id,
     )
-    # Phase 7: signal the live pipeline, if one is listening in THIS
-    # process (see app/voice/handoff_signal.py's own docstring for the
-    # single-process-today caveat). The DB claim above is already durable
+    # Phase 7: signal the live pipeline -- directly if it runs in THIS process,
+    # via Redis pub/sub if it runs in another one (see
+    # handoff_signal.request_handoff_anywhere). The DB claim above is already durable
     # and authoritative regardless of this call's outcome -- a False
     # return (no live pipeline registered here) does not change this
     # response or roll back the claim; it just means Phase 7's
@@ -292,7 +292,7 @@ async def take_call_claim(token: str, db: AsyncSession = Depends(get_db)) -> HTM
     # (e.g. it's already ended by the time this races through, or a
     # future multi-process deployment routed this request to a different
     # worker than the one running the call).
-    handoff_signal.request_handoff(call_session_id)
+    await handoff_signal.request_handoff_anywhere(call_session_id)
     # Deliberately does NOT say "this page will update" or anything
     # implying a live status change is coming -- this response is static
     # HTML with no polling/refresh/WebSocket, so it would never actually

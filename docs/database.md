@@ -2,11 +2,15 @@
 
 PostgreSQL via SQLAlchemy async (asyncpg driver). All models live in `backend/app/models/` and inherit `UUIDPkMixin` (UUID `id` primary key, `default=uuid.uuid4`) and `TimestampMixin` (`created_at`/`updated_at`, both `DateTime(timezone=True)`, server-defaulted to `now()`) from `app/models/mixins.py`. See [architecture.md](architecture.md) for the engine/session setup and [research-flow.md](research-flow.md) / [agents.md](agents.md) for how these tables are used at runtime.
 
+## Hosting and connection pool
+
+Postgres is hosted per Railway environment: **Supabase** on `dev` (the app connects through its **session-mode** pooler, port 5432) and **Neon** on `production`. The SQLAlchemy pool is set explicitly in `app/database.py` from `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` / `DB_POOL_TIMEOUT` / `DB_POOL_RECYCLE_SECONDS` (defaults 5 / 10 / 30s / 1800s, the first three equal to SQLAlchemy's old implicit defaults), with `pool_pre_ping` on. Capacity per process is `pool_size + max_overflow`; in session mode each pooled connection occupies a pooler slot, so keep `(pool_size + max_overflow) × replicas` (plus alembic and ad-hoc scripts) below the plan's limit. `database.pool_stats()` feeds the 60s health job, which warns (`db_pool_pressure`) at 80% checked out. A transaction-mode pooler (port 6543) would additionally require asyncpg's `statement_cache_size=0`. Tests run against a local Postgres (`mira_test`) and Redis, never Supabase.
+
 ## Alembic
 
 Migrations live in `backend/alembic/versions/`. Apply with `alembic upgrade head` (run from `backend/`, needs `DATABASE_URL` resolvable).
 
-Current head: **`7a236ad1ffd1` — index notification lead_id and channel**.
+Current head: **`b7d3a1c9e5f2` — gazetteer tables (`places`/`place_aliases`/`admin_regions`) + `properties.latitude/longitude/state/district/location_source`** (verified against `alembic heads`; the 2026-11-09 security/hygiene changes added no migration).
 
 Full history, oldest to newest:
 
@@ -101,7 +105,7 @@ If a session ever fails with demo-login 500s or a missing-column error, check `a
 | `host_call_hours_enabled` | Boolean, default `false` | account-global host call hours master switch. `false` = Mira answers 24/7 |
 | `host_call_hours_start`, `host_call_hours_end` | String(8), nullable | `"HH:MM"` 24h window bounds; overnight (start > end) valid. Only read when `host_call_hours_enabled` |
 | `host_call_hours_timezone` | String(64), default `Asia/Kolkata` | IANA identifier the window is evaluated in (validated at the schema layer). Read by `call_ownership.resolve_effective_call_owner` |
-| `discount_policy_text` | Text, nullable | host's free-text discount policy paragraph, re-parsed via `POST /host-discount-rules/parse` into `HostDiscountRule` rows; not itself read by the pricing engine |
+| `discount_policy_text` | Text, nullable | host's free-text discount policy paragraph, re-parsed via `POST /negotiation-rules/parse` into `HostDiscountRule` rows; not itself read by the pricing engine |
 | `negotiation_allowed` | Boolean, default `true` | `False` disables all negotiation for this host |
 | `max_discount_percent_override` | Numeric(5,2), nullable | overrides `MAX_NEGOTIATION_DISCOUNT_PERCENT` |
 | `allow_pets`, `allow_early_checkin` | Boolean, nullable | |
@@ -262,22 +266,26 @@ Unique on `(phone, host_id)` — the same phone number calling two different hos
 | `last_call_at` | DateTime, nullable | |
 | `conversation_summaries` | JSONB list, default `[]` | short summaries pulled directly from each call's `Lead.conversation_summary` — never raw transcripts, never a new LLM summarization call. Entry shape: `{call_session_id, property_id, property_name, date, summary, lead_temperature}`; capped in the write path |
 
-### `host_discount_rules` (`HostDiscountRule`, `app/models/host_discount_rule.py`)
+### `negotiation_rules` (`NegotiationRule`, `app/models/negotiation_rule.py`)
 
-Structured, host-approved discount rules derived from `User.discount_policy_text` via LLM extraction (`POST /host-discount-rules/parse`). Derive-on-read by `pricing_engine` (looked up by `host_id` directly, not materialized per property) — see [research-flow.md](research-flow.md).
+A host's single, unified negotiation/pricing policy. It replaced two earlier tables (`host_discount_rules` and the pricing half of `property_pricing_rules`) in migration `9c3f2a7e5d41`. Rules are derived from `User.discount_policy_text` by an LLM parse (`POST /negotiation-rules/parse`) into `pending_validation` drafts; **only `status="approved"` rows are ever read** by `pricing_engine` — see [research-flow.md](research-flow.md).
 
 | Column | Type | Notes |
 |---|---|---|
 | `host_id` | UUID FK → users, cascade delete | |
-| `trigger_type` | String(64), not null | `no_ask` / `guest_requests` / `repeat_guest_same_host` / a custom label |
-| `discount_percent` | Numeric(5,2), not null | |
+| `rule_type` | String(64), not null | `discount_no_ask` / `discount_guest_requests` / `discount_repeat_guest` (host-wide negotiation triggers), or `length_of_stay` / `minimum_stay_nights` / `early_checkin_fee` / `late_checkout_fee` / `custom` (stay-pricing rules) |
+| `condition` | JSONB dict, default `{}` | type-specific data, e.g. `{"min_nights": 5}`, `{"fee": 500}`; empty for discount triggers |
+| `discount_percent` | Numeric(5,2), nullable | discount triggers store their percent here; unchanged meaning when `stages` is also set |
+| `label` | String(255), nullable | host-facing name |
+| `property_ids` | JSONB list, default `[]` | properties the rule applies to; **empty = host-wide** (how the three discount triggers round-trip). Stay-pricing rule types need an explicit non-empty subset before they take effect |
 | `source` | String(16), default `ai_parsed` | |
-| `status` | String(32), default `pending_validation` | `pricing_engine.negotiate_rate` only ever reads `status="approved"` rows |
-| `raw_source_text` | Text, nullable | |
+| `status` | String(32), default `pending_validation` | `approved` is the only state `pricing_engine` reads |
+| `raw_source_text` | Text, nullable | the host's own wording the rule was parsed from |
+| `stages` | JSONB list, nullable | optional host-defined negotiation ladder, `[{"order": 0, "value": 5}, …]`; `NULL` = flat `discount_percent`. When both are set on approved rules of the same type/scope, `stages` wins (`negotiation_policy.resolve_staged_or_flat`) |
 
 ### `pricing_rules` (`PricingRule`, `app/models/pricing_rule.py`)
 
-Per-property pricing rules (distinct from host-level `HostDiscountRule`).
+Per-property pricing rules (distinct from the host-level `NegotiationRule` above).
 
 | Column | Type | Notes |
 |---|---|---|

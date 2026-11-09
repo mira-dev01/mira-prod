@@ -86,10 +86,15 @@ design-level writeup. Summary of the moving parts:
 - `backend/app/api/v1/take_call.py` — `GET /api/v1/take-call` renders a no-JS confirmation page;
   `POST /api/v1/take-call` performs the **atomic claim**
   (`UPDATE call_sessions SET handoff_status='requested' WHERE id=? AND handoff_status IS NULL AND
-  status IN ('in_progress')`), then calls `handoff_signal.request_handoff`.
+  status IN ('in_progress')`), then calls `handoff_signal.request_handoff_anywhere` (was `request_handoff`
+  until 2026-11-09).
 - `backend/app/voice/handoff_signal.py` — one `asyncio.Event` per live call, keyed by
-  `call_session_id`. **In-process only** (documented limitation): works because the backend runs a
-  single uvicorn worker. Multi-worker deployment would need Redis pub/sub — out of scope.
+  `call_session_id`. **Cross-process since 2026-11-09**: `request_handoff_anywhere` sets the Event directly
+  when the call is registered in this process, otherwise publishes the id on Redis
+  (`mira:handoff_requested`, `app/integrations/redis_signal_client.py`); one listener per process
+  (`handoff_signal.run_listener`, started in `lifespan`) sets the Event in the process that owns the call.
+  Best-effort (the claim is already durable in Postgres); undeliverable signals are logged as
+  `handoff_signal_not_delivered`. Without `REDIS_URL` it stays same-process only.
 - `backend/app/voice/pipeline.py`:
   - `_HOST_HANDOFF_PHRASE = "Excuse me for a moment while the host takes up your query."`
     (hardcoded constant — **this plan makes it configurable**).
@@ -279,9 +284,10 @@ following must be true — call these out as a deploy checklist in the PR:
   sends.
 - `TWILIO_GUEST_CALLING_TEMPLATE_SID` is set (else the plain-text fallback is used, which is
   subject to WhatsApp's 24h customer-service-window rule for freeform messages).
-- Backend runs a **single** web worker (`handoff_signal` is in-process). If Railway scales to >1,
-  the signal needs Redis pub/sub — separate work, out of scope, but note it.
-- `TAKE_CALL_TOKEN_SECRET` is set to a real value (defaults to `"change-me"`).
+- Take Call now works with more than one replica (Redis pub/sub, see above) as long as `REDIS_URL` is set on
+  every process. (The scheduler and health monitor still assume one process.)
+- `TAKE_CALL_TOKEN_SECRET` is set to a real value — **production now refuses to start** if it is blank,
+  `"change-me"` or shorter than 32 bytes.
 
 ### B2. Reword the phrase + make it host-configurable
 

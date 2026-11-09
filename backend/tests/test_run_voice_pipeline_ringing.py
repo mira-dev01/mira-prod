@@ -87,12 +87,15 @@ async def test_busy_recovery_plays_placeholder_and_hangs_up_without_building_a_p
     assert first_frame["event"] == "media"
     assert first_frame["streamSid"] == "stream-busy"
 
-    # No CallSession row for the rejected call -- BUSY_RECOVERY returns
-    # before get_or_create_call_session is ever reached.
+    # The rejected call gets a Calls-tab row (call_service.record_busy_rejected_call) so the
+    # host can see the missed guest -- but NOT a pipeline session: it is a "failed" missed call
+    # classified directly (no transcript, no LLM), never "in_progress"/"completed".
     rejected_session = await db_session.scalar(
         select(CallSession).where(CallSession.exotel_call_id == "second-call")
     )
-    assert rejected_session is None
+    assert rejected_session is not None
+    assert rejected_session.call_type == "MISSED_AGENT_BUSY"
+    assert rejected_session.status == "failed"
 
     # The original lease is untouched -- rejection must not release or
     # otherwise disturb the call that's actually still live.
@@ -111,23 +114,32 @@ async def test_busy_recovery_plays_placeholder_and_hangs_up_without_building_a_p
     assert any(n.channel == recovery_service.NOTIFICATION_CHANNEL_BUSY_RECOVERY for n in notifications)
 
 
-async def test_call_proceeds_normally_when_no_other_lease_is_active(test_property, db_session):
+async def test_call_proceeds_normally_when_no_other_lease_is_active(test_property, db_session, monkeypatch):
     # Sanity check for the non-busy path through the same new branch: a
     # property with no existing lease must not be short-circuited by
-    # CallCoordinator -- confirmed by a lease existing for it WHILE the call
-    # is still in progress (acquire_or_reject's START_PIPELINE branch always
-    # returns one). Checked BEFORE cancelling, not after: _run_pipeline's
-    # finally block now correctly releases the lease on any exit path,
-    # including cancellation (see test_run_pipeline_releases_the_lease_even_
-    # when_pipeline_construction_fails) -- asserting is_busy after cancelling
-    # would be asserting stale, pre-fix behavior. Deliberately does not drive
-    # the pipeline all the way into real STT/TTS/session construction (unlike
-    # the BUSY_RECOVERY test above, which never reaches that code at all) --
+    # CallCoordinator. Asserted on the DECISION acquire_or_reject actually
+    # returned (recorded below), not on whether a lease still exists some
+    # fixed time later: the lease is now released the moment the guest's
+    # websocket disconnects (see pipeline._CallLeaseGuard), and this test's
+    # fake websocket "disconnects" immediately, so a later is_busy() check
+    # would race that early release. Deliberately does not drive the pipeline
+    # all the way into real STT/TTS/session construction (unlike the
+    # BUSY_RECOVERY test above, which never reaches that code at all) --
     # doing so requires real Sarvam credentials this test env doesn't have
     # and makes this test slow/flaky for a fact CallCoordinator's own test
     # suite already covers directly (test_call_coordinator.py's
     # acquire_or_reject tests); this test only needs to prove the pipeline
     # branch didn't take the BUSY_RECOVERY exit.
+    decisions = []
+    real_acquire_or_reject = call_coordinator.acquire_or_reject
+
+    async def _recording_acquire_or_reject(*args, **kwargs):
+        result = await real_acquire_or_reject(*args, **kwargs)
+        decisions.append(result)
+        return result
+
+    monkeypatch.setattr(call_coordinator, "acquire_or_reject", _recording_acquire_or_reject)
+
     ws = _FakeWebSocket()
     call_data = CallData(
         stream_id="stream-free",
@@ -136,12 +148,12 @@ async def test_call_proceeds_normally_when_no_other_lease_is_active(test_propert
     )
 
     task = asyncio.create_task(pipeline.run_voice_pipeline(ws, call_data))
-    # Only enough time for CallCoordinator's own acquire() to have committed
-    # a lease -- run_voice_pipeline blocks for the lifetime of a real call
-    # past this point.
-    await asyncio.sleep(0.1)
+    await asyncio.sleep(0.5)  # ample time for the lease decision, whatever the machine's warm-up
 
-    assert await call_coordinator.is_busy(test_property.user_id, test_property.id) is True
+    assert len(decisions) == 1
+    decision, lease = decisions[0]
+    assert decision is call_coordinator.Decision.START_PIPELINE
+    assert lease is not None
 
     task.cancel()
     try:
@@ -425,27 +437,28 @@ async def test_lease_renewal_loop_uses_the_token_not_a_stale_lease(test_user, mo
 async def test_coordinator_failure_fails_open_instead_of_rejecting_the_call(
     test_property, monkeypatch
 ):
-    # Regression test: acquire_or_reject raising anything (a Redis outage,
-    # not the "someone else already holds this" busy case acquire() itself
-    # handles) must never turn away a real guest with no actual conflicting
-    # call -- see run_voice_pipeline's try/except around the
-    # acquire_or_reject call. Without that guard, run_voice_pipeline itself
-    # raises the RuntimeError straight out of the acquire_or_reject call
-    # site -- fast (no real pipeline construction ever starts) and
-    # synchronously enough that the task is already done, with the
-    # RuntimeError as its result, by the time this test's own sleep(0.1)
-    # elapses. With the guard, the RuntimeError is caught and logged inside
-    # run_voice_pipeline, and the call proceeds into real pipeline
-    # construction (confirmed via the "failing open" log line and real
-    # Sarvam STT initialization occurring when running this test directly),
-    # which is still running (not done) at the sleep(0.1) mark -- that's the
-    # actual distinguishing signal asserted below, not just "no exception
-    # visible to the test," which task.cancel()'s own broad exception
-    # swallowing elsewhere in this file would otherwise mask.
+    # Regression test: acquire_or_reject raising anything (a Redis outage, not
+    # the "someone else already holds this" busy case acquire() itself handles)
+    # must never turn away a real guest with no actual conflicting call -- see
+    # run_voice_pipeline's try/except around the acquire_or_reject call.
+    #
+    # Asserted on the behaviour itself, not on a timing proxy: the call must
+    # proceed into _run_pipeline (the real pipeline), carrying NO lease token
+    # (there is no lease to release), and must not be played the busy clip.
+    # (This used to infer "proceeded" from the task still running 0.1s later --
+    # which only held on a machine with real Sarvam credentials; without them,
+    # as in CI, pipeline construction fails at once.)
     async def _boom(*args, **kwargs):
         raise RuntimeError("simulated Redis outage")
 
     monkeypatch.setattr(call_coordinator, "acquire_or_reject", _boom)
+
+    entered = {}
+
+    async def _fake_run_pipeline(*args, **kwargs):
+        entered.update(kwargs)
+
+    monkeypatch.setattr(pipeline, "_run_pipeline", _fake_run_pipeline)
 
     ws = _FakeWebSocket()
     call_data = CallData(
@@ -454,25 +467,11 @@ async def test_coordinator_failure_fails_open_instead_of_rejecting_the_call(
         **{"from": "+919999999999", "to": test_property.exophone},
     )
 
-    task = asyncio.create_task(pipeline.run_voice_pipeline(ws, call_data))
-    await asyncio.sleep(0.1)
+    await pipeline.run_voice_pipeline(ws, call_data)
 
-    assert not task.done(), (
-        "run_voice_pipeline already finished (crashed) before reaching real "
-        "pipeline construction -- the acquire_or_reject failure was not "
-        "caught and failed open as expected"
-    )
-
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
-    except Exception:
-        pass  # pipeline construction failing past this point (no real
-              # Sarvam/Groq credentials in a test env) is irrelevant here.
-
-    assert ws.closed is False
+    assert entered, "run_voice_pipeline never reached _run_pipeline -- the coordinator failure was not failed open"
+    assert entered["call_lease_token"] is None
+    assert ws.closed is False  # a busy rejection would have closed the socket
 
 
 async def test_run_pipeline_triggers_availability_recovery_only_when_lease_actually_released(

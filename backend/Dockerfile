@@ -19,8 +19,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# requirements.lock is the exact, hash-verified set of every package (direct and
+# transitive) that the tests ran against. requirements.txt only holds the version
+# RANGES we ask for; installing from it would let any rebuild silently pick up new
+# FastAPI/SQLAlchemy/asyncpg/openai/groq/redis releases (the same drift that
+# once broke Pipecat). To change dependencies: edit requirements.txt, then run
+#   uv pip compile requirements.txt --universal --python-version 3.12 --generate-hashes -o requirements.lock
+# and commit both files.
+COPY requirements.lock .
+RUN pip install --no-cache-dir -r requirements.lock
 
 # Optional: WebRTC echo cancellation for phone calls (app/voice/echo_canceller.py,
 # enabled by ECHO_CANCELLATION_ENABLED). No prebuilt Linux wheel exists, so this

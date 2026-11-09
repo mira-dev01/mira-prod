@@ -751,7 +751,7 @@ class _FakeGroq:
     requests: list = []
     reply = None
 
-    def __init__(self, api_key=None):
+    def __init__(self, api_key=None, **client_options):
         self.chat = type("Chat", (), {"completions": self})()
 
     async def create(self, **kwargs):

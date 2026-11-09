@@ -15,7 +15,7 @@ edges:
     condition: when understanding how to use a technology in this codebase
   - target: context/architecture.md
     condition: when understanding how technologies connect in the system
-last_updated: 2026-08-08
+last_updated: 2026-11-09
 ---
 
 # Stack
@@ -25,7 +25,7 @@ last_updated: 2026-08-08
 - **Python 3.12** — backend language
 - **FastAPI ≥0.115** — async web framework; all route handlers use `async def`; `APIRouter` per domain under `app/api/v1/`
 - **SQLAlchemy ≥2.0 (asyncio)** + **asyncpg ≥0.30** — ORM with async engine; `AsyncSession` everywhere; `postgresql+asyncpg://` URL required (rewritten automatically by `config.py`)
-- **PostgreSQL (Neon serverless)** — production DB (the Railway `dev` environment uses Supabase Postgres instead)
+- **PostgreSQL** — Neon (serverless) in Railway's `production` environment, Supabase Postgres (session-mode pooler) in `dev`; connection pool sized via `DB_POOL_*`
 - **Alembic ≥1.14** — DB migrations; `alembic upgrade head` runs at deploy startup via Dockerfile `CMD`
 - **Next.js (App Router) + TypeScript** — frontend; pages under `frontend/src/app/dashboard/`
 - **Tailwind CSS + shadcn/ui** — frontend styling and component library
@@ -33,11 +33,11 @@ last_updated: 2026-08-08
 
 ## Key Libraries
 
-- **pipecat-ai ≥1.5.0,<2.0** (with extras `websocket,webrtc,anthropic,groq,sarvam`) — real-time voice pipeline; explicit floor+cap because Railway silently rebuilt onto a newer version mid-project with no record of which version any deploy was running. Bump the floor deliberately when upgrading.
+- **pipecat-ai ==1.6.0** (exact pin; the whole dependency tree is locked in `backend/requirements.lock`) (with extras `websocket,webrtc,anthropic,groq,sarvam`) — real-time voice pipeline; explicit floor+cap because Railway silently rebuilt onto a newer version mid-project with no record of which version any deploy was running. Bump the floor deliberately when upgrading.
 - **APScheduler ≥3.10 (`AsyncIOScheduler`)** — 5 in-process scheduled jobs run inside FastAPI's `lifespan` context manager; not a separate worker process.
 - **pyjwt ≥2.9 + bcrypt ≥4.2** — JWT (HS256) auth + password hashing; `app/auth/` only.
 - **httpx ≥0.27** — async HTTP client for integration calls (Bright Data, SearchApi, etc.).
-- **aiosmtplib ≥3.0** — async SMTP email; **currently blocked on Railway Trial tier** (port 587 blocked at platform level); real fix is switching to an HTTP-based email API.
+- **httpx ≥0.27 → Resend** — host email goes through Resend's HTTPS API (`app/integrations/email_client.py`); SMTP (aiosmtplib) was removed because Railway blocks outbound SMTP ports at the network level.
 - **icalendar ≥6.0** — iCal parsing for external booking calendar sync.
 - **redis ≥5.2** — pricing cache client; `REDIS_URL` not provisioned on Railway (cache inert in production).
 - **opencv-python ≥4.13** — required by pipecat's `SmallWebRTCTransport` (not declared as its own dependency — missing this causes import crash).
@@ -55,6 +55,6 @@ last_updated: 2026-08-08
 
 ## Version Constraints
 
-- **pipecat-ai**: pinned `>=1.5.0,<2.0`. Never widen to `>=0.x.y` without explicit floor — Railway rebuilds on every deploy and will pick the latest without this pin.
+- **pipecat-ai**: pinned `==1.6.0`, and every other package is pinned (with hashes) in `backend/requirements.lock`, which the Dockerfile and CI install from. Bump deliberately: edit `requirements.txt`, regenerate the lock (`uv pip compile … --generate-hashes`), test a real call.
 - **Groq model IDs**: change without notice (e.g. `llama-3.3-70b-versatile` removed 2026-06-17). Verify `GROQ_MODELS` against `client.models.list()` before editing. Every model in the list **must support function calling**.
 - **`reasoning_effort: "low"` param**: only valid for `gpt-oss` models (other Groq models return 400). Applied conditionally via `"gpt-oss" in model` check in three places: `_check_llm_health`, `_build_llm`, `_build_openrouter_llm`.

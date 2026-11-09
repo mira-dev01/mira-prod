@@ -72,8 +72,28 @@ Nothing inside the backend can email when the backend itself is down or failing 
 - **Pass condition**: HTTP 200 with the keyword `"status":"ok"`.
 - **Alert contacts**: both admin emails.
 
+## Log events worth searching for (Railway: filter `@call_session_id:<id>`)
+
+Structured lines added for the failure modes that used to be silent. All are plain `key=value` text in the JSON log's message.
+
+| Event | Level | Meaning |
+|---|---|---|
+| `post_call_steps … completed=[…] failed=[…] skipped=[…]` | info, warning if anything failed/skipped | One line per call summarising `on_pipeline_finished`'s isolated steps. |
+| `post_call_step_failed step=… call_session_id=…` | error **with traceback** | A post-call step raised; the rest still ran and the shared session was rolled back. |
+| `post_call_step_skipped step=… reason=…` | warning | A step's input was missing (e.g. no summary), or classification failed so the lead was deliberately kept. |
+| `call_lease_release reason=client_disconnected\|pipeline_finished\|teardown released=…` | info | Which teardown path released the call lease (it is released the moment the guest is gone). |
+| `llm_failover_filler_spoken` · `llm_total_failure_apology_spoken` | info / warning | The voice LLM failed over to another model and Mira spoke the "one moment" line / every model failed and she asked the guest to repeat. Preceded by `Groq model … failed mid-call (…)`. |
+| `silence_watchdog_timer_not_started_nudges_held` | debug | The silence clock was deliberately not restarted during an LLM failover. |
+| `live_pricing_budget_exceeded property_id=… budget_s=…` | warning | A pricing question hit the live-lookup time budget and was answered from the static rate; the lookup keeps running to warm the cache. `live_pricing_lookup_failed` = it errored. |
+| `db_pool_pressure checked_out=… capacity=…` | warning | ≥80% of this process's Postgres pool is checked out (60s DB health job). |
+| `handoff_signal_not_delivered call_session_id=…` | warning | A host's Take Call claim could not reach a live call (call already ended, or Redis down while the call is on another process). The claim itself is safe in Postgres. |
+| `redis_signal_listener_subscribed` · `…_lost … reconnecting` · `…_disabled` | info / warning | State of the per-process Redis pub/sub listener for the handoff signal. |
+| `background_task_failed name=…` | error with traceback | A detached task (email, WhatsApp, embedding sync, …) raised; previously this was only an easy-to-miss "Task exception was never retrieved". |
+| `post-call Groq request failed (…); falling back to OpenRouter` | warning | Post-call classification/summary fell back to the second provider. |
+| `Scheduled iCal sync failed` | error with traceback | A calendar sync raised (it used to escape unlogged). |
+
 ## Gaps (deliberate)
 
 - **Sarvam and Bright Data have no free health endpoint.** They're monitored from real traffic plus their credit balance only.
-- **One process per environment is assumed.** The registry is in-memory. With multiple replicas, each would evaluate (and email) on its own, so add a Redis leader lock to `health_monitor_service.tick` first.
+- **One process per environment is assumed** for health monitoring and the scheduler (see [event-loop-split-plan.md](event-loop-split-plan.md)); the host-handoff signal and call leases already work across processes via Redis. The registry is in-memory. With multiple replicas, each would evaluate (and email) on its own, so add a Redis leader lock to `health_monitor_service.tick` first.
 - **Availability counts only an incident's time in `down`.** Degraded time doesn't count against it.
