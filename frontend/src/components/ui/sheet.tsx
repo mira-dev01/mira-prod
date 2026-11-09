@@ -1,3 +1,4 @@
+import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
 /**
@@ -87,11 +88,25 @@ export function Hint({ className, ...props }: React.ComponentProps<"p">) {
 /** Level 1: a block's heading (sentence case, 20px) with its one-line purpose
  * beneath. Used where a block holds several rows (e.g. Notifications), so the
  * block reads as the parent of the row names below it. */
-export function SheetHeading({ title, children, className }: { title: string; children?: React.ReactNode; className?: string }) {
+export function SheetHeading({
+  title,
+  children,
+  action,
+  className,
+}: {
+  title: string;
+  children?: React.ReactNode;
+  /** A control pinned to the heading's right edge (e.g. "+ Add note"). */
+  action?: React.ReactNode;
+  className?: string;
+}) {
   return (
-    <div className={cn("col-span-12 flex flex-col gap-1 border-b border-border p-5", className)}>
-      <h2 className="text-xl leading-7 font-bold tracking-tight text-foreground">{title}</h2>
-      {children && <Hint>{children}</Hint>}
+    <div className={cn("col-span-12 flex items-start justify-between gap-3 border-b border-border p-5", className)}>
+      <div className="flex min-w-0 flex-col gap-1">
+        <h2 className="text-xl leading-7 font-bold tracking-tight text-foreground">{title}</h2>
+        {children && <Hint>{children}</Hint>}
+      </div>
+      {action}
     </div>
   );
 }
@@ -132,4 +147,54 @@ export function SheetRow({
 /** A footer strip for a WideCell: right-aligned actions on a soft rule. */
 export function SheetFooter({ className, ...props }: React.ComponentProps<"div">) {
   return <div className={cn("col-span-12 flex items-center justify-end gap-3 border-t border-border p-4", className)} {...props} />;
+}
+
+/**
+ * A form row inside a WideCell: the field's name (a real <label> when it
+ * names one input) and a one-line hint on the left, the inputs on the right.
+ * Same columns as SheetRow, for editing forms.
+ */
+export function FieldRow({
+  label,
+  htmlFor,
+  hint,
+  required,
+  children,
+  className,
+}: {
+  label: string;
+  htmlFor?: string;
+  required?: boolean;
+  hint?: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  const nameClass = "text-[13px] leading-5 font-bold tracking-[0.1em] text-foreground uppercase";
+  return (
+    <div className={cn("col-span-12 grid grid-cols-subgrid border-t border-border first:border-t-0", className)}>
+      <div className="col-span-12 flex flex-col gap-1 p-5 pb-0 md:col-span-3 md:pb-5">
+        {htmlFor ? (
+          <Label htmlFor={htmlFor} required={required} className={nameClass}>
+            {label}
+          </Label>
+        ) : (
+          <p className={nameClass}>{label}</p>
+        )}
+        {hint && <Hint>{hint}</Hint>}
+      </div>
+      <div className="col-span-12 flex min-w-0 flex-col gap-4 p-5 md:col-span-9">{children}</div>
+    </div>
+  );
+}
+
+/** One labelled input inside a FieldRow that holds several side by side. */
+export function SubField({ label, htmlFor, children, className }: { label: string; htmlFor: string; children: React.ReactNode; className?: string }) {
+  return (
+    <div className={cn("flex min-w-0 flex-col gap-1.5", className)}>
+      <Label htmlFor={htmlFor} className="text-[13px] font-medium text-muted-foreground">
+        {label}
+      </Label>
+      {children}
+    </div>
+  );
 }

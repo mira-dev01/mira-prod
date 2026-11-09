@@ -1,14 +1,12 @@
 import { Badge } from "@/components/ui/badge";
+import { SheetHeading, WideCell } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 
 /**
- * Section wrapper for the property edit panel -- a micro-label title
- * (same .text-micro treatment as the plain SectionLabel used for Basic
- * info/Amenities/House rules elsewhere in this form), optional count pill
- * and header action (e.g. "+ Add note"), then the section's own content.
- * Shared by Description, Seasonal notes and FAQ so all of this form's
- * sections read as one consistent pattern rather than two competing header
- * styles bolted together.
+ * One block of the property form: a heading (with an optional count and a
+ * header action such as "+ Add note"), a one-line hint, then the block's own
+ * content. Place it inside a <Sheet>. Used by Seasonal notes, FAQ and Photos,
+ * and by the field groups, so every part of the form reads the same way.
  */
 export function PropertyFormSection({
   title,
@@ -26,20 +24,19 @@ export function PropertyFormSection({
   className?: string;
 }) {
   return (
-    <section className={cn("space-y-3", className)}>
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <p className="text-micro text-muted-foreground">{title}</p>
-          {count !== undefined && (
-            <Badge variant="outline" className="text-primary">
-              {count}
-            </Badge>
-          )}
-        </div>
-        {action}
-      </div>
-      {helpText && <p className="text-xs text-muted-foreground">{helpText}</p>}
-      {children}
-    </section>
+    <WideCell className={className}>
+      <SheetHeading
+        title={title}
+        action={
+          <div className="flex shrink-0 items-center gap-3">
+            {count !== undefined && <Badge variant="outline">{count}</Badge>}
+            {action}
+          </div>
+        }
+      >
+        {helpText}
+      </SheetHeading>
+      <div className={cn("col-span-12")}>{children}</div>
+    </WideCell>
   );
 }

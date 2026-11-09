@@ -1,5 +1,6 @@
 "use client";
 
+import { PropertyFormSection } from "@/components/property-form-section";
 import type { PolicyOut, PolicyOverview } from "@/lib/types";
 
 const OTHER = "other";
@@ -17,7 +18,7 @@ export function PolicyLabelChips({ overview, propertyId }: { overview: PolicyOve
   return (
     <div className="flex flex-wrap gap-1.5">
       {labels.map((label) => (
-        <span key={label.key} className="rounded-full border border-[color-mix(in_srgb,var(--accent-warm)_55%,transparent)] px-2 py-0.5 text-xs text-muted-foreground">
+        <span key={label.key} className="border border-border px-2 py-0.5 text-xs text-muted-foreground">
           {label.label}
         </span>
       ))}
@@ -45,31 +46,32 @@ export function PropertyPoliciesInEffect({
   const label = (p: PolicyOut) => (p.topic === OTHER ? p.title : (overview.topics.find((t) => t.key === p.topic)?.label ?? p.topic));
 
   return (
-    <div className="space-y-2 pt-2">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-micro text-muted-foreground">Policies Mira follows here</p>
-        <button type="button" onClick={onOpenPolicies} className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
+    <PropertyFormSection
+      title="Policies Mira follows here"
+      action={
+        <button type="button" onClick={onOpenPolicies} className="text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground">
           Manage policies
         </button>
+      }
+      helpText="Read-only. Where a policy covers the same topic as the house rules or check-in times, Mira uses the policy."
+    >
+      <div className="space-y-3 p-5">
+        <PolicyLabelChips overview={overview} propertyId={propertyId} />
+        {policies.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No approved policies apply yet.</p>
+        ) : (
+          <ul>
+            {policies.map((p) => (
+              <li key={p.id} className="border-b border-border py-3 first:pt-0 last:border-b-0 last:pb-0">
+                <p className="text-[13px] text-muted-foreground">
+                  {label(p)} · {p.property_id ? "This property only" : "All properties"}
+                </p>
+                <p className="text-sm">{p.text}</p>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
-      <PolicyLabelChips overview={overview} propertyId={propertyId} />
-      {policies.length === 0 ? (
-        <p className="text-xs text-muted-foreground">No approved policies apply to this property yet.</p>
-      ) : (
-        <ul>
-          {policies.map((p) => (
-            <li key={p.id} className="border-b border-[color-mix(in_srgb,var(--accent-warm)_55%,transparent)] py-2.5 last:border-b-0">
-              <p className="text-xs text-muted-foreground">
-                {label(p)} · {p.property_id ? "This property only" : "All properties"}
-              </p>
-              <p className="text-sm">{p.text}</p>
-            </li>
-          ))}
-        </ul>
-      )}
-      <p className="text-xs text-muted-foreground">
-        Where a policy covers the same topic as the house rules, imported FAQs or check-in times, Mira uses the policy. Your imported FAQs are kept.
-      </p>
-    </div>
+    </PropertyFormSection>
   );
 }

@@ -75,21 +75,21 @@ function RightPanel({
               className
             )}
           >
-            <div className="flex items-start justify-between gap-3 border-b p-6">
-              <Drawer.Title className="min-w-0 truncate font-heading text-base font-medium">
+            <div className="flex items-start justify-between gap-3 border-b border-foreground p-4 sm:p-6">
+              <Drawer.Title className="min-w-0 truncate text-xl leading-8 font-bold tracking-tight">
                 {title}
               </Drawer.Title>
               <Drawer.Close
                 aria-label="Close"
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent"
+                className="flex h-8 w-8 shrink-0 items-center justify-center text-muted-foreground hover:bg-accent hover:text-foreground"
               >
                 <X className="size-4" />
               </Drawer.Close>
             </div>
 
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-6">{children}</div>
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 sm:p-6">{children}</div>
 
-            {footer && <div className="flex flex-col-reverse gap-2 border-t bg-muted/50 p-4 sm:flex-row sm:justify-end">{footer}</div>}
+            {footer && <div className="flex flex-col-reverse gap-2 border-t border-foreground bg-card p-4 sm:flex-row sm:justify-end">{footer}</div>}
           </Drawer.Popup>
         </Drawer.Viewport>
       </Drawer.Portal>

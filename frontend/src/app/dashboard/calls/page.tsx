@@ -5,6 +5,7 @@ import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Cell, Sheet, Toolbar } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useAsync } from "@/hooks/use-async";
@@ -91,53 +92,57 @@ export default function CallsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="page-title">Calls</h1>
-          <p className="text-sm text-muted-foreground">Every call MIRA has answered across your properties</p>
-        </div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <h1 className="page-title">Calls</h1>
         <div className="flex flex-wrap items-center gap-4">
+          <DateRangePicker />
           <div className="flex items-center gap-2">
             <Switch id="include-test-calls" checked={includeTestCalls} onCheckedChange={setIncludeTestCalls} />
             <Label htmlFor="include-test-calls" className="text-sm text-muted-foreground">
               Include browser test calls
             </Label>
           </div>
-          <DateRangePicker />
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <Select value={activeTab} onValueChange={(v) => v && setActiveTab(v)}>
-          <SelectTrigger className="w-44">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {CALL_LOG_FILTERS.map((f) => (
-              <SelectItem key={f.value} value={f.value}>
-                {f.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Input
-          placeholder="Search calls…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          leadingIcon={<Search />}
-          className="w-64"
-        />
-      </div>
+      <Sheet>
+        <Toolbar>
+          <Select value={activeTab} onValueChange={(v) => v && setActiveTab(v)}>
+            <SelectTrigger className="w-full sm:w-52">
+              <SelectValue>{activeFilter.label}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {CALL_LOG_FILTERS.map((f) => (
+                <SelectItem key={f.value} value={f.value}>
+                  {f.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="w-full sm:w-64">
+            <Input
+              placeholder="Search calls…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              leadingIcon={<Search />}
+            />
+          </div>
+        </Toolbar>
 
-      {loading ? (
-        <Skeleton className="h-64 w-full" />
-      ) : !calls || calls.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No calls yet.</p>
-      ) : filteredCalls.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No calls match your search.</p>
-      ) : (
-        <CallsTable calls={filteredCalls} />
-      )}
+        <Cell className="gap-0 p-0">
+          {loading ? (
+            <Skeleton className="m-5 h-64" />
+          ) : !calls || calls.length === 0 ? (
+            <p className="p-5 text-sm text-muted-foreground">No calls yet.</p>
+          ) : filteredCalls.length === 0 ? (
+            <p className="p-5 text-sm text-muted-foreground">No calls match your search.</p>
+          ) : (
+            <div className="px-3 py-2">
+              <CallsTable calls={filteredCalls} />
+            </div>
+          )}
+        </Cell>
+      </Sheet>
     </div>
   );
 }

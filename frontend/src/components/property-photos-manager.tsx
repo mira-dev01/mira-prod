@@ -75,7 +75,7 @@ export function PropertyPhotosManager({
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 p-5">
       <input
         ref={fileInputRef}
         type="file"
@@ -86,13 +86,13 @@ export function PropertyPhotosManager({
       />
 
       {photos.length === 0 ? (
-        <p className="text-xs text-muted-foreground">No photos yet — add some below.</p>
+        <p className="text-sm text-muted-foreground">No photos yet.</p>
       ) : (
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
           {photos.map((photo, index) => (
             <div
               key={photo + index}
-              className="group relative aspect-square overflow-hidden rounded-md border bg-muted"
+              className="group relative aspect-square overflow-hidden border border-border bg-muted"
             >
               <button
                 type="button"
@@ -104,7 +104,7 @@ export function PropertyPhotosManager({
               </button>
 
               {index === 0 && (
-                <span className="absolute left-1 top-1 rounded-full bg-primary px-1.5 py-0.5 text-[0.6rem] font-medium text-primary-foreground">
+                <span className="absolute left-1 top-1 bg-primary px-1.5 py-0.5 text-[0.65rem] font-semibold text-primary-foreground">
                   Cover
                 </span>
               )}

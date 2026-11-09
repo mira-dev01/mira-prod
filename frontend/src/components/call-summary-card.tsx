@@ -1,4 +1,5 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { CellCard, CellTitle } from "@/components/ui/sheet";
 import { StatusChip, type StatusTone } from "@/components/status-chip";
 import type { CallSummary } from "@/lib/types";
 
@@ -15,10 +16,12 @@ const outcomeTone: Record<string, StatusTone> = {
   "Spam / Junk Call": "destructive",
 };
 
+const SECTION = "mb-2 text-[13px] font-bold tracking-[0.1em] uppercase";
+
 function SummaryField({ label, value }: { label: string; value: string }) {
   return (
-    <div>
-      <p className="text-xs text-muted-foreground">{label}</p>
+    <div className="border-r border-b border-border p-3">
+      <p className="text-[13px] text-muted-foreground">{label}</p>
       <p className="text-sm font-medium">{value}</p>
     </div>
   );
@@ -29,25 +32,34 @@ function SummaryField({ label, value }: { label: string; value: string }) {
  * and the Booking Requests lead panel, so a call's summary looks identical
  * regardless of where the host opens it from.
  */
-export function CallSummaryCard({ summary }: { summary: CallSummary | null }) {
+export function CallSummaryCard({
+  summary,
+  inSheet = false,
+  className,
+}: {
+  summary: CallSummary | null;
+  inSheet?: boolean;
+  className?: string;
+}) {
+  const Shell = inSheet ? CellCard : Card;
   return (
-    <Card className="surface-interactive border-primary/20 bg-primary/5">
+    <Shell className={className}>
       <CardHeader>
-        <CardTitle>AI summary</CardTitle>
+        <CellTitle>AI summary</CellTitle>
       </CardHeader>
       <CardContent>
         {!summary ? (
-          <p className="text-base leading-relaxed text-muted-foreground">No summary available.</p>
+          <p className="text-sm text-muted-foreground">No summary available.</p>
         ) : (
-          <div className="space-y-5">
+          <div className="space-y-6">
             <div className="flex flex-wrap items-center gap-2">
               <StatusChip status={summary.outcome.status} tone={outcomeTone[summary.outcome.status] ?? "neutral"} />
               <p className="text-sm text-muted-foreground">{summary.outcome.reason}</p>
             </div>
 
             <div>
-              <h3 className="mb-2 text-sm font-semibold">Booking snapshot</h3>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+              <h3 className={SECTION}>Booking snapshot</h3>
+              <div className="grid grid-cols-2 border-t border-l border-border sm:grid-cols-3 lg:grid-cols-4">
                 <SummaryField label="Guest" value={summary.booking_snapshot.guest_name} />
                 <SummaryField label="Intent" value={summary.booking_snapshot.intent} />
                 <SummaryField label="Check-in" value={summary.booking_snapshot.check_in} />
@@ -69,13 +81,13 @@ export function CallSummaryCard({ summary }: { summary: CallSummary | null }) {
             </div>
 
             <div>
-              <h3 className="mb-1 text-sm font-semibold">Conversation summary</h3>
+              <h3 className={SECTION}>Conversation summary</h3>
               <p className="text-sm leading-relaxed">{summary.conversation_summary}</p>
             </div>
 
             {summary.host_action.length > 0 && (
               <div>
-                <h3 className="mb-1 text-sm font-semibold">Host action required</h3>
+                <h3 className={SECTION}>Host action required</h3>
                 <ul className="list-disc space-y-1 pl-5 text-sm">
                   {summary.host_action.map((item, i) => (
                     <li key={i}>{item}</li>
@@ -86,7 +98,7 @@ export function CallSummaryCard({ summary }: { summary: CallSummary | null }) {
 
             {summary.key_details.length > 0 && (
               <div>
-                <h3 className="mb-1 text-sm font-semibold">Key details mentioned</h3>
+                <h3 className={SECTION}>Key details mentioned</h3>
                 <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
                   {summary.key_details.map((item, i) => (
                     <li key={i}>{item}</li>
@@ -96,7 +108,7 @@ export function CallSummaryCard({ summary }: { summary: CallSummary | null }) {
             )}
 
             <div>
-              <h3 className="mb-1 text-sm font-semibold">Missing information</h3>
+              <h3 className={SECTION}>Missing information</h3>
               {summary.missing_information.length > 0 ? (
                 <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
                   {summary.missing_information.map((item, i) => (
@@ -110,6 +122,6 @@ export function CallSummaryCard({ summary }: { summary: CallSummary | null }) {
           </div>
         )}
       </CardContent>
-    </Card>
+    </Shell>
   );
 }

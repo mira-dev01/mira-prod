@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Cell, Hint, Sheet, Toolbar } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { ALL_PROPERTIES, PropertyScopePicker, type PropertyScope } from "@/components/property-scope-picker";
 import { api, ApiError } from "@/lib/api";
@@ -16,8 +17,8 @@ import type { PolicyOut, PolicyOverview } from "@/lib/types";
 const ACCEPT = ".pdf,.docx,.xlsx,.csv,.txt,.md,.png,.jpg,.jpeg,.webp";
 const OTHER = "other";
 
-// The one separator used between entries: a thin, soft yellow line.
-const LINE = "border-b border-[color-mix(in_srgb,var(--accent-warm)_55%,transparent)] last:border-b-0";
+// The one separator used between entries: a soft rule.
+const LINE = "border-b border-border last:border-b-0";
 
 function errorMessage(err: unknown, fallback: string): string {
   return err instanceof ApiError ? err.message : fallback;
@@ -30,7 +31,17 @@ function topicLabel(topics: Topics, key: string, title?: string): string {
   return topics.find((t) => t.key === key)?.label ?? key;
 }
 
-function IconButton({ label, onClick, disabled, children }: { label: string; onClick: () => void; disabled?: boolean; children: React.ReactNode }) {
+function IconButton({
+  label,
+  onClick,
+  disabled,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
   return (
     <button
       type="button"
@@ -75,18 +86,34 @@ function SectionHeader({
 }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-foreground">
-        <span aria-hidden className="size-2 rounded-full" style={{ backgroundColor: tone === "live" ? "var(--status-live)" : "var(--status-pending)" }} />
+      <h2 className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.1em] text-foreground">
+        <span
+          aria-hidden
+          className="size-2 rounded-full"
+          style={{
+            backgroundColor: tone === "live" ? "var(--status-live)" : "var(--status-pending)",
+          }}
+        />
         {title}
         <span className="font-normal text-muted-foreground">{count}</span>
-      </h3>
+      </h2>
       {children}
     </div>
   );
 }
 
 /** One approved policy: plain text with small edit/delete icons. Edit turns the text into a field. */
-function LiveEntry({ policy, topics, unused, onChanged }: { policy: PolicyOut; topics: Topics; unused: boolean; onChanged: () => void }) {
+function LiveEntry({
+  policy,
+  topics,
+  unused,
+  onChanged,
+}: {
+  policy: PolicyOut;
+  topics: Topics;
+  unused: boolean;
+  onChanged: () => void;
+}) {
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [text, setText] = useState(policy.text);
@@ -141,8 +168,22 @@ function LiveEntry({ policy, topics, unused, onChanged }: { policy: PolicyOut; t
           <TopicSelect topics={topics} value={topic} onChange={setTopic} />
           <span className="text-xs text-muted-foreground">{scope}</span>
         </div>
-        {isOther && <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Short title" maxLength={120} aria-label="Title" />}
-        <Textarea autoFocus value={text} onChange={(e) => setText(e.target.value)} maxLength={800} aria-label="Policy" />
+        {isOther && (
+          <Input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Short title"
+            maxLength={120}
+            aria-label="Title"
+          />
+        )}
+        <Textarea
+          autoFocus
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          maxLength={800}
+          aria-label="Policy"
+        />
         <div className="flex items-center gap-2">
           <Button size="sm" onClick={save} disabled={busy || !dirty || !text.trim()}>
             Save
@@ -164,17 +205,28 @@ function LiveEntry({ policy, topics, unused, onChanged }: { policy: PolicyOut; t
         <p className="text-sm">{policy.text}</p>
         {unused && (
           <p className="pt-1 text-xs" style={{ color: "var(--status-pending-strong)" }}>
-            Not used yet: this is about a place that isn&apos;t one of your properties. Edit it to name one of them, or delete it.
+            Not used yet: this is about a place that isn&apos;t one of your properties. Edit it to name one of them, or
+            delete it.
           </p>
         )}
       </div>
       {confirming ? (
         <div className="flex shrink-0 items-center gap-2 pt-0.5 text-xs">
           <span className="text-muted-foreground">Delete this?</span>
-          <button type="button" className="font-medium text-destructive hover:underline" onClick={remove} disabled={busy}>
+          <button
+            type="button"
+            className="font-medium text-destructive hover:underline"
+            onClick={remove}
+            disabled={busy}
+          >
             Delete
           </button>
-          <button type="button" className="text-muted-foreground hover:underline" onClick={() => setConfirming(false)} disabled={busy}>
+          <button
+            type="button"
+            className="text-muted-foreground hover:underline"
+            onClick={() => setConfirming(false)}
+            disabled={busy}
+          >
             Keep
           </button>
         </div>
@@ -193,7 +245,15 @@ function LiveEntry({ policy, topics, unused, onChanged }: { policy: PolicyOut; t
 }
 
 /** One policy read from a document, waiting for the host. Same look; the scope is a live control. */
-function DraftEntry({ draft, overview, onChanged }: { draft: PolicyOut; overview: PolicyOverview; onChanged: () => void }) {
+function DraftEntry({
+  draft,
+  overview,
+  onChanged,
+}: {
+  draft: PolicyOut;
+  overview: PolicyOverview;
+  onChanged: () => void;
+}) {
   const initialScope: PropertyScope = draft.property_id ? { all: false, ids: [draft.property_id] } : ALL_PROPERTIES;
   const [scope, setScope] = useState<PropertyScope>(initialScope);
   const [editing, setEditing] = useState(false);
@@ -240,16 +300,32 @@ function DraftEntry({ draft, overview, onChanged }: { draft: PolicyOut; overview
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-            {editing ? <TopicSelect topics={overview.topics} value={topic} onChange={setTopic} /> : <span>{label}</span>}
+            {editing ? (
+              <TopicSelect topics={overview.topics} value={topic} onChange={setTopic} />
+            ) : (
+              <span>{label}</span>
+            )}
             <span aria-hidden>·</span>
             {manyProperties ? (
-              <PropertyScopePicker value={scope} onChange={setScope} properties={overview.properties} inclusive variant="link" />
+              <PropertyScopePicker
+                value={scope}
+                onChange={setScope}
+                properties={overview.properties}
+                inclusive
+                variant="link"
+              />
             ) : (
               <span>Your property</span>
             )}
           </div>
           {editing ? (
-            <Textarea autoFocus value={text} onChange={(e) => setText(e.target.value)} maxLength={800} aria-label="Policy" />
+            <Textarea
+              autoFocus
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              maxLength={800}
+              aria-label="Policy"
+            />
           ) : (
             <p className="text-sm">{text}</p>
           )}
@@ -258,13 +334,19 @@ function DraftEntry({ draft, overview, onChanged }: { draft: PolicyOut; overview
           {editing ? <Check className="size-3.5" /> : <Pencil className="size-3.5" />}
         </IconButton>
       </div>
-      {draft.source_excerpt && <p className="text-xs text-muted-foreground">From your document: “{draft.source_excerpt}”</p>}
+      {draft.source_excerpt && (
+        <p className="text-xs text-muted-foreground">From your document: “{draft.source_excerpt}”</p>
+      )}
       {draft.review_notes.map((note) => (
         <p key={note} className="text-xs" style={{ color: "var(--status-pending-strong)" }}>
           {note}
         </p>
       ))}
-      {replaces && <p className="text-xs text-muted-foreground">Approving this replaces the current {label.toLowerCase()} policy.</p>}
+      {replaces && (
+        <p className="text-xs text-muted-foreground">
+          Approving this replaces the current {label.toLowerCase()} policy.
+        </p>
+      )}
       <div className="flex items-center gap-2 pt-1">
         <Button size="sm" onClick={approve} disabled={busy || !text.trim()}>
           Approve
@@ -278,7 +360,15 @@ function DraftEntry({ draft, overview, onChanged }: { draft: PolicyOut; overview
 }
 
 /** Add a policy from anywhere: pick a topic (or write your own title), say which properties it covers. */
-function AddPolicyForm({ overview, onDone, onCancel }: { overview: PolicyOverview; onDone: () => void; onCancel: () => void }) {
+function AddPolicyForm({
+  overview,
+  onDone,
+  onCancel,
+}: {
+  overview: PolicyOverview;
+  onDone: () => void;
+  onCancel: () => void;
+}) {
   const [topic, setTopic] = useState(overview.topics[0]?.key ?? "check_in_out");
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
@@ -308,17 +398,31 @@ function AddPolicyForm({ overview, onDone, onCancel }: { overview: PolicyOvervie
   }
 
   return (
-    <div className={cn("space-y-3 pb-5", LINE)}>
+    <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
         <TopicSelect topics={overview.topics} value={topic} onChange={setTopic} />
         {manyProperties && (
           <>
             <span aria-hidden>·</span>
-            <PropertyScopePicker value={scope} onChange={setScope} properties={overview.properties} inclusive variant="link" />
+            <PropertyScopePicker
+              value={scope}
+              onChange={setScope}
+              properties={overview.properties}
+              inclusive
+              variant="link"
+            />
           </>
         )}
       </div>
-      {custom && <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title, e.g. Parking" maxLength={120} aria-label="Title" />}
+      {custom && (
+        <Input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Title, e.g. Parking"
+          maxLength={120}
+          aria-label="Title"
+        />
+      )}
       <Textarea
         autoFocus
         value={text}
@@ -371,7 +475,10 @@ export function PoliciesTab({
       const found = result.drafts.length;
       const extra = result.skipped ? ` ${result.skipped} already on file.` : "";
       if (found) toast.success(`Found ${found} ${found === 1 ? "policy" : "policies"} to review.${extra}`);
-      else toast.info(result.skipped ? `Everything in this file is already on file.` : "Couldn't find any policies in this file.");
+      else
+        toast.info(
+          result.skipped ? `Everything in this file is already on file.` : "Couldn't find any policies in this file.",
+        );
       if (result.document.truncated) toast.warning("Part of this file couldn't be read, so check the list for gaps.");
       onChanged();
     } catch (err) {
@@ -399,54 +506,55 @@ export function PoliciesTab({
   const followed = new Set(overview?.properties.flatMap((p) => p.policy_ids) ?? []);
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="space-y-1">
-          <h2 className="text-base font-semibold">Policies</h2>
-          <p className="max-w-xl text-sm text-muted-foreground">
-            Mira answers guests from these, and they take precedence over anything imported for the same topic. Upload your booking terms and she
-            suggests policies for you to check, or write them yourself. Nothing is used until you approve it.
-          </p>
-        </div>
-        <div className="shrink-0 space-y-1">
-          <input ref={fileRef} type="file" accept={ACCEPT} className="hidden" onChange={handleFile} />
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setAdding(true)} disabled={!overview}>
-              <Plus className="mr-1.5 size-4" />
-              Add a policy
-            </Button>
-            <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={uploading}>
-              <Upload className="mr-1.5 size-4" />
-              {uploading ? "Reading…" : "Upload a document"}
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground">Upload: PDF, Word, Excel, CSV, text or a photo</p>
-          {uploading && <p className="text-xs text-muted-foreground">Long documents are read in parts, so this can take a minute.</p>}
+    <Sheet>
+      <Toolbar className="justify-between gap-y-4">
+        <div className="max-w-md space-y-1">
+          <Hint>
+            Approved policies take precedence over imported text on the same topic. Nothing is used until you approve
+            it. Upload a PDF, Word, Excel, CSV, text file or photo and Mira suggests policies to check, or write them
+            yourself.
+          </Hint>
+          {uploading && <Hint>Long documents are read in parts, so this can take a minute.</Hint>}
           {uploadError && (
-            <p role="alert" className="max-w-xs text-sm text-destructive">
+            <p role="alert" className="text-sm text-destructive">
               {uploadError}
             </p>
           )}
         </div>
-      </div>
+        <div className="flex shrink-0 gap-2">
+          <input ref={fileRef} type="file" accept={ACCEPT} className="hidden" onChange={handleFile} />
+          <Button variant="outline" onClick={() => setAdding(true)} disabled={!overview}>
+            <Plus className="mr-1.5 size-4" />
+            Add a policy
+          </Button>
+          <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={uploading}>
+            <Upload className="mr-1.5 size-4" />
+            {uploading ? "Reading…" : "Upload a document"}
+          </Button>
+        </div>
+      </Toolbar>
 
       {loading && !overview ? (
-        <Skeleton className="h-64 w-full" />
+        <Cell>
+          <Skeleton className="h-64 w-full" />
+        </Cell>
       ) : overview ? (
         <>
           {adding && (
-            <AddPolicyForm
-              overview={overview}
-              onDone={() => {
-                setAdding(false);
-                onChanged();
-              }}
-              onCancel={() => setAdding(false)}
-            />
+            <Cell>
+              <AddPolicyForm
+                overview={overview}
+                onDone={() => {
+                  setAdding(false);
+                  onChanged();
+                }}
+                onCancel={() => setAdding(false)}
+              />
+            </Cell>
           )}
 
           {overview.drafts.length > 0 && (
-            <section className="space-y-1" aria-label="Awaiting your approval">
+            <Cell className="gap-1" aria-label="Awaiting your approval">
               <SectionHeader tone="pending" title="Awaiting your approval" count={overview.drafts.length}>
                 {overview.drafts.length > 1 && (
                   <Button size="sm" variant="outline" onClick={approveAll} disabled={approvingAll}>
@@ -454,21 +562,21 @@ export function PoliciesTab({
                   </Button>
                 )}
               </SectionHeader>
-              <p className="text-xs text-muted-foreground">
-                Read from your document. Mira does not use these yet. Click the properties to choose where each applies, then approve.
-              </p>
+              <Hint>Mira does not use these yet. Choose where each applies, then approve.</Hint>
               <ul>
                 {overview.drafts.map((draft) => (
                   <DraftEntry key={draft.id} draft={draft} overview={overview} onChanged={onChanged} />
                 ))}
               </ul>
-            </section>
+            </Cell>
           )}
 
-          <section className="space-y-1" aria-label="Approved policies">
+          <Cell className="gap-1" aria-label="Approved policies">
             <SectionHeader tone="live" title="Approved · live on calls" count={live.length} />
             {live.length === 0 ? (
-              <p className="pt-2 text-sm text-muted-foreground">No approved policies yet. Add one, or upload a document and approve what Mira finds.</p>
+              <p className="pt-2 text-sm text-muted-foreground">
+                No approved policies yet. Add one, or upload a document and approve what Mira finds.
+              </p>
             ) : (
               <ul>
                 {live.map((policy) => (
@@ -487,9 +595,9 @@ export function PoliciesTab({
                 ))}
               </ul>
             )}
-          </section>
+          </Cell>
         </>
       ) : null}
-    </div>
+    </Sheet>
   );
 }

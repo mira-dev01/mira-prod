@@ -119,10 +119,31 @@ const billing = {
   capability_enabled: true,
 };
 
+const photo = (c1: string, c2: string) =>
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="420"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${c1}"/><stop offset="1" stop-color="${c2}"/></linearGradient></defs><rect width="640" height="420" fill="url(#g)"/></svg>`
+  );
+const propertyPhotos = [
+  [photo("#8a9a6b", "#d8cfae"), photo("#b8896a", "#e9dcc3"), photo("#6f8091", "#cbd5d9")],
+  [photo("#a07f62", "#e6d7bd")],
+  [],
+];
 const properties = ["Hunzuru Wabi Sabi Villa near Manali", "The Slow-life Cottage & Bonnfire near Kasol", "Woodhouse Farm"].map((name, i) => ({
   id: `preview-prop-${i}`, user_id: "preview-user", name, display_name: name, city: ["Pangan", "Jari", "Nainital"][i],
-  exophone: null, base_price: 30000, ical_url: null, usp: null, house_rules: null, neighborhood_info: null,
-  faq: [], amenities: [], photos: [], max_guests: 10, host_transfer_phone: null,
+  exophone: i === 0 ? "+918041234567" : null, base_price: [30000, 14500, 22000][i], ical_url: i === 0 ? "https://www.airbnb.com/calendar/ical/123.ics" : null,
+  usp: i === 0 ? "Glass-walled villa above the Beas with a private deck and fire pit" : null,
+  house_rules: i === 0 ? "No loud music after 10 pm. Pets on request. Government ID at check-in." : null,
+  neighborhood_info: i === 0 ? "10 min walk to the river. Cafes in Old Manali (15 min). Cab to the airport about 2 hours." : null,
+  faq: [], amenities: i === 0 ? ["WiFi", "Fire pit", "Kitchen", "Parking"] : [], photos: propertyPhotos[i],
+  seasonal_notes: i === 0 ? [{ note: "Extra heater provided.", start_month: 11, end_month: 2 }] : [],
+  check_in_time: "14:00", check_out_time: "11:00", max_guests: [10, 6, 12][i], minimum_nights: i === 0 ? 2 : 1,
+  saturday_minimum_stay_enabled: i === 0, room_rental_enabled: i === 1, room_base_price: i === 1 ? 4500 : null,
+  rentable_room_count: i === 1 ? 3 : null, room_max_guests: i === 1 ? 2 : null, room_details: null, room_ical_url: null,
+  airbnb_listing_id: null, smart_price_estimate: null, smart_price_sample_size: 0, smart_price_updated_at: null,
+  exact_airbnb_pricing: i === 0, is_premium: i === 0, host_transfer_phone: null,
+  call_handling_mode: "MIRA", call_handling_schedule_start: null, call_handling_schedule_end: null,
+  timezone: "Asia/Kolkata", created_at: "2026-10-01T00:00:00Z",
 }));
 
 const technicians = [
@@ -211,10 +232,46 @@ const serviceRequests = [
   { call_session_id: "c9", property_id: "preview-prop-0", property_name: "Hunzuru Wabi Sabi near Manali", room_number: "2", message: "Geyser not working in room 2.", urgency: "high", created_at: ago(4), dismissed_at: null },
 ];
 
+const faqEntries = [
+  { id: "f1", user_id: "preview-user", property_id: "preview-prop-0", group_id: null, question: "Is breakfast included?", answer: "Breakfast is not included; the caretaker can cook on request for ₹400 a head.", category: null, status: "verified", verified_by: "host", created_at: ago(500), updated_at: ago(500) },
+  { id: "f2", user_id: "preview-user", property_id: "preview-prop-0", group_id: null, question: "How far is the nearest ATM?", answer: "About 4 km, in Old Manali.", category: null, status: "verified", verified_by: "host", created_at: ago(400), updated_at: ago(400) },
+];
+
+const policyItems = [
+  { id: "po1", topic: "pets", title: "", text: "Small pets are welcome with prior notice; a ₹1,000 cleaning fee applies.", status: "active", property_id: null, property_name: null, source_document_id: null, source_filename: null, source_excerpt: null, review_notes: [], created_at: ago(900), updated_at: ago(900) },
+  { id: "po2", topic: "parties", title: "", text: "Parties and loud music are not allowed after 10 pm.", status: "active", property_id: "preview-prop-0", property_name: "Hunzuru Wabi Sabi Villa near Manali", source_document_id: null, source_filename: null, source_excerpt: null, review_notes: [], created_at: ago(800), updated_at: ago(800) },
+];
+const policies = {
+  rows: [
+    { topic: "pets", label: "Pets", hint: "Whether pets are allowed and any fee", state: "everyone", override_count: 0, items: [policyItems[0]] },
+    { topic: "parties", label: "Parties & events", hint: "Groups, music and quiet hours", state: "property_only", override_count: 1, items: [policyItems[1]] },
+    { topic: "cancellation", label: "Cancellation", hint: "Refunds and changes", state: "unset", override_count: 0, items: [] },
+  ],
+  drafts: [],
+  documents: [],
+  properties: properties.map((pr, i) => ({ id: pr.id, name: pr.name, city: pr.city, labels: i === 0 ? [{ key: "no_parties", label: "No parties" }, { key: "pets_ok", label: "Pets welcome" }] : [{ key: "pets_ok", label: "Pets welcome" }], policy_ids: i === 0 ? ["po1", "po2"] : ["po1"] })),
+  topics: [{ key: "pets", label: "Pets", hint: "" }, { key: "parties", label: "Parties & events", hint: "" }, { key: "cancellation", label: "Cancellation", hint: "" }],
+};
+
+const callDetail = {
+  ...calls[0],
+  transcript: "assistant: Namaste, this is Mira from HushStays. How can I help?\nuser: Hi, we are five people and want a villa near Manali from 15 to 20 November.\nassistant: Hunzuru Wabi Sabi sleeps ten and is free those dates. It is ₹30,000 a night.\nuser: Can someone call me back about the rate?",
+  ai_summary: {
+    booking_snapshot: { guest_name: "Aarav Mehta", intent: "Book a villa", check_in: "15 Nov", check_out: "20 Nov", nights: "5", guests: "5", property: ["Hunzuru Wabi Sabi near Manali"], budget: "Not stated", occasion: "Friends trip", language: "English", room_number: "—" },
+    conversation_summary: "Group of five wants Manali 15 to 20 November and asked for a call back about the villa rate.",
+    outcome: { status: "Follow-up Required", reason: "Guest asked the host to call back about the rate." },
+    host_action: ["Call back about the nightly rate"], key_details: ["Villa is free on those dates"], missing_information: ["Budget"], objection_tags: ["price"],
+  },
+  escalations: [
+    { id: "n1", channel: "escalation", message: "Guest wants a call back about the villa rate for 15 to 20 Nov.", urgency: "high", status: "new", created_at: ago(1) },
+  ],
+};
+
 const routes: Array<[RegExp, unknown]> = [
   [/^\/analytics\/overview/, overview],
   [/^\/leads\/service-requests/, serviceRequests],
   [/^\/leads/, leads],
+  [/^\/calls\/[^/]+/, callDetail],
   [/^\/calls/, calls],
   [/^\/faq\/gaps|^\/faq-gaps|^\/unanswered/, faqGaps],
   [/^\/tickets/, []],
@@ -226,6 +283,8 @@ const routes: Array<[RegExp, unknown]> = [
   [/^\/onboarding/, onboarding],
   [/^\/preferences\/overview-widgets/, overviewWidgets],
   [/^\/notification-settings/, notificationSettings],
+  [/^\/policies/, policies],
+  [/^\/faq$/, faqEntries],
   [/^\/properties/, properties],
   [/^\/technicians/, technicians],
   [/^\/billing/, billing],

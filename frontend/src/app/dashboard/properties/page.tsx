@@ -6,7 +6,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { MoreHorizontal, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ListRow } from "@/components/ui/list-row";
 import { StatusChip } from "@/components/status-chip";
@@ -18,10 +17,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { RightPanel, RightPanelFooterButton } from "@/components/ui/right-panel";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Cell, Hint, Sheet, Toolbar, WideCell } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { PoliciesTab } from "@/components/policies-tab";
 import { PropertyFaqManager } from "@/components/property-faq-manager";
+import { PropertyFormSection } from "@/components/property-form-section";
 import { PropertyFormFields } from "@/components/property-form-fields";
 import { PolicyLabelChips, PropertyPoliciesInEffect } from "@/components/property-policies-in-effect";
 import { PropertyRoomRentalTab } from "@/components/property-room-rental-tab";
@@ -126,14 +127,14 @@ function PropertiesList({ policies, onOpenPolicies }: { policies: PolicyOverview
       property.house_rules,
       property.neighborhood_info,
       ...property.amenities,
-    ])
+    ]),
   );
 
   const [airbnbUrlDialogOpen, setAirbnbUrlDialogOpen] = useState(false);
   const [airbnbUrlsText, setAirbnbUrlsText] = useState("");
-  const [airbnbImportState, setAirbnbImportState] = useState<
-    "idle" | "triggering" | "polling" | "done" | "failed"
-  >("idle");
+  const [airbnbImportState, setAirbnbImportState] = useState<"idle" | "triggering" | "polling" | "done" | "failed">(
+    "idle",
+  );
   const [airbnbImportResult, setAirbnbImportResult] = useState<AirbnbUrlImportStatus | null>(null);
 
   // Derived, not new state -- airbnbUrlsText stays populated through
@@ -149,7 +150,7 @@ function PropertiesList({ policies, onOpenPolicies }: { policies: PolicyOverview
         .split("\n")
         .map((line) => line.trim())
         .filter(Boolean).length,
-    [airbnbUrlsText]
+    [airbnbUrlsText],
   );
 
   const [editing, setEditing] = useState<PropertyOut | null>(null);
@@ -243,7 +244,7 @@ function PropertiesList({ policies, onOpenPolicies }: { policies: PolicyOverview
       if (created || updated) {
         toast.success(
           `Imported ${files.length - failed.length} listing(s) — ${created} created, ${updated} updated, ` +
-            `${totalFaqEntries} FAQ knowledge-base entries saved`
+            `${totalFaqEntries} FAQ knowledge-base entries saved`,
         );
       }
       for (const failure of failed) {
@@ -314,11 +315,7 @@ function PropertiesList({ policies, onOpenPolicies }: { policies: PolicyOverview
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="page-title">Properties</h1>
-          <p className="text-sm text-muted-foreground">Listings MIRA answers calls for</p>
-        </div>
+      <div className="flex flex-wrap justify-end gap-4">
         <div className="flex flex-wrap gap-2">
           <input
             ref={importInputRef}
@@ -335,7 +332,7 @@ function PropertiesList({ policies, onOpenPolicies }: { policies: PolicyOverview
               confirmed stable again. */}
           <Button variant="outline" onClick={() => setAirbnbUrlDialogOpen(true)}>
             Import from Airbnb
-          </Button> 
+          </Button>
           <Button variant="ghost" disabled={importing} onClick={() => importInputRef.current?.click()}>
             {importing ? "Importing…" : "Import from file (advanced)"}
           </Button>
@@ -360,8 +357,8 @@ function PropertiesList({ policies, onOpenPolicies }: { policies: PolicyOverview
             {airbnbImportState === "idle" || airbnbImportState === "triggering" ? (
               <div className="space-y-4">
                 <p className="text-sm text-muted-foreground">
-                  Paste your Airbnb listing links below, one per line. We&apos;ll pull each listing&apos;s
-                  details, amenities, house rules, and neighborhood info automatically.
+                  Paste your Airbnb listing links below, one per line. We&apos;ll pull each listing&apos;s details,
+                  amenities, house rules, and neighborhood info automatically.
                 </p>
                 <Textarea
                   rows={6}
@@ -375,8 +372,8 @@ function PropertiesList({ policies, onOpenPolicies }: { policies: PolicyOverview
               <div className="space-y-3 py-6 text-center">
                 <Skeleton className="mx-auto h-6 w-48" />
                 <p className="text-sm text-muted-foreground">
-                  Importing {airbnbUrlCount} {airbnbUrlCount === 1 ? "listing" : "listings"} from Airbnb — this
-                  can take a minute or two.
+                  Importing {airbnbUrlCount} {airbnbUrlCount === 1 ? "listing" : "listings"} from Airbnb — this can take
+                  a minute or two.
                 </p>
               </div>
             ) : (
@@ -401,7 +398,8 @@ function PropertiesList({ policies, onOpenPolicies }: { policies: PolicyOverview
                   </div>
                 ) : (
                   <p className="text-sm text-muted-foreground">
-                    {airbnbImportResult?.error ?? "The import didn't return any listings — check the URLs and try again."}
+                    {airbnbImportResult?.error ??
+                      "The import didn't return any listings — check the URLs and try again."}
                   </p>
                 )}
               </div>
@@ -428,11 +426,10 @@ function PropertiesList({ policies, onOpenPolicies }: { policies: PolicyOverview
             }
           >
             <form id="create-property-form" onSubmit={handleCreate} className="space-y-4">
-              <PropertyFormFields form={form} onChange={setForm} />
-              <p className="text-micro pt-2 text-muted-foreground">
-                FAQ and photos can be added once the property is created — edit it afterward from the
-                property card.
-              </p>
+              <Sheet>
+                <PropertyFormFields form={form} onChange={setForm} />
+              </Sheet>
+              <Hint>Photos and FAQ can be added once the property is created.</Hint>
             </form>
           </RightPanel>
         </div>
@@ -441,7 +438,7 @@ function PropertiesList({ policies, onOpenPolicies }: { policies: PolicyOverview
       {/* Only about the call intake number -- the one number guests dial to
           reach Mira. Gone as soon as one is saved (Exotel or Twilio). */}
       {user && !user.lead_exophone && !user.twilio_lead_number && !phoneBannerDismissed && (
-        <div className="flex items-center justify-between gap-3 rounded-[var(--radius)] border bg-muted px-4 py-3 text-sm">
+        <div className="flex items-center justify-between gap-3 border border-foreground bg-card/70 px-4 py-3 text-sm">
           <p>
             Your call intake number isn&apos;t set — guests can&apos;t reach Mira until it is. Set it in{" "}
             <Link href="/dashboard/settings" className="font-medium underline underline-offset-2">
@@ -460,94 +457,101 @@ function PropertiesList({ policies, onOpenPolicies }: { policies: PolicyOverview
         </div>
       )}
 
-      {!loading && properties && properties.length > 0 && (
-        <div className="flex items-center">
-          <Input
-            placeholder="Search properties…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            leadingIcon={<Search />}
-            className="w-64"
-          />
-        </div>
-      )}
+      <Sheet>
+        {!loading && properties && properties.length > 0 && (
+          <Toolbar>
+            <div className="w-full sm:w-64">
+              <Input
+                placeholder="Search properties…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                leadingIcon={<Search />}
+              />
+            </div>
+          </Toolbar>
+        )}
 
-      {loading ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-48 w-full" />
-          ))}
-        </div>
-      ) : !properties || properties.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No properties yet — add one to get started.</p>
-      ) : filteredProperties.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No properties match your search.</p>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filteredProperties.map((property) => (
-            <Card
+        {loading ? (
+          [0, 1, 2].map((i) => (
+            <Cell key={i} className="md:col-span-6 xl:col-span-4">
+              <Skeleton className="h-48 w-full" />
+            </Cell>
+          ))
+        ) : !properties || properties.length === 0 ? (
+          <Cell>
+            <p className="text-sm text-muted-foreground">No properties yet. Add one to get started.</p>
+          </Cell>
+        ) : filteredProperties.length === 0 ? (
+          <Cell>
+            <p className="text-sm text-muted-foreground">No properties match your search.</p>
+          </Cell>
+        ) : (
+          filteredProperties.map((property) => (
+            <Cell
               key={property.id}
-              className="cursor-pointer overflow-hidden pt-0"
+              className="cursor-pointer gap-0 overflow-hidden p-0 md:col-span-6 xl:col-span-4"
               onClick={() => openEdit(property)}
             >
               <PropertyPhotoCarousel photos={property.photos} name={property.name} />
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between text-base">
-                  {property.name}
+              <div className="flex flex-1 flex-col gap-2 border-t border-border p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <h2 className="min-w-0 text-[15px] leading-5 font-bold">{property.name}</h2>
                   {property.exophone && <StatusChip status="Voice agent live" tone="live" />}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2 text-sm">
-                <p className="text-muted-foreground">{property.city ?? "No city set"}</p>
-                <p>₹{property.base_price.toLocaleString("en-IN")} / night · {property.max_guests} guests</p>
+                </div>
+                <p className="text-[13px] text-muted-foreground">{property.city ?? "No city set"}</p>
+                <p className="text-sm font-medium">
+                  ₹{property.base_price.toLocaleString("en-IN")} / night · {property.max_guests} guests
+                </p>
                 <PolicyLabelChips overview={policies} propertyId={property.id} />
-                {property.exophone && <p className="text-muted-foreground">{property.exophone}</p>}
+                {property.exophone && <p className="text-[13px] text-muted-foreground">{property.exophone}</p>}
                 {perPropertyTransfer && !property.host_transfer_phone && (
-                  <p className="text-xs text-(--status-pending-strong)" onClick={(e) => e.stopPropagation()}>
-                    No transfer number — transfers go to your main number.{" "}
-                    <Link href="/dashboard/settings#transfer-numbers" className="font-medium underline underline-offset-2">
+                  <p className="text-[13px] text-(--status-pending-strong)" onClick={(e) => e.stopPropagation()}>
+                    No transfer number. Transfers go to your main number.{" "}
+                    <Link
+                      href="/dashboard/settings#transfer-numbers"
+                      className="font-medium underline underline-offset-2"
+                    >
                       Set one
                     </Link>
                   </p>
                 )}
-                <div className="flex items-center gap-2 pt-2" onClick={(e) => e.stopPropagation()}>
-                  <Button
-                    size="sm"
-                    className="min-w-0 flex-1"
-                    onClick={() => handleSetDiscount(property.id)}
-                  >
-                    Set Discount
-                  </Button>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      render={
-                        <Button variant="outline" size="icon-sm" className="shrink-0" aria-label="More actions">
-                          <MoreHorizontal className="size-4" />
-                        </Button>
-                      }
-                    />
-                    <DropdownMenuContent align="end">
-                      {isInternalOrg && (
-                        <DropdownMenuItem onClick={() => handleTestInBrowser(property.id)}>Test</DropdownMenuItem>
-                      )}
-                      <DropdownMenuItem onClick={() => openEdit(property)}>Edit</DropdownMenuItem>
-                      <DropdownMenuItem
-                        disabled={!property.ical_url || syncingId === property.id}
-                        onClick={() => handleSync(property.id)}
-                      >
-                        {syncingId === property.id ? "Syncing…" : "Sync iCal"}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem variant="destructive" onClick={() => handleDelete(property.id)}>
-                        Remove
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+              </div>
+              <div
+                className="flex items-center gap-2 border-t border-border px-5 py-3"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Button size="sm" className="min-w-0 flex-1" onClick={() => handleSetDiscount(property.id)}>
+                  Set Discount
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={
+                      <Button variant="outline" size="icon-sm" className="shrink-0" aria-label="More actions">
+                        <MoreHorizontal className="size-4" />
+                      </Button>
+                    }
+                  />
+                  <DropdownMenuContent align="end">
+                    {isInternalOrg && (
+                      <DropdownMenuItem onClick={() => handleTestInBrowser(property.id)}>Test</DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem onClick={() => openEdit(property)}>Edit</DropdownMenuItem>
+                    <DropdownMenuItem
+                      disabled={!property.ical_url || syncingId === property.id}
+                      onClick={() => handleSync(property.id)}
+                    >
+                      {syncingId === property.id ? "Syncing…" : "Sync iCal"}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem variant="destructive" onClick={() => handleDelete(property.id)}>
+                      Remove
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </Cell>
+          ))
+        )}
+      </Sheet>
 
       <RightPanel
         open={!!editing}
@@ -574,39 +578,44 @@ function PropertiesList({ policies, onOpenPolicies }: { policies: PolicyOverview
                 )}
               </TabsTrigger>
             </TabsList>
-            <TabsContent value="entire" className="space-y-4 pt-4">
-              {editing && (
-                <div className="space-y-2">
-                  <p className="text-micro pt-2 text-muted-foreground">Photos</p>
-                  <PropertyPhotosManager
+            <TabsContent value="entire" className="pt-4">
+              <Sheet>
+                {editing && (
+                  <PropertyFormSection
+                    title="Photos"
+                    count={(editForm.photos ?? []).length}
+                    helpText="The first photo is the cover."
+                  >
+                    <PropertyPhotosManager
+                      propertyId={editing.id}
+                      photos={editForm.photos ?? []}
+                      onChange={(photos) => setEditForm((f) => ({ ...f, photos }))}
+                      propertyName={editing.name}
+                    />
+                  </PropertyFormSection>
+                )}
+                <PropertyFormFields form={editForm} onChange={setEditForm} />
+                {editing && (
+                  <PropertyPoliciesInEffect
+                    overview={policies}
                     propertyId={editing.id}
-                    photos={editForm.photos ?? []}
-                    onChange={(photos) => setEditForm((f) => ({ ...f, photos }))}
-                    propertyName={editing.name}
+                    onOpenPolicies={() => {
+                      setEditing(null);
+                      onOpenPolicies();
+                    }}
                   />
-                </div>
-              )}
-              <PropertyFormFields form={editForm} onChange={setEditForm} />
-              {editing && (
-                <PropertyPoliciesInEffect
-                  overview={policies}
-                  propertyId={editing.id}
-                  onOpenPolicies={() => {
-                    setEditing(null);
-                    onOpenPolicies();
-                  }}
-                />
-              )}
-              {editing &&
-                (loadingFaq ? (
-                  <Skeleton className="h-24 w-full" />
-                ) : (
-                  <PropertyFaqManager
-                    propertyId={editing.id}
-                    entries={editFaqEntries}
-                    onChange={setEditFaqEntries}
-                  />
-                ))}
+                )}
+                {editing &&
+                  (loadingFaq ? (
+                    <WideCell>
+                      <div className="col-span-12 p-5">
+                        <Skeleton className="h-24 w-full" />
+                      </div>
+                    </WideCell>
+                  ) : (
+                    <PropertyFaqManager propertyId={editing.id} entries={editFaqEntries} onChange={setEditFaqEntries} />
+                  ))}
+              </Sheet>
             </TabsContent>
             <TabsContent value="rooms" className="pt-4">
               <PropertyRoomRentalTab form={editForm} onChange={setEditForm} />
@@ -637,21 +646,26 @@ function PropertiesPageTabs() {
   }
 
   return (
-    <Tabs value={tab} onValueChange={handleTabChange}>
-      <TabsList>
-        <TabsTrigger value="properties">Properties</TabsTrigger>
-        <TabsTrigger value="policies">
-          Policies
-          {toReview > 0 && <span className="ml-1.5 rounded-full bg-primary px-1.5 text-xs text-primary-foreground">{toReview}</span>}
-        </TabsTrigger>
-      </TabsList>
-      <TabsContent value="properties" className="pt-4">
-        <PropertiesList policies={policies.data} onOpenPolicies={() => handleTabChange("policies")} />
-      </TabsContent>
-      <TabsContent value="policies" className="pt-4">
-        <PoliciesTab overview={policies.data} loading={policies.loading} onChanged={policies.refetch} />
-      </TabsContent>
-    </Tabs>
+    <div className="space-y-6">
+      <h1 className="page-title">Properties</h1>
+      <Tabs value={tab} onValueChange={handleTabChange}>
+        <TabsList>
+          <TabsTrigger value="properties">Properties</TabsTrigger>
+          <TabsTrigger value="policies">
+            Policies
+            {toReview > 0 && (
+              <span className="ml-1.5 rounded-full bg-primary px-1.5 text-xs text-primary-foreground">{toReview}</span>
+            )}
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="properties" className="pt-4">
+          <PropertiesList policies={policies.data} onOpenPolicies={() => handleTabChange("policies")} />
+        </TabsContent>
+        <TabsContent value="policies" className="pt-4">
+          <PoliciesTab overview={policies.data} loading={policies.loading} onChanged={policies.refetch} />
+        </TabsContent>
+      </Tabs>
+    </div>
   );
 }
 

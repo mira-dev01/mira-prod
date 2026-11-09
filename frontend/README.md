@@ -58,10 +58,11 @@ type, layout blocks, rules) before changing any UI.
 - **Tokens and primitives:** `src/app/globals.css` (colours, type roles, the faint construction-grid
   utility `.field-grid`), `src/components/ui/{card,tabs,button,input,badge}.tsx`.
 - **Layout blocks:** `src/components/ui/sheet.tsx` — `Sheet`, `Cell`, `WideCell`, `SheetRow`,
-  `SheetHeading`, `CellFoot`, plus `CellCard` (hosts Card parts inside a Sheet) and `Toolbar` (search/filter strip above a list); `segmented.tsx` for either/or choices. Blocks span whole columns and
+  `SheetHeading`, `CellFoot`, plus `CellCard` (hosts Card parts inside a Sheet) and `Toolbar` (search/filter strip above a list), `FieldRow`/`SubField` (labelled form rows) and `toggle-field.tsx` (a switch with a one-line hint); `segmented.tsx` for either/or choices. Blocks span whole columns and
   share ruled edges, so a row of blocks is always the same height.
-- **Status:** Settings, Overview (`src/app/dashboard/page.tsx`, `components/overview/*`) and Leads
-  (`src/app/dashboard/leads/`, all four tabs) are laid out in the new system. Every other page inherits
+- **Status:** Settings, Overview (`src/app/dashboard/page.tsx`, `components/overview/*`), Leads
+  (`src/app/dashboard/leads/`, all four tabs), Calls (list and detail) and Properties (list, Policies tab
+  and the Edit/New property panel) are laid out in the new system. Every other page inherits
   the tokens and primitives but still needs its own pass, one page at a time. Cards shared between
   Overview and other pages take an `inSheet`/`className` prop so they sit in a Sheet without a second box.
 - **Copy:** a block carries a short title and its data; descriptions appear only where the title alone

@@ -5,7 +5,8 @@ import { useParams } from "next/navigation";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CardContent, CardHeader } from "@/components/ui/card";
+import { CellCard, CellTitle, Sheet } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CallSummaryCard } from "@/components/call-summary-card";
 import { StatusChip, type StatusTone } from "@/components/status-chip";
@@ -65,12 +66,12 @@ export default function CallDetailPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
           <h1 className="page-title">
             {isTest ? "Browser test" : call.guest_name ?? call.caller_number ?? "Unknown caller"}
           </h1>
-          <p className="text-sm text-muted-foreground">
+          <p className="mt-1 text-sm text-muted-foreground">
             {call.started_at ? new Date(call.started_at).toLocaleString() : "—"}
             {!isTest && call.guest_phone ? ` · ${call.guest_phone}` : ""}
           </p>
@@ -89,89 +90,88 @@ export default function CallDetailPage() {
         {duration && <Badge variant="secondary">{duration}</Badge>}
       </div>
 
-      {/* AI summary promoted above the transcript -- the CTA the host sees
-          first, styled distinctly (surface-interactive) so it reads as the
-          primary artifact of the call rather than just another card. */}
-      <CallSummaryCard summary={call.ai_summary} />
+      <Sheet>
+        <CallSummaryCard summary={call.ai_summary} inSheet />
 
-      {call.escalations.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              Escalations
-              {openEscalations.length > 0 && <Badge variant="destructive">{openEscalations.length} open</Badge>}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {call.escalations.map((escalation) => (
-              <div key={escalation.id} className="space-y-2 rounded-lg border p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <StatusChip status={escalation.urgency} tone={urgencyTone[escalation.urgency] ?? "neutral"} />
-                    <StatusChip
-                      status={escalation.status === "new" ? "open" : "handled"}
-                      tone={escalation.status === "new" ? "pending" : "live"}
-                    />
-                  </div>
-                  <span className="text-xs text-muted-foreground">
-                    {new Date(escalation.created_at).toLocaleString()}
-                  </span>
-                </div>
-                <p className="text-sm leading-relaxed">{escalation.message}</p>
-                {escalation.status === "new" && (
-                  <Button size="sm" onClick={() => handleMarkHandled(escalation.id)}>
-                    Mark as handled
-                  </Button>
-                )}
+        {call.escalations.length > 0 && (
+          <CellCard>
+            <CardHeader>
+              <div className="flex items-center justify-between gap-3">
+                <CellTitle>Escalations</CellTitle>
+                {openEscalations.length > 0 && <Badge variant="destructive">{openEscalations.length} open</Badge>}
               </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Transcript</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {!call.transcript ? (
-            <p className="text-sm text-muted-foreground">No transcript available.</p>
-          ) : turns ? (
-            <div className="space-y-3">
-              {turns.map((turn, i) => (
-                <div key={i} className={cn("flex", turn.role === "mira" ? "justify-end" : "justify-start")}>
-                  <div
-                    className={cn(
-                      "max-w-[80%] whitespace-pre-wrap rounded-lg px-3 py-2 text-sm leading-relaxed",
-                      turn.role === "mira"
-                        ? "bg-muted text-foreground"
-                        : "bg-[var(--status-orange)] text-white"
-                    )}
-                  >
-                    <p className="mb-0.5 text-xs font-medium opacity-70">
-                      {turn.role === "mira" ? "Mira" : isTest ? "Browser test" : call.guest_name ?? "Guest"}
-                    </p>
-                    {turn.text}
+            </CardHeader>
+            <CardContent>
+              {call.escalations.map((escalation) => (
+                <div key={escalation.id} className="space-y-2 border-b border-border py-3 first:pt-0 last:border-0 last:pb-0">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusChip status={escalation.urgency} tone={urgencyTone[escalation.urgency] ?? "neutral"} />
+                      <StatusChip
+                        status={escalation.status === "new" ? "open" : "handled"}
+                        tone={escalation.status === "new" ? "pending" : "live"}
+                      />
+                    </div>
+                    <span className="text-[13px] text-muted-foreground">
+                      {new Date(escalation.created_at).toLocaleString()}
+                    </span>
                   </div>
+                  <p className="text-sm leading-relaxed">{escalation.message}</p>
+                  {escalation.status === "new" && (
+                    <Button size="sm" onClick={() => handleMarkHandled(escalation.id)}>
+                      Mark as handled
+                    </Button>
+                  )}
                 </div>
               ))}
-            </div>
-          ) : (
-            <pre className="whitespace-pre-wrap text-sm text-muted-foreground">{call.transcript}</pre>
-          )}
-        </CardContent>
-      </Card>
+            </CardContent>
+          </CellCard>
+        )}
 
-      {call.recording_url && (
-        <Card>
+        <CellCard>
           <CardHeader>
-            <CardTitle>Recording</CardTitle>
+            <CellTitle>Transcript</CellTitle>
           </CardHeader>
           <CardContent>
-            <audio controls className="w-full" src={call.recording_url} />
+            {!call.transcript ? (
+              <p className="text-sm text-muted-foreground">No transcript available.</p>
+            ) : turns ? (
+              <div className="space-y-3">
+                {turns.map((turn, i) => (
+                  <div key={i} className={cn("flex", turn.role === "mira" ? "justify-end" : "justify-start")}>
+                    <div
+                      className={cn(
+                        "max-w-[80%] whitespace-pre-wrap px-3 py-2 text-sm leading-relaxed",
+                        turn.role === "mira"
+                          ? "border border-border bg-muted text-foreground"
+                          : "border border-(--status-orange) bg-[color-mix(in_srgb,var(--status-orange)_14%,transparent)] text-foreground"
+                      )}
+                    >
+                      <p className="mb-0.5 text-xs font-semibold opacity-80">
+                        {turn.role === "mira" ? "Mira" : isTest ? "Browser test" : call.guest_name ?? "Guest"}
+                      </p>
+                      {turn.text}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <pre className="whitespace-pre-wrap text-sm text-muted-foreground">{call.transcript}</pre>
+            )}
           </CardContent>
-        </Card>
-      )}
+        </CellCard>
+
+        {call.recording_url && (
+          <CellCard>
+            <CardHeader>
+              <CellTitle>Recording</CellTitle>
+            </CardHeader>
+            <CardContent>
+              <audio controls className="w-full" src={call.recording_url} />
+            </CardContent>
+          </CellCard>
+        )}
+      </Sheet>
     </div>
   );
 }

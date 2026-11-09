@@ -72,7 +72,7 @@ export function PropertyPhotoCarousel({ photos, name }: { photos: string[]; name
                 />
               ))}
             </div>
-            <span className="absolute right-1.5 top-1.5 rounded-full bg-black/50 px-1.5 py-0.5 text-[0.65rem] text-white">
+            <span className="absolute right-1.5 top-1.5 rounded-full bg-black/50 px-1.5 py-0.5 text-[11px] text-white">
               {index + 1}/{photos.length}
             </span>
           </>

@@ -84,24 +84,24 @@ export function PropertyFaqManager({
           {adding ? "Adding…" : "+ Add question"}
         </Button>
       }
-      helpText="Also appears on the dashboard's FAQ tab, tagged as applying to this property."
+      helpText="Also shown on the FAQ page, tagged to this property."
     >
       {entries.length === 0 ? (
-        <p className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">
-          No FAQ entries on this property yet.
-        </p>
+        <p className="p-5 text-sm text-muted-foreground">No FAQ entries yet.</p>
       ) : (
-        <div className="space-y-3">
+        <div className="px-5">
           {entries.map((entry) => (
-            <div key={entry.id} className="space-y-2 rounded-lg border p-3">
+            <div key={entry.id} className="space-y-3 border-b border-border py-4 last:border-0">
               <Input
                 placeholder="Question"
+                aria-label="Question"
                 value={entry.question}
                 onChange={(e) => updateField(entry, { question: e.target.value })}
                 onBlur={(e) => commitField(entry, { question: e.target.value })}
               />
               <DictationTextarea
                 placeholder="Answer"
+                aria-label="Answer"
                 value={entry.answer}
                 onValueChange={(value) => updateField(entry, { answer: value })}
                 onBlur={(e) => commitField(entry, { answer: (e.target as HTMLTextAreaElement).value })}
