@@ -140,9 +140,6 @@ function PricingPageContent() {
     <div className="space-y-6">
       <div>
         <h1 className="page-title">{scopedPropertyId ? `Pricing — ${scopedProperty?.name ?? "…"}` : "Pricing"}</h1>
-        <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-          What Mira quotes a guest. It uses the live Airbnb price where Smart pricing is on, and the base rate otherwise.
-        </p>
       </div>
 
       <Sheet>
@@ -208,15 +205,15 @@ function PricingPageContent() {
               </div>
             </div>
           ) : (
-            <Hint>Pick a property and dates to see what Mira would quote.</Hint>
+            <Hint>Nothing calculated yet.</Hint>
           )}
         </Cell>
 
         {n > 0 && (
           <Cell className="flex-row flex-wrap items-center justify-between gap-x-6 gap-y-2 py-4">
             <p className="text-sm">
-              <span className="font-semibold">Negotiation policy.</span> {n} approved discount rule{n === 1 ? "" : "s"} from
-              your Agent discount policy {n === 1 ? "applies" : "apply"} to live negotiations across all your properties.
+              <span className="font-semibold">Negotiation policy.</span> {n} approved discount rule{n === 1 ? "" : "s"}{" "}
+              {n === 1 ? "applies" : "apply"} to live negotiations.
             </p>
             <Link
               href="/dashboard/agent"
@@ -230,10 +227,7 @@ function PricingPageContent() {
 
         {withSmartPrice.length > 0 && (
           <WideCell>
-            <SheetHeading title="Smart pricing">
-              Median nightly rate of comparable Airbnb listings in the same city, refreshed daily. For reference only;
-              never applied automatically to quotes.
-            </SheetHeading>
+            <SheetHeading title="Smart pricing" />
             <div className="col-span-12 px-3 py-2">
               <Table>
                 <TableHeader>
@@ -263,10 +257,7 @@ function PricingPageContent() {
 
         {objectionInsights && objectionInsights.by_tag.length > 0 && (
           <WideCell>
-            <SheetHeading title="Objection insights">
-              Conversion rate for calls where Mira noted this friction point, against your overall rate. Based on past
-              calls; never applied automatically to pricing or negotiation.
-            </SheetHeading>
+            <SheetHeading title="Objection insights" />
             <div className="col-span-12 px-3 py-2">
               <Table>
                 <TableHeader>

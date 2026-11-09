@@ -7,7 +7,7 @@ import { ArrowRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/settings/segmented";
-import { Cell, CellLead, Hint, Sheet, SheetRow, WideCell } from "@/components/ui/sheet";
+import { Cell, CellLead, Sheet, SheetRow, WideCell } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { CapabilityActions, CapabilityStateChip } from "@/components/capability-state-chip";
@@ -81,14 +81,13 @@ export function FeaturesSection() {
           {enabledCount} of {data.capabilities.length} features on
           {needsSetup > 0 && ` · ${needsSetup} need setup`}
         </CellLead>
-        <Hint>Turning a feature off keeps its data and settings, so you can turn it back on any time.</Hint>
       </Cell>
       {data.groups.map((group) => {
         const items = data.capabilities.filter((c) => c.group === group.id);
         if (items.length === 0) return null;
         return (
           <WideCell key={group.id}>
-            <SheetRow title={group.name} hint={group.description}>
+            <SheetRow title={group.name}>
               <div className="flex flex-col divide-y divide-border">
                 {items.map((cap) => (
                   <CapabilityRow

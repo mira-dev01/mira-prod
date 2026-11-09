@@ -4,7 +4,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DictationTextarea } from "@/components/ui/dictation-textarea";
 import { ExpandableText } from "@/components/expandable-text";
 import { Input } from "@/components/ui/input";
@@ -172,10 +172,6 @@ export default function FaqPage() {
     <div className="min-w-0 space-y-6">
       <div>
         <h1 className="page-title">FAQ knowledge base</h1>
-        <p className="text-sm text-muted-foreground">
-          Verified answers the voice agent&apos;s search_faq tool can use — anything not verified here gets
-          escalated to you instead of guessed.
-        </p>
       </div>
 
       <UnansweredQuestionsCard collapsible />
@@ -184,7 +180,6 @@ export default function FaqPage() {
         <CardHeader className="flex flex-wrap items-center justify-between gap-3 space-y-0">
           <div className="min-w-0">
             <CardTitle>Verified FAQ entries</CardTitle>
-            <CardDescription>Answers already in the knowledge base, added by you or resolved from a gap.</CardDescription>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {entries && entries.length > 0 && (

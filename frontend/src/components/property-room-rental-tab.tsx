@@ -32,11 +32,11 @@ export function PropertyRoomRentalTab({ form, onChange }: { form: Form; onChange
     <Sheet>
       <WideCell>
         <SheetHeading title="Rent by the room" />
-        <FieldRow label="Rooms" hint="Guests can book some rooms instead of the whole place.">
+        <FieldRow label="Rooms">
           <ToggleField
             id="room_rental_enabled"
             label="Also rent this property by the room"
-            hint="For a party or a big group Mira offers the entire place; for a night stay for a few people she offers rooms."
+            hint="Guests can book some rooms instead of the whole place."
             checked={enabled}
             onChange={(checked) => onChange({ ...form, room_rental_enabled: checked })}
           />
@@ -46,7 +46,7 @@ export function PropertyRoomRentalTab({ form, onChange }: { form: Form; onChange
           className={enabled ? "col-span-12 grid grid-cols-subgrid" : "pointer-events-none col-span-12 grid grid-cols-subgrid opacity-50"}
           aria-disabled={!enabled}
         >
-          <FieldRow label="Price and capacity" hint={enabled && rooms && perRoom ? `Rooms alone sleep up to ${rooms * perRoom} guests. The entire place (${form.max_guests ?? "—"} guests, ₹${form.base_price}/night) is on the Entire place tab.` : undefined}>
+          <FieldRow label="Price and capacity" hint={enabled && rooms && perRoom ? `Rooms alone sleep up to ${rooms * perRoom} guests.` : undefined}>
             <div className="grid items-end gap-4 sm:grid-cols-3">
               <SubField label="Price per room (₹/night)" htmlFor="room_base_price">
                 <Input
@@ -94,7 +94,7 @@ export function PropertyRoomRentalTab({ form, onChange }: { form: Form; onChange
           <FieldRow
             label="Room calendar"
             htmlFor="room_ical_url"
-            hint="Optional. If you list the rooms on Airbnb separately, paste that calendar's iCal URL. Its bookings show as room bookings."
+            hint="Optional. iCal URL of your separate room listing."
           >
             <Input
               id="room_ical_url"

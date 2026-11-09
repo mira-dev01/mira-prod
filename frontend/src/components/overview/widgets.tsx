@@ -99,7 +99,7 @@ export const WIDGET_RENDERERS: Record<string, (d: OverviewWidgetData) => React.R
   // Current-state, not tied to the date range (unchanged).
   unanswered_questions: () => (
     <div className="flex h-full min-w-0">
-      <UnansweredQuestionsCard inSheet limit={2} linkToFaqPage hideDescription />
+      <UnansweredQuestionsCard inSheet limit={2} linkToFaqPage />
     </div>
   ),
 

@@ -76,10 +76,7 @@ function NavigationCard() {
         <>
           <div className="flex flex-col gap-1">
             <CellLead>Reorder the sidebar and hide pages you don&apos;t use.</CellLead>
-            <Hint>
-              Overview and Settings always stay.
-              {prefs.is_default ? " You're using the default layout." : ""}
-            </Hint>
+            <Hint>Overview and Settings always stay.</Hint>
           </div>
           {hidden.length > 0 && (
             <div className="space-y-1.5">

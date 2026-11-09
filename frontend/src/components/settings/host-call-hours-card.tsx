@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Cell, CellFoot, CellLead, CellTitle, Hint } from "@/components/ui/sheet";
+import { Cell, CellLead, CellTitle } from "@/components/ui/sheet";
 import { ApiError, api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import type { CallHoursStatus } from "@/lib/types";
@@ -162,11 +162,6 @@ export function HostCallHoursCard() {
               </Select>
             </div>
 
-            <Hint>
-              These hours apply every day. An overnight window (e.g. 10:00 PM – 6:00 AM) is fine — it stays in
-              effect across midnight.
-            </Hint>
-
             {start && end ? (
               <p className="text-sm">
                 Calls go to you <span className="font-bold">{formatHourMinute(start)}</span>
@@ -174,9 +169,7 @@ export function HostCallHoursCard() {
                 <span className="font-bold">{formatHourMinute(end)}</span> ({timezoneLabel(timezone)}). Outside
                 these hours, Mira answers calls.
               </p>
-            ) : (
-              <Hint>Enter both times to see a preview.</Hint>
-            )}
+            ) : null}
           </div>
         )}
 
@@ -184,12 +177,6 @@ export function HostCallHoursCard() {
           {saving ? "Saving…" : "Save"}
         </Button>
       </form>
-      <CellFoot>
-        <Hint>
-          During these hours, guest calls go to your phone. Outside them, Mira answers. Applies to every property
-          on your account.
-        </Hint>
-      </CellFoot>
     </Cell>
   );
 }

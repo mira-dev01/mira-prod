@@ -15,7 +15,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarList, MetricTile } from "@/components/analytics/metric-tile";
 import { StatusChip } from "@/components/status-chip";
 import { InfoTip } from "@/components/ui/info-tip";
@@ -72,7 +72,6 @@ export function BookingFunnelSection({ data }: { data: AnalyticsDashboard }) {
     <Card className="h-full">
       <CardHeader>
         <CardTitle>Booking funnel</CardTitle>
-        <CardDescription>From every Mira conversation to a booking.</CardDescription>
       </CardHeader>
       <CardContent>
         {empty ? (
@@ -101,11 +100,6 @@ export function GuestIntentSection({ data }: { data: AnalyticsDashboard }) {
     <Card className="h-full">
       <CardHeader>
         <CardTitle>What guests ask about</CardTitle>
-        <CardDescription>
-          {conversations_with_data
-            ? `Across ${conversations_with_data} conversation${conversations_with_data === 1 ? "" : "s"} with recorded questions`
-            : "From questions and objections recorded in Mira conversations."}
-        </CardDescription>
       </CardHeader>
       <CardContent>
         {conversations_with_data === 0 ? (
@@ -149,9 +143,6 @@ export function NeedsConfirmationSection({
     <Card id="needs-confirmation">
       <CardHeader>
         <CardTitle>Booking details need confirmation</CardTitle>
-        <CardDescription>
-          A quick answer from you keeps revenue and Mira impact accurate. We only ask once per booking.
-        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-1">
         {visible.map((item) => (

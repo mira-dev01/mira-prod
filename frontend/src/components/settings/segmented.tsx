@@ -32,7 +32,7 @@ export function Segmented<T extends string>({
           onClick={() => onChange(option.value)}
           className={cn(
             "min-h-8 min-w-0 flex-1 rounded-[3px] px-3 py-1.5 text-[13px] transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring disabled:opacity-60",
-            value === option.value ? "bg-primary font-semibold text-primary-foreground" : "text-foreground hover:bg-accent"
+            value === option.value ? "bg-foreground font-semibold text-background" : "text-foreground hover:bg-accent"
           )}
         >
           {option.label}

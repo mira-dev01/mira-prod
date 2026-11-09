@@ -199,10 +199,6 @@ export default function CalendarPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
           <h1 className="page-title">Calendar</h1>
-          <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-            Airbnb bookings sync every 15 minutes, or use Sync iCal on a property. Block dates here once you confirm a
-            booking yourself.
-          </p>
         </div>
         <Button variant="cta" onClick={() => openBlockDialog()}>
           Block dates

@@ -162,6 +162,8 @@ A warm parchment-and-cream palette with one terracotta accent and a muted, earth
 - **Brand mark amber** (`--accent-warm` `#d9a441`): the drawn star beside the wordmark.
 
 ### Named Rules
+**The Few Words Rule.** A block carries a title and its data, not an explanation. Page subtitles, "foot" paragraphs and hints that restate a label are not written. Keep a line only when it carries a consequence the label cannot (a fee, where money goes, what a toggle changes), an instruction needed to finish the task, or a state (not connected, nothing yet). When in doubt, leave it out.
+
 **The Scarce Brick Rule.** Brick is the only accent and it draws attention, so it is rationed: at most one filled brick button and one brick number in view at a time. Everything routine is ink: the default button is ink-filled, links are ink and underlined, checkboxes and switches that are on are ink, headline metrics are ink. Never use brick for decoration or to make a screen feel branded, and never introduce a second accent.
 **The State-Only Rule.** Sage, amber and red appear only where something reports status; each pairs with a label or dot, never color alone.
 **The Palette Is Theirs Rule.** The parchment and terracotta palette is the user's decision; do not swap it for another.

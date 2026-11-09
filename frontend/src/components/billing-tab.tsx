@@ -112,7 +112,7 @@ function Razorpay({ billing, onChange }: { billing: BillingView; onChange: (next
             </div>
           </div>
           <Hint>
-            Find them in Razorpay → Account &amp; Settings → API Keys. We check them with Razorpay, then store the secret encrypted. It is never shown again.
+            Razorpay → Account &amp; Settings → API Keys. The secret is stored encrypted and never shown again.
           </Hint>
           <Button className="self-start" onClick={connect} disabled={busy || !keyId.trim() || !secret.trim()}>
             {busy ? "Checking…" : "Connect"}
@@ -294,7 +294,7 @@ export function BillingTab() {
 
         {billing.razorpay.connected && (
           <>
-            <SheetRow title="Messages guests get" hint="Edit the wording, then approve it. Guests only ever get approved wording.">
+            <SheetRow title="Messages guests get" hint="Guests only get approved wording.">
               <div className="grid gap-6 lg:grid-cols-2">
                 <MessageCard name="payment_request" billing={billing} onChange={setData} />
                 <MessageCard name="payment_success" billing={billing} onChange={setData} />
@@ -315,7 +315,7 @@ export function BillingTab() {
               </label>
             </SheetRow>
 
-            <SheetRow title="Payment links" hint="Dates are held for a guest until they pay or the hold runs out.">
+            <SheetRow title="Payment links">
               {payments.data ? <PaymentList rows={payments.data} onChanged={payments.refetch} /> : <Skeleton className="h-16 w-full" />}
             </SheetRow>
           </>

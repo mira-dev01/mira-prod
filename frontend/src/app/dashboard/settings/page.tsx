@@ -12,7 +12,7 @@ import { BillingTab } from "@/components/billing-tab";
 import { TechniciansSection } from "@/components/settings/technicians-section";
 import { FeaturesSection } from "@/components/settings/features-section";
 import { DashboardSection } from "@/components/settings/dashboard-section";
-import { Cell, CellFoot, CellLead, CellTitle, Hint, Sheet } from "@/components/ui/sheet";
+import { Cell, CellLead, CellTitle, Hint, Sheet } from "@/components/ui/sheet";
 import { CapabilityNotice } from "@/components/capability-notice";
 import { HostCallHoursCard } from "@/components/settings/host-call-hours-card";
 import { NotificationsCard } from "@/components/settings/notifications-card";
@@ -96,7 +96,6 @@ function SettingsPageContent() {
   const header = (
     <div className="flex flex-col gap-1">
       <h1 className="page-title">Settings</h1>
-      <p className="text-sm text-muted-foreground">Control how Mira answers your guests&apos; calls and what she tells you about.</p>
     </div>
   );
 
@@ -181,13 +180,6 @@ function SettingsPageContent() {
               <Button variant="outline" size="sm" className="self-start" onClick={handleTestLeadAgent}>
                 Test Lead Agent in browser
               </Button>
-              <CellFoot>
-                <Hint>
-                  Calls to it run the Lead Agent across your whole portfolio, for booking enquiries, not
-                  existing-guest support. It is also your general testing link: it asks the caller which property
-                  they mean instead of testing just one.
-                </Hint>
-              </CellFoot>
             </Cell>
 
             <TransferNumbersCard />

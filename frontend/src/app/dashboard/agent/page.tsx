@@ -61,7 +61,6 @@ function AgentPageContent() {
     <div className="space-y-6">
       <div>
         <h1 className="page-title">Agent</h1>
-        <p className="text-sm text-muted-foreground">How Mira handles your guests, step by step.</p>
       </div>
 
       <Tabs value={step} onValueChange={handleStepChange}>

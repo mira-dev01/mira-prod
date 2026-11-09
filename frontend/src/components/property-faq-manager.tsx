@@ -84,7 +84,6 @@ export function PropertyFaqManager({
           {adding ? "Adding…" : "+ Add question"}
         </Button>
       }
-      helpText="Also shown on the FAQ page, tagged to this property."
     >
       {entries.length === 0 ? (
         <p className="p-5 text-sm text-muted-foreground">No FAQ entries yet.</p>

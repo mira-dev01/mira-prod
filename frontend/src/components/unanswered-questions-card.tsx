@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { ArrowRight, ChevronDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ListRow } from "@/components/ui/list-row";
@@ -32,7 +32,6 @@ export function UnansweredQuestionsCard({
   limit,
   linkToFaqPage,
   collapsible,
-  hideDescription,
   inSheet,
   className,
 }: {
@@ -43,7 +42,6 @@ export function UnansweredQuestionsCard({
    * room to spare -- the explanatory sentence is redundant there since
    * "Questions Mira couldn't answer" + the unanswered-count badge already
    * say what this card is. The FAQ page's full view keeps it. */
-  hideDescription?: boolean;
   /** Render as a block of the Overview's Sheet (shared ruled edges) instead of a standalone Card. */
   inSheet?: boolean;
   /** Grid placement when inSheet (e.g. "md:col-span-6"). */
@@ -166,11 +164,6 @@ export function UnansweredQuestionsCard({
           >
             <div className="min-w-0">
               <Title>Questions Mira couldn&apos;t answer</Title>
-              {expanded && (
-                <CardDescription className="mt-1.5">
-                  Guests asked these and Mira had no verified answer. Answer one and she&apos;ll use it next time.
-                </CardDescription>
-              )}
             </div>
             <div className="flex shrink-0 items-center gap-3">
               {!gapsLoading && totalCount > 0 && (
@@ -184,11 +177,6 @@ export function UnansweredQuestionsCard({
         ) : (
           <CardHeader>
             <Title>Questions Mira couldn&apos;t answer</Title>
-            {!hideDescription && (
-              <CardDescription>
-                Guests asked these and Mira had no verified answer. Answer one and she&apos;ll use it next time.
-              </CardDescription>
-            )}
           </CardHeader>
         )}
         {expanded && <CardContent className="min-w-0 flex-1">
@@ -279,10 +267,7 @@ export function UnansweredQuestionsCard({
       >
         <form id="answer-gap-form" onSubmit={handleAnswerGap} className="space-y-4">
           {answeringGap?.suggested_answer && (
-            <p className="text-xs text-muted-foreground">
-              This looks similar to a question you already answered — pre-filled below, edit or clear it if it
-              doesn&apos;t fit.
-            </p>
+            <p className="text-xs text-muted-foreground">Pre-filled from a similar answer.</p>
           )}
           <div className="space-y-2">
             <Label htmlFor="gap-question">Question</Label>
@@ -293,7 +278,6 @@ export function UnansweredQuestionsCard({
               value={gapQuestionText}
               onChange={(e) => setGapQuestionText(e.target.value)}
             />
-            <p className="text-xs text-muted-foreground">As the guest asked it — reword it if you like.</p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="gap-answer">Type an answer</Label>
@@ -330,9 +314,6 @@ export function UnansweredQuestionsCard({
           <div className="space-y-2">
             <Label htmlFor="gap-scope">Applies to</Label>
             <PropertyScopePicker id="gap-scope" value={scope} onChange={setScope} properties={properties} />
-            <p className="text-xs text-muted-foreground">
-              Mira will only use this answer for the properties you pick.
-            </p>
           </div>
         </form>
       </RightPanel>

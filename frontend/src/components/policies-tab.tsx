@@ -509,11 +509,7 @@ export function PoliciesTab({
     <Sheet>
       <Toolbar className="justify-between gap-y-4">
         <div className="max-w-md space-y-1">
-          <Hint>
-            Approved policies take precedence over imported text on the same topic. Nothing is used until you approve
-            it. Upload a PDF, Word, Excel, CSV, text file or photo and Mira suggests policies to check, or write them
-            yourself.
-          </Hint>
+          <Hint>Nothing is used until you approve it. Upload a PDF, Word, Excel, CSV, text file or photo.</Hint>
           {uploading && <Hint>Long documents are read in parts, so this can take a minute.</Hint>}
           {uploadError && (
             <p role="alert" className="text-sm text-destructive">
@@ -562,7 +558,6 @@ export function PoliciesTab({
                   </Button>
                 )}
               </SectionHeader>
-              <Hint>Mira does not use these yet. Choose where each applies, then approve.</Hint>
               <ul>
                 {overview.drafts.map((draft) => (
                   <DraftEntry key={draft.id} draft={draft} overview={overview} onChanged={onChanged} />

@@ -69,8 +69,9 @@ type, layout blocks, rules) before changing any UI.
   one brick number per view. Every other page inherits
   the tokens and primitives but still needs its own pass, one page at a time. Cards shared between
   Overview and other pages take an `inSheet`/`className` prop so they sit in a Sheet without a second box.
-- **Copy:** a block carries a short title and its data; descriptions appear only where the title alone
-  would not explain the block.
+- **Copy:** a block carries a title and its data. No page subtitles or explanatory paragraphs; a one-line
+  hint stays only for a consequence, a money fact, a needed instruction or a state (see "The Few Words
+  Rule" in `DESIGN.md`).
 - **Rule of thumb:** change design, layout, labels and copy — never remove a capability.
 
 ## Project map

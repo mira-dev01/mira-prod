@@ -87,12 +87,9 @@ export function NotificationsCard() {
 
   return (
     <WideCell id="notifications">
-      <SheetHeading title="Notifications &amp; escalations">
-        Every escalation, transfer and busy call always shows up in your dashboard and creates a lead. These
-        settings choose what else happens.
-      </SheetHeading>
+      <SheetHeading title="Notifications &amp; escalations" />
 
-      <SheetRow title="Email" hint="Where call summaries and escalations are sent.">
+      <SheetRow title="Email">
         <div className="grid gap-8 lg:grid-cols-2">
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-3">
@@ -136,7 +133,7 @@ export function NotificationsCard() {
         </div>
       </SheetRow>
 
-      <SheetRow title="Lead labels" hint="Your names for each lead tier. Used on the dashboard, Leads and in email subjects.">
+      <SheetRow title="Lead labels">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {LEAD_BUCKETS.map((bucket) => (
             <div key={bucket} className="flex flex-col gap-1.5">
@@ -154,7 +151,7 @@ export function NotificationsCard() {
         </div>
       </SheetRow>
 
-      <SheetRow title="Guest requests" hint="How Mira reaches you when a guest needs a person.">
+      <SheetRow title="Guest requests">
         <div className="flex max-w-xl flex-col gap-6">
           <ChoiceRow
             label="In-stay problems and questions Mira can't answer"

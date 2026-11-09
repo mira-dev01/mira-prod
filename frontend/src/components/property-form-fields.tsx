@@ -70,7 +70,7 @@ export function PropertyFormFields({
 
       <WideCell>
         <SheetHeading title="Pricing and stay" />
-        <FieldRow label="Price" hint="What Mira quotes per night.">
+        <FieldRow label="Price">
           <SubField label="Base price (₹/night)" htmlFor="base_price" className="sm:max-w-56">
             <Input
               id="base_price"
@@ -117,7 +117,6 @@ export function PropertyFormFields({
           <ToggleField
             id="saturday_minimum_stay_enabled"
             label="Saturday 2-night minimum"
-            hint="Any stay that includes a Saturday must be at least 2 nights."
             checked={form.saturday_minimum_stay_enabled ?? false}
             onChange={(checked) => onChange({ ...form, saturday_minimum_stay_enabled: checked })}
           />
@@ -142,7 +141,7 @@ export function PropertyFormFields({
             </SubField>
           </div>
         </FieldRow>
-        <FieldRow label="Calendar" hint="Syncs this property's bookings from another calendar.">
+        <FieldRow label="Calendar" hint="Syncs bookings from another calendar.">
           <SubField label="iCal URL" htmlFor="ical_url">
             <Input
               id="ical_url"
@@ -154,8 +153,8 @@ export function PropertyFormFields({
       </WideCell>
 
       <WideCell>
-        <SheetHeading title="What Mira tells guests">Mira answers questions from these, and only these.</SheetHeading>
-        <FieldRow label="Description" htmlFor="usp" hint="What makes it stand out.">
+        <SheetHeading title="What Mira tells guests" />
+        <FieldRow label="Description" htmlFor="usp">
           <DictationInput
             id="usp"
             placeholder="e.g. Glass house, 1BHK with a private jacuzzi"
@@ -180,7 +179,7 @@ export function PropertyFormFields({
             }
           />
         </FieldRow>
-        <FieldRow label="House rules" htmlFor="house_rules" hint="Check-in, smoking, pets, quiet hours, ID.">
+        <FieldRow label="House rules" htmlFor="house_rules">
           <DictationTextarea
             id="house_rules"
             placeholder="Check-in process, smoking/pets policy, quiet hours, ID requirements..."
@@ -188,7 +187,7 @@ export function PropertyFormFields({
             onValueChange={(value) => onChange({ ...form, house_rules: value })}
           />
         </FieldRow>
-        <FieldRow label="Neighborhood" htmlFor="neighborhood_info" hint="Nearby cafes, distances, cab fares.">
+        <FieldRow label="Neighborhood" htmlFor="neighborhood_info">
           <DictationTextarea
             id="neighborhood_info"
             placeholder={
@@ -210,7 +209,7 @@ export function PropertyFormFields({
             + Add note
           </Button>
         }
-        helpText={<>Mentioned only in the months they apply, e.g. &quot;pool closed for monsoon cleaning&quot; (6 to 8). A range can wrap the year, e.g. 11 to 2.</>}
+        helpText="Only mentioned in the months they apply. A range can wrap the year, e.g. 11 to 2."
       >
         {seasonalNotes.length === 0 ? (
           <p className="p-5 text-sm text-muted-foreground">No seasonal notes yet.</p>

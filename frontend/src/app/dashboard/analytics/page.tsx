@@ -97,7 +97,6 @@ export default function AnalyticsPage() {
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="page-title">Analytics</h1>
-          <p className="text-sm text-muted-foreground">How your portfolio and Mira are performing.</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <Select value={propertyId} onValueChange={(v) => v && setPropertyId(v)}>

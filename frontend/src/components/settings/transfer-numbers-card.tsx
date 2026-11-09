@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Cell, CellFoot, CellLead, CellTitle, Hint } from "@/components/ui/sheet";
+import { Cell, CellLead, CellTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAsync } from "@/hooks/use-async";
 import { ApiError, api } from "@/lib/api";
@@ -48,13 +48,6 @@ export function TransferNumbersCard() {
         />
         {perProperty && <PropertyGroupsEditor />}
       </div>
-      <CellFoot>
-        <Hint>
-          {perProperty
-            ? "Used for any property without its own number below, and before a guest has picked a property."
-            : "Live transfers, escalations and WhatsApp alerts for every property come to this number."}
-        </Hint>
-      </CellFoot>
     </Cell>
   );
 }

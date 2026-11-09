@@ -34,7 +34,6 @@ export default function GuestsPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="page-title">Guests</h1>
-          <p className="text-sm text-muted-foreground">Guest CRM built from past calls and stays</p>
         </div>
         <DateRangePicker />
       </div>

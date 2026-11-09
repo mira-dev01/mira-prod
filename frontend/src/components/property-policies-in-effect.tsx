@@ -53,7 +53,6 @@ export function PropertyPoliciesInEffect({
           Manage policies
         </button>
       }
-      helpText="Read-only. Where a policy covers the same topic as the house rules or check-in times, Mira uses the policy."
     >
       <div className="space-y-3 p-5">
         <PolicyLabelChips overview={overview} propertyId={propertyId} />

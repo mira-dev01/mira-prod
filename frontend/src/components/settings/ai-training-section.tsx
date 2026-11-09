@@ -339,9 +339,6 @@ export function AiTrainingSection() {
     <div className="space-y-6">
       <div>
         <h2 className="font-heading text-xl leading-7 font-bold tracking-tight">Discounts and negotiation</h2>
-        <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-          Tell Mira when she can offer a discount, minimum stays and fees. Review what she learns before it goes live.
-        </p>
       </div>
       <CapabilityNotice
         capabilityId="negotiation"
@@ -351,10 +348,6 @@ export function AiTrainingSection() {
       <Sheet>
         <Cell className="md:col-span-7">
           <CellTitle>Negotiation policy</CellTitle>
-          <Hint>
-            Describe how you handle discounts, minimum stays and fees in your own words. Mira turns it into rules for you
-            to review. Nothing changes until you approve.
-          </Hint>
           <form onSubmit={handleParsePolicy} className="space-y-3">
             <DictationTextarea
               placeholder="e.g. If a guest doesn't ask for a discount, I keep my price as offered. If they push back, I can go down to 5%. Guests who've stayed at more than one of my properties get 8% off. Saturdays need a 2-night minimum. Early check-in is an extra 1,500 rupees."
@@ -377,7 +370,6 @@ export function AiTrainingSection() {
             <CellTitle>Pending validation</CellTitle>
             {pendingRules.length > 0 && <Badge variant="outline">{pendingRules.length}</Badge>}
           </div>
-          <Hint>Discount rules apply to all properties once approved. Stay-pricing rules need properties picked first.</Hint>
           {rulesLoading ? (
             <Skeleton className="h-24 w-full" />
           ) : pendingRules.length === 0 ? (
@@ -450,10 +442,7 @@ export function AiTrainingSection() {
               {editStageValues ? (
                 <div className="space-y-3">
                   <Label>Negotiation stages</Label>
-                  <Hint>
-                    The order is the sequence Mira offers as the guest keeps pushing back: stage 1 first, then stage 2,
-                    and so on.
-                  </Hint>
+                  <Hint>Mira offers stage 1 first, then stage 2, as the guest pushes back.</Hint>
                   <div className="space-y-2">
                     {editStageValues.map((value, i) => (
                       <div key={i} className="flex items-center gap-2">
@@ -557,7 +546,6 @@ export function AiTrainingSection() {
 
         <Cell>
           <CellTitle>Reviewed rules</CellTitle>
-          <Hint>Approved rules are what Mira applies today.</Hint>
           {rulesLoading ? (
             <Skeleton className="h-16 w-full" />
           ) : decidedRules.length === 0 ? (

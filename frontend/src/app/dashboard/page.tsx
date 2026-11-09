@@ -180,7 +180,7 @@ export default function OverviewPage() {
               </div>
             </CellCard>
 
-            <UnansweredQuestionsCard inSheet limit={2} linkToFaqPage hideDescription />
+            <UnansweredQuestionsCard inSheet limit={2} linkToFaqPage />
           </Sheet>
         </>
       )}

@@ -66,9 +66,7 @@ export function TechniciansSection() {
   return (
     <Sheet>
       <Cell className="gap-3">
-        <CellLead>
-          Local service providers MIRA can dispatch for physical issues (plumbing, electrical, AC, wifi, lock).
-        </CellLead>
+        <CellLead>Service providers Mira sends for physical issues.</CellLead>
         <CapabilityNotice
           capabilityId="technician_dispatch"
           whenOff="Technician dispatch is off, so Mira won't suggest anyone from this list to guests -- she flags maintenance issues to you instead. Your technicians are kept for when you turn it back on."
@@ -76,7 +74,7 @@ export function TechniciansSection() {
       </Cell>
 
       <WideCell>
-        <SheetRow title="Add technician" hint="Pick the property they cover.">
+        <SheetRow title="Add technician">
           <form onSubmit={handleCreate} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <div className="space-y-2 sm:col-span-2">
               <Label>Property</Label>
@@ -121,7 +119,7 @@ export function TechniciansSection() {
       </WideCell>
 
       <WideCell>
-        <SheetRow title="On file" hint="Mira suggests these to guests for matching issues.">
+        <SheetRow title="On file">
           {loading ? (
             <Skeleton className="h-24 w-full" />
           ) : !technicians || technicians.length === 0 ? (

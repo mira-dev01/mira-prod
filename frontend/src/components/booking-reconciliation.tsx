@@ -332,7 +332,7 @@ function RoomsBookedControl({
     <FieldRow
       label="Rooms booked"
       htmlFor="rooms-booked"
-      hint="The other rooms stay bookable. If a guest asks for the entire place on these dates, Mira holds it and asks you to resolve the double occupancy."
+      hint="The other rooms stay bookable."
     >
       <div className="flex items-center gap-2">
         <Input
