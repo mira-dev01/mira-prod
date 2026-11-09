@@ -308,6 +308,76 @@ const objectionInsights = {
   baseline: { total_calls: 87, resolved_count: 31, unresolved_count: 56, conversion_rate: 0.36 },
 };
 
+
+const sampled = (value: number | null, n = 14) => ({ value, sample_size: n, sufficient: value !== null, min_sample_size: 5 });
+const complete = { bookings_total: 14, bookings_priced: 11, bookings_missing_price: 3, is_complete: false };
+const analyticsDashboard = {
+  start_date: "2026-10-11", end_date: "2026-11-09", property_ids: [],
+  portfolio: {
+    occupancy: 0.42, revenue: 680000, adr: 14200, revpar: 5964, upcoming_revenue: 390000,
+    booked_nights: 241, available_nights: 574, blocked_nights: 12, currency: "INR",
+    completeness: complete, upcoming_completeness: { bookings_total: 6, bookings_priced: 6, bookings_missing_price: 0, is_complete: true },
+    comparison: { start_date: "2026-09-11", end_date: "2026-10-10", change: { occupancy: 0.08, revenue: 0.12, adr: -0.03, revpar: 0.05 }, occupancy: 0.39, revenue: 607000, adr: 14640, revpar: 5680 },
+  },
+  funnel: { stages: [
+    { key: "conversations", label: "Conversations", value: 87, unit: "conversations", rate_from_previous: null },
+    { key: "enquiries", label: "Booking enquiries", value: 41, unit: "conversations", rate_from_previous: 0.47 },
+    { key: "quotes", label: "Quotes given", value: 29, unit: "conversations", rate_from_previous: 0.71 },
+    { key: "bookings", label: "Bookings", value: 9, unit: "guests", rate_from_previous: 0.31 },
+  ] },
+  impact: {
+    attributed_bookings: 3, attributed_revenue: 241000, attributed_completeness: complete, awaiting_confirmation: 2,
+    after_hours_opportunities: { configured: true, value: 12, share: 0.29 }, revenue_recovered: 54000,
+    recovery: { busy_calls: 9, recovered: 5, converted: 1 }, resolved_by_mira: 74, resolved_by_mira_rate: 0.85, host_escalations: 5, conversations: 87,
+  },
+  guest_intent: { conversations_with_data: 52, categories: [
+    { key: "pricing", label: "Pricing", count: 31, share: 0.6 },
+    { key: "availability", label: "Availability", count: 24, share: 0.46 },
+    { key: "amenities", label: "Amenities", count: 17, share: 0.33 },
+    { key: "location", label: "Location and travel", count: 9, share: 0.17 },
+  ] },
+  pricing: {
+    avg_initial_quote_per_night: sampled(15200), avg_negotiated_price_per_night: sampled(14100), avg_final_price_per_night: sampled(13900),
+    negotiations: 12, negotiation_conversion: sampled(0.33, 12), avg_discount: sampled(0.07, 12), price_objections: 18, price_objection_rate: sampled(0.21, 87), currency: "INR",
+  },
+  needs_confirmation: { total: 3, price_missing: 3, attribution_pending: 2 },
+};
+const ae = (id: string, label: string, size: string, description = "What this number means.", formula = "") => ({ type: "metric", id, title: null, subtitle: null, label, description, formula: formula || null, kind: size === "sm" ? "tile" : "panel", sizes: [size], size, hidden: false, available: true, unavailable_reason: null });
+const analyticsLayout = {
+  entries: [
+    { type: "heading", id: "h1", title: "Portfolio performance", subtitle: null, label: null, description: null, formula: null, kind: null, sizes: [], size: null, hidden: false, available: true, unavailable_reason: null },
+    ae("occupancy", "Occupancy", "sm"), ae("revenue", "Revenue", "sm"), ae("adr", "ADR", "sm"), ae("revpar", "RevPAR", "sm"),
+    { type: "heading", id: "h2", title: "Mira's impact", subtitle: null, label: null, description: null, formula: null, kind: null, sizes: [], size: null, hidden: false, available: true, unavailable_reason: null },
+    ae("attributed_bookings", "Mira bookings", "sm"), ae("attributed_revenue", "Mira revenue", "sm"), ae("resolved_by_mira", "Resolved by Mira", "sm"), ae("host_escalations", "Escalations", "sm"),
+    ae("booking_funnel", "Booking funnel", "half"), ae("guest_intent", "What guests ask about", "half"),
+    ae("negotiation_conversion", "Negotiation conversion", "sm"), ae("avg_discount", "Average discount", "sm"), ae("price_objections", "Price objections", "sm"), ae("final_price", "Final price", "sm"),
+  ],
+  revision: 3, is_default: true, updated_at: null,
+};
+const agentConfig = {
+  config: {
+    collect: { dates: "required", guests: "required", purpose: "optional", location: "optional", budget: "off", email: "off" },
+    hot_lead: { hot_on: ["availability_confirmed", "pricing_requested"] },
+    booking: { confirm_by: "host" },
+    payment: { kind: "split", split_percent: 30, balance_due_days_before_checkin: 7, hold_minutes: 30 },
+    busy_calls: { mode: "callback_invite", callback_wait_minutes: 10 },
+  },
+  payment_overrides: { "preview-prop-1": { kind: "full" } },
+};
+const guestRows = [
+  { id: "g1", phone: "+919811100001", name: "Aarav Mehta", total_stays: 3, preferences: { room: "High floor" }, notes: "Prefers WhatsApp.", last_property_id: "preview-prop-0", preferred_language: "english", last_outcome: "Asked for a call back", last_follow_up: "Call about the villa rate", last_call_at: ago(2), conversation_summaries: [], created_at: ago(900) },
+  { id: "g2", phone: "+919811100002", name: "Priya Nair", total_stays: 1, preferences: {}, notes: null, last_property_id: null, preferred_language: "hindi", last_outcome: null, last_follow_up: null, last_call_at: ago(30), conversation_summaries: [], created_at: ago(500) },
+  { id: "g3", phone: "+919811100003", name: null, total_stays: 0, preferences: {}, notes: null, last_property_id: null, preferred_language: null, last_outcome: null, last_follow_up: null, last_call_at: null, conversation_summaries: [], created_at: ago(100) },
+];
+const guestDetail = {
+  ...guestRows[0], lifetime_revenue: 412000,
+  conversation_summaries: [
+    { call_session_id: "c1", property_id: "preview-prop-0", property_name: "Hunzuru Wabi Sabi Villa near Manali", date: ago(48), summary: "Group of five wants Manali 15 to 20 November and asked for a call back about the villa rate.", lead_temperature: "hot" },
+    { call_session_id: "c2", property_id: "preview-prop-1", property_name: "The Slow-life Cottage & Bonnfire near Kasol", date: ago(900), summary: "Stayed two nights in March, asked about the bonfire.", lead_temperature: "warm" },
+  ],
+  recent_calls: [{ id: "c1", property_id: "preview-prop-0", property_name: "Hunzuru Wabi Sabi Villa near Manali", status: "completed", ai_summary: callDetail.ai_summary, started_at: ago(2) }],
+};
+
 const routes: Array<[RegExp, unknown]> = [
   [/^\/analytics\/overview/, overview],
   [/^\/leads\/service-requests/, serviceRequests],
@@ -328,7 +398,11 @@ const routes: Array<[RegExp, unknown]> = [
   [/^\/faq$/, faqEntries],
   [/^\/bookings\/[^/]+\/reconciliation/, reconciliationFixture],
   [/^\/bookings$/, bookingsFixture],
-  [/^\/guests/, []],
+  [/^\/guests\/[^/]+/, guestDetail],
+  [/^\/guests/, guestRows],
+  [/^\/analytics\/dashboard/, analyticsDashboard],
+  [/^\/preferences\/analytics-widgets/, analyticsLayout],
+  [/^\/agent-config/, agentConfig],
   [/^\/negotiation-rules/, negotiationRules],
   [/^\/analytics\/objection-insights/, objectionInsights],
   [/^\/properties/, properties],

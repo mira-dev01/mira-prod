@@ -136,7 +136,7 @@ Ink is a warm near-black on parchment, with lighter cream-paper blocks, and a si
 - One typeface, hierarchy by weight, size and tracked caps.
 - Terracotta means active/primary/selected only; state colors mean state only.
 
-**Scope, honestly.** The Visible Grid was built and verified on the Settings, Overview, Leads, Calls, Properties, Calendar and Pricing surfaces (pages, `components/settings/*`, `components/overview/*`, the Leads tabs, `components/property-*.tsx`, `policies-tab.tsx`). The shared tokens (the user's parchment and terracotta colors, font, radius, shadows) and primitives (Button, Input, Badge, Card, Tabs, sidebar) are global, so other dashboard pages already inherit the new palette and font. The Sheet/Cell layout system, the construction grid, the type roles for headings and values, and the segmented control have NOT been applied to the remaining pages (Guests, FAQ, Analytics, Agent; the Agent page already shares the new discount-policy section). Those pages have not been redesigned and may still use the older card layouts and spacing.
+**Scope.** The Visible Grid is applied to every dashboard page: Settings, Overview, Leads, Calls, Properties, Calendar, Pricing, Guests, FAQ, Analytics and Agent (pages, `components/settings/*`, `components/overview/*`, `components/property-*.tsx`, `policies-tab.tsx`, `components/agent/*`, `components/analytics/*`). The Sheet/Cell layout system, the construction grid, the type roles for headings and values and the segmented control are shared. Outside the system: the internal admin panel (`/admin`), the sign-in screens and the landing page.
 
 ## Colors
 

@@ -3,9 +3,8 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { FieldRow, Sheet, SheetFooter, SheetHeading, WideCell } from "@/components/ui/sheet";
 import { DictationTextarea } from "@/components/ui/dictation-textarea";
-import { Label } from "@/components/ui/label";
 import { ApiError, api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { cn } from "@/lib/utils";
@@ -43,91 +42,78 @@ export function VoiceStep() {
   }
 
   return (
-    <Card>
-        <CardHeader>
-          <CardTitle>Voice agent personalization</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="mb-3 text-sm text-muted-foreground">
-            Leave any field blank to use MIRA&apos;s default. The golden rules (never hallucinate
-            pricing, always escalate when unsure, etc.) stay fixed regardless — these only change
-            tone and wording.
-          </p>
-          <form onSubmit={handleSavePersonalization} className="space-y-6">
-            <div className="space-y-2">
-              <Label htmlFor="agent_first_message">Opening greeting</Label>
-              <DictationTextarea
-                id="agent_first_message"
-                placeholder="Namaste {guest_name}! I'm Mira, calling on behalf of {host_name} about {property_name}."
-                value={firstMessage}
-                onValueChange={setFirstMessage}
-              />
-              <p className="text-xs text-muted-foreground">
-                Placeholders: {"{host_name}"}, {"{property_name}"}, {"{city}"}, {"{guest_name}"} — any that
-                don&apos;t apply to a given call are left blank automatically. Set during registration; edit
-                it here any time.
-              </p>
+    <form onSubmit={handleSavePersonalization}>
+      <Sheet>
+        <WideCell>
+          <SheetHeading title="Voice agent personalization">Blank fields use Mira&apos;s default.</SheetHeading>
+          <FieldRow
+            label="Opening greeting"
+            htmlFor="agent_first_message"
+            hint="Placeholders: {host_name}, {property_name}, {city}, {guest_name}."
+          >
+            <DictationTextarea
+              id="agent_first_message"
+              placeholder="Namaste {guest_name}! I'm Mira, calling on behalf of {host_name} about {property_name}."
+              value={firstMessage}
+              onValueChange={setFirstMessage}
+            />
+          </FieldRow>
+          <FieldRow label="Personality note" htmlFor="agent_persona">
+            <DictationTextarea
+              id="agent_persona"
+              placeholder="e.g. Sound like a warm, chatty local host -- informal, never corporate."
+              value={persona}
+              onValueChange={setPersona}
+            />
+          </FieldRow>
+          <FieldRow label="Voice">
+            <div className="flex gap-2">
+              {(["female", "male"] as const).map((gender) => (
+                <Button
+                  key={gender}
+                  type="button"
+                  variant={voiceGender === gender ? "default" : "outline"}
+                  size="sm"
+                  aria-pressed={voiceGender === gender}
+                  className={cn("capitalize", voiceGender === gender && "pointer-events-none")}
+                  onClick={() => setVoiceGender(gender)}
+                >
+                  {gender}
+                </Button>
+              ))}
             </div>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="agent_persona">Personality note</Label>
-                <DictationTextarea
-                  id="agent_persona"
-                  placeholder="e.g. Sound like a warm, chatty local host -- informal, never corporate."
-                  value={persona}
-                  onValueChange={setPersona}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Voice</Label>
-                <div className="flex gap-2">
-                  {(["female", "male"] as const).map((gender) => (
-                    <Button
-                      key={gender}
-                      type="button"
-                      variant={voiceGender === gender ? "default" : "outline"}
-                      size="sm"
-                      aria-pressed={voiceGender === gender}
-                      className={cn("capitalize", voiceGender === gender && "pointer-events-none")}
-                      onClick={() => setVoiceGender(gender)}
-                    >
-                      {gender}
-                    </Button>
-                  ))}
-                </div>
-                <p className="text-xs text-muted-foreground">MIRA speaks in this voice on every call for this account.</p>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="agent_escalation_phrase">Escalation phrase</Label>
-              <DictationTextarea
-                id="agent_escalation_phrase"
-                placeholder="e.g. One moment, let me get my colleague on the line for you."
-                value={escalationPhrase}
-                onValueChange={setEscalationPhrase}
-              />
-              <p className="text-xs text-muted-foreground">
-                Said when MIRA takes down your details to have you follow up with the guest later.
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="agent_handoff_phrase">Live call handoff phrase</Label>
-              <DictationTextarea
-                id="agent_handoff_phrase"
-                placeholder="e.g. Hold on — the host is available now. I'm passing the call to them."
-                value={handoffPhrase}
-                onValueChange={setHandoffPhrase}
-              />
-              <p className="text-xs text-muted-foreground">
-                Said when you tap &quot;Take Call&quot; on a live call and MIRA transfers it to your phone —
-                different from the escalation phrase above, which is for when you follow up later.
-              </p>
-            </div>
-            <Button type="submit" disabled={savingPersonalization}>
-              Save personalization
+          </FieldRow>
+          <FieldRow
+            label="Escalation phrase"
+            htmlFor="agent_escalation_phrase"
+            hint="Said when Mira takes your details for a later follow-up."
+          >
+            <DictationTextarea
+              id="agent_escalation_phrase"
+              placeholder="e.g. One moment, let me get my colleague on the line for you."
+              value={escalationPhrase}
+              onValueChange={setEscalationPhrase}
+            />
+          </FieldRow>
+          <FieldRow
+            label="Handoff phrase"
+            htmlFor="agent_handoff_phrase"
+            hint="Said when you take over a live call."
+          >
+            <DictationTextarea
+              id="agent_handoff_phrase"
+              placeholder="e.g. Hold on — the host is available now. I'm passing the call to them."
+              value={handoffPhrase}
+              onValueChange={setHandoffPhrase}
+            />
+          </FieldRow>
+          <SheetFooter>
+            <Button type="submit" variant="cta" disabled={savingPersonalization}>
+              {savingPersonalization ? "Saving…" : "Save"}
             </Button>
-          </form>
-        </CardContent>
-      </Card>
+          </SheetFooter>
+        </WideCell>
+      </Sheet>
+    </form>
   );
 }

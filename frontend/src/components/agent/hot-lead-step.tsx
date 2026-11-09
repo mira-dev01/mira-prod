@@ -4,13 +4,14 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { OptionCard } from "@/components/option-card";
+import { Sheet, SheetFooter, SheetHeading, WideCell } from "@/components/ui/sheet";
 import { api, ApiError } from "@/lib/api";
 import type { AgentConfig, AgentHotSignal } from "@/lib/types";
 
-const SIGNALS: { key: AgentHotSignal; title: string; description: string }[] = [
-  { key: "availability_confirmed", title: "Their dates are free", description: "The dates the guest wants turn out to be available." },
-  { key: "pricing_requested", title: "They ask for the price", description: "The guest wants a quote for a stay." },
-  { key: "negotiation_initiated", title: "They ask for a discount", description: "The guest starts negotiating the price." },
+const SIGNALS: { key: AgentHotSignal; title: string }[] = [
+  { key: "availability_confirmed", title: "Their dates are free" },
+  { key: "pricing_requested", title: "They ask for the price" },
+  { key: "negotiation_initiated", title: "They ask for a discount" },
 ];
 
 export function HotLeadStep({ config, onSaved }: { config: AgentConfig; onSaved: (next: AgentConfig) => void }) {
@@ -36,29 +37,20 @@ export function HotLeadStep({ config, onSaved }: { config: AgentConfig; onSaved:
   }
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h2 className="text-base font-medium">What makes a lead hot</h2>
-        <p className="text-sm text-muted-foreground">
-          A guest who agrees to book is always marked very hot. Pick what else counts.
-        </p>
-      </div>
-
-      <div className="space-y-2">
-        {SIGNALS.map(({ key, title, description }) => (
-          <OptionCard
-            key={key}
-            checked={hotOn.includes(key)}
-            onCheckedChange={(on) => toggle(key, on)}
-            title={title}
-            description={description}
-          />
-        ))}
-      </div>
-
-      <Button onClick={save} disabled={!dirty || saving}>
-        {saving ? "Saving…" : "Save"}
-      </Button>
-    </div>
+    <Sheet>
+      <WideCell>
+        <SheetHeading title="What makes a lead hot">A guest who agrees to book is always very hot.</SheetHeading>
+        <div className="col-span-12 px-5 py-4">
+          {SIGNALS.map(({ key, title }) => (
+            <OptionCard key={key} checked={hotOn.includes(key)} onCheckedChange={(on) => toggle(key, on)} title={title} />
+          ))}
+        </div>
+        <SheetFooter>
+          <Button variant="cta" onClick={save} disabled={!dirty || saving}>
+            {saving ? "Saving…" : "Save"}
+          </Button>
+        </SheetFooter>
+      </WideCell>
+    </Sheet>
   );
 }

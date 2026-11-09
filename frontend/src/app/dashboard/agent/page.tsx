@@ -2,7 +2,7 @@
 
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Cell, Sheet } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BusyCallsStep } from "@/components/agent/busy-calls-step";
@@ -59,9 +59,7 @@ function AgentPageContent() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="page-title">Agent</h1>
-      </div>
+      <h1 className="page-title">Agent</h1>
 
       <Tabs value={step} onValueChange={handleStepChange}>
         <TabsList>
@@ -73,16 +71,14 @@ function AgentPageContent() {
         </TabsList>
 
         {waiting ? (
-          <Card className="mt-4">
-            <CardHeader>
+          <Sheet className="mt-4">
+            <Cell>
               <Skeleton variant="text" className="w-1/3" />
-            </CardHeader>
-            <CardContent className="space-y-3">
               {Array.from({ length: 4 }, (_, i) => (
                 <Skeleton key={i} variant="text" />
               ))}
-            </CardContent>
-          </Card>
+            </Cell>
+          </Sheet>
         ) : needsConfig && !config ? (
           <p className="pt-4 text-sm text-destructive">{error?.message ?? "Could not load your agent settings."}</p>
         ) : (

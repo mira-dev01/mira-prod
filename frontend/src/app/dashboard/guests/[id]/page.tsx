@@ -3,18 +3,18 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { BedDouble, Languages, Phone, Plus, Trash2, UserRound, Wallet } from "lucide-react";
+import { Plus, Trash2, UserRound } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CardContent, CardHeader } from "@/components/ui/card";
+import { Cell, CellCard, CellTitle, Sheet, SubField } from "@/components/ui/sheet";
 import { DictationTextarea } from "@/components/ui/dictation-textarea";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { ListRow, ListRowHeader } from "@/components/ui/list-row";
 import { Skeleton } from "@/components/ui/skeleton";
-import { StatCard } from "@/components/stat-card";
+import { MetricCell } from "@/components/metric-cell";
 import { StatusChip, type StatusTone } from "@/components/status-chip";
 import { useLeadLabels } from "@/lib/leads";
 import { useAsync } from "@/hooks/use-async";
@@ -124,12 +124,12 @@ export default function GuestProfilePage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
           <Avatar size="lg">
             <AvatarFallback>{guestInitials(detail.name) ?? <UserRound className="size-5" />}</AvatarFallback>
           </Avatar>
-          <div>
+          <div className="min-w-0">
             <h1 className="page-title">{isTest ? "Browser test" : detail.name ?? "Unknown guest"}</h1>
             <p className="text-sm text-muted-foreground">{isTest ? "browser-test" : detail.phone}</p>
           </div>
@@ -139,168 +139,149 @@ export default function GuestProfilePage() {
         </Button>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard icon={BedDouble} label="Total stays" value={detail.total_stays} />
-        <StatCard icon={Wallet} label="Lifetime revenue" value={`₹${detail.lifetime_revenue.toLocaleString("en-IN")}`} />
-        <StatCard
-          icon={Languages}
+      <Sheet>
+        <MetricCell label="Total stays" value={detail.total_stays} />
+        <MetricCell label="Lifetime revenue" value={`₹${detail.lifetime_revenue.toLocaleString("en-IN")}`} accent />
+        <MetricCell
           label="Preferred language"
-          value={detail.preferred_language ? capitalize(detail.preferred_language) : undefined}
+          value={detail.preferred_language ? capitalize(detail.preferred_language) : "—"}
+          muted={!detail.preferred_language}
         />
-        <StatCard
-          icon={Phone}
+        <MetricCell
           label="Last call"
-          value={detail.last_call_at ? new Date(detail.last_call_at).toLocaleDateString() : undefined}
+          value={detail.last_call_at ? new Date(detail.last_call_at).toLocaleDateString() : "—"}
+          muted={!detail.last_call_at}
         />
-      </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Previous stays &amp; conversations</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {detail.conversation_summaries.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No past conversations yet.</p>
-              ) : (
-                <div className="space-y-0">
-                  {[...detail.conversation_summaries].reverse().map((entry, i) => (
-                    <ListRow key={i}>
-                      <ListRowHeader>
-                        <span className="text-sm font-medium">{entry.property_name ?? "Portfolio-wide"}</span>
-                        <Badge variant="outline">{leadLabels.label(entry.lead_temperature)}</Badge>
-                      </ListRowHeader>
-                      <p className="text-sm text-muted-foreground">{entry.summary}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {entry.date ? new Date(entry.date).toLocaleDateString() : "—"}
-                      </p>
-                    </ListRow>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+        {(detail.last_outcome || detail.last_follow_up) && (
+          <Cell className="flex-row flex-wrap items-center gap-x-8 gap-y-2 py-4 text-sm">
+            {detail.last_outcome && (
+              <p>
+                <span className="text-muted-foreground">Last outcome:</span> {detail.last_outcome}
+              </p>
+            )}
+            {detail.last_follow_up && (
+              <p>
+                <span className="text-muted-foreground">Follow up:</span> {detail.last_follow_up}
+              </p>
+            )}
+          </Cell>
+        )}
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent calls</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {detail.recent_calls.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No calls yet.</p>
-              ) : (
-                <div className="space-y-0">
-                  {detail.recent_calls.map((call) => (
-                    <ListRow key={call.id} interactive onClick={() => router.push(`/dashboard/calls/${call.id}`)}>
-                      <ListRowHeader>
-                        <span className="text-sm font-medium">{call.property_name ?? "Portfolio-wide"}</span>
-                        <StatusChip status={call.status} tone={callStatusTone[call.status] ?? "neutral"} />
-                      </ListRowHeader>
-                      {call.ai_summary && (
-                        <p className="text-sm text-muted-foreground">{call.ai_summary.conversation_summary}</p>
-                      )}
-                      <p className="text-xs text-muted-foreground">
-                        {call.started_at ? new Date(call.started_at).toLocaleString() : "—"}
-                      </p>
-                    </ListRow>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+        <CellCard className="md:col-span-6">
+          <CardHeader>
+            <CellTitle>Previous stays &amp; conversations</CellTitle>
+          </CardHeader>
+          <CardContent>
+            {detail.conversation_summaries.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No past conversations yet.</p>
+            ) : (
+              <div>
+                {[...detail.conversation_summaries].reverse().map((entry, i) => (
+                  <ListRow key={i} variant="boxed">
+                    <ListRowHeader>
+                      <span className="text-sm font-semibold">{entry.property_name ?? "Portfolio-wide"}</span>
+                      <Badge variant="outline">{leadLabels.label(entry.lead_temperature)}</Badge>
+                    </ListRowHeader>
+                    <p className="text-sm text-muted-foreground">{entry.summary}</p>
+                    <p className="text-[13px] text-muted-foreground">
+                      {entry.date ? new Date(entry.date).toLocaleDateString() : "—"}
+                    </p>
+                  </ListRow>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </CellCard>
 
-        <div className="space-y-6">
-          {(detail.last_outcome || detail.last_follow_up) && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Status</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2 text-sm">
-                {detail.last_outcome && (
-                  <p>
-                    <span className="text-muted-foreground">Last outcome:</span> {detail.last_outcome}
-                  </p>
-                )}
-                {detail.last_follow_up && (
-                  <p>
-                    <span className="text-muted-foreground">Follow up:</span> {detail.last_follow_up}
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          )}
+        <CellCard className="md:col-span-6">
+          <CardHeader>
+            <CellTitle>Recent calls</CellTitle>
+          </CardHeader>
+          <CardContent>
+            {detail.recent_calls.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No calls yet.</p>
+            ) : (
+              <div>
+                {detail.recent_calls.map((call) => (
+                  <ListRow key={call.id} variant="boxed" interactive onClick={() => router.push(`/dashboard/calls/${call.id}`)}>
+                    <ListRowHeader>
+                      <span className="text-sm font-semibold">{call.property_name ?? "Portfolio-wide"}</span>
+                      <StatusChip status={call.status} tone={callStatusTone[call.status] ?? "neutral"} />
+                    </ListRowHeader>
+                    {call.ai_summary && (
+                      <p className="text-sm text-muted-foreground">{call.ai_summary.conversation_summary}</p>
+                    )}
+                    <p className="text-[13px] text-muted-foreground">
+                      {call.started_at ? new Date(call.started_at).toLocaleString() : "—"}
+                    </p>
+                  </ListRow>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </CellCard>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Preferences</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {prefEntries.length === 0 && (
-                <p className="text-sm text-muted-foreground">No preferences recorded yet.</p>
-              )}
-              {prefEntries.map((entry, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <Input
-                    placeholder="e.g. room preference"
-                    value={entry.key}
-                    onChange={(e) =>
-                      setPrefEntries((prev) => prev.map((p, j) => (j === i ? { ...p, key: e.target.value } : p)))
-                    }
-                    className="w-2/5"
-                  />
-                  <Input
-                    placeholder="e.g. high floor, away from elevator"
-                    value={entry.value}
-                    onChange={(e) =>
-                      setPrefEntries((prev) => prev.map((p, j) => (j === i ? { ...p, value: e.target.value } : p)))
-                    }
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    onClick={() => setPrefEntries((prev) => prev.filter((_, j) => j !== i))}
-                  >
-                    <Trash2 className="size-3.5" />
-                  </Button>
-                </div>
-              ))}
+        <Cell className="md:col-span-6">
+          <CellTitle>Preferences</CellTitle>
+          {prefEntries.length === 0 && <p className="text-sm text-muted-foreground">No preferences recorded yet.</p>}
+          {prefEntries.map((entry, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <Input
+                placeholder="e.g. room preference"
+                aria-label="Preference"
+                value={entry.key}
+                onChange={(e) =>
+                  setPrefEntries((prev) => prev.map((p, j) => (j === i ? { ...p, key: e.target.value } : p)))
+                }
+                className="w-2/5"
+              />
+              <Input
+                placeholder="e.g. high floor, away from elevator"
+                aria-label="Value"
+                value={entry.value}
+                onChange={(e) =>
+                  setPrefEntries((prev) => prev.map((p, j) => (j === i ? { ...p, value: e.target.value } : p)))
+                }
+              />
               <Button
                 type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setPrefEntries((prev) => [...prev, { key: "", value: "" }])}
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Remove preference"
+                onClick={() => setPrefEntries((prev) => prev.filter((_, j) => j !== i))}
               >
-                <Plus className="size-3.5" />
-                Add preference
+                <Trash2 className="size-3.5" />
               </Button>
-            </CardContent>
-          </Card>
+            </div>
+          ))}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="self-start"
+            onClick={() => setPrefEntries((prev) => [...prev, { key: "", value: "" }])}
+          >
+            <Plus className="size-3.5" />
+            Add preference
+          </Button>
+        </Cell>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Edit guest</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSave} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="guest-name">Name</Label>
-                  <Input id="guest-name" value={name} onChange={(e) => setName(e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="guest-notes">Notes</Label>
-                  <DictationTextarea id="guest-notes" value={notes} onValueChange={setNotes} />
-                </div>
-                <Button type="submit" disabled={submitting} className="w-full">
-                  {submitting ? "Saving…" : "Save"}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+        <Cell className="md:col-span-6">
+          <CellTitle>Edit guest</CellTitle>
+          <form onSubmit={handleSave} className="space-y-4">
+            <SubField label="Name" htmlFor="guest-name">
+              <Input id="guest-name" value={name} onChange={(e) => setName(e.target.value)} />
+            </SubField>
+            <SubField label="Notes" htmlFor="guest-notes">
+              <DictationTextarea id="guest-notes" value={notes} onValueChange={setNotes} />
+            </SubField>
+            <Button type="submit" variant="cta" disabled={submitting}>
+              {submitting ? "Saving…" : "Save"}
+            </Button>
+          </form>
+        </Cell>
+      </Sheet>
     </div>
   );
 }

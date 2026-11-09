@@ -8,13 +8,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { ListRow } from "@/components/ui/list-row";
 import { RightPanel, RightPanelFooterButton } from "@/components/ui/right-panel";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { CellCard, CellTitle } from "@/components/ui/sheet";
+import { CellCard, CellTitle, FieldRow, Sheet, WideCell } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError } from "@/lib/api";
@@ -160,7 +159,7 @@ export function UnansweredQuestionsCard({
             type="button"
             onClick={() => setExpanded((v) => !v)}
             aria-expanded={expanded}
-            className="flex w-full items-center justify-between gap-3 p-6 text-left"
+            className="flex w-full items-center justify-between gap-3 px-5 text-left"
           >
             <div className="min-w-0">
               <Title>Questions Mira couldn&apos;t answer</Title>
@@ -265,56 +264,53 @@ export function UnansweredQuestionsCard({
           </RightPanelFooterButton>
         }
       >
-        <form id="answer-gap-form" onSubmit={handleAnswerGap} className="space-y-4">
-          {answeringGap?.suggested_answer && (
-            <p className="text-xs text-muted-foreground">Pre-filled from a similar answer.</p>
-          )}
-          <div className="space-y-2">
-            <Label htmlFor="gap-question">Question</Label>
-            <Input
-              id="gap-question"
-              required
-              maxLength={500}
-              value={gapQuestionText}
-              onChange={(e) => setGapQuestionText(e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="gap-answer">Type an answer</Label>
-            <Textarea
-              id="gap-answer"
-              value={gapAnswerText}
-              onChange={(e) => setGapAnswerText(e.target.value)}
-              disabled={!!recordedBlob}
-              placeholder="e.g. Yes, the pool is heated and open from 7am to 9pm."
-            />
-          </div>
-
-          <div className="space-y-2 rounded-md border p-3">
-            <Label>Or record a voice answer</Label>
-            <div className="flex items-center gap-3">
-              {!isRecording ? (
-                <Button type="button" variant="outline" size="sm" onClick={startRecording} className="shrink-0">
-                  {recordedBlob ? "Re-record" : "Start recording"}
-                </Button>
-              ) : (
-                <Button type="button" variant="destructive" size="sm" onClick={stopRecording} className="shrink-0">
-                  Stop recording
-                </Button>
-              )}
-              {recordedUrl && <audio controls src={recordedUrl} className="h-8 min-w-0 flex-1" />}
-            </div>
-            {recordedBlob && (
-              <p className="text-xs text-muted-foreground">
-                Voice answer recorded -- it will be transcribed and used instead of the typed answer above.
-              </p>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="gap-scope">Applies to</Label>
-            <PropertyScopePicker id="gap-scope" value={scope} onChange={setScope} properties={properties} />
-          </div>
+        <form id="answer-gap-form" onSubmit={handleAnswerGap}>
+          <Sheet>
+            <WideCell>
+              <FieldRow
+                label="Question"
+                htmlFor="gap-question"
+                hint={answeringGap?.suggested_answer ? "Pre-filled from a similar answer." : undefined}
+              >
+                <Input
+                  id="gap-question"
+                  required
+                  maxLength={500}
+                  value={gapQuestionText}
+                  onChange={(e) => setGapQuestionText(e.target.value)}
+                />
+              </FieldRow>
+              <FieldRow label="Answer" htmlFor="gap-answer">
+                <Textarea
+                  id="gap-answer"
+                  value={gapAnswerText}
+                  onChange={(e) => setGapAnswerText(e.target.value)}
+                  disabled={!!recordedBlob}
+                  placeholder="e.g. Yes, the pool is heated and open from 7am to 9pm."
+                />
+                <div className="flex flex-wrap items-center gap-3">
+                  {!isRecording ? (
+                    <Button type="button" variant="outline" size="sm" onClick={startRecording} className="shrink-0">
+                      {recordedBlob ? "Re-record" : "Or record a voice answer"}
+                    </Button>
+                  ) : (
+                    <Button type="button" variant="destructive" size="sm" onClick={stopRecording} className="shrink-0">
+                      Stop recording
+                    </Button>
+                  )}
+                  {recordedUrl && <audio controls src={recordedUrl} className="h-8 min-w-0 flex-1" />}
+                </div>
+                {recordedBlob && (
+                  <p className="text-[13px] text-muted-foreground">
+                    Voice answer recorded. It is transcribed and used instead of the typed answer.
+                  </p>
+                )}
+              </FieldRow>
+              <FieldRow label="Applies to" htmlFor="gap-scope">
+                <PropertyScopePicker id="gap-scope" value={scope} onChange={setScope} properties={properties} />
+              </FieldRow>
+            </WideCell>
+          </Sheet>
         </form>
       </RightPanel>
     </>

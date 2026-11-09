@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { OptionCard } from "@/components/option-card";
+import { Sheet, SheetFooter, SheetHeading, WideCell } from "@/components/ui/sheet";
 import { api, ApiError } from "@/lib/api";
 import type { AgentBusyCalls, AgentConfig } from "@/lib/types";
 
@@ -35,26 +36,23 @@ export function BusyCallsStep({ config, onSaved }: { config: AgentConfig; onSave
   }
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h2 className="text-base font-medium">When Mira is already on a call</h2>
-        <p className="text-sm text-muted-foreground">
-          The guest always gets a WhatsApp and you always get an alert in the app. Choose what happens next.
-        </p>
-      </div>
-
-      <div className="space-y-2">
+    <Sheet>
+      <WideCell>
+        <SheetHeading title="When Mira is already on a call">
+          The guest always gets a WhatsApp and you always get an alert.
+        </SheetHeading>
+        <div className="col-span-12 px-5 py-4">
         <OptionCard
           checked={mode === "host_follows_up"}
           onCheckedChange={(on) => on && setMode("host_follows_up")}
           title="I'll follow up myself"
-          description="Mira doesn't message them again. You get a ticket to call them back."
+          description="You get a ticket to call them back."
         />
         <OptionCard
           checked={mode === "callback_invite"}
           onCheckedChange={(on) => on && setMode("callback_invite")}
           title="Ask them to call back"
-          description="When Mira is free, she messages the guest to ring again. If they don't, you get a ticket."
+          description="Mira messages them when she's free. If they don't ring, you get a ticket."
         >
           <div className="flex items-center gap-2">
             <Label htmlFor="callback-wait" className="text-sm font-normal text-muted-foreground">
@@ -73,11 +71,13 @@ export function BusyCallsStep({ config, onSaved }: { config: AgentConfig; onSave
             <span className="text-sm text-muted-foreground">minutes for them to ring back</span>
           </div>
         </OptionCard>
-      </div>
-
-      <Button onClick={save} disabled={!dirty || saving || (mode === "callback_invite" && !validMinutes)}>
-        {saving ? "Saving…" : "Save"}
-      </Button>
-    </div>
+        </div>
+        <SheetFooter>
+          <Button variant="cta" onClick={save} disabled={!dirty || saving || (mode === "callback_invite" && !validMinutes)}>
+            {saving ? "Saving…" : "Save"}
+          </Button>
+        </SheetFooter>
+      </WideCell>
+    </Sheet>
   );
 }

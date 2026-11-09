@@ -5,7 +5,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { EyeOff, Heading, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Cell, CellTitle, Hint, Sheet } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { ReorderableList } from "@/components/reorderable-list";
 import { SizeChoice } from "@/components/overview/overview-customizer";
@@ -128,28 +128,25 @@ export function AnalyticsCustomizer({
   }
 
   return (
-    <Card aria-label="Customize Analytics" role="region">
-      <CardContent className="space-y-4 py-4">
+    <Sheet aria-label="Customize Analytics" role="region">
+      <Cell className="gap-4">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h2 className="text-sm font-medium">Customize Analytics</h2>
-            <p className="text-xs text-muted-foreground">
-              Drag to reorder, pick sizes, hide metrics and write your own headings. The page below updates as you
-              go. Hiding a metric never changes how anything is calculated.
-            </p>
+            <CellTitle>Customize Analytics</CellTitle>
+            <Hint>Hiding a metric never changes how anything is calculated.</Hint>
           </div>
           <div className="flex shrink-0 gap-2">
             <Button variant="outline" size="sm" onClick={onCancel} disabled={saving}>
               Cancel
             </Button>
-            <Button size="sm" onClick={handleSave} disabled={saving}>
+            <Button size="sm" variant="cta" onClick={handleSave} disabled={saving}>
               {saving ? "Saving…" : "Save layout"}
             </Button>
           </div>
         </div>
 
         {conflict && (
-          <p className="rounded-md border px-3 py-2 text-xs text-muted-foreground">
+          <p className="border border-foreground px-3 py-2 text-[13px] text-muted-foreground">
             This layout was changed in another tab or device.{" "}
             <button type="button" className="font-medium text-foreground underline underline-offset-2 hover:no-underline" onClick={onReload}>
               Load the latest version
@@ -159,7 +156,7 @@ export function AnalyticsCustomizer({
 
         <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
           <div className="space-y-2">
-            <h3 className="text-xs font-medium text-muted-foreground">On your page</h3>
+            <h3 className="text-xs font-bold tracking-[0.1em] text-muted-foreground uppercase">On your page</h3>
             <ReorderableList
               items={draft.shown}
               onReorder={(shown) => onDraftChange({ ...draft, shown })}
@@ -223,16 +220,16 @@ export function AnalyticsCustomizer({
           </div>
 
           <div className="space-y-2">
-            <h3 className="text-xs font-medium text-muted-foreground">Add metrics</h3>
+            <h3 className="text-xs font-bold tracking-[0.1em] text-muted-foreground uppercase">Add metrics</h3>
             {draft.hidden.length === 0 ? (
               <p className="text-xs text-muted-foreground">Every available metric is on your page.</p>
             ) : (
               <ul className="space-y-1">
                 {draft.hidden.map((entry) => (
-                  <li key={entry.id} className="flex items-start gap-2 rounded-lg border bg-card px-3 py-2">
+                  <li key={entry.id} className="flex items-start gap-2 border-b border-border py-2 last:border-0">
                     <div className="min-w-0 flex-1">
                       <p className="text-sm">{entry.label}</p>
-                      {entry.description && <p className="text-xs text-muted-foreground">{entry.description}</p>}
+                      {entry.description && <p className="text-[13px] text-muted-foreground">{entry.description}</p>}
                     </div>
                     <Button variant="outline" size="sm" onClick={() => add(entry)} aria-label={`Add ${entry.label}`}>
                       <Plus className="size-3.5" />
@@ -255,7 +252,7 @@ export function AnalyticsCustomizer({
         </div>
 
         {!layout.is_default && (
-          <div className="border-t pt-3 text-xs">
+          <div className="border-t border-border pt-3 text-[13px]">
             <button
               type="button"
               className="text-muted-foreground hover:text-foreground"
@@ -266,7 +263,7 @@ export function AnalyticsCustomizer({
             </button>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </Cell>
+    </Sheet>
   );
 }

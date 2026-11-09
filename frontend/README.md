@@ -62,8 +62,10 @@ type, layout blocks, rules) before changing any UI.
   share ruled edges, so a row of blocks is always the same height.
 - **Status:** Settings, Overview (`src/app/dashboard/page.tsx`, `components/overview/*`), Leads
   (`src/app/dashboard/leads/`, all four tabs), Calls (list and detail), Properties (list, Policies tab
-  and the Edit/New property panel), Calendar (grid, Block dates and booking panels) and Pricing (incl. the
-  discount-policy section shared with the Agent page) are laid out in the new system.
+  and the Edit/New property panel), Calendar (grid, Block dates and booking panels), Pricing (incl. the
+  discount-policy section shared with the Agent page), Guests (list and profile), FAQ, Analytics (the
+  customizable metric grid) and Agent (every step) are laid out in the new system: every dashboard page now is. `MetricCell`
+  (`components/metric-cell.tsx`) is the shared headline figure; `OptionCard` is a ruled checkbox row.
 - **Accent rule:** brick (`--primary`) is scarce. `Button` default is ink; `variant="cta"` (brick) is the single main
   action of a view and the footer button of slide-over panels. Links, checkboxes and switches are ink; at most
   one brick number per view. Every other page inherits

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Cell, Hint, Sheet, SheetHeading } from "@/components/ui/sheet";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -20,12 +20,11 @@ import {
 import { useAsync } from "@/hooks/use-async";
 import { useDateRange } from "@/hooks/use-date-range";
 import { api } from "@/lib/api";
-import { cn } from "@/lib/utils";
 import type { AnalyticsEntry } from "@/lib/types";
 
 // Predefined sizes only, on a 12-column grid (full width on phones).
 const SIZE_CLASS: Record<string, string> = {
-  sm: "col-span-12 sm:col-span-6 lg:col-span-3",
+  sm: "col-span-6 p-4 sm:p-5 lg:col-span-3",
   md: "col-span-12 lg:col-span-6",
   half: "col-span-12 lg:col-span-6",
   full: "col-span-12",
@@ -95,12 +94,10 @@ export default function AnalyticsPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h1 className="page-title">Analytics</h1>
-        </div>
+        <h1 className="page-title">Analytics</h1>
         <div className="flex flex-wrap items-center gap-3">
           <Select value={propertyId} onValueChange={(v) => v && setPropertyId(v)}>
-            <SelectTrigger className="w-52" aria-label="Property">
+            <SelectTrigger className="w-full sm:w-52" aria-label="Property">
               <SelectValue>
                 {(value: string) =>
                   value === ALL_PROPERTIES
@@ -156,36 +153,38 @@ export default function AnalyticsPage() {
       )}
 
       {noProperties ? (
-        <Card>
-          <CardContent className="space-y-3 py-6 text-sm">
-            <p className="font-medium">No properties yet</p>
-            <p className="text-muted-foreground">
-              Add a property and connect its calendar — Analytics fills in as bookings and Mira conversations come in.
-            </p>
-            <Button render={<Link href="/dashboard/properties" />} size="sm">
+        <Sheet>
+          <Cell>
+            <p className="text-sm font-semibold">No properties yet</p>
+            <Hint>Analytics fills in as bookings and Mira conversations come in.</Hint>
+            <Button render={<Link href="/dashboard/properties" />} variant="cta" className="self-start">
               Add a property
             </Button>
-          </CardContent>
-        </Card>
+          </Cell>
+        </Sheet>
       ) : error ? (
-        <Card>
-          <CardContent className="space-y-3 py-6 text-sm">
-            <p className="font-medium">Couldn&apos;t load analytics</p>
-            <p className="text-muted-foreground">Something went wrong fetching these numbers. Try again.</p>
-            <Button size="sm" variant="outline" onClick={refetchDashboard}>
+        <Sheet>
+          <Cell>
+            <p className="text-sm font-semibold">Couldn&apos;t load analytics</p>
+            <Hint>Something went wrong fetching these numbers.</Hint>
+            <Button variant="outline" className="self-start" onClick={refetchDashboard}>
               Retry
             </Button>
-          </CardContent>
-        </Card>
+          </Cell>
+        </Sheet>
       ) : loading || !data ? (
-        <div className="space-y-4" aria-busy="true" aria-label="Loading analytics">
-          <Skeleton className="h-44 w-full" />
-          <div className="grid gap-4 lg:grid-cols-2">
-            <Skeleton className="h-72 w-full" />
-            <Skeleton className="h-72 w-full" />
-          </div>
-          <Skeleton className="h-56 w-full" />
-        </div>
+        <Sheet aria-busy="true" aria-label="Loading analytics">
+          {[0, 1, 2, 3].map((i) => (
+            <Cell key={i} className="col-span-6 lg:col-span-3">
+              <Skeleton className="h-16 w-full" />
+            </Cell>
+          ))}
+          {[0, 1].map((i) => (
+            <Cell key={i} className="lg:col-span-6">
+              <Skeleton className="h-48 w-full" />
+            </Cell>
+          ))}
+        </Sheet>
       ) : (
         <AnalyticsGrid
           entries={
@@ -221,7 +220,7 @@ export default function AnalyticsPage() {
       >
         <Link
           href="/dashboard/calendar"
-          className="block border-t pt-4 text-xs text-muted-foreground underline-offset-4 hover:underline"
+          className="block text-[13px] font-semibold text-foreground underline underline-offset-4 hover:no-underline"
         >
           Open the Calendar
         </Link>
@@ -246,38 +245,43 @@ function AnalyticsGrid({
 }) {
   if (entries === null) {
     return (
-      <Card>
-        <CardContent className="space-y-3 py-6 text-sm">
-          <p className="text-muted-foreground">Couldn&apos;t load your Analytics layout.</p>
-          <Button size="sm" variant="outline" onClick={onRetryLayout}>
+      <Sheet>
+        <Cell>
+          <p className="text-sm text-muted-foreground">Couldn&apos;t load your Analytics layout.</p>
+          <Button variant="outline" className="self-start" onClick={onRetryLayout}>
             Retry
           </Button>
-        </CardContent>
-      </Card>
+        </Cell>
+      </Sheet>
     );
   }
   if (entries.length === 0) {
-    return <p className="text-sm text-muted-foreground">Nothing on your Analytics page yet — use Customize to add metrics.</p>;
+    return (
+      <Sheet>
+        <Cell>
+          <p className="text-sm text-muted-foreground">Nothing on your Analytics page yet. Use Customize to add metrics.</p>
+        </Cell>
+      </Sheet>
+    );
   }
   return (
-    <div className="grid grid-cols-12 items-stretch gap-4">
+    <Sheet>
       {entries.map((entry) => {
         if (entry.type === "heading") {
           return (
-            <div key={entry.id} className="col-span-12 pt-2">
-              <h2 className="font-heading text-base font-medium">{entry.title}</h2>
-              {entry.subtitle && <p className="text-sm text-muted-foreground">{entry.subtitle}</p>}
-            </div>
+            <SheetHeading key={entry.id} title={entry.title ?? ""} className="border-r border-b border-foreground bg-card/70">
+              {entry.subtitle}
+            </SheetHeading>
           );
         }
         const content = renderAnalyticsMetric(entry, context);
         if (content === null) return null;
         return (
-          <div key={entry.id} className={cn("min-w-0", SIZE_CLASS[entry.size ?? "full"])}>
+          <Cell key={entry.id} className={SIZE_CLASS[entry.size ?? "full"]}>
             {content}
-          </div>
+          </Cell>
         );
       })}
-    </div>
+    </Sheet>
   );
 }

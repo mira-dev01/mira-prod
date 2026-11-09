@@ -1,16 +1,15 @@
-import type { LucideIcon } from "lucide-react";
 import { TrendingDown, TrendingUp } from "lucide-react";
 import { InfoTip } from "@/components/ui/info-tip";
+import { CellTitle, Hint } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 /**
- * One headline number for the Analytics page. Same visual language as
- * StatCard (icon chip, muted label, semibold value) but borderless so a
- * section card can hold several without nesting boxes inside boxes.
+ * One headline number for the Analytics page: the content of a ruled Cell (a
+ * small caps label, the number in the display face, change and hint lines).
+ * `accent` makes the number brick, for the page's one hero figure only.
  */
 export function MetricTile({
-  icon: Icon,
   label,
   value,
   hint,
@@ -18,10 +17,10 @@ export function MetricTile({
   changeLabel,
   loading,
   muted,
+  accent,
   info,
   footer,
 }: {
-  icon: LucideIcon;
   label: string;
   value: string;
   /** One short line under the value (a definition, sample size, caveat). */
@@ -32,38 +31,39 @@ export function MetricTile({
   loading?: boolean;
   /** Value is a placeholder ("—" / "Not enough data yet"), render it quieter. */
   muted?: boolean;
+  accent?: boolean;
   /** What the metric means and how it's calculated, behind an ⓘ. */
   info?: React.ReactNode;
   /** A note or action under the tile (e.g. "Confirm 3 booking prices"). */
   footer?: React.ReactNode;
 }) {
   return (
-    <div className="space-y-1.5 rounded-lg p-3">
-      <div className="flex items-center gap-2">
-        <span
-          className="flex size-7 items-center justify-center rounded-full"
-          style={{ backgroundColor: "color-mix(in oklch, var(--accent-warm) 16%, transparent)" }}
-        >
-          <Icon className="size-3.5" style={{ color: "var(--accent-warm)" }} />
-        </span>
-        <p className="text-sm text-muted-foreground">{label}</p>
+    <div className="flex h-full flex-col gap-2">
+      <div className="flex items-start justify-between gap-2">
+        <CellTitle>{label}</CellTitle>
         {info && <InfoTip label={`About ${label}`}>{info}</InfoTip>}
       </div>
       {loading ? (
-        <Skeleton className="h-7 w-20" />
+        <Skeleton className="h-9 w-20" />
       ) : (
-        <p className={cn("text-2xl font-semibold tabular-nums", muted && "text-base font-medium text-muted-foreground")}>
+        <p
+          className={cn(
+            "font-heading text-[clamp(1.75rem,2.4vw,2.25rem)] leading-tight font-semibold tracking-tight tabular-nums",
+            accent && !muted && "text-primary",
+            muted && "text-base font-medium text-muted-foreground"
+          )}
+        >
           {value}
         </p>
       )}
       {!loading && change !== undefined && change !== null && (
-        <p className="flex items-center gap-1 text-xs text-muted-foreground">
+        <p className="flex items-center gap-1 text-[13px] text-muted-foreground">
           {change >= 0 ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
           {change >= 0 ? "+" : ""}
           {(change * 100).toFixed(0)}% {changeLabel}
         </p>
       )}
-      {!loading && hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+      {!loading && hint && <Hint>{hint}</Hint>}
       {!loading && footer}
     </div>
   );
@@ -71,7 +71,7 @@ export function MetricTile({
 
 /**
  * Horizontal single-series bar list (funnel stages, guest intent). One hue,
- * thin bars with rounded data ends, values in text ink beside each bar so
+ * thin square bars, values in text ink beside each bar so
  * nothing is encoded by color alone; each row carries a hover title and an
  * aria-label with the exact numbers.
  */
@@ -91,15 +91,15 @@ export function BarList({
             <div className="flex items-baseline justify-between gap-3 text-sm">
               <span>
                 {row.label}
-                {row.sublabel && <span className="ml-1.5 text-xs text-muted-foreground">{row.sublabel}</span>}
+                {row.sublabel && <span className="ml-1.5 text-[13px] text-muted-foreground">{row.sublabel}</span>}
               </span>
               <span className="shrink-0 tabular-nums">
-                <span className="font-medium">{row.value.toLocaleString("en-IN")}</span>
-                {row.detail && <span className="ml-1.5 text-xs text-muted-foreground">{row.detail}</span>}
+                <span className="font-semibold">{row.value.toLocaleString("en-IN")}</span>
+                {row.detail && <span className="ml-1.5 text-[13px] text-muted-foreground">{row.detail}</span>}
               </span>
             </div>
-            <div className="h-2 w-full rounded-full bg-muted">
-              <div className="h-2 rounded-full bg-(--chart-1) transition-[width]" style={{ width: `${width}%` }} />
+            <div className="h-2 w-full bg-muted">
+              <div className="h-2 bg-(--status-pending-strong) transition-[width]" style={{ width: `${width}%` }} />
             </div>
           </li>
         );

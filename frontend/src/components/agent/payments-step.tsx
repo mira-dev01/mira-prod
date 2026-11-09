@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { OptionCard } from "@/components/option-card";
+import { FieldRow, Sheet, SheetFooter, SheetHeading, WideCell } from "@/components/ui/sheet";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError } from "@/lib/api";
 import type { AgentConfig } from "@/lib/types";
@@ -53,13 +54,11 @@ function PaymentFields({ value, onChange }: { value: Payment; onChange: (next: P
           checked={value.kind === "full"}
           onCheckedChange={(on) => on && update({ kind: "full" })}
           title="The full amount"
-          description="The guest pays the whole stay price to book."
         />
         <OptionCard
           checked={value.kind === "split"}
           onCheckedChange={(on) => on && update({ kind: "split" })}
           title="An advance, then the rest"
-          description="The guest pays part now; the link tells them when the balance is due."
         >
           <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             <Input
@@ -110,7 +109,7 @@ function PaymentFields({ value, onChange }: { value: Payment; onChange: (next: P
           className="w-24"
           aria-invalid={!inRange(hold, LIMITS.hold)}
         />
-        <span className="text-muted-foreground">minutes while the guest pays. No one else can book them meanwhile.</span>
+        <span className="text-muted-foreground">minutes while the guest pays.</span>
       </div>
     </div>
   );
@@ -156,8 +155,8 @@ function PropertyRule({
         />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium">{property.name}</p>
-          <p className="text-xs text-muted-foreground">
-            {own ? `Own rules: ${describe({ ...portfolio, ...override })}` : "Follows the rules above"}
+          <p className="text-[13px] text-muted-foreground">
+            {own ? `Own rules: ${describe({ ...portfolio, ...override })}` : "Follows the shared rules"}
           </p>
         </div>
         {!editing && (
@@ -226,71 +225,78 @@ export function PaymentsStep({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-base font-medium">Confirming and paying for a booking</h2>
-        <p className="text-sm text-muted-foreground">What happens once a guest agrees a price.</p>
-      </div>
+      <Sheet>
+        <WideCell>
+          <SheetHeading title="Confirming and paying for a booking" />
 
-      {billing.loading && !billing.data ? (
-        <Skeleton className="h-10 w-full" />
-      ) : !connected ? (
-        <p className="rounded-lg border px-3 py-2 text-sm">
-          Mira can only send payment links once Razorpay is connected.{" "}
-          <Link href="/dashboard/settings?tab=billing" className="font-medium underline underline-offset-2">
-            Connect it in Settings → Billing
-          </Link>
-          . Until then, you confirm every booking yourself.
-        </p>
-      ) : null}
+          {billing.loading && !billing.data ? (
+            <div className="col-span-12 border-b border-border p-5">
+              <Skeleton className="h-10 w-full" />
+            </div>
+          ) : !connected ? (
+            <p className="col-span-12 border-b border-border p-5 text-sm">
+              Mira can only send payment links once Razorpay is connected.{" "}
+              <Link href="/dashboard/settings?tab=billing" className="font-semibold underline underline-offset-2 hover:no-underline">
+                Connect it in Settings → Billing
+              </Link>
+              . Until then, you confirm every booking yourself.
+            </p>
+          ) : null}
 
-      <div className="space-y-2">
-        <p className="text-sm font-medium">Who confirms a booking?</p>
-        <OptionCard
-          checked={confirmBy === "host"}
-          onCheckedChange={(on) => on && setConfirmBy("host")}
-          title="I do"
-          description="A payment is received, then you get a ticket to confirm the booking."
-        />
-        <OptionCard
-          checked={confirmBy === "payment"}
-          onCheckedChange={(on) => on && setConfirmBy("payment")}
-          title="A verified payment does"
-          description="Mira checks the payment with Razorpay and marks the booking confirmed. You're told straight away."
-        />
-      </div>
+          <FieldRow label="Who confirms a booking?">
+            <div>
+              <OptionCard
+                checked={confirmBy === "host"}
+                onCheckedChange={(on) => on && setConfirmBy("host")}
+                title="I do"
+                description="You get a ticket to confirm once a payment arrives."
+              />
+              <OptionCard
+                checked={confirmBy === "payment"}
+                onCheckedChange={(on) => on && setConfirmBy("payment")}
+                title="A verified payment does"
+                description="Mira checks the payment with Razorpay and confirms. You're told straight away."
+              />
+            </div>
+          </FieldRow>
 
-      <div className="space-y-2">
-        <p className="text-sm font-medium">What does the guest pay?</p>
-        <PaymentFields value={payment} onChange={setPayment} />
-      </div>
+          <FieldRow label="What does the guest pay?">
+            <PaymentFields value={payment} onChange={setPayment} />
+          </FieldRow>
 
-      <Button onClick={save} disabled={!dirty || saving || !valid}>
-        {saving ? "Saving…" : "Save"}
-      </Button>
+          <SheetFooter>
+            <Button variant="cta" onClick={save} disabled={!dirty || saving || !valid}>
+              {saving ? "Saving…" : "Save"}
+            </Button>
+          </SheetFooter>
+        </WideCell>
+      </Sheet>
 
       {(properties.data?.length ?? 0) > 1 && (
-        <div className="space-y-1">
-          <div>
-            <p className="text-sm font-medium">By property</p>
-            <p className="text-xs text-muted-foreground">
-              <span className="mr-1 inline-block size-2 rounded-full align-middle" style={{ backgroundColor: "var(--status-live)" }} />
-              follows the rules above
-              <span className="mx-1 ml-3 inline-block size-2 rounded-full align-middle" style={{ backgroundColor: "var(--status-pending)" }} />
-              has its own
-            </p>
-          </div>
-          <ul className="divide-y">
-            {properties.data!.map((p) => (
-              <PropertyRule
-                key={p.id}
-                property={{ id: p.id, name: p.name }}
-                portfolio={config.payment}
-                override={overrides[p.id]}
-                onChanged={onOverridesChanged}
-              />
-            ))}
-          </ul>
-        </div>
+        <Sheet>
+          <WideCell>
+            <SheetHeading title="By property" />
+            <div className="col-span-12 px-5 py-2">
+              <p className="py-2 text-[13px] text-muted-foreground">
+                <span className="mr-1 inline-block size-2 rounded-full align-middle" style={{ backgroundColor: "var(--status-live)" }} />
+                follows the shared rules
+                <span className="mx-1 ml-3 inline-block size-2 rounded-full align-middle" style={{ backgroundColor: "var(--status-pending)" }} />
+                has its own
+              </p>
+              <ul className="divide-y divide-border">
+                {properties.data!.map((p) => (
+                  <PropertyRule
+                    key={p.id}
+                    property={{ id: p.id, name: p.name }}
+                    portfolio={config.payment}
+                    override={overrides[p.id]}
+                    onChanged={onOverridesChanged}
+                  />
+                ))}
+              </ul>
+            </div>
+          </WideCell>
+        </Sheet>
       )}
     </div>
   );
