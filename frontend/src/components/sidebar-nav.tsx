@@ -50,13 +50,28 @@ const links: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 
+/** The Mira mark: a drawn eight-point star in the brand amber (not a text glyph,
+ * so it renders identically everywhere). */
+function MiraMark({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+      className={className ?? "size-4"}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="square"
+    >
+      <path d="M8 1.5v13M1.5 8h13M3.4 3.4l9.2 9.2M12.6 3.4l-9.2 9.2" />
+    </svg>
+  );
+}
+
 function MiraLogo() {
   return (
-    <span className="text-2xl text-foreground">
-      {/* ︎ forces text (not emoji) rendering of ✳ on mobile -- kept in the
-          default body font, not brand-logo: Alex Brush (script/handwriting)
-          doesn't carry a good "✳" glyph. */}
-      <span className="mr-1 text-[var(--accent-warm)]">{"✳︎"}</span>
+    <span className="inline-flex items-center gap-1.5 text-2xl text-foreground">
+      <MiraMark className="size-5 text-(--accent-warm)" />
       <span className="brand-logo">mira</span>
     </span>
   );
@@ -117,7 +132,7 @@ function NavLinks({ onNavigate, onTalkToMira }: { onNavigate?: () => void; onTal
             }}
             className="rounded-lg px-3 py-2 text-left text-sm font-medium text-accent-foreground transition-colors duration-150 hover:bg-accent"
           >
-            <span className="mr-1.5 text-[var(--accent-warm)]">{"✳︎"}</span>
+            <MiraMark className="mr-1.5 inline-block size-3.5 align-[-1px] text-(--accent-warm)" />
             Talk to Mira
           </button>
         )}

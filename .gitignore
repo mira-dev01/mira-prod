@@ -17,3 +17,9 @@ __pycache__/
 .env*
 .airbnb_imports_tmp/
 venv312/
+
+# Design-tool scratch (look-picker sketches, review screenshots). DESIGN.md, design.json and surface briefs are tracked.
+.impeccable/mocks/
+.impeccable/review/
+.impeccable/hook.cache.json
+.impeccable/questions/

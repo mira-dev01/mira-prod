@@ -7,12 +7,19 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-montserrat);
+  --font-sans: var(--font-grotesk);
   --font-mono: ui-monospace, "DM Mono", "SFMono-Regular", Menlo, monospace;
-  --font-display: var(--font-libre-baskerville);
+  --font-display: var(--font-grotesk);
   --font-heading: var(--font-display);
-  --font-subheading: var(--font-montserrat);
-  --font-brand: var(--font-libre-baskerville);
+  --font-subheading: var(--font-grotesk);
+  --font-brand: var(--font-grotesk);
+  --color-status-live: var(--status-live);
+  --color-status-pending: var(--status-pending);
+  --color-status-pending-strong: var(--status-pending-strong);
+  --color-status-progress: var(--status-progress);
+  --color-status-purple: var(--status-purple);
+  --color-status-orange: var(--status-orange);
+  --color-grid-line: var(--grid-line);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -56,18 +63,19 @@
   --shadow-xl: var(--shadow-xl);
 }
 
-/* Mira Design System -- parchment/cream light mode (the dashboard is
-   always-light per the brand spec; dark mode below exists for the
-   landing-page context and isn't toggled on in the dashboard today).
+/* Mira Design System -- parchment/cream + terracotta palette (kept at the
+   user's request) under the "Visible Grid" layout and type: one neutral
+   grotesk (Schibsted Grotesk), flat ruled blocks and a faint 12-column
+   construction grid (--grid-line, .field-grid) behind every Sheet
+   (components/settings/sheet.tsx). The dashboard is always-light; the .dark
+   block below is unused legacy.
 
    Spacing: Tailwind's --spacing base unit here is 0.25rem (4px), so every
    *even* spacing utility (p-2, gap-4, p-6, px-8, ...) already lands on an
    8pt grid -- there's no separate spacing scale to define, just a rule to
    follow. Use even steps (2/4/6/8/10/12/16/20/24) for layout rhythm
    (padding, gaps, margins between sections). Odd steps (p-2.5, p-3, gap-5,
-   gap-7...) are reserved for optical corrections only (e.g. aligning text
-   baselines against an icon) -- don't reach for them as a default card or
-   section padding. */
+   gap-7...) are reserved for optical corrections only. */
 :root {
   --background: #f3ede2;
   --foreground: #2a2420;
@@ -85,26 +93,32 @@
   --accent-foreground: #2a2420;
   --destructive: #b8452f;
   --border: #e3d9c8;
-  --input: #e3d9c8;
-  --ring: #d9a441;
+  /* A deeper taupe than --border so form fields keep a 3:1 edge on the cream. */
+  --input: #968a76;
+  /* Focus rings use the terracotta (3:1+ on cream); amber was ~2:1. */
+  --ring: #b8452f;
   --chart-1: #d9a441;
   --chart-2: #6b7d5a;
   --chart-3: #c17a42;
   --chart-4: #5f7a99;
   --chart-5: #8d6f96;
-  --radius: 0.625rem;
+  --radius: 0.25rem;
   --sidebar: #fbf7ef;
   --sidebar-foreground: #2a2420;
   --sidebar-primary: #b8452f;
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #ece3d4;
   --sidebar-accent-foreground: #2a2420;
-  --sidebar-border: #e3d9c8;
-  --sidebar-ring: #d9a441;
+  --sidebar-border: #2a2420;
+  --sidebar-ring: #b8452f;
+
+  /* The construction grid: decorative hairlines only (never carries
+     meaning), so intentionally very low contrast. */
+  --grid-line: #e6dcc8;
 
   /* Status + intent-category colors, for badges/accents across calls,
      leads, and notifications. */
-  --status-live: #75885f;
+  --status-live: #5c7048;
   --status-live-bg: rgba(117, 136, 95, 0.12);
   --status-pending: #d9a441;
   --status-pending-bg: rgba(217, 164, 65, 0.12);
@@ -127,16 +141,13 @@
   --priority-low: #7d7267;
   --priority-low-bg: rgba(125, 114, 103, 0.12);
 
-  /* Elevation scale. Warm, low-contrast shadows (not neutral black) so
-     depth reads as "paper stacked on parchment" rather than a generic
-     Material dropshadow -- consistent with the palette's warm undertone.
-     xs = resting card state (replaces the old single ad hoc shadow),
-     sm/md = hover/lifted states, lg = popovers & dropdowns, xl = dialogs. */
-  --shadow-xs: 0 1px 2px rgba(42, 36, 32, 0.04);
-  --shadow-sm: 0 2px 6px rgba(42, 36, 32, 0.06), 0 1px 2px rgba(42, 36, 32, 0.04);
-  --shadow-md: 0 6px 16px rgba(42, 36, 32, 0.08), 0 2px 4px rgba(42, 36, 32, 0.04);
-  --shadow-lg: 0 12px 28px rgba(42, 36, 32, 0.12), 0 4px 8px rgba(42, 36, 32, 0.04);
-  --shadow-xl: 0 24px 48px rgba(42, 36, 32, 0.16), 0 8px 16px rgba(42, 36, 32, 0.06);
+  /* Elevation: the page is flat (blocks are ruled, not raised). Only
+     layers that genuinely float above it (popovers, dialogs) get a shadow. */
+  --shadow-xs: none;
+  --shadow-sm: 0 1px 3px rgba(42, 36, 32, 0.10);
+  --shadow-md: 0 4px 12px rgba(42, 36, 32, 0.12);
+  --shadow-lg: 0 8px 24px rgba(42, 36, 32, 0.16), 0 2px 6px rgba(42, 36, 32, 0.08);
+  --shadow-xl: 0 16px 40px rgba(42, 36, 32, 0.20), 0 4px 10px rgba(42, 36, 32, 0.10);
 
   /* Hover/active deltas. Applied as utility classes (see @layer components
      below) so every interactive surface -- cards, rows, buttons -- lifts
@@ -202,55 +213,43 @@
 }
 
 @layer components {
-  /* Page titles use the brand's display face, per the Mira Design System
-     (see ui_kits/dashboard "page-title" class). Clash Display has no
-     italic cut (unlike Boska before it) -- left upright rather than
-     letting the browser synthesize a faux-oblique, which looks poor on
-     geometric sans display faces. */
+  /* Page title: 28px bold, tight. */
   .page-title {
     font-family: var(--font-display);
-    font-weight: 500;
-    font-size: 1.625rem;
-    letter-spacing: -0.4px;
-    line-height: 1.2;
+    font-weight: 700;
+    font-size: 1.75rem;
+    letter-spacing: -0.03em;
+    line-height: 1.15;
   }
 
-  /* Brand wordmark only ("mira" in the sidebar, login card, and public
-     gallery header) -- Alex Brush is a script/handwriting face, always set
-     in lowercase, never italic (it's already slanted by design) or bold
-     (no weight axis, single static cut). Never use this for body/heading
-     text generally. */
+  /* Brand wordmark only ("mira" in the sidebar, login card, public gallery
+     header): bold lowercase grotesk, tightly tracked. */
   .brand-logo {
     font-family: var(--font-brand);
-    font-weight: 500;
+    font-weight: 700;
     font-size: 1.25em;
+    letter-spacing: -0.04em;
     font-style: normal;
   }
 
   /* Micro section labels, e.g. sidebar nav group headers. */
   .text-micro {
-    font-size: 0.6875rem;
-    font-weight: 500;
+    font-size: 0.75rem;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.1em;
     color: var(--muted-foreground);
   }
 
-  /* Table column headers (Caller, Status, Started, ...) use the
-     subheading face throughout the app -- currently the same face as body
-     copy (--font-sans), set via --font-subheading so any future divergence
-     only needs to change one variable rather than every TableHead usage.
-     Size/weight still set explicitly here (not left at the table's
-     inherited text-sm + a font-medium utility) -- 1rem/450 was originally
-     tuned to compensate for New Title reading smaller than Amulya at the
-     same declared size; now that the subheading face IS Amulya, that
-     compensation is no longer needed but has been left as-is since sizing
-     wasn't part of this change -- revisit if table headers now look too
-     large relative to body text. */
+  /* Table column headers: small, bold, tracked caps -- same voice as a
+     Sheet block's section name. */
   [data-slot="table-head"] {
     font-family: var(--font-subheading);
-    font-size: 1rem;
-    font-weight: 450;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted-foreground);
   }
 
   /* Status badge colors -- pair with <Badge variant="outline" className="badge-status-*">
@@ -286,10 +285,9 @@
     border-color: transparent;
   }
 
-  /* Cards in this design system carry a warm, barely-visible resting
-     shadow rather than relying on border alone. */
+  /* Cards are flat: a hairline ink border does the separating. */
   [data-slot="card"] {
-    box-shadow: var(--shadow-xs);
+    box-shadow: none;
   }
 
   /* Shared hover-elevation convention: apply to any card/row-style surface
@@ -317,5 +315,21 @@
   }
   .surface-hover:hover {
     background-color: var(--accent);
+  }
+}
+
+@layer components {
+  /* The construction grid: 12 equal columns drawn as faint vertical
+     hairlines, aligned to the grid container's own padding box so every
+     block that spans whole columns lands on a line. Decorative only; off
+     on narrow screens where blocks stack and the columns collapse. */
+  .field-grid {
+    background-image: linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: calc(100% / 12) 100%;
+  }
+  @media (max-width: 767px) {
+    .field-grid {
+      background-image: none;
+    }
   }
 }

@@ -4,10 +4,10 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Cell, CellFoot, CellLead, CellTitle, Hint } from "@/components/settings/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAsync } from "@/hooks/use-async";
 import { ApiError, api } from "@/lib/api";
@@ -37,36 +37,35 @@ export function TransferNumbersCard() {
   const perProperty = user?.notification_preferences.transfer_number_mode === "per_property";
 
   return (
-    <Card id="transfer-numbers">
-      <CardHeader>
-        <CardTitle>Host transfer number</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-5">
+    <Cell id="transfer-numbers" className="md:col-span-6 lg:col-span-4">
+      <CellTitle>Host transfer number</CellTitle>
+      <CellLead>Where live calls and alerts reach you.</CellLead>
+      <div className="flex flex-col gap-5">
         <AccountNumberForm
           initial={user?.phone ?? ""}
           label={perProperty ? "Main number" : "Your number"}
-          help={
-            perProperty
-              ? "Used for any property without its own number below, and before a guest has picked a property."
-              : "Live transfers, escalations and WhatsApp alerts for every property come to this number."
-          }
           onSaved={refreshUser}
         />
         {perProperty && <PropertyGroupsEditor />}
-      </CardContent>
-    </Card>
+      </div>
+      <CellFoot>
+        <Hint>
+          {perProperty
+            ? "Used for any property without its own number below, and before a guest has picked a property."
+            : "Live transfers, escalations and WhatsApp alerts for every property come to this number."}
+        </Hint>
+      </CellFoot>
+    </Cell>
   );
 }
 
 function AccountNumberForm({
   initial,
   label,
-  help,
   onSaved,
 }: {
   initial: string;
   label: string;
-  help: string;
   onSaved: () => Promise<void>;
 }) {
   const [phone, setPhone] = useState(initial);
@@ -88,7 +87,9 @@ function AccountNumberForm({
 
   return (
     <form onSubmit={handleSave} className="space-y-1.5">
-      <Label htmlFor="account-transfer-number">{label}</Label>
+      <Label htmlFor="account-transfer-number" className={label === "Your number" ? "sr-only" : undefined}>
+        {label}
+      </Label>
       <div className="flex gap-2">
         <Input
           id="account-transfer-number"
@@ -100,7 +101,6 @@ function AccountNumberForm({
           Save
         </Button>
       </div>
-      <p className="text-xs text-muted-foreground">{help}</p>
     </form>
   );
 }
@@ -173,13 +173,13 @@ function PropertyGroupsEditor() {
   }
 
   return (
-    <div className="space-y-3 border-t pt-4">
+    <div className="space-y-3 border-t border-border pt-4">
       <div>
         <p className="text-sm font-medium">Numbers per group of properties</p>
-        <p className="text-xs text-muted-foreground">Tick the properties each number covers.</p>
+        <p className="text-[13px] text-muted-foreground">Tick the properties each number covers.</p>
       </div>
       {groups.map((group, index) => (
-        <div key={group.key} className="space-y-2 rounded-lg border p-3">
+        <div key={group.key} className="space-y-2 border-t border-border pt-3 first:border-t-0 first:pt-0">
           <div className="flex gap-2">
             <Input
               aria-label={`Number ${index + 1}`}
@@ -211,7 +211,7 @@ function PropertyGroupsEditor() {
         </div>
       ))}
       {unassigned.length > 0 && (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-[13px] text-muted-foreground">
           Using your main number: {unassigned.map((p) => p.name).join(", ")}
         </p>
       )}

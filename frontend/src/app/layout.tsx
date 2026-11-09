@@ -1,25 +1,16 @@
 import type { Metadata } from "next";
-import { Libre_Baskerville, Montserrat } from "next/font/google";
+import { Schibsted_Grotesk } from "next/font/google";
 import "./globals.css";
 import { ClerkProvider } from "@clerk/nextjs";
 import { AuthProvider } from "@/lib/auth-context";
 import { Toaster } from "@/components/ui/sonner";
 
-// Active theme (see globals.css): Libre Baskerville for headings/table
-// subheadings + the "mira" wordmark, Montserrat for body/UI text.
-// Libre Baskerville has no variable axis (fixed 400/700 cuts, each with a
-// true italic) -- weight/style declared explicitly. Montserrat is a
-// variable font, so no weight needed; Tailwind's font-medium/font-semibold/
-// font-bold classes interpolate along its own weight axis.
-const libreBaskerville = Libre_Baskerville({
-  variable: "--font-libre-baskerville",
-  subsets: ["latin"],
-  weight: ["400", "700"],
-  style: ["normal", "italic"],
-});
-
-const montserrat = Montserrat({
-  variable: "--font-montserrat",
+// Active theme (see globals.css): one neutral grotesk for everything --
+// headings, table headers, body/UI text and the "mira" wordmark. A variable
+// font, so Tailwind's font-medium/font-semibold/font-bold classes
+// interpolate along its own weight axis; no weight list needed.
+const grotesk = Schibsted_Grotesk({
+  variable: "--font-grotesk",
   subsets: ["latin"],
 });
 
@@ -28,8 +19,8 @@ export const metadata: Metadata = {
   description: "AI voice receptionist for Airbnb hosts",
   icons: {
     // SVG favicon — forces text (not emoji) rendering in all browsers
-    icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90' font-family='serif' font-style='italic'>M</text></svg>",
-    apple: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90' font-family='serif' font-style='italic'>M</text></svg>",
+    icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90' font-family='sans-serif' font-weight='700'>M</text></svg>",
+    apple: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90' font-family='sans-serif' font-weight='700'>M</text></svg>",
   },
 };
 
@@ -41,7 +32,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${libreBaskerville.variable} ${montserrat.variable} h-full antialiased`}
+      className={`${grotesk.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-background">
         <ClerkProvider
@@ -58,8 +49,8 @@ export default function RootLayout({
               colorInput: "#f3ede2",
               colorInputForeground: "#2a2420",
               colorBorder: "#e3d9c8",
-              borderRadius: "0.625rem",
-              fontFamily: "var(--font-montserrat), sans-serif",
+              borderRadius: "0.25rem",
+              fontFamily: "var(--font-grotesk), sans-serif",
             },
           }}
           localization={{

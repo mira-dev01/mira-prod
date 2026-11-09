@@ -3,13 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Loader2, Phone, PhoneOff } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Cell, CellFoot, CellLead, CellTitle, Hint } from "@/components/settings/sheet";
 import { ApiError, api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import type { CallHoursStatus } from "@/lib/types";
@@ -110,99 +109,98 @@ export function HostCallHoursCard() {
   }
 
   return (
-    <Card className="lg:col-span-2">
-      <CardHeader className="flex flex-row items-center justify-between gap-3">
-        <CardTitle>Host call hours</CardTitle>
+    <Cell className="md:col-span-12 lg:col-span-4">
+      <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+        <CellTitle>Host call hours</CellTitle>
         <StatusBadge loading={statusLoading} status={liveStatus} />
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <p className="text-sm text-muted-foreground">
-          During these hours, guest calls go to your phone instead of Mira. Outside them, Mira answers.
-          Applies to every property on your account.
-        </p>
+      </div>
+      <CellLead>When your phone rings instead of Mira.</CellLead>
 
-        <form onSubmit={handleSave} className="space-y-4">
-          <div className="flex items-center gap-3">
-            <Switch id="host-call-hours-enabled" checked={enabled} onCheckedChange={setEnabled} />
-            <Label htmlFor="host-call-hours-enabled">Send calls to my phone during set hours</Label>
-          </div>
+      <form onSubmit={handleSave} className="flex flex-col gap-4">
+        <div className="flex items-center gap-3">
+          <Switch id="host-call-hours-enabled" checked={enabled} onCheckedChange={setEnabled} />
+          <Label htmlFor="host-call-hours-enabled">Send calls to my phone during set hours</Label>
+        </div>
 
-          {enabled && (
-            <div className="space-y-4 rounded-lg border bg-muted/50 p-4">
-              <div className="grid gap-4 sm:grid-cols-3">
-                <div className="space-y-2">
-                  <Label htmlFor="host-call-hours-start">You answer from</Label>
-                  <Input
-                    id="host-call-hours-start"
-                    type="time"
-                    required
-                    value={start}
-                    onChange={(e) => setStart(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="host-call-hours-end">You answer until</Label>
-                  <Input
-                    id="host-call-hours-end"
-                    type="time"
-                    required
-                    value={end}
-                    onChange={(e) => setEnd(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="host-call-hours-timezone">Timezone</Label>
-                  <Select value={timezone} onValueChange={(v) => v && setTimezone(v)}>
-                    <SelectTrigger id="host-call-hours-timezone" className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {TIMEZONES.map((tz) => (
-                        <SelectItem key={tz.value} value={tz.value}>
-                          {tz.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+        {enabled && (
+          <div className="flex flex-col gap-4 border-t border-border pt-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="host-call-hours-start">You answer from</Label>
+                <Input
+                  id="host-call-hours-start"
+                  type="time"
+                  required
+                  value={start}
+                  onChange={(e) => setStart(e.target.value)}
+                />
               </div>
-
-              <p className="text-xs text-muted-foreground">
-                These hours apply every day. An overnight window (e.g. 10:00 PM – 6:00 AM) is fine — it
-                stays in effect across midnight.
-              </p>
-
-              {start && end ? (
-                <div className="rounded-md border border-dashed bg-background p-3 text-sm">
-                  <p>
-                    Calls go to you <span className="font-medium">{formatHourMinute(start)}</span>
-                    {" – "}
-                    <span className="font-medium">{formatHourMinute(end)}</span> ({timezoneLabel(timezone)}).
-                  </p>
-                  <p className="text-muted-foreground">Outside these hours, Mira answers calls.</p>
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground">Enter both times to see a preview.</p>
-              )}
+              <div className="space-y-2">
+                <Label htmlFor="host-call-hours-end">You answer until</Label>
+                <Input
+                  id="host-call-hours-end"
+                  type="time"
+                  required
+                  value={end}
+                  onChange={(e) => setEnd(e.target.value)}
+                />
+              </div>
             </div>
-          )}
+            <div className="space-y-2">
+              <Label htmlFor="host-call-hours-timezone">Timezone</Label>
+              <Select value={timezone} onValueChange={(v) => v && setTimezone(v)}>
+                <SelectTrigger id="host-call-hours-timezone" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {TIMEZONES.map((tz) => (
+                    <SelectItem key={tz.value} value={tz.value}>
+                      {tz.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-          <Button type="submit" disabled={saving}>
-            {saving ? "Saving…" : "Save"}
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
+            <Hint>
+              These hours apply every day. An overnight window (e.g. 10:00 PM – 6:00 AM) is fine — it stays in
+              effect across midnight.
+            </Hint>
+
+            {start && end ? (
+              <p className="text-sm">
+                Calls go to you <span className="font-bold">{formatHourMinute(start)}</span>
+                {" – "}
+                <span className="font-bold">{formatHourMinute(end)}</span> ({timezoneLabel(timezone)}). Outside
+                these hours, Mira answers calls.
+              </p>
+            ) : (
+              <Hint>Enter both times to see a preview.</Hint>
+            )}
+          </div>
+        )}
+
+        <Button type="submit" disabled={saving} className="self-start">
+          {saving ? "Saving…" : "Save"}
+        </Button>
+      </form>
+      <CellFoot>
+        <Hint>
+          During these hours, guest calls go to your phone. Outside them, Mira answers. Applies to every property
+          on your account.
+        </Hint>
+      </CellFoot>
+    </Cell>
   );
 }
 
 function StatusBadge({ loading, status }: { loading: boolean; status: CallHoursStatus | null }) {
   if (loading) {
     return (
-      <Badge variant="outline" className="gap-1.5 text-muted-foreground">
+      <span className="inline-flex items-center gap-1.5 text-[13px] text-muted-foreground">
         <Loader2 className="size-3 animate-spin" />
         Checking…
-      </Badge>
+      </span>
     );
   }
 
@@ -210,26 +208,22 @@ function StatusBadge({ loading, status }: { loading: boolean; status: CallHoursS
     // The save itself still succeeded (or failed with its own toast) --
     // this only means the confirmation check couldn't be reached, so it
     // says that plainly rather than guessing at HOST/MIRA.
-    return (
-      <Badge variant="outline" className="text-muted-foreground">
-        Status unavailable
-      </Badge>
-    );
+    return <span className="text-[13px] text-muted-foreground">Status unavailable</span>;
   }
 
   if (status.current_owner === "HOST") {
     return (
-      <Badge className="gap-1.5 bg-emerald-600 text-white hover:bg-emerald-600">
-        <Phone className="size-3" />
+      <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-status-live">
+        <Phone className="size-3.5" />
         Live: calls ring your phone
-      </Badge>
+      </span>
     );
   }
 
   return (
-    <Badge variant="secondary" className="gap-1.5">
-      <PhoneOff className="size-3" />
+    <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-foreground">
+      <PhoneOff className="size-3.5 text-muted-foreground" />
       Live: Mira is answering
-    </Badge>
+    </span>
   );
 }

@@ -23,7 +23,12 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const { isLoaded, isSignedIn, getToken } = useClerkAuth();
+  const clerkAuth = useClerkAuth();
+  // Local design preview only (NEXT_PUBLIC_UI_PREVIEW=1): behave as signed in.
+  const preview = process.env.NODE_ENV !== "production" && process.env.NEXT_PUBLIC_UI_PREVIEW === "1";
+  const isLoaded = preview || clerkAuth.isLoaded;
+  const isSignedIn = preview || (clerkAuth.isSignedIn ?? false);
+  const getToken = clerkAuth.getToken;
   const { signOut } = useClerk();
   const { organization } = useOrganization();
   const { isLoaded: orgListLoaded, setActive, userMemberships } = useOrganizationList({

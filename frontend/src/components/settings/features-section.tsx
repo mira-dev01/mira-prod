@@ -6,14 +6,14 @@ import { toast } from "sonner";
 import { ArrowRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Segmented } from "@/components/settings/segmented";
+import { Cell, CellLead, Hint, Sheet, SheetRow, WideCell } from "@/components/settings/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { CapabilityActions, CapabilityStateChip } from "@/components/capability-state-chip";
 import { InfoTip } from "@/components/ui/info-tip";
 import { ApiError, api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { cn } from "@/lib/utils";
 import { useCapabilities } from "@/lib/capabilities-context";
 import type { CapabilityStatus } from "@/lib/types";
 
@@ -45,33 +45,29 @@ export function FeaturesSection() {
 
   if (loading && !data) {
     return (
-      <div className="space-y-4">
+      <Sheet>
         {[0, 1, 2].map((i) => (
-          <Card key={i}>
-            <CardHeader>
-              <Skeleton variant="text" className="w-1/3" />
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Skeleton variant="text" />
-              <Skeleton variant="text" />
-            </CardContent>
-          </Card>
+          <Cell key={i}>
+            <Skeleton variant="text" className="w-1/3" />
+            <Skeleton variant="text" />
+            <Skeleton variant="text" className="w-2/3" />
+          </Cell>
         ))}
-      </div>
+      </Sheet>
     );
   }
 
   // Never render a guessed feature state -- if it can't load, say so.
   if (error || !data) {
     return (
-      <Card className="max-w-md">
-        <CardContent className="space-y-3 py-6 text-sm">
-          <p className="text-muted-foreground">Couldn&apos;t load your features.</p>
-          <Button variant="outline" size="sm" onClick={() => void refetch()}>
+      <Sheet>
+        <Cell className="md:col-span-6 lg:col-span-4">
+          <p className="text-sm text-muted-foreground">Couldn&apos;t load your features.</p>
+          <Button variant="outline" size="sm" className="self-start" onClick={() => void refetch()}>
             Try again
           </Button>
-        </CardContent>
-      </Card>
+        </Cell>
+      </Sheet>
     );
   }
 
@@ -79,23 +75,21 @@ export function FeaturesSection() {
   const needsSetup = data.capabilities.filter((c) => c.state === "needs_setup").length;
 
   return (
-    <div className="space-y-6">
-      <p className="text-sm text-muted-foreground">
-        {enabledCount} of {data.capabilities.length} features on
-        {needsSetup > 0 && ` · ${needsSetup} need setup`}. Turning a feature off keeps its data and settings, so you
-        can turn it back on any time.
-      </p>
-      <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
-        {data.groups.map((group) => {
-          const items = data.capabilities.filter((c) => c.group === group.id);
-          if (items.length === 0) return null;
-          return (
-            <Card key={group.id}>
-              <CardHeader>
-                <CardTitle>{group.name}</CardTitle>
-                <p className="text-xs text-muted-foreground">{group.description}</p>
-              </CardHeader>
-              <CardContent className="divide-y p-0">
+    <Sheet>
+      <Cell className="gap-1">
+        <CellLead>
+          {enabledCount} of {data.capabilities.length} features on
+          {needsSetup > 0 && ` · ${needsSetup} need setup`}
+        </CellLead>
+        <Hint>Turning a feature off keeps its data and settings, so you can turn it back on any time.</Hint>
+      </Cell>
+      {data.groups.map((group) => {
+        const items = data.capabilities.filter((c) => c.group === group.id);
+        if (items.length === 0) return null;
+        return (
+          <WideCell key={group.id}>
+            <SheetRow title={group.name} hint={group.description}>
+              <div className="flex flex-col divide-y divide-border">
                 {items.map((cap) => (
                   <CapabilityRow
                     key={cap.id}
@@ -105,12 +99,12 @@ export function FeaturesSection() {
                     onToggle={(v) => handleToggle(cap, v)}
                   />
                 ))}
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-    </div>
+              </div>
+            </SheetRow>
+          </WideCell>
+        );
+      })}
+    </Sheet>
   );
 }
 
@@ -129,10 +123,10 @@ function CapabilityRow({
   const blockedReason = cap.enabled ? cap.disable_blocked_reason : cap.enable_blocked_reason;
 
   return (
-    <div className="space-y-2.5 px-6 py-4">
+    <div className="space-y-2.5 py-4 first:pt-0 last:pb-0">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-          <span className="text-sm font-medium">{cap.name}</span>
+          <span className="text-sm font-semibold">{cap.name}</span>
           <InfoTip label={`About ${cap.name}`}>
             <p className="text-foreground">{cap.description}</p>
             {cap.effect && <p className="text-muted-foreground">{cap.effect}</p>}
@@ -159,10 +153,11 @@ function CapabilityRow({
       <CapabilityActions
         requirements={cap.enabled ? cap.requirements : []}
         blockedReason={cap.selectable && !toggleAllowed ? blockedReason : null}
+        blockedLabel={cap.enabled ? "Can't turn off yet." : "Can't turn on yet."}
       />
 
       {cap.integrations.some((i) => !i.connected) && (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-[13px] text-muted-foreground">
           {cap.integrations
             .filter((i) => !i.connected)
             .map((i) => `${i.label} not connected${i.required ? "" : " — falls back gracefully"}`)
@@ -203,30 +198,17 @@ function TransferModeChoice() {
   }
 
   return (
-    <div className="space-y-1.5">
-      <div role="radiogroup" aria-label="Transfer number" className="flex flex-wrap gap-1 rounded-lg border p-1">
-        {TRANSFER_MODES.map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            role="radio"
-            aria-checked={mode === option.value}
-            disabled={saving}
-            onClick={() => void choose(option.value)}
-            className={cn(
-              "min-w-0 flex-1 rounded-md px-2.5 py-1.5 text-xs transition-colors disabled:opacity-60",
-              mode === option.value
-                ? "bg-accent font-medium text-accent-foreground"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
+    <div className="space-y-2">
+      <Segmented
+        label="Transfer number"
+        value={mode}
+        disabled={saving}
+        onChange={(next) => void choose(next)}
+        options={TRANSFER_MODES.map((m) => ({ value: m.value, label: m.label }))}
+      />
       <Link
         href="/dashboard/settings#transfer-numbers"
-        className="inline-flex items-center gap-1 text-xs font-medium text-(--status-pending-strong) hover:underline"
+        className="inline-flex items-center gap-1 text-[13px] font-semibold text-primary hover:underline"
       >
         Manage transfer numbers
         <ArrowRight className="size-3" />

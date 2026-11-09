@@ -3,11 +3,8 @@
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { KeyRound, Users } from "lucide-react";
-import { DefinitionRow } from "@/components/ui/definition-row";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -15,6 +12,7 @@ import { BillingTab } from "@/components/billing-tab";
 import { TechniciansSection } from "@/components/settings/technicians-section";
 import { FeaturesSection } from "@/components/settings/features-section";
 import { DashboardSection } from "@/components/settings/dashboard-section";
+import { Cell, CellFoot, CellLead, CellTitle, Hint, Sheet } from "@/components/settings/sheet";
 import { CapabilityNotice } from "@/components/capability-notice";
 import { HostCallHoursCard } from "@/components/settings/host-call-hours-card";
 import { NotificationsCard } from "@/components/settings/notifications-card";
@@ -27,17 +25,25 @@ type SettingsTab = (typeof VALID_TABS)[number];
 
 function ComingSoonTab({ icon: Icon, label }: { icon: React.ComponentType<{ className?: string }>; label: string }) {
   return (
-    <Card className="max-w-md">
-      <CardContent className="flex flex-col items-center gap-3 py-8 text-center">
-        <span className="flex size-10 items-center justify-center rounded-full bg-muted">
-          <Icon className="size-5 text-muted-foreground" />
-        </span>
-        <div className="space-y-1">
-          <p className="text-sm font-medium">{label}</p>
-          <p className="text-xs text-muted-foreground">Coming soon.</p>
+    <Sheet>
+      <Cell className="md:col-span-6 lg:col-span-4">
+        <div className="flex items-center gap-2">
+          <Icon className="size-4" />
+          <CellTitle>{label}</CellTitle>
         </div>
-      </CardContent>
-    </Card>
+        <Hint>Coming soon.</Hint>
+      </Cell>
+    </Sheet>
+  );
+}
+
+/** One labelled fact in the profile strip. */
+function Fact({ label, children, className }: { label: string; children: React.ReactNode; className?: string }) {
+  return (
+    <Cell className={className} aria-label={label}>
+      <CellTitle>{label}</CellTitle>
+      <div className="min-w-0 text-[clamp(1.125rem,1.5vw,1.375rem)] leading-7 tracking-tight break-words">{children}</div>
+    </Cell>
   );
 }
 
@@ -87,37 +93,36 @@ function SettingsPageContent() {
     window.open(url, "_blank");
   }
 
+  const header = (
+    <div className="flex flex-col gap-1">
+      <h1 className="page-title">Settings</h1>
+      <p className="text-sm text-muted-foreground">Control how Mira answers your guests&apos; calls and what she tells you about.</p>
+    </div>
+  );
+
   if (loading) {
     return (
       <div className="space-y-6">
-        <div>
-          <h1 className="page-title">Settings</h1>
-          <p className="text-sm text-muted-foreground">Account details</p>
-        </div>
-        {[5, 3, 4, 6].map((rows, i) => (
-          <Card key={i} className="max-w-md">
-            <CardHeader>
+        {header}
+        <Sheet>
+          {[4, 4, 4].map((_, i) => (
+            <Cell key={i} className="md:col-span-4">
               <Skeleton variant="text" className="w-1/2" />
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {Array.from({ length: rows }, (_, j) => (
-                <Skeleton key={j} variant="text" />
-              ))}
-            </CardContent>
-          </Card>
-        ))}
+              <Skeleton variant="text" />
+              <Skeleton variant="text" className="w-3/4" />
+            </Cell>
+          ))}
+        </Sheet>
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="page-title">Settings</h1>
-        <p className="text-sm text-muted-foreground">Account details</p>
-      </div>
+      {header}
 
       <Tabs value={tab} onValueChange={handleTabChange}>
+        <div className="relative">
         <TabsList>
           <TabsTrigger value="your account">Your account</TabsTrigger>
           <TabsTrigger value="features">Features &amp; modules</TabsTrigger>
@@ -127,90 +132,91 @@ function SettingsPageContent() {
           <TabsTrigger value="api">API</TabsTrigger>
           <TabsTrigger value="team">Team</TabsTrigger>
         </TabsList>
+        {/* Scroll cue: the tab row scrolls sideways on narrow screens. */}
+        <span aria-hidden className="pointer-events-none absolute inset-y-0 right-0 w-12 bg-linear-to-l from-background to-transparent lg:hidden" />
+        </div>
 
-        <TabsContent value="your account" className="pt-4">
-          <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
-            <Card>
-              <CardHeader>
-                <CardTitle>Your profile</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3 text-sm">
-                <DefinitionRow label="Name" value={user?.name ?? "—"} />
-                <DefinitionRow label="Email" value={user?.email ?? "—"} />
-                <DefinitionRow label="Phone" value={user?.phone ?? "—"} />
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Plan tier</span>
-                  <Badge variant="secondary" className="capitalize">
-                    {user?.tier ?? "—"}
-                  </Badge>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Status</span>
-                  <Badge variant="outline" className="capitalize">
-                    {user?.status ?? "—"}
-                  </Badge>
-                </div>
-              </CardContent>
-            </Card>
+        <TabsContent value="your account" className="pt-6">
+          <Sheet>
+            <Fact label="Name" className="col-span-12 sm:col-span-6 xl:col-span-2">
+              {user?.name ?? "—"}
+            </Fact>
+            <Fact label="Email" className="col-span-12 sm:col-span-6 xl:col-span-4">
+              <span title={user?.email}>{user?.email ?? "—"}</span>
+            </Fact>
+            <Fact label="Phone" className="col-span-12 sm:col-span-4 xl:col-span-2">
+              {user?.phone ?? "—"}
+            </Fact>
+            <Fact label="Plan tier" className="col-span-6 sm:col-span-4 xl:col-span-2">
+              <span className="capitalize">{user?.tier?.replace(/_/g, " ") ?? "—"}</span>
+            </Fact>
+            <Fact label="Status" className="col-span-6 sm:col-span-4 xl:col-span-2">
+              <span className="inline-flex items-center gap-2 capitalize">
+                <span
+                  aria-hidden
+                  className={user?.status === "active" ? "size-2 rounded-full bg-status-live" : "size-2 rounded-full bg-muted-foreground"}
+                />
+                {user?.status ?? "—"}
+              </span>
+            </Fact>
+
+            <Cell className="md:col-span-6 lg:col-span-4">
+              <CellTitle>Call intake number</CellTitle>
+              <CellLead>The number guests call to reach Mira.</CellLead>
+              <CapabilityNotice
+                capabilityId="lead_agent"
+                whenOff="The Portfolio Lead Agent is off in your features. Saving a number here turns it back on -- Mira answers whenever a call intake number is saved."
+              />
+              <form onSubmit={handleSaveLeadExophone} className="flex gap-2">
+                <Input
+                  aria-label="Call intake number"
+                  placeholder="+9180XXXXXXXX"
+                  value={leadExophone}
+                  onChange={(e) => setLeadExophone(e.target.value)}
+                />
+                <Button type="submit" disabled={submitting}>
+                  Save
+                </Button>
+              </form>
+              <Button variant="outline" size="sm" className="self-start" onClick={handleTestLeadAgent}>
+                Test Lead Agent in browser
+              </Button>
+              <CellFoot>
+                <Hint>
+                  Calls to it run the Lead Agent across your whole portfolio, for booking enquiries, not
+                  existing-guest support. It is also your general testing link: it asks the caller which property
+                  they mean instead of testing just one.
+                </Hint>
+              </CellFoot>
+            </Cell>
 
             <TransferNumbersCard />
 
             <HostCallHoursCard />
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Call intake number</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <CapabilityNotice
-                  capabilityId="lead_agent"
-                  className="mb-3"
-                  whenOff="The Portfolio Lead Agent is off in your features. Saving a number here turns it back on -- Mira answers whenever a call intake number is saved."
-                />
-                <p className="mb-3 text-sm text-muted-foreground">
-                  The number guests call to reach Mira. Calls to it run the Lead Agent across your whole
-                  portfolio — for booking enquiries, not existing-guest support. This is also your general
-                  testing link: it asks the caller which property they mean instead of testing just one.
-                </p>
-                <form onSubmit={handleSaveLeadExophone} className="flex gap-2">
-                  <Input
-                    placeholder="+9180XXXXXXXX"
-                    value={leadExophone}
-                    onChange={(e) => setLeadExophone(e.target.value)}
-                  />
-                  <Button type="submit" disabled={submitting}>
-                    Save
-                  </Button>
-                </form>
-                <Button variant="secondary" size="sm" className="mt-3" onClick={handleTestLeadAgent}>
-                  Test Lead Agent in browser
-                </Button>
-              </CardContent>
-            </Card>
-
             <NotificationsCard />
-          </div>
+          </Sheet>
         </TabsContent>
 
-        <TabsContent value="features" className="pt-4">
+        <TabsContent value="features" className="pt-6">
           <FeaturesSection />
         </TabsContent>
 
-        <TabsContent value="dashboard" className="pt-4">
+        <TabsContent value="dashboard" className="pt-6">
           <DashboardSection />
         </TabsContent>
 
-        <TabsContent value="technicians" className="pt-4">
+        <TabsContent value="technicians" className="pt-6">
           <TechniciansSection />
         </TabsContent>
 
-        <TabsContent value="billing" className="pt-4">
+        <TabsContent value="billing" className="pt-6">
           <BillingTab />
         </TabsContent>
-        <TabsContent value="api" className="pt-4">
+        <TabsContent value="api" className="pt-6">
           <ComingSoonTab icon={KeyRound} label="API access" />
         </TabsContent>
-        <TabsContent value="team" className="pt-4">
+        <TabsContent value="team" className="pt-6">
           <ComingSoonTab icon={Users} label="Team members" />
         </TabsContent>
       </Tabs>

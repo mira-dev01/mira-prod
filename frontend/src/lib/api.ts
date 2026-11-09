@@ -100,6 +100,11 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  // Local design preview only (NEXT_PUBLIC_UI_PREVIEW=1; see lib/ui-preview.ts).
+  if (process.env.NODE_ENV !== "production" && process.env.NEXT_PUBLIC_UI_PREVIEW === "1") {
+    const { previewResponse } = await import("@/lib/ui-preview");
+    return previewResponse<T>(path, options);
+  }
   const token = await getToken();
   const headers = new Headers(options.headers);
   headers.set("Content-Type", "application/json");
