@@ -2,7 +2,7 @@
 name: Mira Host Dashboard
 description: "Visible Grid layout in the user's parchment and terracotta palette: ink hairline blocks on a faint 12-column construction grid."
 colors:
-  primary: "#b8452f"
+  primary: "#a63a24"
   primary-foreground: "#ffffff"
   ink: "#2a2420"
   parchment: "#f3ede2"
@@ -12,7 +12,7 @@ colors:
   soft-rule: "#e3d9c8"
   input-stroke: "#968a76"
   grid-line: "#e6dcc8"
-  destructive: "#b8452f"
+  destructive: "#a63a24"
   status-live: "#5c7048"
   status-pending: "#d9a441"
   status-pending-strong: "#8a6512"
@@ -23,51 +23,51 @@ colors:
   priority-low: "#7d7267"
 typography:
   page-title:
-    fontFamily: "Schibsted Grotesk, sans-serif"
+    fontFamily: "Red Hat Display, sans-serif"
     fontSize: "1.75rem"
     fontWeight: 700
     lineHeight: 1.15
     letterSpacing: "-0.03em"
   block-heading:
-    fontFamily: "Schibsted Grotesk, sans-serif"
+    fontFamily: "Red Hat Display, sans-serif"
     fontSize: "1.25rem"
     fontWeight: 700
     lineHeight: "1.75rem"
     letterSpacing: "-0.025em"
   row-name:
-    fontFamily: "Schibsted Grotesk, sans-serif"
+    fontFamily: "Red Hat Text, sans-serif"
     fontSize: "0.8125rem"
     fontWeight: 700
     lineHeight: "1.25rem"
     letterSpacing: "0.1em"
   cell-name:
-    fontFamily: "Schibsted Grotesk, sans-serif"
+    fontFamily: "Red Hat Text, sans-serif"
     fontSize: "0.75rem"
     fontWeight: 700
     lineHeight: "1.25rem"
     letterSpacing: "0.1em"
   lead:
-    fontFamily: "Schibsted Grotesk, sans-serif"
+    fontFamily: "Red Hat Text, sans-serif"
     fontSize: "0.875rem"
     fontWeight: 500
     lineHeight: "1.25rem"
   hint:
-    fontFamily: "Schibsted Grotesk, sans-serif"
+    fontFamily: "Red Hat Text, sans-serif"
     fontSize: "0.8125rem"
     fontWeight: 400
     lineHeight: "1.25rem"
   value:
-    fontFamily: "Schibsted Grotesk, sans-serif"
+    fontFamily: "Red Hat Display, sans-serif"
     fontSize: "clamp(1.125rem, 1.5vw, 1.375rem)"
     fontWeight: 400
     lineHeight: "1.75rem"
     letterSpacing: "-0.025em"
   body:
-    fontFamily: "Schibsted Grotesk, sans-serif"
+    fontFamily: "Red Hat Text, sans-serif"
     fontSize: "0.875rem"
     fontWeight: 400
   micro:
-    fontFamily: "Schibsted Grotesk, sans-serif"
+    fontFamily: "Red Hat Text, sans-serif"
     fontSize: "0.75rem"
     fontWeight: 700
     letterSpacing: "0.1em"
@@ -143,7 +143,7 @@ Ink is a warm near-black on parchment, with lighter cream-paper blocks, and a si
 A warm parchment-and-cream palette with one terracotta accent and a muted, earthy state set. **This palette is the user's own (the original parchment + terracotta, kept at their request after the blue version was rejected). It must not be changed or replaced when extending the system.**
 
 ### Primary
-- **Terracotta** (`#b8452f`): active tab bar, primary button, selected segment, links and action links, focus ring, sidebar primary. The only accent. It is also the destructive color (same value), so destructive actions are told apart by label and tint (10% wash, red-brown text), never by hue.
+- **Deep brick terracotta** (`#a63a24`, chosen 2026-11-09 over the original `#b8452f` for 6.0:1 on cream paper, so text and numbers pass AA on tinted washes too): active tab bar, primary button, selected segment, links and action links, focus ring, sidebar primary, switches that are on, and the key numbers (the Overview headline metrics and recovery stats). The only accent. It is also the destructive color (same value), so destructive actions are told apart by label and tint (10% wash, red-brown text), never by hue.
 
 ### Neutral
 - **Ink** (`#2a2420`): text, block borders, outline-button stroke, tab-list rule, sidebar border.
@@ -156,21 +156,21 @@ A warm parchment-and-cream palette with one terracotta accent and a muted, earth
 - **Grid Line** (`#e6dcc8`): the construction hairlines; decorative only, never carries meaning.
 
 ### State (only for state)
-- **Sage** (`#5c7048` text, rgba(117,136,95,.12) wash): live/ready. **Amber** (`#d9a441`; strong text variant `#8a6512`): pending/needs setup. Terracotta/red (`#b8452f`): blocked, invalid, destructive.
+- **Sage** (`#5c7048` text, rgba(117,136,95,.12) wash): live/ready. **Amber** (`#d9a441`; strong text variant `#8a6512`): pending/needs setup. Brick red (`#a63a24`, same value as the accent): blocked, invalid, destructive.
 - Intent-category badge colors for calls/leads: progress slate-blue `#5f7a99`, purple `#8d6f96`, orange `#c17a42`. Low-priority tone `#7d7267`. These are state/category tints, not accents, and are not used as an accent on Settings.
 - Chart series: `#d9a441`, `#6b7d5a`, `#c17a42`, `#5f7a99`, `#8d6f96`.
 - **Brand mark amber** (`--accent-warm` `#d9a441`): the drawn star beside the wordmark.
 
 ### Named Rules
-**The One Terracotta Rule.** Terracotta is the only accent: active tab, primary action, links and selection. Never use it for decoration, and never introduce a second accent.
+**The One Terracotta Rule.** Terracotta is the only accent: active tab, primary action, links, key numbers and selection. Never use it for decoration, and never introduce a second accent.
 **The State-Only Rule.** Sage, amber and red appear only where something reports status; each pairs with a label or dot, never color alone.
 **The Palette Is Theirs Rule.** The parchment and terracotta palette is the user's decision; do not swap it for another.
 
 ## Typography
 
-**Font:** Schibsted Grotesk (variable, `next/font`, `--font-grotesk`) with sans-serif fallback, for display, headings, body, labels and the "mira" wordmark. Monospace falls back to the system stack.
+**Fonts:** two Red Hat families (variable, `next/font`, `--font-red-hat-text` and `--font-red-hat-display`) with sans-serif fallback. **Red Hat Display** for the page title, block headings, the "mira" wordmark and key numbers (`font-heading`); **Red Hat Text** for everything else: body, labels, table heads, hints. Monospace falls back to the system stack.
 
-**Character:** a neutral grotesk; the weight axis does the work, so Tailwind medium/semibold/bold interpolate on one file.
+**Character:** geometric and upbeat, strong at large sizes (chosen 2026-11-09 from two rounds of pairings); the weight axis does the work, so Tailwind medium/semibold/bold interpolate on each file.
 
 ### Hierarchy
 - **Page title** (700, 28px, 1.15, -0.03em): one per page.
@@ -245,7 +245,7 @@ Eight-point star drawn as a square-capped 2px stroke SVG in amber (`--accent-war
 
 ### Don't:
 - **Don't** add shadows to blocks or cards on the page.
-- **Don't** introduce a second typeface or a serif; the type is Schibsted Grotesk only (the earlier Libre Baskerville and Montserrat faces are retired, but the parchment and terracotta colors are kept).
+- **Don't** introduce a second typeface or a serif; the type is the Red Hat pair only (Display for headings and key numbers, Text for the rest; the earlier Libre Baskerville, Montserrat and Schibsted Grotesk faces are retired, but the parchment and terracotta colors are kept).
 - **Don't** change the palette or reintroduce blue as an accent; the user rejected the blue version.
 - **Don't** use terracotta or the state colors decoratively, or state color without a label.
 - **Don't** size blocks off the grid or let a row's blocks have unequal heights.

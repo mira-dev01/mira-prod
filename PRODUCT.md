@@ -37,7 +37,7 @@ Mira picks up real guest calls and acts on the host's behalf under the host's ow
 
 - The product name is MIRA.
 - Colour: keep the existing beige / parchment and terracotta palette (user, 2026-11-09: "keep the current beige terracotta color, not the blue version"). Do not change it.
-- Type: the user disliked the old serif (Libre Baskerville) and Montserrat; the new neutral grotesk (Schibsted Grotesk) was accepted with the redesign.
+- Type: the user disliked the old serif (Libre Baskerville) and Montserrat; the Red Hat pair (Display for headings and key numbers, Text for the rest) was chosen on 2026-11-09 after two rounds of pairings.
 
 ## Evidence on Hand
 

@@ -1,16 +1,21 @@
 import type { Metadata } from "next";
-import { Schibsted_Grotesk } from "next/font/google";
+import { Red_Hat_Display, Red_Hat_Text } from "next/font/google";
 import "./globals.css";
 import { ClerkProvider } from "@clerk/nextjs";
 import { AuthProvider } from "@/lib/auth-context";
 import { Toaster } from "@/components/ui/sonner";
 
-// Active theme (see globals.css): one neutral grotesk for everything --
-// headings, table headers, body/UI text and the "mira" wordmark. A variable
-// font, so Tailwind's font-medium/font-semibold/font-bold classes
-// interpolate along its own weight axis; no weight list needed.
-const grotesk = Schibsted_Grotesk({
-  variable: "--font-grotesk",
+// Active theme (see globals.css): Red Hat Text for body, UI and table
+// headers; Red Hat Display for headings, the "mira" wordmark and key
+// numbers. Both are variable fonts, so Tailwind's font-medium/font-semibold/
+// font-bold classes interpolate along their own weight axis; no weight list
+// needed.
+const redHatText = Red_Hat_Text({
+  variable: "--font-red-hat-text",
+  subsets: ["latin"],
+});
+const redHatDisplay = Red_Hat_Display({
+  variable: "--font-red-hat-display",
   subsets: ["latin"],
 });
 
@@ -32,7 +37,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${grotesk.variable} h-full antialiased`}
+      className={`${redHatText.variable} ${redHatDisplay.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-background">
         <ClerkProvider
@@ -42,7 +47,7 @@ export default function RootLayout({
               // kept as literal hex/rgba here since Clerk's hosted
               // components render in their own isolated context, not this
               // page's DOM, so `var(--primary)` etc. wouldn't resolve.
-              colorPrimary: "#b8452f",
+              colorPrimary: "#a63a24",
               colorBackground: "#fbf7ef",
               colorForeground: "#2a2420",
               colorMutedForeground: "#6f6252",
@@ -50,7 +55,7 @@ export default function RootLayout({
               colorInputForeground: "#2a2420",
               colorBorder: "#e3d9c8",
               borderRadius: "0.25rem",
-              fontFamily: "var(--font-grotesk), sans-serif",
+              fontFamily: "var(--font-red-hat-text), sans-serif",
             },
           }}
           localization={{

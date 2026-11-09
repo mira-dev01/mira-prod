@@ -23,7 +23,7 @@ function Metric({ label, value, note, unavailable }: { label: string; value: str
       <CellTitle>{label}</CellTitle>
       <p
         className={cn(
-          "text-[clamp(1.75rem,2.4vw,2.25rem)] leading-tight font-medium tracking-tight tabular-nums",
+          "font-heading text-[clamp(1.75rem,2.4vw,2.25rem)] leading-tight font-semibold tracking-tight text-primary tabular-nums",
           unavailable && "text-muted-foreground"
         )}
       >

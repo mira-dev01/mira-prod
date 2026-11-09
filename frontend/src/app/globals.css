@@ -7,12 +7,12 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-grotesk);
+  --font-sans: var(--font-red-hat-text);
   --font-mono: ui-monospace, "DM Mono", "SFMono-Regular", Menlo, monospace;
-  --font-display: var(--font-grotesk);
+  --font-display: var(--font-red-hat-display);
   --font-heading: var(--font-display);
-  --font-subheading: var(--font-grotesk);
-  --font-brand: var(--font-grotesk);
+  --font-subheading: var(--font-red-hat-text);
+  --font-brand: var(--font-red-hat-display);
   --color-status-live: var(--status-live);
   --color-status-pending: var(--status-pending);
   --color-status-pending-strong: var(--status-pending-strong);
@@ -64,8 +64,8 @@
 }
 
 /* Mira Design System -- parchment/cream + terracotta palette (kept at the
-   user's request) under the "Visible Grid" layout and type: one neutral
-   grotesk (Schibsted Grotesk), flat ruled blocks and a faint 12-column
+   user's request) under the "Visible Grid" layout and type: Red Hat Text
+   for body/UI, Red Hat Display for headings and key numbers, flat ruled blocks and a faint 12-column
    construction grid (--grid-line, .field-grid) behind every Sheet
    (components/ui/sheet.tsx). The dashboard is always-light; the .dark
    block below is unused legacy.
@@ -83,7 +83,7 @@
   --card-foreground: #2a2420;
   --popover: #fbf7ef;
   --popover-foreground: #2a2420;
-  --primary: #b8452f;
+  --primary: #a63a24;
   --primary-foreground: #ffffff;
   --secondary: #fbf7ef;
   --secondary-foreground: #2a2420;
@@ -91,12 +91,12 @@
   --muted-foreground: #6f6252;
   --accent: #ece3d4;
   --accent-foreground: #2a2420;
-  --destructive: #b8452f;
+  --destructive: #a63a24;
   --border: #e3d9c8;
   /* A deeper taupe than --border so form fields keep a 3:1 edge on the cream. */
   --input: #968a76;
   /* Focus rings use the terracotta (3:1+ on cream); amber was ~2:1. */
-  --ring: #b8452f;
+  --ring: #a63a24;
   --chart-1: #d9a441;
   --chart-2: #6b7d5a;
   --chart-3: #c17a42;
@@ -105,12 +105,12 @@
   --radius: 0.25rem;
   --sidebar: #fbf7ef;
   --sidebar-foreground: #2a2420;
-  --sidebar-primary: #b8452f;
+  --sidebar-primary: #a63a24;
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #ece3d4;
   --sidebar-accent-foreground: #2a2420;
   --sidebar-border: #2a2420;
-  --sidebar-ring: #b8452f;
+  --sidebar-ring: #a63a24;
 
   /* The construction grid: decorative hairlines only (never carries
      meaning), so intentionally very low contrast. */
@@ -223,7 +223,7 @@
   }
 
   /* Brand wordmark only ("mira" in the sidebar, login card, public gallery
-     header): bold lowercase grotesk, tightly tracked. */
+     header): bold lowercase Red Hat Display, tightly tracked. */
   .brand-logo {
     font-family: var(--font-brand);
     font-weight: 700;

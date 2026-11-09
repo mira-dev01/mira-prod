@@ -137,7 +137,7 @@ export function CallsTable({ calls, compact = false }: { calls: CallSessionOut[]
             )}
             <TableHead>Started</TableHead>
             {!compact && <TableHead className="w-8" />}
-            <TableHead className="w-8" />
+            <TableHead className={cn("w-8", compact && "hidden sm:table-cell")} />
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -192,7 +192,7 @@ export function CallsTable({ calls, compact = false }: { calls: CallSessionOut[]
                   <WhatsAppButton phone={call.guest_phone} stopPropagation />
                 </TableCell>
               )}
-              <TableCell>
+              <TableCell className={cn(compact && "hidden sm:table-cell")}>
                 <ChevronRight className="size-4 text-muted-foreground" />
               </TableCell>
             </TableRow>

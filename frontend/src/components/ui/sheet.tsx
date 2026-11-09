@@ -103,7 +103,7 @@ export function SheetHeading({
   return (
     <div className={cn("col-span-12 flex items-start justify-between gap-3 border-b border-border p-5", className)}>
       <div className="flex min-w-0 flex-col gap-1">
-        <h2 className="text-xl leading-7 font-bold tracking-tight text-foreground">{title}</h2>
+        <h2 className="font-heading text-xl leading-7 font-bold tracking-tight text-foreground">{title}</h2>
         {children && <Hint>{children}</Hint>}
       </div>
       {action}
