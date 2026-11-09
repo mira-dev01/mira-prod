@@ -1,4 +1,4 @@
-# Current Architecture (as of 2026-09-22)
+# Current Architecture (as of 2026-11-09)
 
 The clearest, single technical description of how Mira works **today**. This file is the
 authoritative architecture overview; for full detail, follow the links into `docs/` rather than
@@ -10,6 +10,8 @@ a future coding session must respect.
 merged into `main`/`shagun` as of this date (the Redis-backed `CallCoordinator`/Busy Call
 Recovery/WhatsApp-reply subsystem that was flagged uncommitted as of 2026-08-09 has since landed —
 no subsystem described in this file is uncommitted local-only work anymore).
+
+**Since 2026-09-22**: location search now matches by map position (§8 — `app/services/geo/`, a local `places` gazetteer, `properties.latitude/longitude/state`; see [../docs/research-flow.md](../docs/research-flow.md)); §2 gained three optional full-duplex pieces, off by default (backchannel filter, volume ducking, echo cancellation — [../docs/agents.md](../docs/agents.md)); the host dashboard's Settings page moved to a new layout system ([../DESIGN.md](../DESIGN.md)); Render was retired as a deploy target (Railway `dev`/`production` + Vercel — [../docs/architecture.md](../docs/architecture.md)).
 
 **Since 2026-08-09**: §2 gained the low-confidence transcript guard; §4b's live handoff now covers
 Lead Agent (portfolio-wide) calls too, plus a new guest-initiated `request_host_transfer` tool;
@@ -96,6 +98,7 @@ responsibility boundaries:
   against real tool output; none of them call an LLM. All are inert/pass-through on the overwhelming
   majority of turns.
 - **State/style/quality processors** — see §6.
+- **Optional full-duplex stages** (all off by default, each behind its own env flag): an echo canceller right after `transport.input()` (Exotel phone calls only), a backchannel-aware turn-start strategy inside the user aggregator, and a volume-ducking processor just before `transport.output()`. They never call an LLM and fail open (a missing AEC package disables the canceller for the call, not the call). See [../docs/agents.md](../docs/agents.md).
 
 **What must never live in the pipeline**: business logic for concurrency coordination (that's
 `CallCoordinator`'s job, see §3 — the pipeline only ever sees a two-value `Decision`), a second
@@ -191,7 +194,7 @@ Mira:
      page) — the **sole** input. Disabled = Mira answers 24/7. The per-property
      `Property.call_handling_*` columns are **no longer read** — kept in schema, staged for removal
      (`CallLease` precedent).
-   - The former `settings.fixed_host_hours_start`/`_end` rollout override (`render.yaml`,
+   - The former `settings.fixed_host_hours_start`/`_end` rollout override (`render.yaml`, since deleted along with Render itself;
      11:00–17:00 IST, forced onto every host regardless of their own setting) has been **removed**.
      Routing now always reflects exactly what a host has saved on the Settings page. See
      `documentation/host-call-hours-and-handoff.md`.
@@ -348,6 +351,7 @@ Full schema: [docs/database.md](../docs/database.md). Summary of what lives wher
      not fail-open at the Redis-operation level (see §3's fail-open policy, which lives one layer up
      in `call_coordinator.py`, not in the Redis client itself).
 - **`CallLease` (Postgres)** — staged for removal, not written to (§3).
+- **Gazetteer (`places`, `place_aliases`, `admin_regions`)** — read-only GeoNames reference data used to turn a place a guest names into a point/state; filled by `scripts/load_gazetteer.py`, never written on the call path, and empty until loaded (lookups then find nothing and the free-text location match runs alone). A property's own `latitude/longitude/state/district` live on `properties` — see [../docs/database.md](../docs/database.md).
 
 ## 9. Important invariants
 

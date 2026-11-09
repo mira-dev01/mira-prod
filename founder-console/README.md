@@ -26,5 +26,5 @@ npm run dev   # http://localhost:4000
 
 ## Deployment
 
-Not in `render.yaml` — deploy separately (own Render service or wherever) if/when needed, same
+Not deployed with the main app — deploy it separately (its own host) if/when needed, same
 Node build as `frontend/` (`npm install && npm run build`, start with `npm run start`).

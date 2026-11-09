@@ -71,12 +71,14 @@ stay length are already known (`ConversationState.slots`, populated by `update_l
 `_run_pipeline` (`app/voice/pipeline.py`) builds a pipecat `Pipeline`:
 
 ```
-transport.input() → SarvamSTTService → AudioInputObserver → LowConfidenceTranscriptGuardProcessor → SilenceWatchdogProcessor → LanguageSyncProcessor → ConversationStyleProcessor
+transport.input() → [EchoCancellerProcessor] → SarvamSTTService → AudioInputObserver → LowConfidenceTranscriptGuardProcessor → SilenceWatchdogProcessor → LanguageSyncProcessor → ConversationStyleProcessor
   → user_aggregator → RedundantContextGuardProcessor → StatePromptSyncProcessor → LLM → slow_tool_filler
   → RepetitionGuardProcessor → MetaCommentaryGuardProcessor → StyleComplianceMonitor → PropertyRecommendationGuardProcessor
   → EscalationPhraseGuardProcessor → PrematureEndCallGuardProcessor → ResponseShapeValidatorProcessor
-  → EndCallReliabilityGuardProcessor → SarvamTTSService → BotSpeechTap → CallMetricsCollector → transport.output() → assistant_aggregator
+  → EndCallReliabilityGuardProcessor → SarvamTTSService → BotSpeechTap → CallMetricsCollector → [BargeInDuckingProcessor] → transport.output() → assistant_aggregator
 ```
+
+`[...]` stages exist only when their flag is on (see "Full-duplex building blocks" below); the echo canceller is also Exotel-phone-call only.
 
 Nine of these (`RedundantContextGuardProcessor` through `EndCallReliabilityGuardProcessor`, excluding `StatePromptSyncProcessor` and `StyleComplianceMonitor`) are code-level backstops for confirmed-live prompt-compliance failures — `GOLDEN_RULES` states the rule, the processor is what actually guarantees it holds regardless of what the model does. All are inert (pass-through, no added latency) on the overwhelming majority of turns; each only activates around the specific narrow condition it exists for. `StyleComplianceMonitor` is the one exception to "guard" framing — it never rewrites or cuts anything (see below).
 
@@ -319,9 +321,19 @@ Config: `GROQ_MODEL` (`openai/gpt-oss-120b`, the configured default/first choice
 - **Last resort**: if every model in `settings.groq_models` is marked down in `llm_health`, `_build_llm()` falls through to OpenRouter (`_build_openrouter_llm`, `OpenAILLMService` pointed at `https://openrouter.ai/api/v1`, `max_completion_tokens=900` — capped because OpenRouter's free-tier credit check rejects based on the *requested* ceiling, not actual usage).
 - **Exposed at**: `GET /api/v1/health/llm` — read-only snapshot of `llm_health`, for a dashboard widget.
 
+## Full-duplex building blocks (all off by default)
+
+Problem: the line behaved like a walkie-talkie. Pipecat's default start strategies broadcast an interruption the instant VAD hears the guest, so any sound ("achha", "hmm", a cough) cancelled Mira's TTS and forced a TTS reconnect, and on a phone line Mira's own voice leaking back could do the same. Three independent pieces, each behind its own flag, none of which calls an LLM or changes what Mira says:
+
+1. **Backchannel filter** (`BACKCHANNEL_FILTER_ENABLED`, `BACKCHANNEL_MIN_INTERRUPT_SECS` = 0.5) — `BackchannelAwareUserTurnStartStrategy` in `app/voice/backchannel_start_strategy.py`. While Mira is silent it behaves exactly like the default (a VAD start opens the guest's turn). While Mira is speaking, a VAD burst must last the threshold before it interrupts (no STT needed, so a real barge-in isn't held back by Sarvam giving only final transcripts), and a transcript that is only a short acknowledgement (≤3 words from a fixed English/Hinglish/Devanagari list: "ok", "hmm", "haan", "ji", "theek hai", …) is dropped from the aggregation instead of becoming an LLM turn — including when its transcript lands just after Mira stops (4s window). Words that carry information ("no", numbers, "wait", "stop", "nahi", "ruko") are deliberately not in the list, so they always interrupt. Known risk: a bare "yes"/"haan" answering a yes/no question while Mira is mid-sentence is treated as a backchannel and dropped.
+2. **Volume ducking** (`BARGE_IN_DUCKING_ENABLED`, `BARGE_IN_DUCK_GAIN` = 0.3) — `BargeInDuckingProcessor` (`app/voice/barge_in_ducking.py`) sits in the output chain (inside `telemetry_out`, after TTS and before `transport.output()`, so `test_call_telemetry_wiring`'s pipeline regexes still match). While the guest is speaking over Mira and she hasn't been interrupted, outgoing TTS PCM is scaled to the gain (capped at 2.5s); otherwise full volume.
+3. **Echo cancellation** (`ECHO_CANCELLATION_ENABLED`) — `EchoCancellerProcessor` (`app/voice/echo_canceller.py`), Exotel phone calls only. WebRTC AEC (`aec-audio-processing`, 10 ms frames, 8/16/32/48 kHz mono). The reference signal is tapped from the output transport's `write_audio_frame` (`tap_output_transport`), i.e. what is actually played at playout pace — not after TTS, which runs ahead of real time. The package has no Linux wheel, so the Dockerfile compiles it from source in a step allowed to fail; if it is missing or errors, the processor disables itself for the call (`echo_canceller_failed_disabling_for_call`) and the call proceeds without cancellation.
+
+**Status (2026-11-09):** unit-tested (including a synthetic-echo attenuation test) but **not yet verified on real calls**; the 0.5 s threshold and 0.3 gain are starting guesses to tune from real call logs. Railway `dev` has the first two on; echo cancellation stays off until a build log shows the package compiled. Log lines to read: `backchannel_burst_suppressed`, `backchannel_transcript_dropped`, `backchannel_filter_barge_in_confirmed`, and `audio_input_telemetry` (`phantom_barge_ins`, `barge_ins`). A real streaming STT (Soniox/Deepgram side-channel for partial transcripts) would improve barge-in detection but needs a vendor key and a Hindi/Hinglish accuracy check — not built.
+
 ## Turn detection strategies
 
-Config: `TURN_DETECTION_STRATEGY` (`vad_fixed` default / `hybrid_experimental`) — experimental, `shagun` branch only, deliberately not in `render.yaml`; `main`/production is unaffected regardless of this setting.
+Config: `TURN_DETECTION_STRATEGY` (`vad_fixed` default / `hybrid_experimental`) — experimental; production keeps the `vad_fixed` default unless this env var is set.
 
 - **`vad_fixed`** (production default): `SpeechTimeoutUserTurnStopStrategy(user_speech_timeout=0.9)`. 0.9s is the validated middle ground — 0.6s cut guests off mid-thought, 1.4s added ~1.4s of dead air per turn.
 - **`hybrid_experimental`**: `app/voice/turn_strategies.HybridCompletenessUserTurnStopStrategy(base_timeout=0.9)`. Runs a fast, local, non-LLM heuristic (`_is_incomplete`) on the accumulated transcript when the base 0.9s timeout fires: trailing conjunction ("and", "but", "aur", "और", determiners/prepositions like "the"/"in"/"that"), trailing comma, or a short (<3 words) unpunctuated utterance → extend the wait once by `extension_timeout=0.7`s, up to a hard `max_wait=2.8`s cap measured from the original VAD-stop moment. Falls back to identical behavior to `vad_fixed` if the transcript looks complete. No spoken filler is used during the extension — an earlier version tried `TTSSpeakFrame` push from the strategy itself, but confirmed live that this isn't ordered against the main LLM→TTS flow and could corrupt an in-progress reply.
@@ -335,6 +347,7 @@ Config: `TURN_DETECTION_STRATEGY` (`vad_fixed` default / `hybrid_experimental`) 
 | VAD confidence / min_volume / start_secs | 0.85 / 0.7 / 0.35s | `_VAD_PARAMS` in `pipeline.py`, passed to `create_vad_analyzer` (`app/voice/vad.py`) — `start_secs` raised from pipecat's 0.2s default 2026-07-23, needs live confirmation |
 | Silence-watchdog timeout / max nudges | 9.0s / 2 | `SilenceWatchdogProcessor(timeout_seconds=9.0)` in `pipeline.py` (module default is 5.0s) |
 | Turn-stop timeout (vad_fixed) | 0.9s | `SpeechTimeoutUserTurnStopStrategy(user_speech_timeout=0.9)` |
+| Backchannel interrupt threshold / duck gain | 0.5s / 0.3 | `BACKCHANNEL_MIN_INTERRUPT_SECS` / `BARGE_IN_DUCK_GAIN` (only when their flags are on; unverified on real calls) |
 | Turn-stop base/extension/cap (hybrid) | 0.9s / 0.7s / 2.8s | `HybridCompletenessUserTurnStopStrategy` |
 | TTS pace | 1.15 | `SarvamTTSService.Settings(pace=1.15)` |
 | Groq max_completion_tokens | 400 | `GroqLLMService.Settings(..., max_completion_tokens=400)` in `_build_llm` — added 2026-07-27, previously uncapped |

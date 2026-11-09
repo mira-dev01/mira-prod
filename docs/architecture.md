@@ -16,10 +16,11 @@ mira-prod/
 │   │   ├── models/   SQLAlchemy ORM models
 │   │   ├── prompts/  LLM system-prompt builders (guest-support + lead-agent)
 │   │   ├── schemas/  Pydantic request/response + tool-arg schemas
-│   │   ├── services/ business logic (calendar, pricing_engine, lead, faq, …)
+│   │   ├── services/ business logic (calendar, pricing_engine, lead, faq, geo/ location search, …)
 │   │   ├── utils/    shared helpers
 │   │   └── voice/    pipecat pipeline + tool wrappers (+ assets/)
 │   ├── alembic/      DB migrations
+│   ├── scripts/      one-off tools (load_gazetteer, set_property_locations, backfills, template creators)
 │   ├── seed_demo.py  demo login + 12 Indian properties
 │   ├── tests/        pytest (all async, hits a real test DB — no DB mocking)
 │   └── requirements.txt
@@ -43,7 +44,7 @@ mira-prod/
   - `_scheduled_live_pricing_cache_refresh`, daily cron, staggered 15 minutes after the job above (`hour=1, minute=15`) — pre-warms the 7-day nightly-rate Redis cache; see [research-flow.md](research-flow.md)'s pricing cache section.
 - **Routers**: every domain router in `app/api/v1/` is mounted under prefix `/api/v1` (see `API_PREFIX` in `main.py`): `auth`, `properties`, `bookings`, `calls`, `guests`, `technicians`, `pricing`, `analytics`, `notifications`, `leads`, `faq`, `host_discount_rules`, `voice`, plus `app/api/v1/webhooks/exotel`.
 - **CORS**: `CORSMiddleware` with `allow_origins=settings.cors_allowed_origins` — always includes `FRONTEND_BASE_URL`, plus any comma-separated `CORS_EXTRA_ORIGINS`.
-- **Health**: `GET /health` (plain liveness, used as the `healthCheckPath` on both Railway and Render) and `GET /api/v1/health/llm` (per-model LLM health snapshot).
+- **Health**: `GET /health` (plain liveness, used as Railway's `healthcheckPath`) and `GET /api/v1/health/llm` (per-model LLM health snapshot).
 - **Database**: `app/database.py` creates a single async engine via `create_async_engine(settings.database_url, pool_pre_ping=True, future=True, connect_args={"ssl": True} if settings.database_requires_ssl else {})`, and `AsyncSessionLocal` (an `async_sessionmaker`, `expire_on_commit=False`). `get_db()` is the FastAPI dependency that yields a session per request. ORM base class is `Base(DeclarativeBase)`.
 - **Config**: `app/config.py`, a single `pydantic-settings` `Settings` class read once via `@lru_cache` (`get_settings()` → module-level `settings`). Key behaviors:
   - `_normalize_database_url` (a `model_validator(mode="before")`) rewrites a bare `postgres://`/`postgresql://` `DATABASE_URL` to `postgresql+asyncpg://` (asyncpg driver required for the async engine), and strips/normalizes any `sslmode`/`ssl` query param into the separate `database_requires_ssl` bool (asyncpg's `connect()` rejects that param passed through the URL itself).
@@ -55,34 +56,43 @@ mira-prod/
 ## Frontend
 
 - Next.js 16 App Router, TypeScript, Tailwind CSS, shadcn/ui, `react-day-picker` for calendar UI.
+- **Design system**: [`DESIGN.md`](../DESIGN.md) (tokens, type, layout blocks, rules) and [`PRODUCT.md`](../PRODUCT.md) (who the dashboard is for). The look is "Visible Grid": the original parchment/terracotta palette (kept at the user's request) under a ruled 12-column layout and one grotesk (Schibsted Grotesk, `next/font`, variable `--font-grotesk`). Layout blocks (`Sheet`/`Cell`/`WideCell`/`SheetRow`/`SheetHeading`/`CellFoot`) live in `frontend/src/components/settings/sheet.tsx`; shared primitives (`ui/card|tabs|button|input|badge`) and all colour/type tokens in `app/globals.css`. **Only the Settings page has been laid out in the new system** (2026-11-09); every other page inherits just the tokens/primitives and still needs its own pass.
+- **Seeing the UI locally**: Clerk sign-in does not work on `localhost` (it is a Clerk *development* instance whose allowed origins are the Vercel URLs), so the real signed-in dashboard only works on a deployed Vercel URL. For layout/styling work locally there is a **design preview mode** (`NEXT_PUBLIC_UI_PREVIEW=1 npm run dev`, invented sample data from `frontend/src/lib/ui-preview.ts`, compiled out of production builds) — see `frontend/README.md`.
 - **API client**: `frontend/src/lib/api.ts`. Single `API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1"` constant — baked in at build time (Next.js `NEXT_PUBLIC_*` convention), so changing it in production requires a rebuild/redeploy. The `api` object groups typed request functions by domain (`api.auth`, `api.properties`, `api.calls`, `api.guests`, `api.bookings`, `api.pricing`, `api.hostDiscountRules`, `api.technicians`, `api.notifications`, `api.analytics`, `api.leads`, `api.faq`, `api.faqGaps`), each calling a shared `request<T>()` helper that attaches `Authorization: Bearer <token>` from `localStorage` (`mira_token` key, via `getToken()`/`setToken()`/`clearToken()`) and throws `ApiError` on non-2xx. `uploadFiles`/`uploadAudio` are separate multipart helpers (no `Content-Type` set manually, so the browser fills in the correct boundary).
 - **Auth context**: `frontend/src/lib/auth-context.tsx`. `AuthProvider` wraps the app, exposes `useAuth()` with `user`, `loading`, `login`, `register`, `registerHost`, `logout`, `refreshUser`. On mount, if a token exists it calls `api.auth.me()` to hydrate `user`; a failed call clears the token. `registerHost` additionally stashes a `mira_pending_import` sessionStorage key (`PENDING_IMPORT_KEY`) with the Bright Data `snapshot_id` (or an `import_error`) so the dashboard can resume polling the Airbnb import after the post-signup redirect — registration itself never blocks on that scrape.
 
-## Deployment — current topology (as of 2026-07-21)
+## Deployment — current topology (as of 2026-11-09)
 
-**Railway (backend, primary/active) + Vercel (frontend, primary/active) + Render (backend + frontend, kept running as a fallback, not actively deployed to).** This inverted from the original Render-first setup partway through the project — Railway/Vercel became the actual target hosts host testing and real Exotel calls go through, while Render was deliberately left running rather than torn down (`"do not remove render for now"`). `CORS_EXTRA_ORIGINS`/`FRONTEND_BASE_URL` on the Railway backend are what actually route photo/escalation links and CORS to the right frontend — see the per-host notes below for exactly what's set where.
+**Railway (backend) + Vercel (frontend).** Render is no longer used: it was the original host, was kept as a fallback in July 2026, and its `render.yaml` blueprint was deleted on 2026-11-09 (it had drifted far from the real environment and nothing deploys from it). `CORS_EXTRA_ORIGINS`/`FRONTEND_BASE_URL` on the Railway backend are what route photo/escalation links and CORS to the right frontend.
+
+The backend has **two Railway environments**, each with its own database and variables:
+
+| Environment | Database | Notes |
+|---|---|---|
+| `dev` | Supabase Postgres (Session pooler) | Deploys from the `dev` branch — a push runs `alembic upgrade head` against this DB on boot (confirmed 2026-11-09). Voice flags for experiments (`BACKCHANNEL_FILTER_ENABLED`, `BARGE_IN_DUCKING_ENABLED`) are set here first. |
+| `production` | Neon Postgres | The live system. |
+
+`railway variables --environment dev|production` (from `backend/`) shows each one; variable names differ between them — e.g. as of 2026-11-09 `production` has no `RESEND_API_KEY`, so escalation/call-summary emails are skipped there (the in-app notification still happens).
 
 ### Railway (backend)
 
-Project `mira-backend`, service linked via `backend/railway.json` (builder `DOCKERFILE`, `dockerfilePath: Dockerfile`, `healthcheckPath: /health`, restart-on-failure). Omits `deploy.startCommand` so it inherits `backend/Dockerfile`'s `CMD` (`alembic upgrade head && uvicorn ... --port ${PORT}`) rather than duplicating it and risking drift. Auto-deploys on every push to `main` via GitHub integration (Root Directory = `backend`, required since this is a monorepo — the Dockerfile's `COPY . .` needs `backend/` as its build context, not the repo root).
+Project `mira-backend`, service linked via `backend/railway.json` (builder `DOCKERFILE`, `dockerfilePath: Dockerfile`, `healthcheckPath: /health`, restart-on-failure). Omits `deploy.startCommand` so it inherits `backend/Dockerfile`'s `CMD` (`alembic upgrade head && uvicorn ... --port ${PORT}`) rather than duplicating it and risking drift. Deploys via the GitHub integration (Root Directory = `backend`, required since this is a monorepo — the Dockerfile's `COPY . .` needs `backend/` as its build context, not the repo root). The Dockerfile also tries to compile the optional echo-cancellation package (`aec-audio-processing`) in a step that is allowed to fail, so a failed compile never blocks a deploy — check the build log for `aec-audio-processing unavailable`.
 
 Public URL: `https://mira-backend-production-45e3.up.railway.app` (Railway-generated domain). **This domain has shown DNS resolution failures from some networks/resolvers** (confirmed live: failed from this development environment's default resolver and from the project owner's own home network, while resolving fine via Google's public DNS `8.8.8.8`/`1.1.1.1` and from Vercel's own edge network) — not a Railway platform outage (status page showed fully operational), and not something fixable in application code. If login/API calls mysteriously fail with no request ever reaching the backend logs, suspect this first — test by switching the affected device's DNS to `8.8.8.8`/`1.1.1.1`, or `dig <domain> @8.8.8.8` to compare against the default resolver.
 
-CLI usage: `railway login` (interactive OAuth, run manually, not from an agent session), then `railway variables`/`railway logs`/`railway deployment list`/`railway up` once linked (`railway link` from `backend/`). Env vars — same set as `config.py` documents (`DATABASE_URL`, `FRONTEND_BASE_URL`, `JWT_SECRET_KEY`, `LLM_PROVIDER`, `GROQ_*`, `SARVAM_API_KEY`, `EXOTEL_*`, `TWILIO_*`, `SMTP_*`, `SEARCHAPI_API_KEY`, `REDIS_URL`, etc.) — set via `railway variables --set KEY=VALUE` or the dashboard, none checked into `railway.json`. `PORT` is injected automatically.
+CLI usage: `railway login` (interactive OAuth, run manually, not from an agent session), then `railway variables`/`railway logs`/`railway deployment list`/`railway up` once linked (`railway link` from `backend/`). Env vars — same set as `config.py` documents (`DATABASE_URL`, `FRONTEND_BASE_URL`, `LLM_PROVIDER`, `GROQ_*`, `SARVAM_API_KEY`, `EXOTEL_*`, `TWILIO_*`, `RESEND_*`, `SEARCHAPI_API_KEY`, `REDIS_URL`, etc.) — set via `railway variables --environment <env> --set KEY=VALUE` (a change redeploys the service) or the dashboard, none checked into `railway.json`. `PORT` is injected automatically.
 
-**Known Railway-specific constraints (Trial-tier network policy, confirmed live):**
-- **Outbound SMTP (port 587) is blocked.** Every `aiosmtplib.send(...)` call (escalation emails, photo-request emails) times out (`SMTPConnectTimeoutError: Timed out connecting to smtp.gmail.com on port 587`) — confirmed via Railway logs on a real call. This is not a bug in `email_client.py`; it's the platform blocking the port outright. Real fix is switching to an HTTP-based email API (Resend, SendGrid, Postmark, etc.) instead of raw SMTP — not yet built. Upgrading off the Trial tier may lift this (unconfirmed, worth testing before building the HTTP-API fix).
-- `REDIS_URL` is **not currently set** on Railway — see the Redis note under [research-flow.md](research-flow.md)'s pricing cache section; the caching code path is fully wired but inert in production until this is provisioned.
+**Known Railway-specific constraints:**
+- **Outbound SMTP (ports 587/465) is blocked at the network level**, on both environments (confirmed from inside the container, 2026-09-24). That is why escalation and call-summary email go through Resend's HTTP API (`RESEND_API_KEY`, `RESEND_FROM_EMAIL`; see `CLAUDE.md`), not SMTP. A deploy without `RESEND_API_KEY` simply sends no email.
+- `REDIS_URL` is set on both environments. It backs `CallCoordinator`'s lease mechanism and, separately, the optional SearchApi pricing cache — see `documentation/current_architecture.md` and the Redis note in [research-flow.md](research-flow.md).
 
 ### Vercel (frontend)
 
-Project deployed from `frontend/`, public URL `https://mira-prod-two.vercel.app`. Auto-deploys on push to `main`. `NEXT_PUBLIC_API_BASE_URL` is a Vercel dashboard env var — **must include the scheme and end in `/api/v1`** (e.g. `https://mira-backend-production-45e3.up.railway.app/api/v1`); a schemeless value silently resolves every API call as a relative path against Vercel's own origin instead of the backend (confirmed live, recurred more than once this project). Being a `NEXT_PUBLIC_*` var, changing it requires a full rebuild/redeploy, not just a dashboard save + reload.
+Project `mira-prod`, deployed from `frontend/`. Two URLs are in use: `https://mira-prod-two.vercel.app` (Clerk sign-in only) and `https://mira-prod-iota.vercel.app` (additionally behind Vercel's own team login, so only team members' browsers get through to the Clerk sign-in). `NEXT_PUBLIC_API_BASE_URL` is a Vercel dashboard env var — **must include the scheme and end in `/api/v1`** (e.g. `https://mira-backend-production-45e3.up.railway.app/api/v1`); a schemeless value silently resolves every API call as a relative path against Vercel's own origin instead of the backend (confirmed live, recurred more than once this project). Being a `NEXT_PUBLIC_*` var, changing it requires a full rebuild/redeploy, not just a dashboard save + reload.
 
-### Render (backend + frontend, kept as fallback)
+Auth is Clerk in **development mode** (the sign-in card says "Development mode"): sign-in works on the Vercel URLs but not on `localhost`.
 
-Defined in `render.yaml` at the repo root, two services (`mira-backend`, Docker runtime; `mira-frontend`, Node runtime) — see the file itself for exact config. `DATABASE_URL` points at the same Neon Postgres as Railway (shared DB across all three hosts, not per-host). Not actively deployed to as part of normal work — kept running so it isn't a hard dependency to restore if Railway/Vercel need to be abandoned. If reactivating: `BACKEND_BASE_URL`/`FRONTEND_BASE_URL`/`NEXT_PUBLIC_API_BASE_URL` need re-pointing (they were moved to Railway/Vercel's URLs), and its own env var set (most are `sync: false`, set manually in the dashboard) is likely stale relative to what Railway currently has.
-
-### After first deploy (any host)
+### After first deploy
 
 1. Point `BACKEND_BASE_URL`/`NEXT_PUBLIC_API_BASE_URL` at the backend's actual public URL (latter must include scheme and end in `/api/v1`).
 2. Point `FRONTEND_BASE_URL` on the backend at the frontend's actual public URL (also include scheme — see the Vercel note above for what happens if you don't).

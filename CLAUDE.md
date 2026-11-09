@@ -15,6 +15,9 @@ And in `documentation/`:
 - [documentation/current_architecture.md](documentation/current_architecture.md) — the single clearest technical picture of how Mira works **today**: call flow diagram, CallCoordinator/Redis lease contract, Busy Call Recovery, conversation architecture, database boundaries, invariants. Read this first for anything touching concurrency, recovery, or the conversation-state/style/quality trio.
 - [documentation/project_state.md](documentation/project_state.md) — living snapshot: what's implemented vs. uncommitted vs. planned, known limitations/risks, next priorities. Its "Status summary" section at the top is the current authoritative status; everything below it is a historical log.
 
+At the repo root:
+- [PRODUCT.md](PRODUCT.md) / [DESIGN.md](DESIGN.md) — who the host dashboard is for, and its "Visible Grid" design system (palette, type, layout blocks, rules). **Read before changing any frontend UI**; the original beige/terracotta palette is the user's and must not change.
+
 ---
 
 ## Architecture overview
@@ -67,6 +70,7 @@ invariants a coding session must not violate.
   rather than raising into the call path — match this discipline for any new integration.
 - **Health observation never changes behavior.** `app/observability/` only records and reports — `health.record()` is sync, I/O-free and never raises (safe on the live-call path), and nothing in it is read back into a call. New external integrations get monitored by adding a host to `http_hook.py` (if httpx) and a `ServiceDef` to `catalog.py`, not with ad-hoc try/except-and-log.
 - **Nothing about a property is spoken unless it is on file.** The agent's only route to property facts is `search_faq` (`app/services/property/kb_retrieval.py`), which returns just the matching facts from the property's knowledge base (verified FAQ rows + property fields + active seasonal notes, stored as `property_chunks` rows with `chunk_type="fact"`) or an explicit "nothing on file" that is logged as a property-scoped gap for the host. The Guest Support prompt deliberately does NOT inline house rules/neighborhood/amenities/FAQ/seasonal notes, and `KnowledgeGroundingGuardProcessor` (`app/voice/kb_grounding_guard.py`) checks every spoken sentence (and `send_whatsapp` bodies) against what the agent was actually told. Never add a fallback that hands the model "everything we know" or lets retrieval fall back to model knowledge; never re-inline KB text into the prompt; keep fact rows in sync (`sync_property_facts`) from any new write path that changes a property's KB fields or FAQ rows. The same discipline covers *offers*: the Lead prompt's `Locations:` block lists the types/features each city really has (`_location_facets`), the workflow hardcodes no example stay types, and the guard's `analyze_offer` flags a spoken question naming an amenity/kind of place no property offers — never add example choices to a prompt, and never feed the portfolio corpus (`build_portfolio_text`) into the assertion-support corpus.
+- **Location is matched by where a property is, not by what its text says.** `app/services/geo/` resolves the area a guest names (a state, or a place near the host's properties) and `recommend_properties` judges any property that has a point or state by position; free-text matching applies only to properties with neither, so a description that merely mentions an area can't pull in a distant property. Every step fails open to the old text match, and nothing on the call path calls an external geocoder. Distances are spoken as straight-line.
 - **Do not duplicate existing services.** Busy Call Recovery deliberately reuses
   `get_or_create_guest_profile`/`upsert_lead`/`create_notification`/the Twilio WhatsApp sender
   rather than inventing parallel versions — follow the same instinct for new work.
@@ -87,10 +91,11 @@ mira-prod/
 │   │   ├── models/   SQLAlchemy ORM models
 │   │   ├── prompts/  LLM system-prompt builders (guest-support + lead-agent)
 │   │   ├── schemas/  Pydantic request/response + tool-arg schemas
-│   │   ├── services/ business logic (calendar, pricing_engine, lead, faq, …)
+│   │   ├── services/ business logic (calendar, pricing_engine, lead, faq, geo/ location search, …)
 │   │   ├── utils/    shared helpers
 │   │   └── voice/    pipecat pipeline + tool wrappers (+ assets/)
 │   ├── alembic/      DB migrations
+│   ├── scripts/      one-off tools (load_gazetteer, set_property_locations, backfills, template creators)
 │   ├── seed_demo.py  demo login + 12 Indian properties (see Demo account)
 │   ├── tests/        pytest (all async, hits a real test DB — no DB mocking)
 │   └── requirements.txt
@@ -112,20 +117,26 @@ mira-prod/
 ```bash
 # Backend
 cd backend
-cp .env.example .env   # fill in secrets
+# create backend/.env -- every variable is documented in app/config.py (there is no .env.example)
 python -m uvicorn app.main:app --reload
 
 # Frontend
 cd frontend
 npm install
 npm run dev   # talks to NEXT_PUBLIC_API_BASE_URL, baked in at build time
+              # Clerk sign-in does NOT work on localhost; for UI work use design preview mode:
+              # NEXT_PUBLIC_UI_PREVIEW=1 npm run dev -- -p 3100  (sample data, no sign-in; see frontend/README.md)
 
 # Tests (real Postgres required — do not mock the DB)
 cd backend
 pytest
+
+# Location search by map position (one-time per database; see docs/research-flow.md)
+python -m scripts.load_gazetteer --download --dir /tmp/geonames --admin1 11 12 24 25 33 39   # states to load; omit --admin1 for all India (~114 MB)
+python -m scripts.set_property_locations --user-email <host email> --file scripts/data/hushstays_locations.json   # preview; add --apply
 ```
 
-See [docs/architecture.md](docs/architecture.md) for deployment (Render) details.
+Deployment: backend on Railway (`dev` and `production` environments, each with its own database), frontend on Vercel — see [docs/architecture.md](docs/architecture.md). Render is no longer used.
 
 ## Key env vars (`backend/app/config.py`)
 
@@ -145,7 +156,10 @@ See [docs/architecture.md](docs/architecture.md) for deployment (Render) details
 | `CORS_EXTRA_ORIGINS` | Comma-separated extra CORS origins. `FRONTEND_BASE_URL` is always allowed. |
 | `BRIGHT_DATA_API_KEY` | Airbnb listing import — see [docs/research-flow.md](docs/research-flow.md). Not set = "Import from Airbnb" fails with a clear error, doesn't crash. |
 | `SEARCHAPI_API_KEY` | [SearchApi.io](https://www.searchapi.io/airbnb-api) — two uses, both scoped to `exact_airbnb_pricing` properties only (see [docs/research-flow.md](docs/research-flow.md)): (1) daily comparable-pricing refresh (`smart_pricing_service.py`), one call per city; (2) live per-listing price fetch during `get_pricing`/`negotiate_rate`/`check_calendar`, one call per pricing question. Free tier's request allowance is small and shared across both; unset = both no-op/fall back cleanly. |
-| `TURN_DETECTION_STRATEGY` | `vad_fixed` (default) / `hybrid_experimental`. Local-only experiment — see [docs/agents.md](docs/agents.md). Not in `render.yaml`. |
+| `TURN_DETECTION_STRATEGY` | `vad_fixed` (default) / `hybrid_experimental`. Local-only experiment — see [docs/agents.md](docs/agents.md). |
+| `BACKCHANNEL_FILTER_ENABLED` / `BACKCHANNEL_MIN_INTERRUPT_SECS` | Full-duplex building block (default off / 0.5): while Mira is speaking, a guest sound only interrupts once it lasts this long, and a pure "hmm/haan/ok ji" is dropped instead of becoming an LLM turn. See "Full-duplex building blocks" in [docs/agents.md](docs/agents.md). Enabled on Railway `dev` only so far. |
+| `BARGE_IN_DUCKING_ENABLED` / `BARGE_IN_DUCK_GAIN` | Full-duplex building block (default off / 0.3): Mira's voice drops to this fraction of volume while the guest is talking over her, instead of stopping. Enabled on Railway `dev` only so far. |
+| `ECHO_CANCELLATION_ENABLED` | Full-duplex building block (default off): WebRTC echo cancellation on Exotel phone calls so Mira doesn't hear herself. Needs the optional `aec-audio-processing` package, which the Dockerfile tries to compile (a failed compile never blocks a deploy; the call just runs without it). Off everywhere until a Railway build log confirms the package installed. |
 | `RESEND_API_KEY` / `RESEND_FROM_EMAIL` | Escalation + call-summary email summaries, via Resend's HTTP API (`app/integrations/email_client.py`). **Not SMTP** as of 2026-09-24 — confirmed via a from-inside-the-container connectivity test (`railway ssh`) that Railway blocks outbound SMTP ports (587/465) at the network level on both `dev` and `production`, identically (`OSError: [Errno 101] Network is unreachable`), while port 443 connects instantly — no SMTP host/provider/credential combination could ever have worked here. Resend over SendGrid: Resend has a usable free tier; the SendGrid account available is a paid one, no need for a second paid provider here. `RESEND_FROM_EMAIL` needs to be on a domain Resend has verified (SPF/DKIM) or delivery silently fails past the API-success point. Unset = escalations/summaries still create their in-app notification, just skip the email. |
 | `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_WHATSAPP_FROM` / `TWILIO_MESSAGING_SERVICE_SID` | Real WhatsApp send for `send_whatsapp`/`send_photos` via a real WhatsApp Business number (migrated off Twilio's Sandbox 2026-09-12) — see [docs/agents.md](docs/agents.md). Sender identity is `TWILIO_MESSAGING_SERVICE_SID` (Twilio's recommended production pattern, preferred when set) or `TWILIO_WHATSAPP_FROM` (a raw number) — set one or the other. No opt-in required anymore, but freeform (non-template) messages still only reach a recipient within WhatsApp's 24h customer-service window (a general WhatsApp Business API rule, not sandbox-specific — Twilio error `63016` outside it). Unset (both sender vars) = falls back to the in-app notification only. |
 | `TWILIO_ESCALATION_TEMPLATE_SID` | ContentSid of the `mira_escalation` WhatsApp template (`scripts/create_escalation_template.py`) — gives escalations a real "Go to Dashboard" button. Unset = falls back to a plain-text message with a bare URL. Also reused for RecoveryService's host-facing "missed call" WhatsApp (`app/services/recovery_service.py`) — same shape, not a separate template. |
@@ -179,7 +193,7 @@ DATABASE_URL="postgresql://…" python3 seed_demo.py   # additive; doesn't touch
 ## Common pitfalls
 
 - **`ValueError: malformed uri: invalid scheme`** in voice endpoint — a `TURN_URL*` is set to an `https://` or bare hostname. Fix: use `turn:host:port` / `turns:host:443?transport=tcp`, or delete the env var.
-- **ICE timeout on Render** — STUN-only works on localhost but not on cloud hosts where UDP is blocked. A TURN server is required for browser voice tests in production.
+- **ICE timeout on cloud hosts (Railway)** — STUN-only works on localhost but not on cloud hosts where UDP is blocked. A TURN server is required for browser voice tests in production.
 - **Browser test works on WiFi but fails on mobile data** — mobile carriers block/throttle UDP TURN. Set `TURN_URL_TLS` to a TURNS-over-TCP:443 relay (looks like HTTPS, gets through).
 - **Voice call gets slow/again after idle, or 429 errors** — a per-model Groq rate limit on `gpt-oss-120b` (account has been on a paid Groq plan since 2026-07-07, not free tier — limits are much higher but not unlimited, especially under call bursts). The 60s health check + `_FallbackGroqLLMService` route around it automatically; check `GET /api/v1/health/llm` to see which models are marked down.
 - **`postgres://` vs `postgresql+asyncpg://`** — handled automatically by the `_use_asyncpg_driver` validator in `config.py`.
@@ -193,4 +207,6 @@ DATABASE_URL="postgresql://…" python3 seed_demo.py   # additive; doesn't touch
 - **Banning a specific bad LLM phrasing via regex is whack-a-mole, not a fix** — a guard that only rewrites text matching a known-bad pattern (e.g. `loop...host`) will keep missing new phrasing variants of the same underlying failure ("let me open the host" never matched a `loop...host` regex) indefinitely; each "fix" only ever covers wording already observed live. When the safe replacement text is fixed and known regardless of context (e.g. escalation acknowledgements), the durable fix is to stop detecting altogether and unconditionally replace the reply after the triggering event — no detection step means no coverage gap. See `app/voice/escalation_phrase_guard.py`.
 - **Joining a list of items with a delimiter that can also appear inside an individual item silently corrupts round-trip parsing** — `handle_recommend_properties` joined multiple properties with `" | "`, but real (Airbnb-imported) property names routinely contain a literal `|` themselves, so splitting the combined string back apart tore names in half at every internal `|`, not just between properties (confirmed live: a shared brand-name suffix got read back as if it were the property name). Before picking a join delimiter for machine-parsed output, confirm it can't appear in the data being joined — a newline is almost always safer than a punctuation character for free-text fields.
 - **A substring match against a free-text field can true-positive on the wrong reason** — `recommend_properties`' Goa region filter matched the literal phrase "South Goa" against `neighborhood_info`, which incidentally mentions "Dabolim (South Goa airport)" as a travel-time reference on nearly every North Goa property's listing — a real North Goa property matched a South Goa query for a reason that has nothing to do with its actual location. When matching a category/region query against a free-text description field, prefer matching against a controlled list of expected values (a locality list, an enum) over a raw substring match against prose that can mention the term for unrelated reasons.
+- **"Himachal" / "near Kasol" matched nothing and the agent handed a guest to the host** (confirmed live 2026-11-07) — Airbnb imports store a *village* as `Property.city` ("Pangan", "Jari") and no text ever says the state, so the free-text location match found zero properties; `recommend_properties` then returned "let me connect you with the host" and the model escalated a guest it had just quoted villas to. Fixed by matching on map position (`app/services/geo/`, `places` gazetteer, `properties.latitude/longitude/state`): a property with a point is judged by where it is, free text only applies to properties with none, and a miss now lists the states the host does cover instead of handing off. Three traps found building it: a place name is not unique (14 villages are called "Jari", and a hamlet called "Jaipur" sat nearer a villa than the city did) so a real town beats a nearby hamlet of the same name; a spoken distance must be straight-line ("about 28 km from Manali" is ~75 km by road); and `python -m scripts.load_gazetteer` must be run per database or lookups silently find nothing and the old text match runs alone.
+- **Next dev server serves a stale stylesheet after editing `globals.css`** — Turbopack's on-disk cache can keep the old compiled CSS even after a restart (confirmed 2026-11-09: edited tokens never reached the page). `rm -rf frontend/.next` (gitignored build output) and restart.
 - **A fully implemented, tested function with no production caller is a silent functional gap, not just dead code** — `call_coordinator.renew()` (Busy Call Recovery's lease-keepalive) had a real regression test and a docstring describing a periodic renewal loop, but nothing in `app/voice/pipeline.py` ever actually called it. `DEFAULT_LEASE_TTL` is 45s, so every real call longer than 45s was silently losing its busy-recovery lease mid-call — a second incoming call after that point would wrongly get `START_PIPELINE` instead of `BUSY_RECOVERY`, defeating the feature for most real calls, with no error, no log line, and passing tests throughout (the tests exercised `renew()` directly, never the absence of a caller). Found only by a cross-file "who actually calls this" audit, not by running the test suite. Fixed by wiring a periodic `_renew_call_lease_periodically` background task into `_run_pipeline`'s existing lease-lifecycle `finally` block (`app/voice/pipeline.py`) — see [docs/agents.md](docs/agents.md)'s "Busy Call Recovery" section. When a function's own docstring describes behavior ("renewed roughly every N seconds by a caller") that no other file's code actually performs, treat that as a bug report, not documentation.

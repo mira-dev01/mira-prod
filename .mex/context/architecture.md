@@ -62,7 +62,7 @@ Five APScheduler jobs run in-process inside the FastAPI lifespan: iCal sync (eve
 
 ## External Dependencies
 
-- **PostgreSQL (Neon serverless)** — primary DB; auto-suspends after inactivity; `_check_db_health` pings every 3 min to keep the connection warm. Shared across Railway and Render (same `DATABASE_URL`).
+- **PostgreSQL (Neon serverless)** — primary DB; auto-suspends after inactivity; `_check_db_health` pings every 3 min to keep the connection warm. Production only — Railway's `dev` environment uses its own Supabase Postgres.
 - **Exotel** — telephony; routes live calls via WSS to `/api/v1/voice/exotel/ws/<EXOTEL_WEBHOOK_TOKEN>`; token is a path segment (Exotel strips query strings). Separate HTTP webhook for call-status metadata at `POST /api/v1/webhooks/exotel/call-status`.
 - **Sarvam AI** — STT (`codemix` mode: Hindi/English/Hinglish, no translation) + TTS (`bulbul:v3`, `roopa` speaker, `pace=1.15`). `LanguageSyncProcessor` switches TTS language live when the guest switches languages.
 - **Groq** — primary LLM; `openai/gpt-oss-120b` as first choice; fallback chain via `GROQ_MODELS` JSON array; health-checked every 60s; `max_completion_tokens=400`; `reasoning_format="hidden"` to suppress chain-of-thought from the reply text.
@@ -71,7 +71,7 @@ Five APScheduler jobs run in-process inside the FastAPI lifespan: iCal sync (eve
 - **SearchApi.io** — live Airbnb pricing for properties with `exact_airbnb_pricing=true`; daily city-wide refresh + per-call fetch. Unset = falls back to computed pricing.
 - **Cloudinary** — re-hosts property photos so they survive source-listing edits.
 - **Bright Data** — Airbnb listing scrape for import. Unset = import fails with a clear user-facing error.
-- **Railway + Vercel** — primary deployment (backend + frontend). Render kept running as fallback but not actively deployed to.
+- **Railway + Vercel** — the deployment (backend + frontend). Render is no longer used (`render.yaml` deleted 2026-11-09).
 
 ## What Does NOT Exist Here
 

@@ -25,7 +25,7 @@ last_updated: 2026-08-08
 - **Python 3.12** — backend language
 - **FastAPI ≥0.115** — async web framework; all route handlers use `async def`; `APIRouter` per domain under `app/api/v1/`
 - **SQLAlchemy ≥2.0 (asyncio)** + **asyncpg ≥0.30** — ORM with async engine; `AsyncSession` everywhere; `postgresql+asyncpg://` URL required (rewritten automatically by `config.py`)
-- **PostgreSQL (Neon serverless)** — primary DB; shared across Railway and Render environments
+- **PostgreSQL (Neon serverless)** — production DB (the Railway `dev` environment uses Supabase Postgres instead)
 - **Alembic ≥1.14** — DB migrations; `alembic upgrade head` runs at deploy startup via Dockerfile `CMD`
 - **Next.js (App Router) + TypeScript** — frontend; pages under `frontend/src/app/dashboard/`
 - **Tailwind CSS + shadcn/ui** — frontend styling and component library

@@ -300,6 +300,7 @@ backend/app/
 │   ├── turn_strategies.py     turn-end detection strategies               [flow: lifecycle]
 │   ├── language_sync.py       live TTS language switch                   [flow: i18n]
 │   ├── vad.py                 shared VAD analyzer                        [infra]
+│   ├── backchannel_start_strategy.py / barge_in_ducking.py / echo_canceller.py   optional full-duplex pieces, off by default [flow: lifecycle]
 │   ├── ringing_audio.py       pre-pipeline ringback tone                 [infra]
 │   ├── *_guard.py / response_shape_guard.py   7 deterministic backstops  [flow: guards]
 │   └── assets/
@@ -314,6 +315,7 @@ backend/app/
 │   ├── faq_service.py        tiered FAQ fallback                       [logic]
 │   ├── notification_service.py                                        [logic]
 │   ├── smart_pricing_service.py  scheduled cache pre-warm jobs         [logic]
+│   ├── geo/                  location search by map position: gazetteer lookup, property matching, writing a property's point  [logic]
 │   └── property/
 │       ├── card.py, pitch_formatter.py, chunking.py
 │       └── retrieval/        THE property-search subsystem              [flow: search]

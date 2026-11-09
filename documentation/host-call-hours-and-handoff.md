@@ -279,7 +279,7 @@ following must be true — call these out as a deploy checklist in the PR:
   sends.
 - `TWILIO_GUEST_CALLING_TEMPLATE_SID` is set (else the plain-text fallback is used, which is
   subject to WhatsApp's 24h customer-service-window rule for freeform messages).
-- Backend runs a **single** web worker (`handoff_signal` is in-process). If Render scales to >1,
+- Backend runs a **single** web worker (`handoff_signal` is in-process). If Railway scales to >1,
   the signal needs Redis pub/sub — separate work, out of scope, but note it.
 - `TAKE_CALL_TOKEN_SECRET` is set to a real value (defaults to `"change-me"`).
 
@@ -422,7 +422,7 @@ save), not a visual stub.
    `SCHEDULED` mode. Given the override forces everyone to one window today, in practice no host has
    a live per-property schedule — but run `SELECT count(*) FROM properties WHERE call_handling_mode
    != 'MIRA'` before merging to confirm.
-3. **Multi-worker deployment** breaks `handoff_signal` (in-process). Confirm Render runs 1 web
+3. **Multi-worker deployment** breaks `handoff_signal` (in-process). Confirm Railway runs 1 web
    worker. Out of scope to fix, in scope to note.
 4. **Exotel Connect applet config is manual console work** — the live handoff won't actually dial
    the host until it's set up, regardless of the code. Deploy-time task (B1 checklist).

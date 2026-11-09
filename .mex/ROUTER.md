@@ -37,7 +37,7 @@ Then read this file fully before doing anything else in this session.
 - Airbnb listing import via Bright Data scrape
 - In-app notifications + Twilio WhatsApp sandbox (escalations, photo links)
 - JWT auth; demo account (`demo@mira.ai` / `MiraDemo2024`) with 12 Indian properties
-- Deployment: Railway (backend) + Vercel (frontend); Render kept as fallback
+- Deployment: Railway (backend, `dev` + `production` environments) + Vercel (frontend); Render is no longer used (2026-11-09)
 
 **Not yet built:**
 - HTTP-based email API (Resend/SendGrid) — current SMTP is blocked on Railway Trial tier (port 587)

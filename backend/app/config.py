@@ -453,8 +453,7 @@ class Settings(BaseSettings):
     # extends the wait (up to a hard cap) when the transcript looks
     # mid-sentence, instead of firing at a fixed timeout. Local-only via
     # TURN_DETECTION_STRATEGY in backend/.env -- deliberately not added to
-    # render.yaml or CLAUDE.md's env var table, since those are shared
-    # production config.
+    # CLAUDE.md's env var table, since that is shared production config.
     turn_detection_strategy: Literal["vad_fixed", "hybrid_experimental"] = "vad_fixed"
 
     # Backchannel-aware barge-in (app/voice/backchannel_start_strategy.py).

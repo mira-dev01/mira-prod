@@ -48,11 +48,11 @@ last_updated: 2026-08-08
 **Alternatives considered:** Pre-connecting concurrently (tried — broke production), patching pipecat internals (deprioritized — high risk for ~1s gain, would need to replicate pipecat's private startup sequence).
 **Consequences:** ~2-2.5s STT+TTS connect time remains in call setup cost; covered by the ringing tone (`app/voice/ringing_audio.py`). Do not attempt concurrent pre-connect again without verifying against pipecat's `task_manager` assignment lifecycle.
 
-### Railway (backend) + Vercel (frontend) as primary; Render kept as fallback
-**Date:** 2026-07-21
+### Railway (backend) + Vercel (frontend); Render retired
+**Date:** 2026-07-21 (Render retired 2026-11-09)
 **Status:** Active
-**Decision:** Railway hosts the backend and Vercel the frontend for all active testing and real Exotel calls. Render is kept running but not actively deployed to.
-**Reasoning:** Railway/Vercel became the actual production path; Render was deliberately not torn down as a fallback if either primary fails. Railway Trial tier blocks outbound SMTP (port 587) — emails cannot be sent until either upgrading the tier or switching to an HTTP-based email API (not yet built).
+**Decision:** Railway hosts the backend (a `dev` and a `production` environment, each with its own database) and Vercel the frontend. Render was kept as a fallback in July 2026; on 2026-11-09 `render.yaml` was deleted and Render is no longer used.
+**Reasoning:** Railway/Vercel became the actual production path. Railway blocks outbound SMTP (587/465), so email goes through Resend's HTTP API (`RESEND_API_KEY`).
 **Alternatives considered:** Render-only (original setup, replaced when Railway/Vercel became primary).
 **Consequences:** `CORS_EXTRA_ORIGINS`/`FRONTEND_BASE_URL` on Railway must be set to Vercel's URL. `NEXT_PUBLIC_API_BASE_URL` on Vercel must include the full scheme and end in `/api/v1` — a schemeless value silently resolves every API call as a relative path against Vercel (confirmed live, recurred twice). Railway's public domain has shown DNS resolution failures from some resolvers (works via 8.8.8.8, fails from some home networks).
 

@@ -107,7 +107,7 @@ All guard processors are **pass-through by default** — zero latency on normal 
 ## Turn Detection
 
 - **Default (production)**: `SpeechTimeoutUserTurnStopStrategy(user_speech_timeout=0.9)` — 0.9s validated middle ground; 0.6s cut guests off, 1.4s added dead air.
-- **Experimental** (`TURN_DETECTION_STRATEGY=hybrid_experimental`): `HybridCompletenessUserTurnStopStrategy` — extends 0.9s base by 0.7s (up to 2.8s cap) on trailing conjunction/comma/short utterance heuristic. Experimental only; not in `render.yaml`.
+- **Experimental** (`TURN_DETECTION_STRATEGY=hybrid_experimental`): `HybridCompletenessUserTurnStopStrategy` — extends 0.9s base by 0.7s (up to 2.8s cap) on trailing conjunction/comma/short utterance heuristic. Experimental only; off unless the env var is set.
 
 ## Silence Watchdog
 
