@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Phone, Star, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Cell, CellLead, Sheet, SheetRow, WideCell } from "@/components/settings/sheet";
+import { Cell, CellLead, Sheet, SheetRow, WideCell } from "@/components/ui/sheet";
 import { CapabilityNotice } from "@/components/capability-notice";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";

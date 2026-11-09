@@ -12,7 +12,7 @@ import { BillingTab } from "@/components/billing-tab";
 import { TechniciansSection } from "@/components/settings/technicians-section";
 import { FeaturesSection } from "@/components/settings/features-section";
 import { DashboardSection } from "@/components/settings/dashboard-section";
-import { Cell, CellFoot, CellLead, CellTitle, Hint, Sheet } from "@/components/settings/sheet";
+import { Cell, CellFoot, CellLead, CellTitle, Hint, Sheet } from "@/components/ui/sheet";
 import { CapabilityNotice } from "@/components/capability-notice";
 import { HostCallHoursCard } from "@/components/settings/host-call-hours-card";
 import { NotificationsCard } from "@/components/settings/notifications-card";

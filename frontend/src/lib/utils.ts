@@ -25,8 +25,7 @@ export function cn(...inputs: ClassValue[]) {
 // blobs (page.tsx), which mix real saturated palette colors -- those stay
 // warm because they're not being diluted toward a neutral in the first
 // place. Keep this base plain; don't reintroduce a foreground mix here.
-export const glassCardClassName =
-  "bg-[color-mix(in_srgb,var(--card)_62%,transparent)] ring-1 ring-white/50 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_1px_2px_rgba(42,36,32,0.06)]"
+export const glassCardClassName = "border border-foreground bg-card/70"  // flat ruled surface (was frosted glass; see DESIGN.md)
 
 // Matches app/services/call_service.py's BROWSER_TEST_CALLER_NUMBER -- the
 // placeholder caller identity used by the dashboard's "test in browser"

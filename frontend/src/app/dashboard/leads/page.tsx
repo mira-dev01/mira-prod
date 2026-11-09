@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronRight, LayoutGrid, Search, Table2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Cell, CellTitle, Sheet, Toolbar, WideCell } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -178,13 +178,16 @@ function LeadCard({
   const leadLabels = useLeadLabels();
   const closed = lead.status === "closed";
   return (
-    <Card
+    <div
       draggable
       onDragStart={onDragStart}
       onClick={onClick}
-      className={cn("surface-interactive cursor-grab active:cursor-grabbing", closed && "opacity-60")}
+      className={cn(
+        "cursor-grab space-y-1.5 border-b border-border py-3 text-sm transition-colors first:pt-0 last:border-0 last:pb-0 hover:bg-accent/40 active:cursor-grabbing",
+        closed && "opacity-95"
+      )}
     >
-      <CardContent className={cn("space-y-2 text-sm", closed && "line-through decoration-muted-foreground")}>
+      <div className={cn("space-y-1.5", closed && "line-through decoration-muted-foreground")}>
         <div className="flex items-center justify-between gap-2">
           <span className="min-w-0 truncate font-medium">{leadGuestLabel(lead)}</span>
           <div className="flex shrink-0 items-center gap-1.5">
@@ -192,10 +195,10 @@ function LeadCard({
             <StatusChip status={leadLabels.label(lead.lead_temperature)} tone={leadLabels.tone(lead.lead_temperature)} className="normal-case" />
           </div>
         </div>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-[13px] text-muted-foreground">
           {lead.properties_discussed.length > 0 ? lead.properties_discussed.join(", ") : "No property discussed"}
         </p>
-        <p className="text-xs text-muted-foreground">{leadDatesLabel(lead)}</p>
+        <p className="text-[13px] text-muted-foreground">{leadDatesLabel(lead)}</p>
         <div className="flex items-center justify-between gap-2">
           {lead.urgency ? (
             <StatusChip status={lead.urgency} tone={urgencyTone[lead.urgency] ?? "neutral"} />
@@ -204,23 +207,23 @@ function LeadCard({
           ) : (
             <span />
           )}
-          <span className="whitespace-nowrap text-xs text-muted-foreground">{leadReceivedLabel(lead)}</span>
+          <span className="whitespace-nowrap text-[13px] text-muted-foreground">{leadReceivedLabel(lead)}</span>
         </div>
-        {onMarkHot && isReadyForHotLead(lead) && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full"
-            onClick={(e) => {
-              e.stopPropagation();
-              onMarkHot(lead);
-            }}
-          >
-            Mark as {leadLabels.labels.hot} lead
-          </Button>
-        )}
-      </CardContent>
-    </Card>
+      </div>
+      {onMarkHot && isReadyForHotLead(lead) && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full"
+          onClick={(e) => {
+            e.stopPropagation();
+            onMarkHot(lead);
+          }}
+        >
+          Mark as {leadLabels.labels.hot} lead
+        </Button>
+      )}
+    </div>
   );
 }
 
@@ -250,9 +253,9 @@ function LeadsKanban({
   }
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <>
       {KANBAN_COLUMNS.map((column) => (
-        <div
+        <Cell
           key={column.status}
           onDragOver={(e) => {
             e.preventDefault();
@@ -265,16 +268,13 @@ function LeadsKanban({
             const leadId = e.dataTransfer.getData("text/plain");
             if (leadId) onDropStatus(leadId, column.status);
           }}
-          className={cn(
-            "flex flex-col gap-3 rounded-lg border border-dashed p-3 transition-colors",
-            dragOverColumn === column.status ? "border-ring bg-accent" : "border-transparent"
-          )}
+          className={cn("md:col-span-6 xl:col-span-3 transition-colors", dragOverColumn === column.status && "bg-accent")}
         >
-          <div className="flex items-center justify-between px-1">
-            <h2 className="text-sm font-medium">{column.label}</h2>
-            <span className="text-xs text-muted-foreground">{leadsForColumn(column.status).length}</span>
+          <div className="flex items-center justify-between gap-2">
+            <CellTitle>{column.label}</CellTitle>
+            <span className="text-[13px] text-muted-foreground tabular-nums">{leadsForColumn(column.status).length}</span>
           </div>
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col">
             {leadsForColumn(column.status).map((lead) => (
               <LeadCard
                 key={lead.id}
@@ -287,13 +287,11 @@ function LeadsKanban({
                 onMarkHot={column.status === "open" ? onMarkHot : undefined}
               />
             ))}
-            {leadsForColumn(column.status).length === 0 && (
-              <p className="px-1 text-xs text-muted-foreground">No leads.</p>
-            )}
+            {leadsForColumn(column.status).length === 0 && <p className="text-[13px] text-muted-foreground">No leads.</p>}
           </div>
-        </div>
+        </Cell>
       ))}
-    </div>
+    </>
   );
 }
 
@@ -316,27 +314,27 @@ function ServiceRequestsTabContent() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-muted-foreground">
-          In-stay guest asks (housekeeping, amenities, maintenance) MIRA logged during a call.
-        </p>
-        {requests && requests.length > 0 && (
-          <Input
-            placeholder="Search requests…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            leadingIcon={<Search />}
-            className="w-64"
-          />
-        )}
-      </div>
-      {loading ? (
-        <Skeleton className="h-64 w-full" />
-      ) : (
-        <ServiceRequestsTable requests={filteredRequests} onDismiss={handleDismiss} />
+    <Sheet>
+      {requests && requests.length > 0 && (
+        <Toolbar>
+          <div className="w-full sm:w-72">
+            <Input
+              placeholder="Search requests…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              leadingIcon={<Search />}
+            />
+          </div>
+        </Toolbar>
       )}
-    </div>
+      <Cell className="gap-0 p-0">
+        {loading ? (
+          <Skeleton className="m-5 h-64" />
+        ) : (
+          <ServiceRequestsTable requests={filteredRequests} onDismiss={handleDismiss} />
+        )}
+      </Cell>
+    </Sheet>
   );
 }
 
@@ -444,107 +442,123 @@ function BookingRequestsTabContent() {
     }
   }
 
+  const emptyMessage =
+    (leads ?? []).length === 0
+      ? "No leads yet. They appear once your call intake number receives calls."
+      : null;
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-muted-foreground">Booking enquiries qualified by the Lead Agent</p>
-        <div className="flex flex-wrap items-center gap-4">
-          <Input
-            placeholder="Search leads…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            leadingIcon={<Search />}
-            className="w-56"
-          />
+      <Sheet>
+        <Toolbar>
+          <div className="w-full sm:w-64">
+            <Input
+              placeholder="Search leads…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              leadingIcon={<Search />}
+            />
+          </div>
           <div className="flex items-center gap-2">
             <Switch id="include-test-leads" checked={includeTestCalls} onCheckedChange={setIncludeTestCalls} />
             <Label htmlFor="include-test-leads" className="text-sm text-muted-foreground">
               Include browser test calls
             </Label>
           </div>
-          <div className="flex items-center gap-1 rounded-lg border p-0.5">
-            <Button
-              variant={view === "table" ? "secondary" : "ghost"}
-              size="icon-sm"
-              aria-label="Table view"
-              onClick={() => setView("table")}
-            >
-              <Table2 className="size-4" />
-            </Button>
-            <Button
-              variant={view === "board" ? "secondary" : "ghost"}
-              size="icon-sm"
-              aria-label="Board view"
-              onClick={() => setView("board")}
-            >
-              <LayoutGrid className="size-4" />
-            </Button>
-          </div>
-          {view === "table" && (
-            <Select value={statusFilter} onValueChange={(v) => v && setStatusFilter(v)}>
-              <SelectTrigger className="w-36">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All statuses</SelectItem>
-                {STATUSES.map((s) => (
-                  <SelectItem key={s} value={s}>
-                    {s}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-          <DateRangePicker />
-        </div>
-      </div>
-
-      {loading ? (
-        <Skeleton className="h-64 w-full" />
-      ) : view === "board" ? (
-        (leads ?? []).length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No leads yet — they appear here once your portfolio&rsquo;s call intake number starts receiving calls.
-          </p>
-        ) : searchFilteredLeads.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No leads match your search.</p>
-        ) : (
-          <LeadsKanban
-            leads={searchFilteredLeads}
-            onCardClick={setEditing}
-            onDropStatus={handleStatusDrop}
-            onMarkHot={handleMarkHot}
-          />
-        )
-      ) : statusFilteredLeads.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          {leads && leads.length > 0
-            ? "No leads match this status filter."
-            : "No leads yet — they appear here once your portfolio's call intake number starts receiving calls."}
-        </p>
-      ) : searchFilteredLeads.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No leads match your search.</p>
-      ) : (
-        <div className="space-y-4">
-          {contentLeads.length > 0 ? (
-            <LeadsTable leads={contentLeads} onRowClick={setEditing} />
-          ) : (
-            <p className="text-sm text-muted-foreground">No leads with captured info yet for this filter.</p>
-          )}
-
-          {emptyLeads.length > 0 && (
-            <div className="space-y-3 border-t pt-4">
-              <div className="flex items-center gap-2">
-                <Switch id="show-empty-leads" checked={showEmpty} onCheckedChange={setShowEmpty} />
-                <Label htmlFor="show-empty-leads" className="text-sm text-muted-foreground">
-                  Show {emptyLeads.length} lead{emptyLeads.length === 1 ? "" : "s"} with no captured info
-                </Label>
-              </div>
-              {showEmpty && <LeadsTable leads={emptyLeads} muted onRowClick={setEditing} />}
+          <div className="ml-auto flex flex-wrap items-center gap-3">
+            {view === "table" && (
+              <Select value={statusFilter} onValueChange={(v) => v && setStatusFilter(v)}>
+                <SelectTrigger className="w-36">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All statuses</SelectItem>
+                  {STATUSES.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {s}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <div className="flex items-center gap-1 border border-foreground p-0.5">
+              <Button
+                variant={view === "table" ? "default" : "ghost"}
+                size="icon-sm"
+                aria-label="Table view"
+                aria-pressed={view === "table"}
+                onClick={() => setView("table")}
+              >
+                <Table2 className="size-4" />
+              </Button>
+              <Button
+                variant={view === "board" ? "default" : "ghost"}
+                size="icon-sm"
+                aria-label="Board view"
+                aria-pressed={view === "board"}
+                onClick={() => setView("board")}
+              >
+                <LayoutGrid className="size-4" />
+              </Button>
             </div>
-          )}
-        </div>
-      )}
+            <DateRangePicker />
+          </div>
+        </Toolbar>
+
+        {loading ? (
+          <Cell>
+            <Skeleton className="h-64 w-full" />
+          </Cell>
+        ) : view === "board" ? (
+          emptyMessage ? (
+            <Cell>
+              <p className="text-sm text-muted-foreground">{emptyMessage}</p>
+            </Cell>
+          ) : searchFilteredLeads.length === 0 ? (
+            <Cell>
+              <p className="text-sm text-muted-foreground">No leads match your search.</p>
+            </Cell>
+          ) : (
+            <LeadsKanban
+              leads={searchFilteredLeads}
+              onCardClick={setEditing}
+              onDropStatus={handleStatusDrop}
+              onMarkHot={handleMarkHot}
+            />
+          )
+        ) : statusFilteredLeads.length === 0 ? (
+          <Cell>
+            <p className="text-sm text-muted-foreground">
+              {leads && leads.length > 0 ? "No leads match this status filter." : emptyMessage}
+            </p>
+          </Cell>
+        ) : searchFilteredLeads.length === 0 ? (
+          <Cell>
+            <p className="text-sm text-muted-foreground">No leads match your search.</p>
+          </Cell>
+        ) : (
+          <WideCell>
+            <div className="col-span-12 p-5">
+              {contentLeads.length > 0 ? (
+                <LeadsTable leads={contentLeads} onRowClick={setEditing} />
+              ) : (
+                <p className="text-sm text-muted-foreground">Nothing with captured info for this filter.</p>
+              )}
+            </div>
+            {emptyLeads.length > 0 && (
+              <div className="col-span-12 space-y-3 border-t border-border p-5">
+                <div className="flex items-center gap-2">
+                  <Switch id="show-empty-leads" checked={showEmpty} onCheckedChange={setShowEmpty} />
+                  <Label htmlFor="show-empty-leads" className="text-sm text-muted-foreground">
+                    Show {emptyLeads.length} lead{emptyLeads.length === 1 ? "" : "s"} with no captured info
+                  </Label>
+                </div>
+                {showEmpty && <LeadsTable leads={emptyLeads} muted onRowClick={setEditing} />}
+              </div>
+            )}
+          </WideCell>
+        )}
+      </Sheet>
 
       <LeadDetailPanel
         lead={editing}

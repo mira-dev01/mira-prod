@@ -14,7 +14,8 @@ import { RightPanel, RightPanelFooterButton } from "@/components/ui/right-panel"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { cn, glassCardClassName } from "@/lib/utils";
+import { CellCard, CellTitle } from "@/components/ui/sheet";
+import { cn } from "@/lib/utils";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError } from "@/lib/api";
 import { PropertyScopePicker, scopePayload, type PropertyScope } from "@/components/property-scope-picker";
@@ -32,7 +33,8 @@ export function UnansweredQuestionsCard({
   linkToFaqPage,
   collapsible,
   hideDescription,
-  glass,
+  inSheet,
+  className,
 }: {
   limit?: number;
   linkToFaqPage?: boolean;
@@ -42,9 +44,13 @@ export function UnansweredQuestionsCard({
    * "Questions Mira couldn't answer" + the unanswered-count badge already
    * say what this card is. The FAQ page's full view keeps it. */
   hideDescription?: boolean;
-  /** See lib/utils.ts's glassCardClassName -- opt-in, Overview page only. */
-  glass?: boolean;
+  /** Render as a block of the Overview's Sheet (shared ruled edges) instead of a standalone Card. */
+  inSheet?: boolean;
+  /** Grid placement when inSheet (e.g. "md:col-span-6"). */
+  className?: string;
 } = {}) {
+  const Shell = inSheet ? CellCard : Card;
+  const Title = inSheet ? CellTitle : CardTitle;
   const { data: properties } = useAsync(() => api.properties.list(), []);
   const { data: allGaps, loading: gapsLoading, refetch: refetchGaps } = useAsync(() => api.faqGaps.list(), []);
   // Which property's gaps to show (full list only). Filtered client-side: the
@@ -150,7 +156,7 @@ export function UnansweredQuestionsCard({
 
   return (
     <>
-      <Card className={cn("h-full min-w-0", glass && glassCardClassName)}>
+      <Shell className={cn("h-full min-w-0", inSheet && "md:col-span-6", className)}>
         {collapsible ? (
           <button
             type="button"
@@ -159,11 +165,10 @@ export function UnansweredQuestionsCard({
             className="flex w-full items-center justify-between gap-3 p-6 text-left"
           >
             <div className="min-w-0">
-              <CardTitle>Questions Mira couldn&apos;t answer</CardTitle>
+              <Title>Questions Mira couldn&apos;t answer</Title>
               {expanded && (
                 <CardDescription className="mt-1.5">
-                  Guests asked these and Mira had no verified answer, so she couldn&apos;t help — answer one below
-                  and Mira will use it automatically next time.
+                  Guests asked these and Mira had no verified answer. Answer one and she&apos;ll use it next time.
                 </CardDescription>
               )}
             </div>
@@ -178,11 +183,10 @@ export function UnansweredQuestionsCard({
           </button>
         ) : (
           <CardHeader>
-            <CardTitle>Questions Mira couldn&apos;t answer</CardTitle>
+            <Title>Questions Mira couldn&apos;t answer</Title>
             {!hideDescription && (
               <CardDescription>
-                Guests asked these and Mira had no verified answer, so she couldn&apos;t help — answer one below and
-                Mira will use it automatically next time.
+                Guests asked these and Mira had no verified answer. Answer one and she&apos;ll use it next time.
               </CardDescription>
             )}
           </CardHeader>
@@ -192,7 +196,7 @@ export function UnansweredQuestionsCard({
             <Skeleton className="h-32 w-full" />
           ) : !gaps || gaps.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No unanswered questions right now — nice work keeping the FAQ knowledge base current.
+              No unanswered questions.
             </p>
           ) : (
             <div className="space-y-3">
@@ -219,7 +223,7 @@ export function UnansweredQuestionsCard({
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="min-w-0 break-words text-sm font-medium">{gap.question}</p>
                       <Badge variant="destructive" className="shrink-0">
-                        asked {gap.count}× {gap.count === 1 ? "time" : "times"}
+                        asked {gap.count}×
                       </Badge>
                       {gap.suggested_answer && (
                         <Badge variant="secondary" className="shrink-0">
@@ -228,7 +232,7 @@ export function UnansweredQuestionsCard({
                       )}
                       {gap.source === "guard_blocked" && (
                         <Badge variant="outline" className="shrink-0">
-                          Mira held back an unverified answer
+                          Answer held back
                         </Badge>
                       )}
                     </div>
@@ -245,17 +249,17 @@ export function UnansweredQuestionsCard({
           )}
         </CardContent>}
         {linkToFaqPage && totalCount > 0 && (
-          <div className="border-t px-4 py-3">
+          <div className="border-t border-border px-5 py-3">
             <Link
               href="/dashboard/faq"
               className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
             >
-              View all {totalCount} unanswered question{totalCount === 1 ? "" : "s"}
+              View all {totalCount}
               <ArrowRight className="size-3.5" />
             </Link>
           </div>
         )}
-      </Card>
+      </Shell>
 
       <RightPanel
         open={!!answeringGap}

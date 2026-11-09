@@ -67,7 +67,7 @@
    user's request) under the "Visible Grid" layout and type: one neutral
    grotesk (Schibsted Grotesk), flat ruled blocks and a faint 12-column
    construction grid (--grid-line, .field-grid) behind every Sheet
-   (components/settings/sheet.tsx). The dashboard is always-light; the .dark
+   (components/ui/sheet.tsx). The dashboard is always-light; the .dark
    block below is unused legacy.
 
    Spacing: Tailwind's --spacing base unit here is 0.25rem (4px), so every

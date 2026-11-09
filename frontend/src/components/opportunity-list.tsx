@@ -33,11 +33,11 @@ export function OpportunityList({
 }) {
   const leadLabels = useLeadLabels();
   if (leads.length === 0) {
-    return <p className="text-sm text-muted-foreground">No opportunities right now — you&rsquo;re all caught up.</p>;
+    return <p className="text-sm text-muted-foreground">No missed calls.</p>;
   }
 
   return (
-    <div className="space-y-3">
+    <div>
       {leads.map((lead) => {
         const type = opportunityType(lead);
         return (

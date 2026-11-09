@@ -7,7 +7,7 @@ import { ArrowRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/settings/segmented";
-import { Cell, CellLead, Hint, Sheet, SheetRow, WideCell } from "@/components/settings/sheet";
+import { Cell, CellLead, Hint, Sheet, SheetRow, WideCell } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { CapabilityActions, CapabilityStateChip } from "@/components/capability-state-chip";

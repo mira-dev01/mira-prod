@@ -129,14 +129,16 @@ export function ServiceRequestsTable({
   }
 
   return (
-    <div className="space-y-3">
+    <div>
       {requests.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No open service requests.</p>
+        <p className="p-5 text-sm text-muted-foreground">No open service requests.</p>
       ) : (
-        <ServiceRequestsList requests={requests} selectable completing={completing} onComplete={handleComplete} />
+        <div className="px-3 pt-2">
+          <ServiceRequestsList requests={requests} selectable completing={completing} onComplete={handleComplete} />
+        </div>
       )}
 
-      <div>
+      <div className="border-t border-border px-5 py-2">
         <Button variant="link" size="sm" className="px-0 text-muted-foreground" onClick={() => setBinOpen(true)}>
           View completed requests
         </Button>

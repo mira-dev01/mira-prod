@@ -5,7 +5,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { ArrowRight, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Cell, CellLead, CellTitle, Hint, Sheet } from "@/components/settings/sheet";
+import { Cell, CellLead, CellTitle, Hint, Sheet } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAsync } from "@/hooks/use-async";
 import { ApiError, api } from "@/lib/api";

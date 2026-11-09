@@ -82,11 +82,11 @@ export const callTypeLabel: Record<CallType, string> = {
 // StatusChip's dot glyph (status-chip.tsx / lib/tone.ts) rather than
 // inventing new colors -- gives each row a glanceable urgency signal at a
 // glance instead of a wall of identical white rows.
-const urgencyBorderClass: Record<string, string> = {
-  emergency: "border-l-destructive",
-  high: "border-l-destructive",
-  medium: "border-l-(--status-pending)",
-  low: "border-l-(--priority-low)",
+const urgencyDotClass: Record<string, string> = {
+  emergency: "bg-destructive",
+  high: "bg-destructive",
+  medium: "bg-status-pending",
+  low: "bg-(--priority-low)",
 };
 
 function formatDuration(minutes: number | null): string {
@@ -145,12 +145,15 @@ export function CallsTable({ calls, compact = false }: { calls: CallSessionOut[]
             <TableRow
               key={call.id}
               onClick={() => router.push(`/dashboard/calls/${call.id}`)}
-              className={cn(
-                "cursor-pointer border-l-4",
-                call.urgency ? urgencyBorderClass[call.urgency] ?? "border-l-transparent" : "border-l-transparent"
-              )}
+              className="cursor-pointer"
             >
               <TableCell>
+                {call.urgency && urgencyDotClass[call.urgency] && (
+                  <span
+                    aria-label={`${call.urgency} urgency`}
+                    className={cn("mr-2 inline-block size-2 rounded-full align-middle", urgencyDotClass[call.urgency])}
+                  />
+                )}
                 {isBrowserTestIdentity(call.caller_number) ? (
                   <Badge variant="outline">Browser test</Badge>
                 ) : (

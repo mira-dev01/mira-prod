@@ -1,9 +1,7 @@
 "use client";
 
-import { PhoneMissed, MessageCircleReply, CheckCircle2, XCircle, Timer, UserCheck } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { StatCard } from "@/components/stat-card";
+import { Cell, CellTitle } from "@/components/ui/sheet";
 import { useAsync } from "@/hooks/use-async";
 import { useDateRange } from "@/hooks/use-date-range";
 import { useNotificationStream } from "@/hooks/use-notification-stream";
@@ -47,75 +45,73 @@ export function RecoveryAnalyticsCard() {
   const funnel = data?.funnel ?? [];
   const maxValue = Math.max(1, ...funnel.map((s) => s.value));
 
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Recovery Analytics</CardTitle>
-        <CardDescription>How missed calls (busy line) turn into engaged guests and bookings.</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-6">
-          <StatCard icon={PhoneMissed} label="Busy Calls" value={data?.busy_calls} loading={loading} />
-          <StatCard icon={MessageCircleReply} label="Recovered" value={data?.recovered} loading={loading} />
-          <StatCard icon={CheckCircle2} label="Converted" value={data?.converted} loading={loading} />
-          <StatCard icon={XCircle} label="Lost" value={data?.lost} loading={loading} />
-          <StatCard
-            icon={Timer}
-            label="Avg. Recovery Time"
-            value={loading ? undefined : formatDuration(data?.avg_recovery_time_seconds ?? null)}
-            loading={loading}
-          />
-          <StatCard
-            icon={UserCheck}
-            label="Avg. Host Response"
-            value={loading ? undefined : formatDuration(data?.avg_host_response_seconds ?? null)}
-            loading={loading}
-          />
-        </div>
+  const metrics: { label: string; value: string | number | undefined }[] = [
+    { label: "Busy calls", value: data?.busy_calls },
+    { label: "Recovered", value: data?.recovered },
+    { label: "Converted", value: data?.converted },
+    { label: "Lost", value: data?.lost },
+    { label: "Avg. recovery time", value: loading ? undefined : formatDuration(data?.avg_recovery_time_seconds ?? null) },
+    { label: "Avg. host response", value: loading ? undefined : formatDuration(data?.avg_host_response_seconds ?? null) },
+  ];
 
-        <div className="space-y-2">
-          <p className="text-sm font-medium text-foreground">Recovery Funnel</p>
+  // Renders ruled cells: place it inside a <Sheet>.
+  return (
+    <>
+      {metrics.map((metric) => (
+        <Cell key={metric.label} className="col-span-6 p-4 sm:p-5 md:col-span-4 xl:col-span-2">
+          <CellTitle>{metric.label}</CellTitle>
           {loading ? (
-            <Skeleton className="h-24 w-full" />
-          ) : funnel.length === 0 || funnel[0].value === 0 ? (
-            <p className="text-sm text-muted-foreground">No busy-call recoveries in this date range yet.</p>
+            <Skeleton className="h-9 w-16" />
           ) : (
-            <div className="space-y-2">
-              {funnel.map((stage, i) => {
-                const widthPct = Math.max(4, Math.round((stage.value / maxValue) * 100));
-                const colorVar = STAGE_COLOR_VARS[i % STAGE_COLOR_VARS.length];
-                // First stage is always 100% of itself, not a fraction the
-                // backend ships a field for. The other two stages use the
-                // backend-computed recovery_rate/conversion_rate directly
-                // (both are exactly "this stage's value / busy_calls",
-                // computed once server-side) rather than re-deriving the
-                // same ratio from stage.value/funnel[0].value client-side.
-                const pctLabel =
-                  stage.stage === "busy_calls"
-                    ? "100%"
-                    : stage.stage === "recovered"
-                      ? formatPercent(data?.recovery_rate ?? null)
-                      : formatPercent(data?.conversion_rate ?? null);
-                return (
-                  <div key={stage.stage} className="flex items-center gap-3">
-                    <span className="w-24 shrink-0 text-sm text-muted-foreground">{stage.label}</span>
-                    <div className="h-6 flex-1 overflow-hidden rounded-md bg-muted">
-                      <div
-                        className="h-full rounded-md transition-[width]"
-                        style={{ width: `${widthPct}%`, backgroundColor: `var(${colorVar})` }}
-                      />
-                    </div>
-                    <span className="w-20 shrink-0 text-right text-sm tabular-nums text-foreground">
-                      {stage.value}
-                      <span className="ml-1 text-xs text-muted-foreground">({pctLabel})</span>
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
+            <p className="text-[clamp(1.75rem,2.4vw,2.25rem)] leading-tight font-medium tracking-tight tabular-nums">
+              {metric.value ?? "—"}
+            </p>
           )}
-        </div>
-      </CardContent>
-    </Card>
+        </Cell>
+      ))}
+
+      <Cell>
+        <CellTitle>Recovery funnel</CellTitle>
+        {loading ? (
+          <Skeleton className="h-24 w-full" />
+        ) : funnel.length === 0 || funnel[0].value === 0 ? (
+          <p className="text-sm text-muted-foreground">No busy-call recoveries in this period.</p>
+        ) : (
+          <div className="space-y-2">
+            {funnel.map((stage, i) => {
+              const widthPct = Math.max(4, Math.round((stage.value / maxValue) * 100));
+              const colorVar = STAGE_COLOR_VARS[i % STAGE_COLOR_VARS.length];
+              // First stage is always 100% of itself, not a fraction the
+              // backend ships a field for. The other two stages use the
+              // backend-computed recovery_rate/conversion_rate directly
+              // (both are exactly "this stage's value / busy_calls",
+              // computed once server-side) rather than re-deriving the
+              // same ratio from stage.value/funnel[0].value client-side.
+              const pctLabel =
+                stage.stage === "busy_calls"
+                  ? "100%"
+                  : stage.stage === "recovered"
+                    ? formatPercent(data?.recovery_rate ?? null)
+                    : formatPercent(data?.conversion_rate ?? null);
+              return (
+                <div key={stage.stage} className="flex items-center gap-3">
+                  <span className="w-24 shrink-0 text-sm text-muted-foreground">{stage.label}</span>
+                  <div className="h-6 flex-1 overflow-hidden bg-muted">
+                    <div
+                      className="h-full transition-[width]"
+                      style={{ width: `${widthPct}%`, backgroundColor: `var(${colorVar})` }}
+                    />
+                  </div>
+                  <span className="w-20 shrink-0 text-right text-sm tabular-nums text-foreground">
+                    {stage.value}
+                    <span className="ml-1 text-xs text-muted-foreground">({pctLabel})</span>
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Cell>
+    </>
   );
 }

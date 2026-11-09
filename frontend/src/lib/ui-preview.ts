@@ -164,7 +164,61 @@ const navigation = {
   revision: 1, is_default: true, updated_at: null,
 };
 
+const now = Date.now();
+const ago = (h: number) => new Date(now - h * 3600_000).toISOString();
+
+const overview = {
+  start_date: "2026-10-10", end_date: "2026-11-09", has_properties: true,
+  portfolio: {
+    occupancy: 0.42, revenue: 684000, adr: 14200, revpar: 5964, upcoming_revenue: 392000, booked_nights: 241, available_nights: 574,
+    completeness: { bookings_total: 14, bookings_priced: 11, is_complete: false },
+    upcoming_completeness: { bookings_total: 9, bookings_priced: 9, is_complete: true },
+    currency: "INR",
+  },
+  opportunities: { booking_opportunities: 23, high_intent: 6, booking_intent: 4 },
+  mira_attributed_bookings: 3,
+  activity: { total_calls: 87, completed_calls: 74, qualified_calls: 31, escalated_calls: 5, answer_rate: 0.93 },
+  attention: { price_confirmations: 3, attribution_confirmations: 1, high_intent_unconverted: { count: 4, potential_value: 186000, valued_count: 3 } },
+};
+
+function lead(id: string, over: Record<string, unknown>) {
+  return {
+    id, user_id: "preview-user", call_session_id: `call-${id}`, guest_name: null, phone: null, email: null, check_in: null, check_out: null,
+    num_guests: null, purpose_of_stay: null, budget: null, preferred_location: null, properties_discussed: [], questions_asked: [],
+    support_requests: [], lead_temperature: "warm", lead_source: "phone", entry_channel: "phone_call", recovery_reason: null,
+    conversation_summary: null, next_follow_up: null, escalated: false, transferred_to_host: false, status: "open", occasion: null,
+    created_at: ago(30), updated_at: ago(6), urgency: null, ...over,
+  };
+}
+const leads = [
+  lead("l1", { guest_name: "Aarav Mehta", phone: "+919811100001", check_in: "2026-11-15", check_out: "2026-11-20", num_guests: 5, properties_discussed: ["Hunzuru Wabi Sabi near Manali"], lead_temperature: "hot", escalated: true, urgency: "high", conversation_summary: "Group of five wants Manali 15–20 Nov and asked for a call back about the villa rate.", updated_at: ago(1) }),
+  lead("l2", { guest_name: "Priya Nair", phone: "+919811100002", check_in: "2026-12-24", check_out: "2026-12-28", num_guests: 8, properties_discussed: ["Woodhouse Farm"], lead_temperature: "hot", escalated: true, urgency: "medium", conversation_summary: "Family trip for Christmas, wants to confirm the extra-bed charge.", updated_at: ago(3) }),
+  lead("l3", { guest_name: "Rohan Gupta", phone: "+919811100003", properties_discussed: ["The Slow-life Cottage & Bonnfire near Kasol"], lead_temperature: "warm", status: "contacted", updated_at: ago(9) }),
+  lead("l4", { guest_name: "Sana Khan", phone: "+919811100004", check_in: "2026-11-30", check_out: "2026-12-02", num_guests: 4, properties_discussed: ["Jungle House Jaipur"], lead_temperature: "hot", status: "booked", updated_at: ago(20) }),
+  lead("l5", { guest_name: "Vikram Rao", phone: "+919811100005", lead_temperature: "cold", status: "closed", updated_at: ago(70) }),
+  lead("l6", { guest_name: "Meera Iyer", phone: "+919811100006", recovery_reason: "BUSY_CALL", lead_temperature: "warm", properties_discussed: ["Vayu: A Tranquil Himalayan Home"], conversation_summary: "Called while the line was busy; WhatsApp follow-up sent, asked about Mukteshwar in January.", updated_at: ago(2) }),
+];
+const calls = [
+  { id: "c1", exotel_call_id: "x1", property_id: null, guest_profile_id: null, caller_number: "+919811100001", guest_name: "Aarav Mehta", guest_phone: "+919811100001", duration_minutes: 6.4, recording_url: null, transcript: null, ai_summary: null, status: "completed", urgency: "high", call_type: "BOOKING_LEAD", classification_confidence: 0.9, classification_reason: null, revenue_attributed: 0, started_at: ago(1), ended_at: ago(1), created_at: ago(1) },
+  { id: "c2", exotel_call_id: "x2", property_id: null, guest_profile_id: null, caller_number: "+919811100002", guest_name: "Priya Nair", guest_phone: "+919811100002", duration_minutes: 4.1, recording_url: null, transcript: null, ai_summary: null, status: "completed", urgency: null, call_type: "BOOKING_LEAD", classification_confidence: 0.9, classification_reason: null, revenue_attributed: 0, started_at: ago(3), ended_at: ago(3), created_at: ago(3) },
+  { id: "c3", exotel_call_id: "x3", property_id: null, guest_profile_id: null, caller_number: "+919811100009", guest_name: null, guest_phone: "+919811100009", duration_minutes: 0.4, recording_url: null, transcript: null, ai_summary: null, status: "completed", urgency: null, call_type: "JUNK", classification_confidence: 0.9, classification_reason: null, revenue_attributed: 0, started_at: ago(5), ended_at: ago(5), created_at: ago(5) },
+];
+const faqGaps = [
+  { sample_id: "g1", question: "Is there a bonfire we can book for a group?", count: 3, property_id: "preview-prop-1", last_asked_at: ago(8), suggested_faq_entry_id: null, suggested_answer: null, match_score: null, source: "search_miss" },
+  { sample_id: "g2", question: "Do you allow pets at Woodhouse Farm?", count: 2, property_id: "preview-prop-2", last_asked_at: ago(30), suggested_faq_entry_id: null, suggested_answer: null, match_score: null, source: "guard_blocked" },
+];
+const serviceRequests = [
+  { call_session_id: "c9", property_id: "preview-prop-0", property_name: "Hunzuru Wabi Sabi near Manali", room_number: "2", message: "Geyser not working in room 2.", urgency: "high", created_at: ago(4), dismissed_at: null },
+];
+
 const routes: Array<[RegExp, unknown]> = [
+  [/^\/analytics\/overview/, overview],
+  [/^\/leads\/service-requests/, serviceRequests],
+  [/^\/leads/, leads],
+  [/^\/calls/, calls],
+  [/^\/faq\/gaps|^\/faq-gaps|^\/unanswered/, faqGaps],
+  [/^\/tickets/, []],
+  [/^\/bookings\/reconciliation/, { items: [], total: 0 }],
   [/^\/preferences\/navigation/, navigation],
   [/^\/auth\/me\/call-hours-status/, { enabled: false, current_owner: "MIRA", checked_at: "2026-11-09T10:00:00Z" }],
   [/^\/auth\/me/, me],

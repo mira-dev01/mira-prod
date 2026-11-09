@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 
 /**
- * The Settings layout system ("Visible Grid"): a Sheet is a 12-column grid
+ * The dashboard layout system ("Visible Grid"): a Sheet is a 12-column grid
  * with a faint construction line on every column (globals.css .field-grid);
  * a Cell is one ruled block that spans whole columns, so every edge lands on
  * a line. Cells in a row share borders and stretch to the same height --
@@ -27,6 +27,32 @@ export function Cell({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       className={cn("col-span-12 flex min-w-0 flex-col gap-3 border-r border-b border-foreground bg-card/70 p-5", className)}
+      {...props}
+    />
+  );
+}
+
+/** A Cell that hosts the Card parts (CardHeader / CardContent), for the
+ * dashboard cards that also appear outside a Sheet: same look inside the grid
+ * (shared ruled edges, equal row height) without rewriting each card. */
+export function CellCard({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <Cell
+      className={cn("gap-(--card-spacing) p-0 py-(--card-spacing) [--card-spacing:--spacing(5)]", className)}
+      {...props}
+    />
+  );
+}
+
+/** The strip above a list or table: search, filters and view switches on one
+ * ruled row that shares the Sheet's edges. */
+export function Toolbar({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      className={cn(
+        "col-span-12 flex flex-wrap items-center gap-x-4 gap-y-3 border-r border-b border-foreground bg-card/70 px-5 py-3",
+        className
+      )}
       {...props}
     />
   );

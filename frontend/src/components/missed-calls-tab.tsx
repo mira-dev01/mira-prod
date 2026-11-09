@@ -8,10 +8,11 @@ import { OpportunityList } from "@/components/opportunity-list";
 import { RecoveryAnalyticsCard } from "@/components/recovery-analytics-card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Cell, Sheet, Toolbar } from "@/components/ui/sheet";
 import { useAsync } from "@/hooks/use-async";
 import { useNotificationStream } from "@/hooks/use-notification-stream";
 import { api } from "@/lib/api";
-import { OPPORTUNITY_TYPES, isOpportunity } from "@/lib/opportunities";
+import { isOpportunity } from "@/lib/opportunities";
 import type { LeadOut } from "@/lib/types";
 import { isBrowserTestIdentity, matchesSearch } from "@/lib/utils";
 
@@ -48,29 +49,27 @@ export function MissedCallsTab() {
     .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-muted-foreground">
-          {OPPORTUNITY_TYPES.map((type) => type.description).join(" ")}
-        </p>
-        <DateRangePicker />
-      </div>
+    <>
+      <Sheet>
+        <Toolbar className="justify-between">
+          {missed.length > 0 ? (
+            <div className="w-full sm:w-64">
+              <Input placeholder="Search…" value={search} onChange={(e) => setSearch(e.target.value)} leadingIcon={<Search />} />
+            </div>
+          ) : (
+            <span />
+          )}
+          <DateRangePicker />
+        </Toolbar>
 
-      <RecoveryAnalyticsCard />
+        <RecoveryAnalyticsCard />
 
-      {missed.length > 0 && (
-        <Input
-          placeholder="Search…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          leadingIcon={<Search />}
-          className="w-full sm:w-64"
-        />
-      )}
-
-      {loading ? <Skeleton className="h-64 w-full" /> : <OpportunityList leads={visible} onCardClick={setEditing} />}
+        <Cell>
+          {loading ? <Skeleton className="h-64 w-full" /> : <OpportunityList leads={visible} onCardClick={setEditing} />}
+        </Cell>
+      </Sheet>
 
       <LeadDetailPanel lead={editing} onOpenChange={(open) => !open && setEditing(null)} onSaved={refetch} />
-    </div>
+    </>
   );
 }

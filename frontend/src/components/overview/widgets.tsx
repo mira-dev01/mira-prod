@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Sheet } from "@/components/ui/sheet";
 import { CallsTable } from "@/components/calls-table";
 import { LiveRequestsCard } from "@/components/live-requests-card";
 import { OpportunitiesCard } from "@/components/opportunities-card";
@@ -61,14 +62,14 @@ export const WIDGET_RENDERERS: Record<string, (d: OverviewWidgetData) => React.R
     d.leadsLoading ? (
       <Skeleton className="h-40 w-full" />
     ) : (
-      <LiveRequestsCard glass leads={d.leads ?? []} onRefetch={d.refetchLeads} onCardClick={d.onLeadClick} limit={3} />
+      <LiveRequestsCard leads={d.leads ?? []} onRefetch={d.refetchLeads} onCardClick={d.onLeadClick} limit={3} />
     ),
 
   opportunities: (d) =>
     d.leadsLoading ? (
       <Skeleton className="h-40 w-full" />
     ) : (
-      <OpportunitiesCard glass leads={d.leads ?? []} onRefetch={d.refetchLeads} onCardClick={d.onLeadClick} limit={3} />
+      <OpportunitiesCard leads={d.leads ?? []} onRefetch={d.refetchLeads} onCardClick={d.onLeadClick} limit={3} />
     ),
 
   recent_calls: (d) => (
@@ -98,13 +99,17 @@ export const WIDGET_RENDERERS: Record<string, (d: OverviewWidgetData) => React.R
   // Current-state, not tied to the date range (unchanged).
   unanswered_questions: () => (
     <div className="flex h-full min-w-0">
-      <UnansweredQuestionsCard glass limit={2} linkToFaqPage hideDescription />
+      <UnansweredQuestionsCard inSheet limit={2} linkToFaqPage hideDescription />
     </div>
   ),
 
   // Same self-contained card the Opportunities page shows (follows the
   // header date range).
-  busy_call_recovery: () => <RecoveryAnalyticsCard />,
+  busy_call_recovery: () => (
+    <Sheet>
+      <RecoveryAnalyticsCard />
+    </Sheet>
+  ),
 };
 
 function fallback(

@@ -2,18 +2,16 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import type { LucideIcon } from "lucide-react";
-import { BadgeCheck, CheckCircle2, Flame, IndianRupee } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CardContent, CardHeader } from "@/components/ui/card";
+import { Cell, CellCard, CellTitle } from "@/components/ui/sheet";
 import { RightPanelFooterButton } from "@/components/ui/right-panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BookingReconciliationPanel } from "@/components/booking-reconciliation";
 import { api } from "@/lib/api";
 import { formatINR } from "@/lib/format";
-import { cn, glassCardClassName } from "@/lib/utils";
 import type { BookingReconciliation, OverviewData } from "@/lib/types";
 
 type ReviewKind = "price" | "attribution";
@@ -22,30 +20,14 @@ function matches(kind: ReviewKind, item: BookingReconciliation): boolean {
   return kind === "price" ? item.booking.needs_price_confirmation : item.booking.needs_attribution_review;
 }
 
-function AttentionRow({
-  icon: Icon,
-  title,
-  description,
-  action,
-}: {
-  icon: LucideIcon;
-  title: string;
-  description: string;
-  action: React.ReactNode;
-}) {
+function AttentionRow({ title, description, action }: { title: string; description?: string; action: React.ReactNode }) {
   return (
-    <li className="flex flex-wrap items-center gap-3 rounded-xl px-3 py-3 transition-colors hover:bg-accent/50 sm:flex-nowrap">
-      <span
-        className="flex size-9 shrink-0 items-center justify-center rounded-full"
-        style={{ backgroundColor: "color-mix(in oklch, var(--status-pending) 16%, transparent)" }}
-      >
-        <Icon className="size-4" style={{ color: "var(--status-pending)" }} />
-      </span>
+    <li className="flex flex-wrap items-center gap-3 border-b border-border py-3 first:pt-0 last:border-0 last:pb-0 sm:flex-nowrap">
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium">{title}</p>
-        <p className="text-sm text-muted-foreground">{description}</p>
+        {description && <p className="text-[13px] text-muted-foreground">{description}</p>}
       </div>
-      <div className="ml-12 shrink-0 sm:ml-0">{action}</div>
+      <div className="shrink-0">{action}</div>
     </li>
   );
 }
@@ -103,14 +85,18 @@ export function NeedsAttentionCard({
   }
 
   if (loading || !data) {
-    return <Skeleton className="h-16 w-full rounded-2xl" aria-label="Loading actions" />;
+    return (
+      <Cell>
+        <Skeleton className="h-5 w-40" aria-label="Loading actions" />
+      </Cell>
+    );
   }
 
   const { price_confirmations, attribution_confirmations, high_intent_unconverted: hot } = data.attention;
   const total = price_confirmations + attribution_confirmations + hot.count;
   const valueNote =
     hot.potential_value === null
-      ? "Follow up while they're still deciding."
+      ? undefined
       : hot.valued_count === hot.count
         ? `${formatINR(hot.potential_value)} potential booking value`
         : `${formatINR(hot.potential_value)} quoted to ${hot.valued_count} of them`;
@@ -138,36 +124,29 @@ export function NeedsAttentionCard({
   if (total === 0) {
     return (
       <>
-        <div
-          className={cn(
-            "flex items-center gap-3 rounded-2xl px-5 py-3.5 text-sm text-muted-foreground",
-            glassCardClassName
-          )}
-        >
-          <CheckCircle2 className="size-4 shrink-0" style={{ color: "var(--status-live)" }} />
+        <Cell className="flex-row items-center gap-3 py-3 text-sm">
+          <span aria-hidden className="size-2 shrink-0 rounded-full bg-status-live" />
           <span>
-            <span className="font-medium text-foreground">Needs your attention</span> · No actions needed —
-            you&apos;re all caught up.
+            <span className="font-semibold">Needs your attention</span>
+            <span className="text-muted-foreground"> · Nothing right now.</span>
           </span>
-        </div>
+        </Cell>
         {reviewPanel}
       </>
     );
   }
 
   return (
-    <Card className={glassCardClassName}>
+    <CellCard>
       <CardHeader className="flex flex-row items-center justify-between gap-2">
-        <CardTitle>Needs your attention</CardTitle>
+        <CellTitle>Needs your attention</CellTitle>
         <Badge variant="outline">{total} open</Badge>
       </CardHeader>
       <CardContent>
-        <ul className="space-y-1">
+        <ul>
           {price_confirmations > 0 && (
             <AttentionRow
-              icon={IndianRupee}
               title={`${price_confirmations} booking${price_confirmations === 1 ? " needs" : "s need"} price confirmation`}
-              description="Confirm final booking prices to keep revenue accurate."
               action={
                 <Button size="sm" variant="outline" disabled={opening !== null} onClick={() => startReview("price")}>
                   {opening === "price" ? "Opening…" : "Review"}
@@ -177,9 +156,7 @@ export function NeedsAttentionCard({
           )}
           {attribution_confirmations > 0 && (
             <AttentionRow
-              icon={BadgeCheck}
               title={`${attribution_confirmations} potential Mira booking${attribution_confirmations === 1 ? " needs" : "s need"} confirmation`}
-              description="Tell us whether Mira contributed to these bookings."
               action={
                 <Button
                   size="sm"
@@ -194,7 +171,6 @@ export function NeedsAttentionCard({
           )}
           {hot.count > 0 && (
             <AttentionRow
-              icon={Flame}
               title={`${hot.count} high-intent guest${hot.count === 1 ? " hasn't" : "s haven't"} converted`}
               description={valueNote}
               action={
@@ -207,6 +183,6 @@ export function NeedsAttentionCard({
         </ul>
       </CardContent>
       {reviewPanel}
-    </Card>
+    </CellCard>
   );
 }

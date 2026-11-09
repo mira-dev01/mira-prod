@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Cell, Hint, Sheet, SheetRow, WideCell } from "@/components/settings/sheet";
+import { Cell, Hint, Sheet, SheetRow, WideCell } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useAsync } from "@/hooks/use-async";

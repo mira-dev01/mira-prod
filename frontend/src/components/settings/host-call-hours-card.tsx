@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Cell, CellFoot, CellLead, CellTitle, Hint } from "@/components/settings/sheet";
+import { Cell, CellFoot, CellLead, CellTitle, Hint } from "@/components/ui/sheet";
 import { ApiError, api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import type { CallHoursStatus } from "@/lib/types";

@@ -8,8 +8,8 @@ import { cn } from "@/lib/utils";
  * variants cover every existing consumer:
  *  - "divider" (default): rows separated by a bottom border, last row flush
  *    (ActionableCard, UnansweredQuestionsCard).
- *  - "boxed": each row is its own bordered/rounded box, for content dense
- *    enough to want visual separation beyond a hairline (LiveRequestsCard).
+ *  - "boxed": a taller ruled row for dense content (LiveRequestsCard); no
+ *    box of its own -- boxes inside a ruled block are nested cards.
  */
 function ListRow({
   className,
@@ -29,7 +29,7 @@ function ListRow({
       className={cn(
         "flex w-full flex-col gap-2.5 text-left",
         variant === "divider" && "border-b pb-3 last:border-0 last:pb-0",
-        variant === "boxed" && "rounded-lg border p-3",
+        variant === "boxed" && "border-b border-border py-3 first:pt-0 last:border-0 last:pb-0",
         interactive && "surface-hover cursor-pointer rounded-md",
         muted && "opacity-60",
         className

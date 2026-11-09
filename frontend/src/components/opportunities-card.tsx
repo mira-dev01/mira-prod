@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CardContent, CardHeader } from "@/components/ui/card";
+import { CellCard, CellTitle } from "@/components/ui/sheet";
 import { OpportunityList } from "@/components/opportunity-list";
 import { useNotificationStream } from "@/hooks/use-notification-stream";
 import { isOpportunity } from "@/lib/opportunities";
-import { cn, glassCardClassName } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import type { LeadOut } from "@/lib/types";
 
 /**
@@ -24,14 +25,14 @@ export function OpportunitiesCard({
   onRefetch,
   onCardClick,
   limit,
-  glass,
+  className,
 }: {
   leads: LeadOut[];
   onRefetch: () => void;
   onCardClick: (lead: LeadOut) => void;
   limit?: number;
-  /** See lib/utils.ts's glassCardClassName -- opt-in, Overview page only. */
-  glass?: boolean;
+  /** Grid placement inside the Overview Sheet (e.g. "md:col-span-6"). */
+  className?: string;
 }) {
   useNotificationStream((notification) => {
     if (notification.channel === "busy_recovery") onRefetch();
@@ -43,25 +44,25 @@ export function OpportunitiesCard({
   const visibleLeads = limit ? opportunityLeads.slice(0, limit) : opportunityLeads;
 
   return (
-    <Card className={cn("h-full", glass && glassCardClassName)}>
+    <CellCard className={cn("md:col-span-6", className)}>
       <CardHeader className="flex flex-row items-center justify-between gap-2">
-        <CardTitle>Missed calls</CardTitle>
+        <CellTitle>Missed calls</CellTitle>
         <Badge variant="outline">{opportunityLeads.length} open</Badge>
       </CardHeader>
-      <CardContent className="flex-1 space-y-3">
+      <CardContent className="flex-1">
         <OpportunityList leads={visibleLeads} onCardClick={onCardClick} />
       </CardContent>
       {limit && opportunityLeads.length > limit && (
-        <div className="border-t px-4 py-3">
+        <div className="border-t border-border px-5 py-3">
           <Link
             href="/dashboard/leads?tab=missed"
             className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
           >
-            View all {opportunityLeads.length} opportunities
+            View all {opportunityLeads.length}
             <ArrowRight className="size-3.5" />
           </Link>
         </div>
       )}
-    </Card>
+    </CellCard>
   );
 }

@@ -5,7 +5,8 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { ArrowRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CardContent, CardHeader } from "@/components/ui/card";
+import { CellCard, CellTitle } from "@/components/ui/sheet";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ListRow, ListRowFooter, ListRowHeader } from "@/components/ui/list-row";
 import { StatusChip } from "@/components/status-chip";
@@ -13,7 +14,7 @@ import { leadUrgencyTone } from "@/components/lead-detail-panel";
 import { useNotificationStream } from "@/hooks/use-notification-stream";
 import { ApiError, api } from "@/lib/api";
 import { formatLeadTimestamp, leadGuestLabel } from "@/lib/leads";
-import { cn, glassCardClassName } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import type { LeadOut } from "@/lib/types";
 
 /**
@@ -31,14 +32,14 @@ export function LiveRequestsCard({
   onRefetch,
   onCardClick,
   limit,
-  glass,
+  className,
 }: {
   leads: LeadOut[];
   onRefetch: () => void;
   onCardClick: (lead: LeadOut) => void;
   limit?: number;
-  /** See lib/utils.ts's glassCardClassName -- opt-in, Overview page only. */
-  glass?: boolean;
+  /** Grid placement inside the Overview Sheet (e.g. "md:col-span-6"). */
+  className?: string;
 }) {
   const [handlingIds, setHandlingIds] = useState<Set<string>>(new Set());
 
@@ -71,14 +72,14 @@ export function LiveRequestsCard({
   const visibleLeads = limit ? escalatedLeads.slice(0, limit) : escalatedLeads;
 
   return (
-    <Card className={cn("h-full", glass && glassCardClassName)}>
+    <CellCard className={cn("md:col-span-6", className)}>
       <CardHeader className="flex flex-row items-center justify-between gap-2">
-        <CardTitle>Leads</CardTitle>
+        <CellTitle>Leads</CellTitle>
         <Badge variant="outline">{escalatedLeads.length} active</Badge>
       </CardHeader>
-      <CardContent className="flex-1 space-y-3">
+      <CardContent className="flex-1">
         {escalatedLeads.length === 0 && (
-          <p className="text-sm text-muted-foreground">Nothing pending — you&rsquo;re all caught up.</p>
+          <p className="text-sm text-muted-foreground">Nothing pending.</p>
         )}
         {visibleLeads.map((lead) => (
           <ListRow key={lead.id} variant="boxed" interactive onClick={() => onCardClick(lead)}>
@@ -121,16 +122,16 @@ export function LiveRequestsCard({
         ))}
       </CardContent>
       {limit && escalatedLeads.length > limit && (
-        <div className="border-t px-4 py-3">
+        <div className="border-t border-border px-5 py-3">
           <Link
             href="/dashboard/leads?tab=booking&status=open"
             className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
           >
-            View all {escalatedLeads.length} live requests
+            View all {escalatedLeads.length}
             <ArrowRight className="size-3.5" />
           </Link>
         </div>
       )}
-    </Card>
+    </CellCard>
   );
 }
