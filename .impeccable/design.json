@@ -7,12 +7,12 @@
       "primary": {
         "role": "primary",
         "displayName": "Terracotta",
-        "canonical": "#a63a24",
+        "canonical": "#b8452f",
         "tonalRamp": [
           "#3a140c",
           "#6b2618",
           "#8f321f",
-          "#a63a24",
+          "#b8452f",
           "#cc6b57",
           "#dc9686",
           "#ecc3ba",
@@ -117,9 +117,9 @@
       "destructive": {
         "role": "state",
         "displayName": "Terracotta Red (destructive, same as primary)",
-        "canonical": "#a63a24",
+        "canonical": "#b8452f",
         "tonalRamp": [
-          "#a63a24"
+          "#b8452f"
         ]
       },
       "accent-warm": {
@@ -213,7 +213,7 @@
       "refersTo": "button-primary",
       "description": "Main action; the only filled terracotta control besides the selected segment.",
       "html": "<button class=\"ds-btn-primary\">Save changes</button>",
-      "css": ".ds-btn-primary{height:36px;padding:0 14px;border:1px solid transparent;border-radius:0.2rem;background:var(--primary,#a63a24);color:#fff;font:600 14px 'Red Hat Text',sans-serif;cursor:pointer;transition:background 120ms}.ds-btn-primary:hover{background:color-mix(in oklch,#a63a24,black 14%)}.ds-btn-primary:focus-visible{outline:2px solid #a63a24;outline-offset:2px}.ds-btn-primary:active{transform:translateY(1px)}"
+      "css": ".ds-btn-primary{height:36px;padding:0 14px;border:1px solid transparent;border-radius:0.2rem;background:var(--primary,#b8452f);color:#fff;font:600 14px 'Red Hat Text',sans-serif;cursor:pointer;transition:background 120ms}.ds-btn-primary:hover{background:color-mix(in oklch,#b8452f,black 14%)}.ds-btn-primary:focus-visible{outline:2px solid #b8452f;outline-offset:2px}.ds-btn-primary:active{transform:translateY(1px)}"
     },
     {
       "name": "Outline Button",
@@ -221,7 +221,7 @@
       "refersTo": "button-outline",
       "description": "Secondary action with an ink stroke.",
       "html": "<button class=\"ds-btn-outline\">Log out</button>",
-      "css": ".ds-btn-outline{height:36px;padding:0 14px;border:1px solid #2a2420;border-radius:0.2rem;background:#fbf7ef;color:#2a2420;font:600 14px 'Red Hat Text',sans-serif;cursor:pointer}.ds-btn-outline:hover{background:#ece3d4}.ds-btn-outline:focus-visible{outline:2px solid #a63a24;outline-offset:2px}"
+      "css": ".ds-btn-outline{height:36px;padding:0 14px;border:1px solid #2a2420;border-radius:0.2rem;background:#fbf7ef;color:#2a2420;font:600 14px 'Red Hat Text',sans-serif;cursor:pointer}.ds-btn-outline:hover{background:#ece3d4}.ds-btn-outline:focus-visible{outline:2px solid #b8452f;outline-offset:2px}"
     },
     {
       "name": "Input",
@@ -229,21 +229,21 @@
       "refersTo": "input",
       "description": "Text field with taupe stroke and terracotta focus ring.",
       "html": "<input class=\"ds-input\" placeholder=\"+91\" />",
-      "css": ".ds-input{height:36px;width:220px;padding:4px 12px;border:1px solid #968a76;border-radius:0.2rem;background:#fbf7ef;color:#2a2420;font:400 14px 'Red Hat Text',sans-serif;outline:none}.ds-input:focus-visible{border-color:#a63a24;box-shadow:0 0 0 2px rgba(166,58,36,0.3)}"
+      "css": ".ds-input{height:36px;width:220px;padding:4px 12px;border:1px solid #968a76;border-radius:0.2rem;background:#fbf7ef;color:#2a2420;font:400 14px 'Red Hat Text',sans-serif;outline:none}.ds-input:focus-visible{border-color:#b8452f;box-shadow:0 0 0 2px rgba(184,69,47,0.3)}"
     },
     {
       "name": "Underline Tabs",
       "kind": "nav",
       "description": "Tab bar on an ink rule with a 4px terracotta active mark.",
       "html": "<div class=\"ds-tabs\"><button class=\"ds-tab ds-active\">Your account</button><button class=\"ds-tab\">Features</button><button class=\"ds-tab\">Billing</button></div>",
-      "css": ".ds-tabs{display:flex;gap:24px;height:40px;border-bottom:1px solid #2a2420}.ds-tab{position:relative;border:0;background:none;padding:0;font:500 14px 'Red Hat Text',sans-serif;color:#6f6252;cursor:pointer}.ds-tab:hover{color:#2a2420}.ds-tab:focus-visible{outline:2px solid #a63a24;outline-offset:2px}.ds-tab.ds-active{font-weight:700;color:#2a2420}.ds-tab.ds-active::after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:4px;background:#a63a24}"
+      "css": ".ds-tabs{display:flex;gap:24px;height:40px;border-bottom:1px solid #2a2420}.ds-tab{position:relative;border:0;background:none;padding:0;font:500 14px 'Red Hat Text',sans-serif;color:#6f6252;cursor:pointer}.ds-tab:hover{color:#2a2420}.ds-tab:focus-visible{outline:2px solid #b8452f;outline-offset:2px}.ds-tab.ds-active{font-weight:700;color:#2a2420}.ds-tab.ds-active::after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:4px;background:#b8452f}"
     },
     {
       "name": "Segmented control",
       "kind": "custom",
       "description": "Two-way ruled selector with the selected option filled terracotta.",
       "html": "<div class=\"ds-seg\" role=\"radiogroup\"><button class=\"ds-seg-on\" role=\"radio\" aria-checked=\"true\">Always on</button><button role=\"radio\" aria-checked=\"false\">Scheduled</button></div>",
-      "css": ".ds-seg{display:flex;width:280px;padding:2px;border:1px solid #2a2420;border-radius:0.2rem}.ds-seg button{flex:1;min-height:32px;padding:6px 12px;border:0;border-radius:3px;background:none;color:#2a2420;font:400 13px 'Red Hat Text',sans-serif;cursor:pointer}.ds-seg button:hover{background:#ece3d4}.ds-seg button.ds-seg-on{background:#a63a24;color:#fff;font-weight:600}.ds-seg button:focus-visible{outline:2px solid #a63a24;outline-offset:1px}"
+      "css": ".ds-seg{display:flex;width:280px;padding:2px;border:1px solid #2a2420;border-radius:0.2rem}.ds-seg button{flex:1;min-height:32px;padding:6px 12px;border:0;border-radius:3px;background:none;color:#2a2420;font:400 13px 'Red Hat Text',sans-serif;cursor:pointer}.ds-seg button:hover{background:#ece3d4}.ds-seg button.ds-seg-on{background:#b8452f;color:#fff;font-weight:600}.ds-seg button:focus-visible{outline:2px solid #b8452f;outline-offset:1px}"
     },
     {
       "name": "Sheet with Cells",

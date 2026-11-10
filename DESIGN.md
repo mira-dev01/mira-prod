@@ -2,7 +2,7 @@
 name: Mira Host Dashboard
 description: "Visible Grid layout in the user's parchment and terracotta palette: ink hairline blocks on a faint 12-column construction grid."
 colors:
-  primary: "#a63a24"
+  primary: "#b8452f"
   primary-foreground: "#ffffff"
   ink: "#2a2420"
   parchment: "#f3ede2"
@@ -12,7 +12,7 @@ colors:
   soft-rule: "#e3d9c8"
   input-stroke: "#968a76"
   grid-line: "#e6dcc8"
-  destructive: "#a63a24"
+  destructive: "#b8452f"
   status-live: "#5c7048"
   status-pending: "#d9a441"
   status-pending-strong: "#8a6512"
@@ -143,7 +143,7 @@ Ink is a warm near-black on parchment, with lighter cream-paper blocks, and a si
 A warm parchment-and-cream palette with one terracotta accent and a muted, earthy state set. **This palette is the user's own (the original parchment + terracotta, kept at their request after the blue version was rejected). It must not be changed or replaced when extending the system.**
 
 ### Primary
-- **Deep brick terracotta** (`#a63a24`, chosen 2026-11-09 over the original `#b8452f` for 6.0:1 on cream paper, so text and numbers pass AA on tinted washes too). The one accent, and a deliberately scarce one: it exists to draw the eye, so it only appears on (1) the single main action of a view (`Button variant="cta"`, and the footer button of a slide-over panel), (2) the one hero number of a view (Overview's Revenue, a quote's Total, a booking's final price), (3) alerts that need attention (destructive actions, "High" urgency, open counts), (4) the active-tab mark and today's marker on the calendar, and (5) the focus ring. It is also the destructive color (same value), so destructive actions are told apart by label and tint (10% wash), never by hue.
+- **Brick terracotta** (`#b8452f`, the same brick as the logo's arch; set 2026-11-10 after briefly using a deeper `#a63a24`). 5.0:1 on cream paper and 5.3:1 for white text on it. The one accent, and a deliberately scarce one: it exists to draw the eye, so it only appears on (1) the single main action of a view (`Button variant="cta"`, and the footer button of a slide-over panel), (2) the one hero number of a view (Overview's Revenue, a quote's Total, a booking's final price), (3) alerts that need attention (destructive actions, "High" urgency, open counts), (4) the active-tab mark and today's marker on the calendar, and (5) the focus ring. It is also the destructive color (same value), so destructive actions are told apart by label and tint (10% wash), never by hue. On a tinted wash the text steps a little darker (`color-mix` with ink) to keep AA.
 
 ### Neutral
 - **Ink** (`#2a2420`): text, block borders, outline-button stroke, tab-list rule, sidebar border.
@@ -156,10 +156,10 @@ A warm parchment-and-cream palette with one terracotta accent and a muted, earth
 - **Grid Line** (`#e6dcc8`): the construction hairlines; decorative only, never carries meaning.
 
 ### State (only for state)
-- **Sage** (`#5c7048` text, rgba(117,136,95,.12) wash): live/ready. **Amber** (`#d9a441`; strong text variant `#8a6512`): pending/needs setup. Brick red (`#a63a24`, same value as the accent): blocked, invalid, destructive.
+- **Sage** (`#5c7048` text, rgba(117,136,95,.12) wash): live/ready. **Amber** (`#d9a441`; strong text variant `#8a6512`): pending/needs setup. Brick red (`#b8452f`, same value as the accent): blocked, invalid, destructive.
 - Intent-category badge colors for calls/leads: progress slate-blue `#5f7a99`, purple `#8d6f96`, orange `#c17a42`. Low-priority tone `#7d7267`. These are state/category tints, not accents, and are not used as an accent on Settings.
 - Chart series: `#d9a441`, `#6b7d5a`, `#c17a42`, `#5f7a99`, `#8d6f96`.
-- **Logo colours** (as supplied in the brand kit, 2026-11-10): arch brick `#b8452f`, sound waves and the dot on the "i" amber `#d9a441`, wordmark ink `#2a2420` (cream `#fbf7ef` on dark). The logo's brick is the original terracotta, a touch lighter than the UI accent `#a63a24`; the two are used in different places and never overlap.
+- **Logo colours** (as supplied in the brand kit, 2026-11-10): arch brick `#b8452f`, sound waves and the dot on the "i" amber `#d9a441`, wordmark ink `#2a2420` (cream `#fbf7ef` on dark). The UI accent now uses the same brick as the logo.
 
 ### Named Rules
 **The Few Words Rule.** A block carries a title and its data, not an explanation. Page subtitles, "foot" paragraphs and hints that restate a label are not written. Keep a line only when it carries a consequence the label cannot (a fee, where money goes, what a toggle changes), an instruction needed to finish the task, or a state (not connected, nothing yet). When in doubt, leave it out.

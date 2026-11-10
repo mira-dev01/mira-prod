@@ -82,7 +82,7 @@
   --card-foreground: #2a2420;
   --popover: #fbf7ef;
   --popover-foreground: #2a2420;
-  --primary: #a63a24;
+  --primary: #b8452f;
   --primary-foreground: #ffffff;
   --secondary: #fbf7ef;
   --secondary-foreground: #2a2420;
@@ -90,12 +90,12 @@
   --muted-foreground: #6f6252;
   --accent: #ece3d4;
   --accent-foreground: #2a2420;
-  --destructive: #a63a24;
+  --destructive: #b8452f;
   --border: #e3d9c8;
   /* A deeper taupe than --border so form fields keep a 3:1 edge on the cream. */
   --input: #968a76;
   /* Focus rings use the terracotta (3:1+ on cream); amber was ~2:1. */
-  --ring: #a63a24;
+  --ring: #b8452f;
   --chart-1: #d9a441;
   --chart-2: #6b7d5a;
   --chart-3: #c17a42;
@@ -104,12 +104,12 @@
   --radius: 0.25rem;
   --sidebar: #fbf7ef;
   --sidebar-foreground: #2a2420;
-  --sidebar-primary: #a63a24;
+  --sidebar-primary: #b8452f;
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #ece3d4;
   --sidebar-accent-foreground: #2a2420;
   --sidebar-border: #2a2420;
-  --sidebar-ring: #a63a24;
+  --sidebar-ring: #b8452f;
 
   /* The construction grid: decorative hairlines only (never carries
      meaning), so intentionally very low contrast. */

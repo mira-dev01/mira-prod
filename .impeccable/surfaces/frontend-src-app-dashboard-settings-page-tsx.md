@@ -15,7 +15,7 @@ Unresolved: which settings to rank first (user had no preference), so order foll
 
 THESIS: Settings sits on one visible 12-column construction grid; every section, label, value and control snaps to a column line, refusing today's mix of uneven cards, floating headings and wasted gaps.
 
-OWN-WORLD: The existing parchment ground (#f3ede2) with lighter cream blocks (#fbf7ef), warm near-black ink (#2a2420), and the terracotta (#a63a24) as the single accent for the active tab, primary action, links and selection; sage, amber and red only for state. One neutral grotesk throughout; section names small bold caps, key values larger and plain. 1px ink hairline blocks, no shadows, small radius. Recognisable with content removed: a faint warm column grid and square-cornered, hairline-ruled blocks. (Palette is the user's and is not to change.)
+OWN-WORLD: The existing parchment ground (#f3ede2) with lighter cream blocks (#fbf7ef), warm near-black ink (#2a2420), and the terracotta (#b8452f) as the single accent for the active tab, primary action, links and selection; sage, amber and red only for state. One neutral grotesk throughout; section names small bold caps, key values larger and plain. 1px ink hairline blocks, no shadows, small radius. Recognisable with content removed: a faint warm column grid and square-cornered, hairline-ruled blocks. (Palette is the user's and is not to change.)
 
 STORY: A first-time viewer reads what each section controls in one plain line, sees the current value at a glance, and acts in one place.
 

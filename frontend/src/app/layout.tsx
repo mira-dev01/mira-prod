@@ -42,7 +42,7 @@ export default function RootLayout({
               // kept as literal hex/rgba here since Clerk's hosted
               // components render in their own isolated context, not this
               // page's DOM, so `var(--primary)` etc. wouldn't resolve.
-              colorPrimary: "#a63a24",
+              colorPrimary: "#b8452f",
               colorBackground: "#fbf7ef",
               colorForeground: "#2a2420",
               colorMutedForeground: "#6f6252",
