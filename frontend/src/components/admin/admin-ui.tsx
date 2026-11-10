@@ -2,7 +2,8 @@
 
 import type { LucideIcon } from "lucide-react";
 import { Info } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { InfoTip } from "@/components/ui/info-tip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type { Decision, FunnelStep, HistogramBucket } from "@/lib/admin-api";
@@ -45,13 +46,8 @@ export function humanize(key: string): string {
 
 // ── layout ──────────────────────────────────────────────────────────────────
 
-export function PageHeader({ title, subtitle }: { title: string; subtitle: string }) {
-  return (
-    <div>
-      <h1 className="page-title">{title}</h1>
-      <p className="text-sm text-muted-foreground">{subtitle}</p>
-    </div>
-  );
+export function PageHeader({ title }: { title: string; subtitle?: string }) {
+  return <h1 className="page-title">{title}</h1>;
 }
 
 export function Section({
@@ -71,9 +67,9 @@ export function Section({
     <Card className={className}>
       <CardHeader>
         <div className="flex items-start justify-between gap-3">
-          <div className="space-y-1">
+          <div className="flex items-center gap-1.5">
             <CardTitle>{title}</CardTitle>
-            {description && <CardDescription>{description}</CardDescription>}
+            {description && <InfoTip label={`About ${title}`}>{description}</InfoTip>}
           </div>
           {action}
         </div>
@@ -100,10 +96,10 @@ export function Stat({
   return (
     <div className="space-y-0.5">
       <p className="text-micro text-muted-foreground">{label}</p>
-      <p className="text-xl font-semibold tabular-nums" style={color ? { color } : undefined}>
+      <p className="font-heading text-2xl font-semibold tabular-nums" style={color ? { color } : undefined}>
         {value}
       </p>
-      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+      {hint && <p className="text-[13px] text-muted-foreground">{hint}</p>}
     </div>
   );
 }
@@ -114,7 +110,7 @@ export function StatGrid({ children, className }: { children: React.ReactNode; c
 
 export function CoverageNote({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex items-start gap-2 rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground">
+    <div className="flex items-start gap-2 border border-border px-3 py-2 text-[13px] text-muted-foreground">
       <Info className="mt-0.5 size-3.5 shrink-0" />
       <span>{children}</span>
     </div>
@@ -125,7 +121,7 @@ export function LoadingGrid({ cards = 4 }: { cards?: number }) {
   return (
     <div className="grid gap-4 md:grid-cols-2">
       {Array.from({ length: cards }).map((_, i) => (
-        <Skeleton key={i} className="h-48 w-full rounded-xl" />
+        <Skeleton key={i} className="h-48 w-full" />
       ))}
     </div>
   );
@@ -147,7 +143,7 @@ export function Empty({ children }: { children: React.ReactNode }) {
 
 export function BarList({
   items,
-  colorVar = "--primary",
+  colorVar = "--status-pending-strong",
   format = (v: number) => fmtNum(v),
   emptyLabel = "No data in this range",
 }: {
@@ -169,9 +165,9 @@ export function BarList({
               {item.hint && <span className="ml-1.5 text-xs">{item.hint}</span>}
             </span>
           </div>
-          <div className="h-1.5 rounded-full bg-muted">
+          <div className="h-1.5 bg-muted">
             <div
-              className="h-1.5 rounded-full transition-[width] duration-500"
+              className="h-1.5 transition-[width] duration-500"
               style={{ width: `${(item.value / max) * 100}%`, backgroundColor: `var(${colorVar})` }}
             />
           </div>
@@ -235,14 +231,14 @@ export function Funnel({ steps }: { steps: FunnelStep[] }) {
             {step.label}
             {step.telemetry_only && <span className="ml-1 text-xs text-muted-foreground">*</span>}
           </span>
-          <div className="h-6 rounded-md bg-muted">
+          <div className="h-6 bg-muted">
             <div
-              className="flex h-6 items-center rounded-md px-2 text-xs font-medium text-primary-foreground transition-[width] duration-500"
+              className="flex h-6 items-center px-2 text-xs font-semibold text-white transition-[width] duration-500"
               style={{
                 width: `${Math.max(step.count ? 8 : 0, (step.count / max) * 100)}%`,
                 backgroundColor: step.telemetry_only
-                  ? "color-mix(in oklch, var(--primary) 60%, var(--card))"
-                  : "var(--primary)",
+                  ? "color-mix(in oklch, var(--status-pending-strong) 60%, var(--card))"
+                  : "var(--status-pending-strong)",
               }}
             >
               {step.count > 0 && fmtNum(step.count)}
@@ -266,7 +262,7 @@ const VERDICT_STYLE: Record<Decision["verdict"], { label: string; color: string;
 export function VerdictPill({ verdict }: { verdict: Decision["verdict"] }) {
   const s = VERDICT_STYLE[verdict];
   return (
-    <span className="inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-xs font-medium" style={{ color: s.color, backgroundColor: s.bg }}>
+    <span className="inline-flex shrink-0 items-center rounded-sm px-2 py-0.5 text-xs font-semibold" style={{ color: s.color, backgroundColor: s.bg }}>
       {s.label}
     </span>
   );
@@ -308,19 +304,12 @@ const LEVEL_STYLE: Record<string, { color: string; bg: string; label: string }> 
 export function LevelPill({ level }: { level: string }) {
   const s = LEVEL_STYLE[level] ?? LEVEL_STYLE.unknown;
   return (
-    <span className="inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-xs font-medium" style={{ color: s.color, backgroundColor: s.bg }}>
+    <span className="inline-flex shrink-0 items-center rounded-sm px-2 py-0.5 text-xs font-semibold" style={{ color: s.color, backgroundColor: s.bg }}>
       {s.label}
     </span>
   );
 }
 
-export function IconBadge({ icon: Icon, colorVar = "--accent-warm" }: { icon: LucideIcon; colorVar?: string }) {
-  return (
-    <span
-      className="flex size-8 items-center justify-center rounded-full"
-      style={{ backgroundColor: `color-mix(in oklch, var(${colorVar}) 16%, transparent)` }}
-    >
-      <Icon className="size-4" style={{ color: `var(${colorVar})` }} />
-    </span>
-  );
+export function IconBadge({ icon: Icon }: { icon: LucideIcon; colorVar?: string }) {
+  return <Icon className="size-4 text-muted-foreground" />;
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { MiraMark, MiraWordmark } from "@/components/brand/mira-logo";
 import * as React from "react";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -202,15 +203,18 @@ export function RailSection({
   );
 }
 
-// Logo block for the rail: the ✳ mark stays put (centred in the 64px rail);
+// Logo block for the rail: the arch mark stays put (centred in the 64px rail);
 // the wordmark and subtitle fade in beside/below it.
 export function RailBrand({ subtitle }: { subtitle: string }) {
   return (
     <div className="mb-6 shrink-0 px-2">
-      <div className="flex items-center text-2xl text-foreground">
-        {/* ︎ forces text (not emoji) rendering of ✳ -- see MiraLogo in sidebar-nav.tsx. */}
-        <span className="flex w-8 shrink-0 justify-center text-[var(--accent-warm)]">{"✳︎"}</span>
-        <RailLabel className="brand-logo ml-1">mira</RailLabel>
+      <div className="flex items-center text-foreground">
+        <span className="flex w-8 shrink-0 justify-center">
+          <MiraMark className="h-7" />
+        </span>
+        <RailLabel className="ml-2">
+          <MiraWordmark className="h-6" />
+        </RailLabel>
       </div>
       <RailLabel className="mt-0.5 block text-xs text-muted-foreground">{subtitle}</RailLabel>
     </div>

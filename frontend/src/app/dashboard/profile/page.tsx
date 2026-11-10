@@ -1,13 +1,12 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Camera, Compass, Link2, Pencil, Phone, Send } from "lucide-react";
+import { Camera, ImagePlus, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { RightPanel, RightPanelFooterButton } from "@/components/ui/right-panel";
+import { Cell, CellTitle, FieldRow, Hint, Sheet, WideCell } from "@/components/ui/sheet";
 import { UseCasePicker } from "@/components/use-case-picker";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -153,138 +152,111 @@ export default function ProfilePage() {
   }
 
   const displayName = user.business_name || user.name || user.email;
+  const settingCell =
+    "col-span-12 flex min-w-0 flex-col gap-2 border-r border-b border-foreground bg-card/70 p-5 text-left transition-colors hover:bg-accent md:col-span-4";
 
   return (
-    <div className="-m-4 md:-m-6 -mt-[calc(3.5rem+1rem)] md:mt-0">
-      <div className="overflow-hidden rounded-none border-b bg-card md:mx-6 md:mt-6 md:rounded-2xl md:border">
-        {/* Banner */}
-        <div
-          className="relative h-40 w-full bg-muted bg-cover bg-center sm:h-52"
-          style={user.banner_url ? { backgroundImage: `url(${user.banner_url})` } : undefined}
+    <div className="space-y-6">
+      <Sheet>
+        <Cell className="gap-0 p-0">
+          {/* Banner */}
+          <div
+            className="relative h-36 w-full border-b border-border bg-muted bg-cover bg-center sm:h-44"
+            style={user.banner_url ? { backgroundImage: `url(${user.banner_url})` } : undefined}
+          >
+            <input
+              ref={bannerInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+              className="hidden"
+              onChange={handleBannerChange}
+            />
+            <button
+              type="button"
+              aria-label="Change background"
+              disabled={uploadingBanner}
+              onClick={() => bannerInputRef.current?.click()}
+              className="absolute top-3 right-3 flex size-9 items-center justify-center border border-foreground bg-card text-foreground transition-colors hover:bg-accent"
+            >
+              {uploadingBanner ? (
+                <span className="size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+              ) : (
+                <ImagePlus className="size-4" />
+              )}
+            </button>
+
+            {/* Avatar straddles the banner/content boundary */}
+            <div className="absolute -bottom-12 left-5 sm:left-6">
+              <div className="relative">
+                <Avatar className="size-24 ring-4 ring-card sm:size-28">
+                  <AvatarImage src={user.photo_url ?? undefined} alt="" />
+                  <AvatarFallback className="text-2xl">{(user.name ?? user.email).charAt(0).toUpperCase()}</AvatarFallback>
+                </Avatar>
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+                  className="hidden"
+                  onChange={handlePhotoChange}
+                />
+                <button
+                  type="button"
+                  aria-label="Change photo"
+                  disabled={uploadingPhoto}
+                  onClick={() => photoInputRef.current?.click()}
+                  className="absolute right-0 bottom-0 flex size-8 items-center justify-center rounded-full bg-foreground text-background transition-colors hover:opacity-90"
+                >
+                  {uploadingPhoto ? (
+                    <span className="size-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                  ) : (
+                    <Camera className="size-3.5" />
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Name + progress */}
+          <div className="space-y-3 px-5 pt-16 pb-5 sm:px-6">
+            <button type="button" onClick={() => setNameOpen(true)} className="group flex items-center gap-2 text-left">
+              <h1 className="page-title">{displayName}</h1>
+              <Pencil className="size-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+            </button>
+            <div className="flex max-w-xs gap-1" role="progressbar" aria-valuemin={0} aria-valuemax={steps.length} aria-valuenow={doneCount}>
+              {steps.map((done, i) => (
+                <div key={i} className={`h-1 flex-1 ${done ? "bg-foreground" : "bg-border"}`} />
+              ))}
+            </div>
+            <Hint>
+              {doneCount} of {steps.length} steps complete
+            </Hint>
+          </div>
+        </Cell>
+
+        <button type="button" onClick={() => setGuestCallOpen(true)} className={settingCell}>
+          <CellTitle>Guest call number</CellTitle>
+          <span className="font-heading text-xl font-semibold tabular-nums">{user.lead_exophone || "Not set"}</span>
+        </button>
+
+        <button type="button" onClick={() => setEmailOpen(true)} className={settingCell}>
+          <CellTitle>Escalation emails</CellTitle>
+          <span className="truncate font-heading text-xl font-semibold">{user.notification_email || user.email}</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setInterests(user.interests);
+            setInterestsOpen(true);
+          }}
+          className={settingCell}
         >
-          {!user.banner_url && (
-            <div className="flex h-full w-full items-center justify-center">
-              <p className="text-sm text-muted-foreground">Add a background image whenever you like</p>
-            </div>
-          )}
-          <input
-            ref={bannerInputRef}
-            type="file"
-            accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
-            className="hidden"
-            onChange={handleBannerChange}
-          />
-          <button
-            type="button"
-            aria-label="Change background"
-            disabled={uploadingBanner}
-            onClick={() => bannerInputRef.current?.click()}
-            className="absolute top-3 right-3 flex size-9 items-center justify-center rounded-full bg-background/90 text-foreground shadow-sm transition-colors hover:bg-background"
-          >
-            {uploadingBanner ? (
-              <span className="size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
-            ) : (
-              <Link2 className="size-4" />
-            )}
-          </button>
-
-          {/* Avatar straddles the banner/content boundary */}
-          <div className="absolute -bottom-12 left-6 sm:left-8">
-            <div className="relative">
-              <Avatar className="size-24 sm:size-28 ring-4 ring-card">
-                <AvatarImage src={user.photo_url ?? undefined} alt="" />
-                <AvatarFallback className="text-2xl">
-                  {(user.name ?? user.email).charAt(0).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-              <input
-                ref={photoInputRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
-                className="hidden"
-                onChange={handlePhotoChange}
-              />
-              <button
-                type="button"
-                aria-label="Change photo"
-                disabled={uploadingPhoto}
-                onClick={() => photoInputRef.current?.click()}
-                className="absolute right-0 bottom-0 flex size-8 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm transition-colors hover:opacity-90"
-              >
-                {uploadingPhoto ? (
-                  <span className="size-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                ) : (
-                  <Camera className="size-3.5" />
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Name + progress */}
-        <div className="px-6 pt-16 pb-6 sm:px-8">
-          <button
-            type="button"
-            onClick={() => setNameOpen(true)}
-            className="group flex items-center gap-2 text-left"
-          >
-            <h1 className="font-heading text-3xl">{displayName}</h1>
-            <Pencil className="size-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-          </button>
-          <div className="mt-3 flex max-w-xs gap-1">
-            {steps.map((done, i) => (
-              <div key={i} className={`h-1.5 flex-1 rounded-full ${done ? "bg-primary" : "bg-muted"}`} />
-            ))}
-          </div>
-          <p className="mt-1 text-xs text-muted-foreground">{doneCount} of {steps.length} steps complete</p>
-
-          {/* Four boxes */}
-          <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <button
-              type="button"
-              onClick={() => setGuestCallOpen(true)}
-              className="flex flex-col items-start gap-2 rounded-xl border p-4 text-left transition-colors hover:bg-accent"
-            >
-              <span className="flex size-9 items-center justify-center rounded-full bg-accent-warm-bg text-[var(--accent-warm)]">
-                <Phone className="size-4" />
-              </span>
-              <span className="text-sm font-medium">Guest Call Number</span>
-              <span className="text-xs text-muted-foreground">{user.lead_exophone || "Not set"}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setEmailOpen(true)}
-              className="flex flex-col items-start gap-2 rounded-xl border p-4 text-left transition-colors hover:bg-accent"
-            >
-              <span className="flex size-9 items-center justify-center rounded-full bg-accent-warm-bg text-[var(--accent-warm)]">
-                <Send className="size-4" />
-              </span>
-              <span className="text-sm font-medium">Email Escalation Summaries</span>
-              <span className="truncate text-xs text-muted-foreground">
-                {user.notification_email || `Using ${user.email}`}
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setInterests(user.interests);
-                setInterestsOpen(true);
-              }}
-              className="flex flex-col items-start gap-2 rounded-xl border p-4 text-left transition-colors hover:bg-accent"
-            >
-              <span className="flex size-9 items-center justify-center rounded-full bg-accent-warm-bg text-[var(--accent-warm)]">
-                <Compass className="size-4" />
-              </span>
-              <span className="text-sm font-medium">What matters to you</span>
-              <span className="text-xs text-muted-foreground">
-                {user.interests.length > 0 ? `${user.interests.length} selected` : "Not set"}
-              </span>
-            </button>
-          </div>
-        </div>
-      </div>
+          <CellTitle>What matters to you</CellTitle>
+          <span className="font-heading text-xl font-semibold">
+            {user.interests.length > 0 ? `${user.interests.length} selected` : "Not set"}
+          </span>
+        </button>
+      </Sheet>
 
       <RightPanel
         open={nameOpen}
@@ -296,20 +268,22 @@ export default function ProfilePage() {
           </RightPanelFooterButton>
         }
       >
-        <form id="profile-basics-form" onSubmit={handleSaveBasics} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="profile-name">Your name</Label>
-            <Input id="profile-name" value={name} onChange={(e) => setName(e.target.value)} />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="profile-business-name">Business / portfolio name</Label>
-            <Input
-              id="profile-business-name"
-              value={businessName}
-              onChange={(e) => setBusinessName(e.target.value)}
-              placeholder="e.g. Pause Projects Goa"
-            />
-          </div>
+        <form id="profile-basics-form" onSubmit={handleSaveBasics}>
+          <Sheet>
+            <WideCell>
+              <FieldRow label="Your name" htmlFor="profile-name">
+                <Input id="profile-name" value={name} onChange={(e) => setName(e.target.value)} />
+              </FieldRow>
+              <FieldRow label="Business name" htmlFor="profile-business-name">
+                <Input
+                  id="profile-business-name"
+                  value={businessName}
+                  onChange={(e) => setBusinessName(e.target.value)}
+                  placeholder="e.g. Pause Projects Goa"
+                />
+              </FieldRow>
+            </WideCell>
+          </Sheet>
         </form>
       </RightPanel>
 
@@ -323,42 +297,46 @@ export default function ProfilePage() {
           </RightPanelFooterButton>
         }
       >
-        <form id="profile-guest-call-form" onSubmit={handleSaveGuestCallNumber} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="profile-guest-call-number">Number</Label>
-            <Input
-              id="profile-guest-call-number"
-              value={guestCallNumber}
-              onChange={(e) => setGuestCallNumber(e.target.value)}
-              placeholder="+91XXXXXXXXXX"
-            />
-            <p className="text-xs text-muted-foreground">The number Mira answers guest calls on.</p>
-          </div>
+        <form id="profile-guest-call-form" onSubmit={handleSaveGuestCallNumber}>
+          <Sheet>
+            <WideCell>
+              <FieldRow label="Number" htmlFor="profile-guest-call-number">
+                <Input
+                  id="profile-guest-call-number"
+                  value={guestCallNumber}
+                  onChange={(e) => setGuestCallNumber(e.target.value)}
+                  placeholder="+91XXXXXXXXXX"
+                />
+              </FieldRow>
+            </WideCell>
+          </Sheet>
         </form>
       </RightPanel>
 
       <RightPanel
         open={emailOpen}
         onOpenChange={setEmailOpen}
-        title="Email escalation summaries"
+        title="Escalation emails"
         footer={
           <RightPanelFooterButton type="submit" form="profile-email-form" disabled={savingNotificationEmail}>
             {savingNotificationEmail ? "Saving…" : "Save"}
           </RightPanelFooterButton>
         }
       >
-        <form id="profile-email-form" onSubmit={handleSaveNotificationEmail} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="profile-notification-email">Email</Label>
-            <Input
-              id="profile-notification-email"
-              type="email"
-              value={notificationEmail}
-              onChange={(e) => setNotificationEmail(e.target.value)}
-              placeholder={user.email}
-            />
-            <p className="text-xs text-muted-foreground">Leave blank to use your login email.</p>
-          </div>
+        <form id="profile-email-form" onSubmit={handleSaveNotificationEmail}>
+          <Sheet>
+            <WideCell>
+              <FieldRow label="Email" htmlFor="profile-notification-email" hint="Blank uses your login email.">
+                <Input
+                  id="profile-notification-email"
+                  type="email"
+                  value={notificationEmail}
+                  onChange={(e) => setNotificationEmail(e.target.value)}
+                  placeholder={user.email}
+                />
+              </FieldRow>
+            </WideCell>
+          </Sheet>
         </form>
       </RightPanel>
 
@@ -373,11 +351,15 @@ export default function ProfilePage() {
           </RightPanelFooterButton>
         }
       >
-        <form id="profile-interests-form" onSubmit={handleSaveInterests} className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Pick as many as apply — nothing here turns a feature off, it just decides what we show you first.
-          </p>
-          <UseCasePicker selected={interests} onToggle={toggleInterest} />
+        <form id="profile-interests-form" onSubmit={handleSaveInterests}>
+          <Sheet>
+            <WideCell>
+              <div className="col-span-12 p-5">
+                <Hint className="mb-3">Pick any. This only changes what we show first.</Hint>
+                <UseCasePicker selected={interests} onToggle={toggleInterest} />
+              </div>
+            </WideCell>
+          </Sheet>
         </form>
       </RightPanel>
     </div>

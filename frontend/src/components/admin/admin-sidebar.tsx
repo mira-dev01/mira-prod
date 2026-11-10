@@ -1,5 +1,6 @@
 "use client";
 
+import { MiraLogo } from "@/components/brand/mira-logo";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -50,10 +51,7 @@ const groups: { title: string; links: { href: string; label: string; icon: Lucid
 
 function Logo() {
   return (
-    <span className="text-2xl text-foreground">
-      <span className="mr-1 text-[var(--accent-warm)]">{"✳︎"}</span>
-      <span className="brand-logo">mira</span>
-    </span>
+    <MiraLogo className="h-7 text-foreground" />
   );
 }
 
@@ -79,7 +77,7 @@ function Links({ onNavigate }: { onNavigate?: () => void }) {
                   href={link.href}
                   onClick={onNavigate}
                   className={cn(
-                    "flex items-center gap-2 overflow-hidden rounded-lg py-2 text-sm transition-colors duration-150 hover:bg-accent hover:text-accent-foreground",
+                    "flex items-center gap-2 overflow-hidden py-2 text-sm transition-colors duration-150 hover:bg-accent hover:text-accent-foreground",
                     rail ? "px-4" : "px-3",
                     active ? "bg-accent font-medium text-accent-foreground" : "font-normal text-muted-foreground"
                   )}

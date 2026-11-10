@@ -53,7 +53,7 @@ export default function AdminLeadsPage() {
               <Stat label="No name or phone" value={fmtNum(data.lead_safety.incomplete_leads)} />
             </StatGrid>
             {data.lead_safety.engaged_without_lead_call_ids.length > 0 && (
-              <div className="mt-4 rounded-lg bg-[var(--status-pending-bg)] px-3 py-2 text-xs">
+              <div className="mt-4 bg-[var(--status-pending-bg)] px-3 py-2 text-xs">
                 <p className="mb-1 font-medium">Calls to investigate</p>
                 <p className="break-all font-mono text-muted-foreground">{data.lead_safety.engaged_without_lead_call_ids.join(", ")}</p>
               </div>

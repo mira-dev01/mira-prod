@@ -114,7 +114,7 @@ export default function AdminHostDetailPage() {
                 {data.capabilities.map((c) => (
                   <span
                     key={c.id}
-                    className="rounded-full border px-2 py-0.5 text-xs"
+                    className="rounded-sm border border-border px-2 py-0.5 text-xs"
                     style={c.enabled ? undefined : { opacity: 0.5, textDecoration: "line-through" }}
                     title={`${c.enabled ? "On" : "Off"} · ${humanize(c.state)}`}
                   >

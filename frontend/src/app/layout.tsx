@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Bricolage_Grotesque, Red_Hat_Display, Red_Hat_Text } from "next/font/google";
+import { Red_Hat_Display, Red_Hat_Text } from "next/font/google";
 import "./globals.css";
 import { ClerkProvider } from "@clerk/nextjs";
 import { AuthProvider } from "@/lib/auth-context";
@@ -18,21 +18,9 @@ const redHatDisplay = Red_Hat_Display({
   variable: "--font-red-hat-display",
   subsets: ["latin"],
 });
-// The "mira" wordmark only (.brand-logo in globals.css): an ink-trap grotesque
-// with enough character to read as the logo and not as UI type.
-const bricolage = Bricolage_Grotesque({
-  variable: "--font-bricolage",
-  subsets: ["latin"],
-});
-
 export const metadata: Metadata = {
   title: "MIRA — Host Dashboard",
   description: "AI voice receptionist for Airbnb hosts",
-  icons: {
-    // SVG favicon — forces text (not emoji) rendering in all browsers
-    icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90' font-family='sans-serif' font-weight='700'>M</text></svg>",
-    apple: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90' font-family='sans-serif' font-weight='700'>M</text></svg>",
-  },
 };
 
 export default function RootLayout({
@@ -43,11 +31,12 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${redHatText.variable} ${redHatDisplay.variable} ${bricolage.variable} h-full antialiased`}
+      className={`${redHatText.variable} ${redHatDisplay.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-background">
         <ClerkProvider
           appearance={{
+            options: { logoImageUrl: "/brand/mira-logo.svg", logoLinkUrl: "/" },
             variables: {
               // Mirrors the app's own CSS custom properties (globals.css) --
               // kept as literal hex/rgba here since Clerk's hosted
@@ -62,6 +51,11 @@ export default function RootLayout({
               colorBorder: "#e3d9c8",
               borderRadius: "0.25rem",
               fontFamily: "var(--font-red-hat-text), sans-serif",
+            },
+            elements: {
+              // Flat ink-ruled card, like every block in the dashboard.
+              card: { boxShadow: "none", border: "1px solid #2a2420", borderRadius: "0.25rem" },
+              formButtonPrimary: { boxShadow: "none" },
             },
           }}
           localization={{

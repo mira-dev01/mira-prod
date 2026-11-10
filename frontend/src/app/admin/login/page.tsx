@@ -1,5 +1,6 @@
 "use client";
 
+import { MiraLogo } from "@/components/brand/mira-logo";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Mail, ShieldCheck } from "lucide-react";
@@ -70,10 +71,9 @@ export default function AdminLoginPage() {
     <div className="flex flex-1 items-center justify-center p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="space-y-3">
-          <span className="text-2xl text-foreground">
-            <span className="mr-1 text-[var(--accent-warm)]">{"✳︎"}</span>
-            <span className="brand-logo">mira</span>
-            <span className="ml-2 align-middle text-xs text-muted-foreground">admin</span>
+          <span className="flex items-center gap-2 text-foreground">
+            <MiraLogo className="h-8" />
+            <span className="text-xs text-muted-foreground">admin</span>
           </span>
           <div className="space-y-1">
             <CardTitle>{step === "email" ? "Sign in to the admin console" : "Check your email"}</CardTitle>

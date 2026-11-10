@@ -418,6 +418,11 @@ export async function previewResponse<T>(path: string, options: RequestInit): Pr
   if (method === "POST" && /^\/pricing\/quote/.test(clean))
     return { nights: 4, base_total: 120000, discount_percent: 5, discount_amount: 6000, total: 114000, per_night_avg: 28500 } as T;
   if (method !== "GET") return {} as T; // saves are accepted and ignored in preview
+  // On the onboarding route, show a brand-new host so the wizard renders.
+  if (typeof window !== "undefined" && window.location.pathname.startsWith("/dashboard/onboarding")) {
+    if (/^\/onboarding/.test(clean)) return { ...onboarding, status: "in_progress", current_step: "profile", completed_at: null } as T;
+    if (/^\/auth\/me$/.test(clean)) return { ...me, name: "", lead_exophone: null, business_name: null } as T;
+  }
   const hit = routes.find(([re]) => re.test(clean));
   if (!hit) throw new ApiError(404, "Not available in design preview");
   return hit[1] as T;

@@ -3,10 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { MiraLogo } from "@/components/brand/mira-logo";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Cell, CellTitle, Hint, Sheet, SubField } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { UseCasePicker } from "@/components/use-case-picker";
@@ -190,80 +190,76 @@ export default function OnboardingPage() {
     return <div className="flex flex-1 items-center justify-center p-4 text-sm text-muted-foreground">Loading…</div>;
   }
 
+  const nav = (back: (() => void) | null, next: React.ReactNode) => (
+    <div className="flex gap-2 pt-2">
+      {back && (
+        <Button type="button" variant="outline" className="min-w-0 flex-1" onClick={back}>
+          Back
+        </Button>
+      )}
+      {next}
+    </div>
+  );
+
   return (
     <div className="flex flex-1 items-center justify-center p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle className="brand-logo text-3xl">mira</CardTitle>
-          <CardDescription>Set up your host profile</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-center gap-2 pb-2">
-            {STEPS.map((label, i) => (
-              <div key={label} className="flex items-center gap-2">
-                <div
-                  className={`flex h-6 w-6 items-center justify-center rounded-full text-xs ${
-                    i === step
-                      ? "bg-primary text-primary-foreground"
-                      : i < step
-                        ? "bg-primary/20 text-primary"
-                        : "bg-muted text-muted-foreground"
-                  }`}
-                >
-                  {i + 1}
-                </div>
-                {i < STEPS.length - 1 && <div className="h-px w-4 bg-border" />}
-              </div>
-            ))}
+      <Sheet className="w-full max-w-lg">
+        <Cell className="gap-5">
+          <MiraLogo className="h-9 self-start text-foreground" />
+          <div className="space-y-2">
+            <div className="flex gap-1" role="progressbar" aria-valuemin={1} aria-valuemax={STEPS.length} aria-valuenow={step + 1}>
+              {STEPS.map((label, i) => (
+                <div key={label} className={`h-1 flex-1 ${i <= step ? "bg-foreground" : "bg-border"}`} />
+              ))}
+            </div>
+            <CellTitle>
+              Step {step + 1} of {STEPS.length} · {STEPS[step]}
+            </CellTitle>
           </div>
-          <p className="pb-2 text-center text-xs text-muted-foreground">{STEPS[step]}</p>
+        </Cell>
 
+        <Cell className="gap-0">
           {step === 0 && (
-            <form onSubmit={goNext} className="space-y-4 pt-2">
-              <p className="text-sm text-muted-foreground">
-                Pick as many as apply — nothing here turns a feature off, it just decides what we show you first.
-              </p>
+            <form onSubmit={goNext} className="space-y-4">
+              <Hint>Pick any. This only changes what we show first.</Hint>
               <UseCasePicker selected={interests} onToggle={toggleInterest} />
-              <div className="flex gap-2">
-                <Button type="button" variant="outline" className="min-w-0 flex-1" onClick={() => setStep(1)}>
-                  Skip for now
-                </Button>
-                <Button type="submit" className="min-w-0 flex-1">
-                  Continue
-                </Button>
-              </div>
+              {nav(
+                null,
+                <>
+                  <Button type="button" variant="outline" className="min-w-0 flex-1" onClick={() => setStep(1)}>
+                    Skip for now
+                  </Button>
+                  <Button type="submit" variant="cta" className="min-w-0 flex-1">
+                    Continue
+                  </Button>
+                </>
+              )}
             </form>
           )}
 
           {step === 1 && (
-            <form onSubmit={goNext} className="space-y-4 pt-2">
-              <div className="space-y-2">
-                <Label htmlFor="ob-name">Your name</Label>
+            <form onSubmit={goNext} className="space-y-4">
+              <SubField label="Your name" htmlFor="ob-name">
                 <Input id="ob-name" required value={name} onChange={(e) => setName(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ob-business-name">Business name (optional)</Label>
+              </SubField>
+              <SubField label="Business name (optional)" htmlFor="ob-business-name">
                 <Input id="ob-business-name" value={businessName} onChange={(e) => setBusinessName(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ob-phone">Personal phone (optional)</Label>
+              </SubField>
+              <SubField label="Personal phone (optional)" htmlFor="ob-phone">
                 <Input id="ob-phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
-              </div>
-              <div className="flex gap-2">
-                <Button type="button" variant="outline" className="min-w-0 flex-1" onClick={goBack}>
-                  Back
-                </Button>
-                <Button type="submit" className="min-w-0 flex-1">
+              </SubField>
+              {nav(
+                goBack,
+                <Button type="submit" variant="cta" className="min-w-0 flex-1">
                   Continue
                 </Button>
-              </div>
+              )}
             </form>
           )}
 
           {step === 2 && (
-            <form onSubmit={goNext} className="space-y-4 pt-2">
-              <div className="space-y-2">
-                <Label htmlFor="ob-business-phone">Business number</Label>
+            <form onSubmit={goNext} className="space-y-4">
+              <SubField label="Business number" htmlFor="ob-business-phone">
                 <Input
                   id="ob-business-phone"
                   required
@@ -271,14 +267,11 @@ export default function OnboardingPage() {
                   value={businessPhone}
                   onChange={(e) => setBusinessPhone(e.target.value)}
                 />
-                <p className="text-xs text-muted-foreground">
-                  The number your voice agent will run on for guest calls.
-                </p>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ob-host-status">Airbnb host status (optional)</Label>
+                <Hint>Mira answers guest calls on this number.</Hint>
+              </SubField>
+              <SubField label="Airbnb host status (optional)" htmlFor="ob-host-status">
                 <Select value={hostStatus} onValueChange={(v) => setHostStatus((v as AirbnbHostStatus) || "")}>
-                  <SelectTrigger id="ob-host-status">
+                  <SelectTrigger id="ob-host-status" className="w-full">
                     <SelectValue placeholder="Select your host status" />
                   </SelectTrigger>
                   <SelectContent>
@@ -289,9 +282,8 @@ export default function OnboardingPage() {
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ob-property-count">Approx. number of properties (optional)</Label>
+              </SubField>
+              <SubField label="Approx. number of properties (optional)" htmlFor="ob-property-count">
                 <Input
                   id="ob-property-count"
                   type="number"
@@ -299,22 +291,19 @@ export default function OnboardingPage() {
                   value={propertyCount}
                   onChange={(e) => setPropertyCount(e.target.value)}
                 />
-              </div>
-              <div className="flex gap-2">
-                <Button type="button" variant="outline" className="min-w-0 flex-1" onClick={goBack}>
-                  Back
-                </Button>
-                <Button type="submit" className="min-w-0 flex-1">
+              </SubField>
+              {nav(
+                goBack,
+                <Button type="submit" variant="cta" className="min-w-0 flex-1">
                   Continue
                 </Button>
-              </div>
+              )}
             </form>
           )}
 
           {step === 3 && (
-            <form onSubmit={goNext} className="space-y-4 pt-2">
-              <div className="space-y-2">
-                <Label htmlFor="ob-first-message">Add your voice agent&apos;s intro</Label>
+            <form onSubmit={goNext} className="space-y-4">
+              <SubField label="Your voice agent's intro" htmlFor="ob-first-message">
                 <Textarea
                   id="ob-first-message"
                   placeholder="Namaste {guest_name}! I'm Mira, calling on behalf of {host_name} about {property_name}."
@@ -322,16 +311,11 @@ export default function OnboardingPage() {
                   onChange={(e) => setFirstMessage(e.target.value)}
                   disabled={transcribing}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Optional — leave blank to use MIRA&apos;s default greeting. Placeholders: {"{host_name}"},{" "}
-                  {"{property_name}"}, {"{city}"}, {"{guest_name}"} — any that don&apos;t apply to a given call are
-                  left blank automatically.
-                </p>
-              </div>
+                <Hint>Optional. Blank uses Mira&apos;s default greeting.</Hint>
+              </SubField>
 
-              <div className="space-y-2 rounded-md border p-3">
-                <Label>Or record it instead</Label>
-                <div className="flex items-center gap-3">
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-3">
                   {!isRecording ? (
                     <Button
                       type="button"
@@ -341,7 +325,7 @@ export default function OnboardingPage() {
                       disabled={transcribing}
                       onClick={startRecording}
                     >
-                      {recordedUrl ? "Re-record" : "Start recording"}
+                      {recordedUrl ? "Re-record" : "Or record it instead"}
                     </Button>
                   ) : (
                     <Button type="button" variant="destructive" size="sm" className="shrink-0" onClick={stopRecording}>
@@ -350,30 +334,23 @@ export default function OnboardingPage() {
                   )}
                   {recordedUrl && <audio controls src={recordedUrl} className="h-8 min-w-0 flex-1" />}
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  {transcribing
-                    ? "Transcribing your recording…"
-                    : recordedUrl
-                      ? "Transcribed below — edit the text above if needed."
-                      : "Speak your greeting and it'll be transcribed into the field above."}
-                </p>
+                {(transcribing || recordedUrl) && (
+                  <Hint>{transcribing ? "Transcribing your recording…" : "Transcribed above. Edit the text if needed."}</Hint>
+                )}
               </div>
 
-              <div className="flex gap-2">
-                <Button type="button" variant="outline" className="min-w-0 flex-1" onClick={goBack}>
-                  Back
-                </Button>
-                <Button type="submit" className="min-w-0 flex-1" disabled={transcribing}>
+              {nav(
+                goBack,
+                <Button type="submit" variant="cta" className="min-w-0 flex-1" disabled={transcribing}>
                   Continue
                 </Button>
-              </div>
+              )}
             </form>
           )}
 
           {step === 4 && (
-            <form onSubmit={handleSubmit} className="space-y-4 pt-2">
-              <div className="space-y-2">
-                <Label htmlFor="ob-airbnb-url">Airbnb listing URL</Label>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <SubField label="Airbnb listing URL" htmlFor="ob-airbnb-url">
                 <Input
                   id="ob-airbnb-url"
                   required
@@ -381,26 +358,21 @@ export default function OnboardingPage() {
                   value={airbnbUrl}
                   onChange={(e) => setAirbnbUrl(e.target.value)}
                 />
-                <p className="text-xs text-muted-foreground">
-                  We&apos;ll import this property automatically. Add the rest later from the Properties page.
-                </p>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ob-ical-url">iCal link (optional)</Label>
+                <Hint>We import this property automatically. Add the rest later from Properties.</Hint>
+              </SubField>
+              <SubField label="iCal link (optional)" htmlFor="ob-ical-url">
                 <Input id="ob-ical-url" value={icalUrl} onChange={(e) => setIcalUrl(e.target.value)} />
-              </div>
-              <div className="flex gap-2">
-                <Button type="button" variant="outline" className="min-w-0 flex-1" onClick={goBack}>
-                  Back
-                </Button>
-                <Button type="submit" className="min-w-0 flex-1" disabled={submitting}>
+              </SubField>
+              {nav(
+                goBack,
+                <Button type="submit" variant="cta" className="min-w-0 flex-1" disabled={submitting}>
                   Finish setup
                 </Button>
-              </div>
+              )}
             </form>
           )}
-        </CardContent>
-      </Card>
+        </Cell>
+      </Sheet>
     </div>
   );
 }

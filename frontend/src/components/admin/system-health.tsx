@@ -44,7 +44,7 @@ function StatePill({ service }: { service: Pick<HealthService, "state" | "group"
   const s = STATE[service.state];
   return (
     <span
-      className="inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-xs font-medium"
+      className="inline-flex shrink-0 items-center rounded-sm px-2 py-0.5 text-xs font-semibold"
       style={{ color: s.color, backgroundColor: s.bg }}
     >
       {stateLabel(service)}
@@ -219,7 +219,7 @@ function ServiceRow({
       type="button"
       onClick={onOpen}
       className={cn(
-        "w-full space-y-1.5 rounded-lg border px-3 py-2.5 text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "w-full space-y-1.5 border border-border px-3 py-2.5 text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         service.state === "not_configured" && "opacity-60"
       )}
       style={failing ? { borderColor: STATE[service.state].color } : undefined}
@@ -346,7 +346,7 @@ function ServiceDialog({
               </div>
 
               {service.last_error && (
-                <div className="space-y-1.5 rounded-lg border p-3">
+                <div className="space-y-1.5 border border-border p-3">
                   <p className="text-micro text-muted-foreground">
                     Latest problem · {ago(service.last_error.at, now)}
                     {service.last_error.op ? ` · ${service.last_error.op}` : ""}
@@ -406,7 +406,7 @@ function IncidentLine({ incident, now, compact }: { incident: HealthIncident; no
         {incident.first_error && <p className="line-clamp-2 break-words text-xs text-muted-foreground">{incident.first_error}</p>}
       </div>
       <span
-        className="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium"
+        className="shrink-0 rounded-sm px-2 py-0.5 text-xs font-semibold"
         style={open ? { color: STATE[incident.state].color, backgroundColor: STATE[incident.state].bg } : { color: "var(--status-live)", backgroundColor: "var(--status-live-bg)" }}
       >
         {open ? STATE[incident.state].label : "Resolved"}
@@ -458,10 +458,10 @@ export function SystemHealth() {
       </Card>
     ) : (
       <div className="space-y-3">
-        <Skeleton className="h-20 w-full rounded-xl" />
+        <Skeleton className="h-20 w-full" />
         <div className="grid gap-4 lg:grid-cols-3">
           {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-56 w-full rounded-xl" />
+            <Skeleton key={i} className="h-56 w-full" />
           ))}
         </div>
       </div>
@@ -476,7 +476,7 @@ export function SystemHealth() {
 
   return (
     <div className="space-y-4">
-      <Card className="overflow-hidden" style={{ borderLeft: `4px solid ${STATE[banner.state].color}` }}>
+      <Card className="overflow-hidden">
         <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center">
           <banner.icon className="size-7 shrink-0" style={{ color: STATE[banner.state].color }} />
           <div className="min-w-0 flex-1 space-y-0.5">

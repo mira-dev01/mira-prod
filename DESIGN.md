@@ -136,7 +136,7 @@ Ink is a warm near-black on parchment, with lighter cream-paper blocks, and a si
 - One typeface, hierarchy by weight, size and tracked caps.
 - Terracotta means active/primary/selected only; state colors mean state only.
 
-**Scope.** The Visible Grid is applied to every dashboard page: Settings, Overview, Leads, Calls, Properties, Calendar, Pricing, Guests, FAQ, Analytics and Agent (pages, `components/settings/*`, `components/overview/*`, `components/property-*.tsx`, `policies-tab.tsx`, `components/agent/*`, `components/analytics/*`). The Sheet/Cell layout system, the construction grid, the type roles for headings and values and the segmented control are shared. Outside the system: the internal admin panel (`/admin`), the sign-in screens and the landing page.
+**Scope.** The Visible Grid is applied to every dashboard page: Settings, Overview, Leads, Calls, Properties, Calendar, Pricing, Guests, FAQ, Analytics and Agent (pages, `components/settings/*`, `components/overview/*`, `components/property-*.tsx`, `policies-tab.tsx`, `components/agent/*`, `components/analytics/*`). The Sheet/Cell layout system, the construction grid, the type roles for headings and values and the segmented control are shared. The admin panel shares the same tokens and its UI kit (`components/admin/admin-ui.tsx`) uses flat ink blocks; Clerk's sign-in cards are themed only.
 
 ## Colors
 
@@ -159,7 +159,7 @@ A warm parchment-and-cream palette with one terracotta accent and a muted, earth
 - **Sage** (`#5c7048` text, rgba(117,136,95,.12) wash): live/ready. **Amber** (`#d9a441`; strong text variant `#8a6512`): pending/needs setup. Brick red (`#a63a24`, same value as the accent): blocked, invalid, destructive.
 - Intent-category badge colors for calls/leads: progress slate-blue `#5f7a99`, purple `#8d6f96`, orange `#c17a42`. Low-priority tone `#7d7267`. These are state/category tints, not accents, and are not used as an accent on Settings.
 - Chart series: `#d9a441`, `#6b7d5a`, `#c17a42`, `#5f7a99`, `#8d6f96`.
-- **Brand mark amber** (`--accent-warm` `#d9a441`): the drawn star beside the wordmark.
+- **Logo colours** (as supplied in the brand kit, 2026-11-10): arch brick `#b8452f`, sound waves and the dot on the "i" amber `#d9a441`, wordmark ink `#2a2420` (cream `#fbf7ef` on dark). The logo's brick is the original terracotta, a touch lighter than the UI accent `#a63a24`; the two are used in different places and never overlap.
 
 ### Named Rules
 **The Few Words Rule.** A block carries a title and its data, not an explanation. Page subtitles, "foot" paragraphs and hints that restate a label are not written. Keep a line only when it carries a consequence the label cannot (a fee, where money goes, what a toggle changes), an instruction needed to finish the task, or a state (not connected, nothing yet). When in doubt, leave it out.
@@ -170,7 +170,7 @@ A warm parchment-and-cream palette with one terracotta accent and a muted, earth
 
 ## Typography
 
-**Fonts:** two Red Hat families (variable, `next/font`, `--font-red-hat-text` and `--font-red-hat-display`) with sans-serif fallback. **Red Hat Display** for the page title, block headings and key numbers (`font-heading`); **Red Hat Text** for everything else: body, labels, table heads, hints. The "mira" wordmark alone is set in **Bricolage Grotesque** (`--font-bricolage`, `.brand-logo`, 800, chosen 2026-11-09), so the logo reads as a logo and not as UI type. Monospace falls back to the system stack.
+**Fonts:** two Red Hat families (variable, `next/font`, `--font-red-hat-text` and `--font-red-hat-display`) with sans-serif fallback. **Red Hat Display** for the page title, block headings and key numbers (`font-heading`); **Red Hat Text** for everything else: body, labels, table heads, hints. The logo is outlined artwork from the brand kit and uses no font. Monospace falls back to the system stack.
 
 **Character:** geometric and upbeat, strong at large sizes (chosen 2026-11-09 from two rounds of pairings); the weight axis does the work, so Tailwind medium/semibold/bold interpolate on each file.
 
@@ -234,7 +234,7 @@ A two or three-way selector drawn as one ink-bordered control (`rounded-md`, 2px
 Badge (24px, `rounded-sm`, 12px/600) with a 6px dot, label capitalized. Capability states map: Ready to sage, Needs setup to amber, Off/Available to neutral, Unavailable to slate. Requirement lines use a 6px dot (amber to do, grey optional, red blocked) with terracotta action links.
 
 ### Brand mark
-Eight-point star drawn as a square-capped 2px stroke SVG in amber (`--accent-warm`), beside the lowercase extra-bold "mira" wordmark in Bricolage Grotesque (800, tracking -0.04em).
+The new logo: a brick arch with two amber sound waves, and the lowercase "mira" wordmark with an amber dot on the "i". Source SVGs are in `frontend/public/brand/`; in the app use `components/brand/mira-logo.tsx` (`MiraMark` for the arch alone, `MiraWordmark`, `MiraLogo` for the full lockup; the letters take the surrounding text colour). The tab and app icons are `src/app/icon.svg`, `favicon.ico` and `apple-icon.png`. Do not redraw it or recolour the arch.
 
 ## Do's and Don'ts
 

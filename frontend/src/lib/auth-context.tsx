@@ -27,7 +27,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Local design preview only (NEXT_PUBLIC_UI_PREVIEW=1): behave as signed in.
   const preview = process.env.NODE_ENV !== "production" && process.env.NEXT_PUBLIC_UI_PREVIEW === "1";
   const isLoaded = preview || clerkAuth.isLoaded;
-  const isSignedIn = preview || (clerkAuth.isSignedIn ?? false);
+  // The public landing page ("/") is previewed signed out.
+  const previewSignedOut = preview && typeof window !== "undefined" && window.location.pathname === "/";
+  const isSignedIn = (preview && !previewSignedOut) || (!preview && (clerkAuth.isSignedIn ?? false));
   const getToken = clerkAuth.getToken;
   const { signOut } = useClerk();
   const { organization } = useOrganization();

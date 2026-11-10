@@ -56,9 +56,9 @@ function BalanceTile({ card }: { card: BalanceCard }) {
         </div>
         <p className="text-2xl font-semibold tabular-nums">{headline}</p>
         {share != null && (
-          <div className="h-1.5 rounded-full bg-muted">
+          <div className="h-1.5 bg-muted">
             <div
-              className="h-1.5 rounded-full"
+              className="h-1.5"
               style={{
                 width: `${Math.max(0, Math.min(1, share)) * 100}%`,
                 backgroundColor: level === "critical" ? "var(--destructive)" : level === "low" ? "var(--status-pending)" : "var(--status-live)",
@@ -193,7 +193,7 @@ export default function AdminBalancesPage() {
       {balances.error && <ErrorState error={balances.error} />}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {balances.loading && !balances.data
-          ? Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-40 rounded-xl" />)
+          ? Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-40" />)
           : balances.data?.map((card) => <BalanceTile key={card.account} card={card} />)}
       </div>
 

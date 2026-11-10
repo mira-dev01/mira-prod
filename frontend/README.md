@@ -53,7 +53,7 @@ Read [`../PRODUCT.md`](../PRODUCT.md) (who this is for) and [`../DESIGN.md`](../
 type, layout blocks, rules) before changing any UI.
 
 - **Look:** "Visible Grid" — the original parchment/terracotta palette (the user's; do not change it)
-  under a ruled 12-column layout, the Red Hat pair (Display for headings and key numbers, Text for the rest) and Bricolage Grotesque for the "mira" wordmark only, flat hairline blocks, no shadows
+  under a ruled 12-column layout, the Red Hat pair (Display for headings and key numbers, Text for the rest) (the logo is artwork, `components/brand/mira-logo.tsx`), flat hairline blocks, no shadows
   on the page.
 - **Tokens and primitives:** `src/app/globals.css` (colours, type roles, the faint construction-grid
   utility `.field-grid`), `src/components/ui/{card,tabs,button,input,badge}.tsx`.

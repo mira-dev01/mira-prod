@@ -39,7 +39,7 @@ export default function AdminUsagePage() {
       ) : data ? (
         <>
           {unpriced.length > 0 && (
-            <div className="flex items-start gap-2 rounded-lg bg-[var(--status-pending-bg)] px-3 py-2 text-sm">
+            <div className="flex items-start gap-2 bg-[var(--status-pending-bg)] px-3 py-2 text-sm">
               <AlertTriangle className="mt-0.5 size-4 shrink-0 text-[var(--status-pending)]" />
               <span>
                 No unit price set for {unpriced.map((a) => `${a.label} (${a.unpriced_units.join(", ")})`).join("; ")} — usage is counted but

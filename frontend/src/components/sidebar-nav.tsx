@@ -1,11 +1,13 @@
 "use client";
 
+import { MiraLogo } from "@/components/brand/mira-logo";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Drawer } from "@base-ui/react/drawer";
 import {
   Home,
+  AudioLines,
   Building2,
   BrainCircuit,
   Calendar,
@@ -51,33 +53,6 @@ const links: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/dashboard/faq", label: "FAQ", icon: HelpCircle },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
-
-/** The Mira mark: a drawn eight-point star in the brand amber (not a text glyph,
- * so it renders identically everywhere). */
-function MiraMark({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      aria-hidden="true"
-      className={className ?? "size-4"}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="square"
-    >
-      <path d="M8 1.5v13M1.5 8h13M3.4 3.4l9.2 9.2M12.6 3.4l-9.2 9.2" />
-    </svg>
-  );
-}
-
-function MiraLogo() {
-  return (
-    <span className="inline-flex items-center gap-1.5 text-2xl text-foreground">
-      <MiraMark className="size-5 text-(--accent-warm)" />
-      <span className="brand-logo">mira</span>
-    </span>
-  );
-}
 
 function NavLinks({ onNavigate, onTalkToMira }: { onNavigate?: () => void; onTalkToMira: () => void }) {
   const pathname = usePathname();
@@ -142,7 +117,7 @@ function NavLinks({ onNavigate, onTalkToMira }: { onNavigate?: () => void; onTal
               rail ? "px-4" : "px-3"
             )}
           >
-            <MiraMark className="size-4 shrink-0 text-(--accent-warm)" />
+            <AudioLines className="size-4 shrink-0 text-(--accent-warm)" />
             <RailLabel>Talk to Mira</RailLabel>
           </button>
         )}
@@ -226,7 +201,7 @@ export function SidebarNav() {
           translate-x + manual document.body.style.overflow toggle. ── */}
       <Drawer.Root open={open} onOpenChange={setOpen} swipeDirection="left">
         <header className="md:hidden fixed top-0 left-0 right-0 z-40 flex items-center justify-between border-b bg-card px-4 h-14">
-          <MiraLogo />
+          <MiraLogo className="h-7 text-foreground" />
           <Drawer.Trigger
             aria-label="Open menu"
             className="flex h-9 w-9 items-center justify-center rounded-md text-foreground hover:bg-accent"
@@ -247,7 +222,7 @@ export function SidebarNav() {
             >
               <div className="mb-6 flex items-center justify-between px-2">
                 <div>
-                  <MiraLogo />
+                  <MiraLogo className="h-7 text-foreground" />
                   <p className="mt-0.5 text-xs text-muted-foreground">Host dashboard</p>
                 </div>
                 <Drawer.Close
