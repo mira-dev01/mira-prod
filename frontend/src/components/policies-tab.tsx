@@ -107,11 +107,14 @@ function LiveEntry({
   policy,
   topics,
   unused,
+  waitingOn,
   onChanged,
 }: {
   policy: PolicyOut;
   topics: Topics;
   unused: boolean;
+  /** Names of the properties this policy is waiting to be approved for. */
+  waitingOn: string[];
   onChanged: () => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -203,10 +206,16 @@ function LiveEntry({
           {topicLabel(topics, policy.topic, policy.title)} · {scope}
         </p>
         <p className="text-sm">{policy.text}</p>
-        {unused && (
+        {unused && waitingOn.length > 0 && (
           <p className="pt-1 text-xs" style={{ color: "var(--status-pending-strong)" }}>
-            Not used yet: this is about a place that isn&apos;t one of your properties. Edit it to name one of them, or
-            delete it.
+            Not used yet: waiting for your approval on {waitingOn.join(", ")}. Open the property to approve, edit or
+            delete it there.
+          </p>
+        )}
+        {unused && waitingOn.length === 0 && (
+          <p className="pt-1 text-xs" style={{ color: "var(--status-pending-strong)" }}>
+            Not used yet: this is about a place that isn&apos;t one of your properties. Add that property, or edit this
+            to name one of yours, or delete it.
           </p>
         )}
       </div>
@@ -504,6 +513,9 @@ export function PoliciesTab({
   const live = overview ? overview.rows.flatMap((row) => row.items) : [];
   // A host-wide policy no property carries (it names somewhere that isn't theirs) is not spoken anywhere.
   const followed = new Set(overview?.properties.flatMap((p) => p.policy_ids) ?? []);
+  // Held back because they name a place the host has no property for at all.
+  const unmappedIds = new Set(overview?.unmapped_policy_ids ?? []);
+  const unmapped = live.filter((policy) => unmappedIds.has(policy.id));
 
   return (
     <Sheet>
@@ -566,6 +578,29 @@ export function PoliciesTab({
             </Cell>
           )}
 
+          {unmapped.length > 0 && (
+            <Cell className="gap-1" aria-label="Policies that need a property">
+              <SectionHeader tone="pending" title="Needs a property" count={unmapped.length} />
+              <Hint>
+                These name a place that isn&apos;t one of your properties, so Mira uses them for none. Add that
+                property (they will then wait for your approval in its pane), or edit the policy to name one of yours.
+              </Hint>
+              <ul>
+                {unmapped.map((policy) => (
+                  <li key={policy.id} className={cn("py-3 text-sm", LINE)}>
+                    <p className="text-xs text-muted-foreground">{topicLabel(overview.topics, policy.topic, policy.title)}</p>
+                    <p>{policy.text}</p>
+                    {policy.review_notes.map((note) => (
+                      <p key={note} className="pt-0.5 text-xs" style={{ color: "var(--status-pending-strong)" }}>
+                        {note}
+                      </p>
+                    ))}
+                  </li>
+                ))}
+              </ul>
+            </Cell>
+          )}
+
           <Cell className="gap-1" aria-label="Approved policies">
             <SectionHeader tone="live" title="Approved · live on calls" count={live.length} />
             {live.length === 0 ? (
@@ -585,6 +620,7 @@ export function PoliciesTab({
                       !followed.has(policy.id) &&
                       policy.review_notes.some((note) => note.includes("isn't one of your properties"))
                     }
+                    waitingOn={overview.properties.filter((p) => p.pending_policy_ids.includes(policy.id)).map((p) => p.name)}
                     onChanged={onChanged}
                   />
                 ))}

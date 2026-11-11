@@ -241,15 +241,17 @@ const policyItems = [
   { id: "po1", topic: "pets", title: "", text: "Small pets are welcome with prior notice; a ₹1,000 cleaning fee applies.", status: "active", property_id: null, property_name: null, source_document_id: null, source_filename: null, source_excerpt: null, review_notes: [], created_at: ago(900), updated_at: ago(900) },
   { id: "po2", topic: "parties", title: "", text: "Parties and loud music are not allowed after 10 pm.", status: "active", property_id: "preview-prop-0", property_name: "Hunzuru Wabi Sabi Villa near Manali", source_document_id: null, source_filename: null, source_excerpt: null, review_notes: [], created_at: ago(800), updated_at: ago(800) },
 ];
+const pendingPolicy = { id: "po3", topic: "pets", title: "", text: "Pets are not allowed at Woodhouse Farm.", status: "draft", property_id: "preview-prop-2", property_name: "Woodhouse Farm", source_document_id: null, source_filename: "house-terms.pdf", source_excerpt: null, review_notes: [], created_at: ago(60), updated_at: ago(60) };
 const policies = {
   rows: [
     { topic: "pets", label: "Pets", hint: "Whether pets are allowed and any fee", state: "everyone", override_count: 0, items: [policyItems[0]] },
     { topic: "parties", label: "Parties & events", hint: "Groups, music and quiet hours", state: "property_only", override_count: 1, items: [policyItems[1]] },
     { topic: "cancellation", label: "Cancellation", hint: "Refunds and changes", state: "unset", override_count: 0, items: [] },
   ],
-  drafts: [],
+  drafts: [pendingPolicy],
   documents: [],
-  properties: properties.map((pr, i) => ({ id: pr.id, name: pr.name, city: pr.city, labels: i === 0 ? [{ key: "no_parties", label: "No parties" }, { key: "pets_ok", label: "Pets welcome" }] : [{ key: "pets_ok", label: "Pets welcome" }], policy_ids: i === 0 ? ["po1", "po2"] : ["po1"] })),
+  unmapped_policy_ids: [],
+  properties: properties.map((pr, i) => ({ id: pr.id, name: pr.name, city: pr.city, pending_policy_ids: i === 2 ? ["po3"] : [], labels: i === 0 ? [{ key: "no_parties", label: "No parties" }, { key: "pets_ok", label: "Pets welcome" }] : [{ key: "pets_ok", label: "Pets welcome" }], policy_ids: i === 0 ? ["po1", "po2"] : ["po1"] })),
   topics: [{ key: "pets", label: "Pets", hint: "" }, { key: "parties", label: "Parties & events", hint: "" }, { key: "cancellation", label: "Cancellation", hint: "" }],
 };
 
@@ -395,6 +397,22 @@ const routes: Array<[RegExp, unknown]> = [
   [/^\/preferences\/overview-widgets/, overviewWidgets],
   [/^\/notification-settings/, notificationSettings],
   [/^\/policies/, policies],
+  [
+    /^\/agent-config$/,
+    {
+      config: {
+        collect: {
+          dates: "optional", guests: "required", purpose: "optional", location: "optional", budget: "optional", email: "off",
+          custom: [{ id: "arrival_time", label: "Arrival time", kind: "time", mode: "required" }, { id: "any_pets", label: "Any pets?", kind: "yes_no", mode: "optional" }],
+        },
+        hot_lead: { hot_on: ["availability_confirmed", "pricing_requested", "negotiation_initiated"], rules: [{ field: "guests", op: "gte", value: 10 }] },
+        booking: { confirm_by: "host" },
+        payment: { kind: "full", split_percent: 30, balance_due_days_before_checkin: 7, hold_minutes: 60 },
+        busy_calls: { mode: "callback_invite", callback_wait_minutes: 5 },
+      },
+      payment_overrides: {},
+    },
+  ],
   [/^\/faq$/, faqEntries],
   [/^\/bookings\/[^/]+\/reconciliation/, reconciliationFixture],
   [/^\/bookings$/, bookingsFixture],

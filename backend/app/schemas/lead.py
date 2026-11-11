@@ -45,6 +45,8 @@ class LeadOut(BaseModel):
     transferred_to_host: bool
     status: str
     occasion: str | None
+    # The host's own "also ask for" details: {field_id: {"label", "value"}}.
+    custom_details: dict = {}
     created_at: datetime
     updated_at: datetime
     # Not a Lead column -- read off the most recent Notification sharing this

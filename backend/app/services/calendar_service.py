@@ -1,6 +1,7 @@
 import logging
 import uuid
 from dataclasses import dataclass, field
+from collections.abc import Awaitable, Callable
 from datetime import date, timedelta
 from typing import Literal
 
@@ -10,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.integrations.ical_client import fetch_ical
 from app.models.booking import Booking
 from app.models.property import Property
+from app.utils.dates import today_ist
 
 logger = logging.getLogger(__name__)
 
@@ -163,6 +165,87 @@ class AvailabilityWindowResult:
 
     status: AvailabilityStatus
     conflicting_bookings: list[tuple[date, date]] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class OpenWindow:
+    """A stay of the requested length that was verified free. shift_days is how
+    far its check-in is from the guest's requested check-in: positive = later,
+    negative = earlier."""
+
+    check_in: date
+    check_out: date
+    shift_days: int
+
+
+# How far either side of the guest's dates an alternative may be offered.
+ALTERNATIVE_HORIZON_DAYS = 60
+
+
+async def closest_open_windows(
+    db: AsyncSession,
+    property_: Property,
+    scope: str,
+    check_in: date,
+    nights: int,
+    rooms: int = 1,
+    *,
+    today: date | None = None,
+    horizon_days: int = ALTERNATIVE_HORIZON_DAYS,
+    accept: Callable[[date, date], Awaitable[bool]] | None = None,
+) -> list[OpenWindow]:
+    """The nearest free stay of the SAME length on each side of the guest's
+    requested check-in: at most one earlier and one later, nearest first.
+
+    This is the only source of alternative dates the agent may offer, so it is
+    built to be right rather than quick:
+      * it searches outward (+1, -1, +2, -2 ... days), so "closest" is by distance
+        and an earlier window is found as readily as a later one;
+      * a start before today (IST) is never offered;
+      * for the whole property, one query reads the blocking bookings and rejects
+        most days cheaply, but a day is only ever ACCEPTED by scope_availability,
+        the same overlap predicate that answers the guest's own question;
+      * `accept` lets the caller apply the rules that depend on the dates
+        (minimum stay, the Saturday rule) so a suggestion is never one the guest
+        could not then actually book.
+    An empty list means nothing was found in the horizon: the caller must say so,
+    never guess a date."""
+    today = today or today_ist()
+    entire = scope != "rooms"
+    blocked: list[tuple[date, date]] = []
+    if entire:
+        rows = (
+            await db.execute(
+                select(Booking.check_in, Booking.check_out).where(
+                    Booking.property_id == property_.id,
+                    Booking.status == "confirmed",
+                    Booking.check_in < check_in + timedelta(days=horizon_days + nights),
+                    Booking.check_out > check_in - timedelta(days=horizon_days),
+                )
+            )
+        ).all()
+        blocked = [(row.check_in, row.check_out) for row in rows]
+
+    found: dict[int, OpenWindow] = {}
+    for offset in range(1, horizon_days + 1):
+        for sign in (1, -1):
+            if sign in found:
+                continue
+            start = check_in + timedelta(days=sign * offset)
+            end = start + timedelta(days=nights)
+            if start < today:
+                continue
+            if entire and any(b_in < end and b_out > start for b_in, b_out in blocked):
+                continue  # cheap reject only; acceptance below is the authority
+            if not (await scope_availability(db, property_, scope, start, end, rooms)).available:
+                continue
+            if accept is not None and not await accept(start, end):
+                continue
+            found[sign] = OpenWindow(start, end, sign * offset)
+        if len(found) == 2:
+            break
+    # Nearest first; on a tie the later one leads (the guest is more likely to move forward).
+    return sorted(found.values(), key=lambda w: (abs(w.shift_days), -w.shift_days))
 
 
 async def _conflicting_bookings_in_window(

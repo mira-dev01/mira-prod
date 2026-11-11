@@ -307,3 +307,89 @@ async def test_pending_faq_entries_are_never_served(db_session, test_property, t
         db_session, SearchFaqArgs(query="gym", property_id=str(test_property.id)), test_user.id, test_property.id
     )
     assert "Unverified gym claim" not in text
+
+
+# --- plurals and "where is it" (found while checking a real portfolio's golden questions) ---
+
+
+@pytest.mark.parametrize(
+    "singular, plural",
+    [("couple", "couples"), ("date", "dates"), ("rule", "rules"), ("box", "boxes"), ("glass", "glasses"), ("house", "houses")],
+)
+def test_a_singular_question_matches_the_plural_on_file(singular, plural):
+    assert kb_retrieval.tokenize(singular) == kb_retrieval.tokenize(plural)
+
+
+async def test_an_unmarried_couple_question_finds_the_couples_policy():
+    facts = [
+        Fact(None, "Policy (Couples): Unmarried couples are welcome.", "policy", "policy_1"),
+        Fact(None, "Policy (Pool hours): Where a villa has a pool, it is open till 8 PM.", "policy", "policy_2"),
+    ]
+
+    result = await search_facts("We are an unmarried couple, is that fine?", facts, [])
+
+    assert result.status == "found" and "Couples" in result.facts[0].text
+
+
+async def test_changing_dates_finds_the_date_change_policy():
+    facts = [
+        Fact(None, "Policy (Date changes): A guest can change the dates of a booking once, until 1 PM the day before check-in.", "policy", "policy_1"),
+        Fact(None, "Policy (Smoking & alcohol): Smoking is allowed inside the villa.", "policy", "policy_2"),
+    ]
+
+    result = await search_facts("Can I change my dates later?", facts, [])
+
+    assert result.status == "found" and "Date changes" in result.facts[0].text
+
+
+@pytest.mark.parametrize("question", ["Where is it located?", "Where exactly is it?", "Which area is it in?", "What is the address?"])
+async def test_where_questions_find_the_neighborhood_fact(question):
+    facts = [
+        Fact(None, "Neighborhood: Whitefield, Bengaluru", "neighborhood", "neighborhood_info"),
+        Fact(None, "Amenities: WiFi, Pool.", "amenity", "amenities"),
+    ]
+
+    result = await search_facts(question, facts, [])
+
+    assert result.status == "found" and result.facts[0].source_kind == "neighborhood"
+
+
+async def test_a_rule_written_for_this_property_wins_a_tie_against_a_host_wide_one():
+    # Lexical-only retrieval scores both facts the same on "party"; the generic ones come first in row order.
+    facts = [
+        Fact(None, "Policy (Food and meals): Party platters can be ordered from the Spacez menu.", "policy", "policy_1"),
+        Fact(None, "Policy (Celebrations): For a party, each villa has its own rule.", "policy", "policy_2"),
+        Fact(None, "Policy (Add-ons): Party Platter at Rs 500 per adult.", "policy", "policy_3"),
+        Fact(None, "Policy (Refunds): No refund for a booking through a third-party site.", "policy", "policy_4"),
+        Fact(None, "Policy (Parties & events): Parties are not allowed at Bombay Breeze.", "policy", "policy_5", {"scope": "property"}),
+    ]
+
+    result = await search_facts("Can we throw a party?", facts, [])
+
+    assert any("not allowed at Bombay Breeze" in f.text for f in result.facts)
+    assert "not allowed at Bombay Breeze" in result.facts[0].text
+
+
+def test_policy_facts_for_one_property_are_marked_as_property_scoped():
+    import types
+
+    prop = types.SimpleNamespace(
+        faq=None, usp=None, house_rules=None, neighborhood_info=None, landmarks=None, amenities=None,
+        seasonal_notes=None, check_in_time="13:00", check_out_time="11:00", max_guests=4, minimum_nights=1,
+        room_rental_enabled=False, rentable_room_count=None, room_max_guests=None, room_details=None,
+    )
+    own = types.SimpleNamespace(id=uuid.uuid4(), topic="pets", title="Pets", text="Pets are allowed.", property_id=uuid.uuid4())
+    shared = types.SimpleNamespace(id=uuid.uuid4(), topic="smoking", title="Smoking", text="No smoking.", property_id=None)
+
+    drafts = {d.source_ref: d for d in build_fact_chunks(prop, [], [own, shared]) if d.source_kind == "policy"}
+
+    assert drafts[f"policy_{own.id}"].meta == {"scope": "property"}
+    assert drafts[f"policy_{shared.id}"].meta is None
+
+
+async def test_negation_fragments_and_filler_do_not_dilute_a_short_question():
+    facts = [Fact(None, "Policy (Refunds): No-shows are not refunded, and checking out early does not refund unused nights.", "policy", "policy_1")]
+
+    result = await search_facts("what happens if I don't show up?", facts, [])
+
+    assert result.status == "found" and "No-shows" in result.facts[0].text

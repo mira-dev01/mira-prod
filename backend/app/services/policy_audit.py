@@ -22,6 +22,7 @@ re-syncs only the properties that were found stale.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from collections import Counter
 from dataclasses import dataclass, field
@@ -35,6 +36,8 @@ from app.models.property import Property
 from app.models.property_chunk import PropertyChunk
 from app.services import policy_service, policy_stance
 from app.services.property import chunking
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -150,3 +153,44 @@ async def fix_stale(db: AsyncSession, host_user_id: uuid.UUID, audits: list[Prop
         await chunking.sync_property_facts(db, prop)
         fixed += 1
     return fixed
+
+
+async def audit_and_repair_all(db_factory) -> dict:
+    """The nightly safety net: audits every host's properties and re-syncs the ones
+    whose stored knowledge has drifted from what their fields, FAQs and policies say.
+
+    Every edit already re-syncs what it touches, so a repair here means some change
+    reached a property without that happening (a code path with no hook, a deploy
+    that changed the rules). It is logged as a warning for that reason: the repair
+    is the cure, the log line is how the missing hook gets found. One host at a time,
+    each on its own session, so one host's failure never stops the rest.
+
+    `db_factory` is a callable returning an async session context manager
+    (AsyncSessionLocal). Returns {"hosts": n, "properties": n, "repaired": n, "failed_hosts": n}."""
+    from app.models.user import User
+
+    stats = {"hosts": 0, "properties": 0, "repaired": 0, "failed_hosts": 0}
+    async with db_factory() as db:
+        host_ids = list(
+            (await db.scalars(select(User.id).where(User.id.in_(select(Property.user_id).distinct())))).all()
+        )
+    for host_id in host_ids:
+        try:
+            async with db_factory() as db:
+                audits = await audit_host(db, host_id)
+                stale = [a for a in audits if not a.ok]
+                stats["hosts"] += 1
+                stats["properties"] += len(audits)
+                if stale:
+                    fixed = await fix_stale(db, host_id, stale)
+                    stats["repaired"] += fixed
+                    logger.warning(
+                        "kb_drift_repaired host_id=%s properties=%s example=%r",
+                        host_id,
+                        fixed,
+                        stale[0].problems[:1],
+                    )
+        except Exception:
+            stats["failed_hosts"] += 1
+            logger.exception("kb_audit_failed host_id=%s", host_id)
+    return stats

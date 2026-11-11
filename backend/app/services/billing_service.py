@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.integrations import razorpay_client
 from app.integrations.razorpay_client import RazorpayError
 from app.models.payment import PaymentRequest
@@ -86,6 +87,10 @@ def get_credentials(user: User) -> tuple[str, str] | None:
     stored = _razorpay(user)
     if stored is None:
         return None
+    if stored["key_id"].startswith("sim_"):
+        # The test payment provider (app/integrations/payment_simulator.py) has no secret to decrypt. It
+        # only works while SIMULATOR_ENABLED is on, so a saved "sim_" key does nothing in production.
+        return (stored["key_id"], "sim") if settings.simulator_enabled else None
     return stored["key_id"], secrets.decrypt(stored["secret_enc"])
 
 

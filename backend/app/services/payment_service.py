@@ -51,6 +51,7 @@ from app.models.user import User
 from app.services import (
     agent_config_service,
     billing_service,
+    booking_confirmation,
     calendar_service,
     capability_service,
     notification_preferences_service,
@@ -124,13 +125,28 @@ async def payments_enabled_for(user: User | None) -> bool:
 # -- planning --------------------------------------------------------------
 
 
-def plan_payment(user: User, property_: Property, total, check_in: date) -> dict:
+def plan_payment(
+    user: User,
+    property_: Property,
+    total,
+    check_in: date,
+    *,
+    option: str | None = None,
+    split_due=None,
+    force_host_confirm: bool = False,
+) -> dict:
     """What a link for this stay charges, under the host's rules (their
-    portfolio payment settings with this property's override laid over them)."""
+    portfolio payment settings with this property's override laid over them).
+
+    `option` is the GUEST's choice when the villa lets them choose: "full" pays everything now, "split"
+    pays `split_due` (the exact advance worked out by the bill) now and the rest before check-in. Without
+    it the host's own rule decides, as it always did. `force_host_confirm` makes the host (not the payment)
+    confirm the booking, e.g. a shoot, which is confirmed after a call with the team."""
     config = agent_config_service.resolve_config(user, property_)
     total = _money(total)
-    if config.payment.kind == "split":
-        due = _money(total * config.payment.split_percent / 100)
+    split = option == "split" and split_due is not None
+    if split or (option is None and config.payment.kind == "split"):
+        due = _money(split_due) if split else _money(total * config.payment.split_percent / 100)
         balance_on = max(date.today(), check_in - timedelta(days=config.payment.balance_due_days_before_checkin))
         kind = "advance"
     else:
@@ -141,7 +157,7 @@ def plan_payment(user: User, property_: Property, total, check_in: date) -> dict
         "amount_due": due,
         "balance_due_on": balance_on,
         "hold_minutes": config.payment.hold_minutes,
-        "confirm_by": config.booking.confirm_by,
+        "confirm_by": "host" if force_host_confirm else config.booking.confirm_by,
     }
 
 
@@ -209,6 +225,10 @@ async def create_payment_request(
     guest_phone: str | None,
     lead_id: uuid.UUID | None = None,
     call_session_id: uuid.UUID | None = None,
+    payment_option: str | None = None,
+    split_due=None,
+    details: dict | None = None,
+    force_host_confirm: bool = False,
 ) -> PaymentRequest:
     """Holds the dates and sends the guest a payment link. Raises PaymentError
     (or DatesUnavailable / DatesOnHold) with a message safe to say aloud."""
@@ -223,7 +243,9 @@ async def create_payment_request(
         raise PaymentError("I need the guest's phone number to send the payment link.")
     if check_out <= check_in or check_in < date.today():
         raise PaymentError("Those dates aren't valid for a booking.")
-    plan = plan_payment(user, property_, total, check_in)
+    plan = plan_payment(
+        user, property_, total, check_in, option=payment_option, split_due=split_due, force_host_confirm=force_host_confirm
+    )
     if plan["total"] <= 0 or plan["amount_due"] <= 0:
         raise PaymentError("There is no price to collect for these dates yet.")
 
@@ -283,6 +305,7 @@ async def create_payment_request(
         balance_due_on=plan["balance_due_on"],
         status="active",
         hold_expires_at=expires,
+        details=details,
     )
     db.add(request)
     await db.commit()
@@ -435,6 +458,37 @@ async def cancel_request(db: AsyncSession, user: User, request_id: uuid.UUID) ->
     return released is not None
 
 
+async def refresh_request(db: AsyncSession, request_id: uuid.UUID) -> tuple[PaymentRequest, str | None, bool]:
+    """Asks the payment provider about ONE request right now (the poller only comes round once a minute),
+    so the agent can learn mid-call that the guest has paid. A paid link becomes a confirmed booking
+    here, exactly as the poller would do it. Returns (request, last failed attempt or None, provider_down).
+    provider_down means the provider could not be asked: the caller must not say paid or unpaid."""
+    request = await db.scalar(select(PaymentRequest).where(PaymentRequest.id == request_id))
+    if request is None:
+        raise PaymentError("Payment request not found.")
+    if request.status != "active" or not request.razorpay_link_id:
+        return request, None, False
+    user = await db.get(User, request.user_id)
+    try:
+        credentials = billing_service.get_credentials(user) if user else None
+    except SecretsError:
+        credentials = None
+    if credentials is None:
+        return request, None, True
+    try:
+        link = await razorpay_client.fetch_payment_link(*credentials, request.razorpay_link_id)
+    except RazorpayError:
+        return request, None, True
+    if link.status == "paid":
+        await _mark_paid(db, request.id, link.payment_id or request.razorpay_payment_id)
+    elif link.status == "cancelled":
+        released = await _release(db, request.id, "cancelled")
+        if released is not None:
+            await _notify_waiters(db, released)
+    request = await db.scalar(select(PaymentRequest).where(PaymentRequest.id == request_id).execution_options(populate_existing=True))
+    return request, link.last_attempt, False
+
+
 # -- waiting guests --------------------------------------------------------
 
 
@@ -576,6 +630,10 @@ async def _after_payment(db: AsyncSession, request_id: uuid.UUID) -> None:
     booking.mira_attribution_lead_id = request.lead_id
     await db.flush()
     request.booking_id = booking.id
+    if (request.details or {}).get("bill") and not (request.details or {}).get("stay_code"):
+        # The guest's four-digit stay code exists from the moment the money is in, so the agent can read it
+        # out when it checks the payment (and the guest can quote it on a bank transfer).
+        request.details = {**request.details, "stay_code": booking_confirmation.new_stay_code()}
     if confirmed and request.lead_id:
         lead = await db.get(Lead, request.lead_id)
         if lead is not None:
@@ -620,10 +678,17 @@ async def _after_payment(db: AsyncSession, request_id: uuid.UUID) -> None:
     except Exception:
         logger.exception("payment received but the host WhatsApp failed request=%s", request_id)
     try:
-        body = billing_service.render(billing_service.template_text(user, "payment_success"), _values(user, property_, request))
+        full_bill = bool((request.details or {}).get("bill"))
+        body = (
+            booking_confirmation.confirmation_text(property_, request)
+            if full_bill
+            else billing_service.render(billing_service.template_text(user, "payment_success"), _values(user, property_, request))
+        )
         if request.guest_phone and await twilio_client.send_whatsapp_best_effort(request.guest_phone, body):
             await db.execute(update(PaymentRequest).where(PaymentRequest.id == request_id).values(success_sent_at=_now()))
             await db.commit()
+            if full_bill and (extra := booking_confirmation.stay_code_text(request)):
+                await twilio_client.send_whatsapp_best_effort(request.guest_phone, extra)
     except Exception:
         logger.exception("payment received but the guest receipt failed request=%s", request_id)
 

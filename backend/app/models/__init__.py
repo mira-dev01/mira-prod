@@ -13,6 +13,7 @@ from app.models.notification import Notification
 from app.models.price_event import PriceEvent
 from app.models.pricing_rule import PricingRule
 from app.models.service_incident import ServiceIncident
+from app.models.simulator import SimMessage, SimPaymentLink, SimulatorFlag
 from app.models.service_usage_event import ServiceUsageEvent
 from app.models.property import Property
 from app.models.property_chunk import PropertyChunk
@@ -45,6 +46,9 @@ __all__ = [
     "Property",
     "PropertyChunk",
     "ServiceIncident",
+    "SimMessage",
+    "SimPaymentLink",
+    "SimulatorFlag",
     "ServiceUsageEvent",
     "Technician",
     "HoldWaiter",

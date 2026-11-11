@@ -464,6 +464,12 @@ export const api = {
     update: (id: string, data: { text?: string; title?: string; topic?: string }) =>
       request<PolicyOut>(`/policies/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
     remove: (id: string) => request<void>(`/policies/${id}`, { method: "DELETE" }),
+    /** Approves a waiting policy for ONE property: it becomes that property's own policy. */
+    assign: (id: string, propertyId: string) =>
+      request<PolicyOut>(`/policies/${id}/assign`, { method: "POST", body: JSON.stringify({ property_id: propertyId }) }),
+    /** "Not for this property": drops a waiting policy for that property only. */
+    dismiss: (id: string, propertyId: string) =>
+      request<void>(`/policies/${id}/dismiss`, { method: "POST", body: JSON.stringify({ property_id: propertyId }) }),
     /** Omit `scope` to keep the properties the document named; otherwise apply to all, or only the chosen ones. */
     approve: (id: string, scope?: { apply_to_all?: boolean; property_ids?: string[] }) =>
       request<{ policy: PolicyOut; replaced: boolean }>(`/policies/${id}/approve`, {

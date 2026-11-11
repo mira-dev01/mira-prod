@@ -145,21 +145,31 @@ async def test_a_hostwide_policy_that_names_a_property_is_only_about_that_proper
     host = await _host(db_session)
     deccan = await _prop(db_session, host, "Deccan Escape 4 BHK Luxury Stay")
     sea = await _prop(db_session, host, "Sea View")
-    # Approved back when "Deccan Escape" was not yet one of the host's properties: the review note is stale.
-    await policy_service.resync(db_session, host.id, None)
-    db_session.add(
-        Policy(user_id=host.id, topic="pets", title="Pets", text="Pets are not allowed at Deccan Escape.", status="active",
-               review_notes=[f"The document mentions Deccan Escape, which {UNMATCHED_NOTE_MARK}."])
+    # Read from a document back when "Deccan Escape" was not yet one of the host's
+    # properties, so it was held as a placeholder (the review note says so).
+    placeholder = Policy(
+        user_id=host.id, topic="pets", title="Pets", text="Pets are not allowed at Deccan Escape.", status="active",
+        review_notes=[f"The document mentions Deccan Escape, which {UNMATCHED_NOTE_MARK}."],
     )
+    db_session.add(placeholder)
     await db_session.commit()
     await policy_service.resync(db_session, host.id, None)
 
+    # A placeholder is held back for EVERY property -- even the one it now names -- until the host assigns it.
     overview = await policy_service.overview(db_session, host)
+    by_name = {p["name"]: p for p in overview["properties"]}
+    assert by_name["Deccan Escape 4 BHK Luxury Stay"]["labels"] == [] and by_name["Deccan Escape 4 BHK Luxury Stay"]["policy_ids"] == []
+    assert by_name["Deccan Escape 4 BHK Luxury Stay"]["pending_policy_ids"] == [placeholder.id]
+    assert by_name["Sea View"]["pending_policy_ids"] == []
 
+    await policy_service.assign_policy(db_session, host, placeholder.id, deccan.id)
+
+    overview = await policy_service.overview(db_session, host)
     labels = {p["name"]: [x["label"] for x in p["labels"]] for p in overview["properties"]}
     assert labels["Deccan Escape 4 BHK Luxury Stay"] == ["No pets"] and labels["Sea View"] == []
     follows = {p["name"]: p["policy_ids"] for p in overview["properties"]}
     assert len(follows["Deccan Escape 4 BHK Luxury Stay"]) == 1 and follows["Sea View"] == []
+    assert all(p["pending_policy_ids"] == [] for p in overview["properties"])  # settled, and the placeholder is gone
     sea_facts = list((await db_session.scalars(select(PropertyChunk.text).where(PropertyChunk.property_id == sea.id))).all())
     assert not any("Deccan Escape" in f for f in sea_facts)  # Sea View is not told another property's rule
     deccan_facts = list((await db_session.scalars(select(PropertyChunk.text).where(PropertyChunk.property_id == deccan.id))).all())

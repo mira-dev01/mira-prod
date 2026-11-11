@@ -49,8 +49,23 @@ _COLLECT_FIELDS_BY_STAGE: dict[Stage, tuple[str, ...]] = {
 }
 
 
+CUSTOM_PREFIX = "custom:"
+
+
+def label_of(detail: str, config: AgentConfig | None = None) -> str:
+    """How the agent should refer to a detail: the built-in wording, or the host's own label for a custom one."""
+    if detail.startswith(CUSTOM_PREFIX):
+        for field in (config.collect.custom if config else []):
+            if f"{CUSTOM_PREFIX}{field.id}" == detail:
+                return field.label
+        return detail[len(CUSTOM_PREFIX):].replace("_", " ")
+    return LABELS[detail]
+
+
 def _known(detail: str, state: ConversationState) -> bool:
     slots = state.slots
+    if detail.startswith(CUSTOM_PREFIX):
+        return slots.get(detail) not in (None, "")
     if detail == "dates":
         return _dates_known(slots)
     slot = {
@@ -70,6 +85,9 @@ def required_details(config: AgentConfig, stage: Stage) -> list[str]:
     details = ["guest_name", "phone"] if stage == "funnel" else []
     collect = config.collect
     details += [name for name in _COLLECT_FIELDS_BY_STAGE[stage] if getattr(collect, name) == "required"]
+    if stage == "funnel":
+        # The host's own must-haves come before availability or a price, like email does.
+        details += [f"{CUSTOM_PREFIX}{field.id}" for field in collect.custom if field.mode == "required"]
     return details
 
 
@@ -127,8 +145,8 @@ def evaluate(
             state.collect_nudges[detail] = state.collect_nudges.get(detail, 0) + 1
             state.collect_nudge_turn[detail] = state.turn_index
 
-    names = " and ".join(LABELS[d] for d in ask_for)
-    first = LABELS[ask_for[0]]
+    names = " and ".join(label_of(d, config) for d in ask_for)
+    first = label_of(ask_for[0], config)
     text = (
         f"Not yet -- the host needs {names} before this step. Ask the guest for {first} now"
         + (", then the rest one at a time" if len(ask_for) > 1 else "")
@@ -139,9 +157,9 @@ def evaluate(
     return GateDecision(block=True, text=text, ask_for=ask_for, waived=waived)
 
 
-def waived_note(waived: list[str]) -> str:
+def waived_note(waived: list[str], config: AgentConfig | None = None) -> str:
     """Appended to a tool result that ran without a must-have detail."""
     if not waived:
         return ""
-    names = ", ".join(LABELS[d] for d in waived)
+    names = ", ".join(label_of(d, config) for d in waived)
     return f"\n(The guest did not give {names} after being asked. Carry on without it; do not ask again.)"

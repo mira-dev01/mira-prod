@@ -129,10 +129,13 @@ from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 from app.services.amenity_taxonomy import _AMENITY_SYNONYMS, canonicalize_amenity
 from app.services.property.pitch_formatter import RecommendationResult
+from app.utils.spoken_dates import dates_in_ranges, spoken_range, unverified_dates
 
 # Any tool whose result (or the system-prompt portfolio listing feeding it) can
 # carry a property_id into context -- arms the UUID-stripping half of this guard.
 _ID_LEAK_TOOLS = {
+    "send_payment_link",
+    "get_payment_status",
     "recommend_properties",
     "get_pricing",
     "check_calendar",
@@ -298,6 +301,38 @@ def _fallback_availability_text(property_name: str, available: bool) -> str:
     return f"{property_name} is {'available' if available else 'not available'} for those dates."
 
 
+# A booking is confirmed ONLY once get_payment_status says PAID. After a payment link goes out, or a status
+# check that is not PAID, a sentence claiming the booking is confirmed or the payment received is removed.
+# Sentences that hedge ("once the payment goes through I will confirm", "not confirmed yet") are left alone.
+_CONFIRM_CLAIM_RE = re.compile(
+    r"\b(booking|reservation|stay|dates?)\b[^.?!]{0,40}\b(confirmed|locked in|all set|done|complete)\b"
+    r"|\b(confirmed|locked in)\b[^.?!]{0,30}\b(booking|reservation|stay)\b"
+    r"|\ball set\b|\byou'?re (?:all )?(?:set|booked|good to go)\b"
+    r"|\bpayment\b[^.?!]{0,30}\b(received|successful|went through|done|complete)\b"
+    r"|\b(received|got) (?:your|the) payment\b",
+    re.IGNORECASE,
+)
+_HEDGE_RE = re.compile(r"\b(will|once|until|after|when|if|not|only|yet|pending|isn'?t|won'?t|can'?t|unless|whether|check)\b|n't", re.IGNORECASE)
+_PAYMENT_PENDING_FALLBACK = "Your dates are held while you pay. Once the payment goes through, I'll confirm your booking."
+
+
+def _drop_confirmation_claims(text: str) -> tuple[str, bool]:
+    """(the reply without any sentence that claims a confirmed booking or a received payment, whether any went)."""
+    parts = re.split(r"(?<=[.!?])\s+", text.strip())
+    kept = [p for p in parts if not (_CONFIRM_CLAIM_RE.search(p) and not _HEDGE_RE.search(p))]
+    return " ".join(kept).strip(), len(kept) != len(parts)
+
+
+def _fallback_alternatives_text(fact: dict) -> str:
+    """A guaranteed-correct reply built only from what check_calendar verified."""
+    name = fact["property_name"]
+    windows = fact["windows"]
+    if not windows:
+        return f"{name} isn't available for those dates, and I don't see an open stay of that length close to them."
+    options = " or ".join(spoken_range(start, end) for start, end in windows)
+    return f"{name} isn't available for those dates. The closest open dates for the same stay are {options}."
+
+
 def _format_partial_availability_correction(fact: dict) -> str:
     """Availability-first recommendations, Implementation 5. Mirrors
     pitch_formatter._format_partial_availability_line's own phrasing exactly
@@ -385,6 +420,8 @@ class PropertyRecommendationGuardProcessor(FrameProcessor):
         self._pending_partial_facts: list[dict] = []
         self._pending_price_fact: dict | None = None
         self._pending_availability_fact: dict | None = None
+        self._pending_alternatives_fact: dict | None = None
+        self._pending_payment_fact: dict | None = None
         self._pending_faq_fact: dict | None = None
         self._pending_recommendation_failed = False
         self._buffering = False
@@ -442,6 +479,16 @@ class PropertyRecommendationGuardProcessor(FrameProcessor):
                     "property_name": result["property_name"],
                     "available": result["available"],
                 }
+        elif function_name == "payment_status" and isinstance(result, dict):
+            self._pending_payment_fact = {"paid": bool(result.get("paid"))}
+        elif function_name == "check_calendar_alternatives" and isinstance(result, dict):
+            # Dates the dates-were-unavailable reply may name: the guest's own and
+            # the windows the calendar search verified. See process_frame.
+            self._pending_alternatives_fact = {
+                "property_name": result["property_name"],
+                "requested": result["requested"],
+                "windows": list(result["windows"]),
+            }
         elif function_name == "search_faq" and isinstance(result, dict):
             if "amenities" in result:
                 self._pending_faq_fact = {
@@ -480,6 +527,8 @@ class PropertyRecommendationGuardProcessor(FrameProcessor):
             partial_facts = self._pending_partial_facts
             price_fact = self._pending_price_fact
             availability_fact = self._pending_availability_fact
+            alternatives_fact = self._pending_alternatives_fact
+            payment_fact = self._pending_payment_fact
             faq_fact = self._pending_faq_fact
             recommendation_failed = self._pending_recommendation_failed
             self._pending_recommendation_failed = False
@@ -488,6 +537,8 @@ class PropertyRecommendationGuardProcessor(FrameProcessor):
             self._pending_partial_facts = []
             self._pending_price_fact = None
             self._pending_availability_fact = None
+            self._pending_alternatives_fact = None
+            self._pending_payment_fact = None
             self._pending_faq_fact = None
 
             if not text.strip():
@@ -497,6 +548,14 @@ class PropertyRecommendationGuardProcessor(FrameProcessor):
                     # the next spoken reply rather than letting it lapse.
                     self._armed_tool = armed_tool
                     self._pending_recommendation_failed = True
+                if payment_fact is not None:
+                    self._armed_tool = armed_tool
+                    self._pending_payment_fact = payment_fact
+                if alternatives_fact is not None:
+                    # Same for the alternative dates: a silent tool call (update_lead)
+                    # between check_calendar and the spoken reply must not disarm the check.
+                    self._armed_tool = armed_tool
+                    self._pending_alternatives_fact = alternatives_fact
                 await self.push_frame(frame, direction)
                 return
 
@@ -549,6 +608,31 @@ class PropertyRecommendationGuardProcessor(FrameProcessor):
                         availability_fact["property_name"],
                     )
                     text = _fallback_availability_text(availability_fact["property_name"], real_available)
+
+            if payment_fact is not None and not payment_fact["paid"]:
+                cleaned, removed = _drop_confirmation_claims(text)
+                if removed:
+                    logger.warning(
+                        "PropertyRecommendationGuardProcessor: removed a claim that the booking is confirmed or the payment "
+                        "received -- the payment is not confirmed paid"
+                    )
+                    text = cleaned or _PAYMENT_PENDING_FALLBACK
+
+            if alternatives_fact is not None:
+                # Alternative-dates fidelity: after a "not available" the reply may
+                # name only the guest's own dates and the windows check_calendar
+                # verified. Any other date was never checked against the calendar,
+                # so the reply is replaced -- deterministically, no second LLM call.
+                allowed = dates_in_ranges([tuple(alternatives_fact["requested"]), *alternatives_fact["windows"]])
+                unverified = unverified_dates(text, allowed)
+                if unverified:
+                    logger.warning(
+                        "PropertyRecommendationGuardProcessor: overriding reply -- named date(s) check_calendar "
+                        "never verified for {}: {}",
+                        alternatives_fact["property_name"],
+                        sorted((d.day, d.month) for d in unverified),
+                    )
+                    text = _fallback_alternatives_text(alternatives_fact)
 
             if armed_tool == "search_faq" and faq_fact is not None:
                 real_amenities = faq_fact["real_canonical_amenities"]

@@ -70,6 +70,9 @@ class PriceBreakdown:
     # off it). Distinct from the nights-only case above because the guest DID
     # give exact dates -- the spoken caveat differs.
     live_rate_unavailable: bool = False
+    # The line-by-line bill (stay_bill.to_dict) when the property has full booking terms. Then `total`
+    # is what the guest PAYS in full (total reservation + GST + pickup), the one number to say aloud.
+    bill: dict | None = None
 
 
 async def _approved_negotiation_rules(db: AsyncSession, host_id: uuid.UUID | None) -> list[NegotiationRule]:

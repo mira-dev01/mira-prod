@@ -30,7 +30,9 @@ async def test_new_host_gets_the_documented_defaults(client, auth_headers):
         "location": "optional",
         "budget": "optional",
         "email": "off",
+        "custom": [],
     }
+    assert config["hot_lead"]["rules"] == []
     assert set(config["hot_lead"]["hot_on"]) == {"availability_confirmed", "pricing_requested", "negotiation_initiated"}
     assert config["booking"] == {"confirm_by": "host"}
     assert config["payment"] == {

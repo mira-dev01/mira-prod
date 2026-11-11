@@ -16,9 +16,10 @@ Which phase makes each section do something:
   busy_calls         -> busy-call recovery (app/services/recovery_service.py)
 """
 
+import re
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # off = never ask; optional = ask, but carry on without it; required = ask, and
 # do not move to the next step until the guest answers (or has been asked twice).
@@ -33,6 +34,53 @@ class _Section(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
 
+CustomKind = Literal["text", "time", "number", "yes_no"]
+MAX_CUSTOM_FIELDS = 10
+_ID_RE = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
+
+
+def slugify(label: str) -> str:
+    """"Arrival time" -> "arrival_time": a stable id the model can name in update_lead."""
+    slug = re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")
+    if not slug or not slug[0].isalpha():
+        slug = f"field_{slug}" if slug else "field"
+    return slug[:32].rstrip("_") or "field"
+
+
+class CustomField(_Section):
+    """One detail the host wants asked in their own words ("Arrival time"), beyond the built-in ones.
+
+    The label is the host's text and reaches the model's prompt, so it is kept short and plain (one
+    line, no control characters) and is always handed over as quoted data, never as an instruction.
+    The id is made from the label when not given and never changes after, so renaming a label later
+    does not orphan answers already saved."""
+
+    id: str = ""
+    label: str = Field(min_length=2, max_length=60)
+    kind: CustomKind = "text"
+    # A custom detail is either asked when natural ("optional") or must be known before availability or
+    # a price is given ("required"). There is no "off": delete the field instead.
+    mode: Literal["optional", "required"] = "optional"
+
+    @field_validator("label")
+    @classmethod
+    def _plain_label(cls, value: str) -> str:
+        value = re.sub(r"\s+", " ", value).strip()
+        if len(value) < 2:
+            raise ValueError("A detail needs a name of at least 2 characters")
+        if any(ord(ch) < 32 or ch in "{}<>`\\" for ch in value):
+            raise ValueError("A detail name can only contain plain letters, numbers and punctuation")
+        return value
+
+    @model_validator(mode="after")
+    def _make_id(self) -> "CustomField":
+        if not self.id:
+            self.id = slugify(self.label)
+        if not _ID_RE.match(self.id):
+            raise ValueError("Invalid detail id")
+        return self
+
+
 class CollectConfig(_Section):
     """What Mira asks the guest for, beyond the always-required name and phone."""
 
@@ -42,13 +90,65 @@ class CollectConfig(_Section):
     location: FieldMode = "optional"
     budget: FieldMode = "optional"
     email: FieldMode = "off"
+    # The host's own extra details ("Arrival time", "Any pets?"), asked and saved like the built-in ones.
+    custom: list[CustomField] = Field(default_factory=list, max_length=MAX_CUSTOM_FIELDS)
+
+    @model_validator(mode="after")
+    def _unique_custom(self) -> "CollectConfig":
+        seen_ids: set[str] = set()
+        seen_labels: set[str] = set()
+        reserved = {"dates", "guests", "purpose", "location", "budget", "email", "name", "phone", "guest_name"}
+        out: list[CustomField] = []
+        for item in self.custom:
+            base = item.id
+            if base in reserved:
+                base = f"{base}_detail"
+            unique, n = base, 2
+            while unique in seen_ids:
+                suffix = f"_{n}"
+                unique, n = base[: 32 - len(suffix)] + suffix, n + 1
+            if item.label.lower() in seen_labels:
+                raise ValueError(f"There is already a detail called {item.label!r}")
+            seen_ids.add(unique)
+            seen_labels.add(item.label.lower())
+            out.append(item.model_copy(update={"id": unique}) if unique != item.id else item)
+        self.custom = out
+        return self
+
+
+HotRuleField = Literal["guests", "nights", "budget", "days_until_checkin"]
+HotRuleOp = Literal["gte", "lte", "eq"]
+MAX_HOT_RULES = 5
+
+
+class HotRule(_Section):
+    """A condition on what Mira has learned about the guest that makes the lead hot.
+
+    `field` is a built-in number (guests, nights, budget, days_until_checkin) or a custom detail written
+    "custom:<id>" (a number or yes/no one). Checked by code when a lead is saved, never by the model:
+    "eq" is for yes/no details (value 1 = Yes, 0 = No)."""
+
+    field: str = Field(max_length=40)
+    op: HotRuleOp
+    value: float = Field(ge=0, le=100_000_000)
+
+    @field_validator("field")
+    @classmethod
+    def _known_field(cls, value: str) -> str:
+        if value in ("guests", "nights", "budget", "days_until_checkin"):
+            return value
+        if value.startswith("custom:") and _ID_RE.match(value[len("custom:"):]):
+            return value
+        raise ValueError("Unknown field for a hot-lead rule")
 
 
 class HotLeadConfig(_Section):
     """Which guest actions make a lead hot (a guest accepting a price and asking
-    to book is always very hot)."""
+    to book is always very hot), plus the host's own conditions."""
 
     hot_on: list[HotSignal] = Field(default_factory=lambda: list(ALL_HOT_SIGNALS))
+    # Any one matching rule makes the lead hot (raise-only, like every other floor).
+    rules: list[HotRule] = Field(default_factory=list, max_length=MAX_HOT_RULES)
 
 
 class BookingConfig(_Section):

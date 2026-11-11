@@ -13,6 +13,7 @@ from app.schemas.policy import (
     PolicyApproveOut,
     PolicyCreate,
     PolicyCreateScoped,
+    PolicyForPropertyIn,
     PolicyOut,
     PolicyOverviewOut,
     PolicyUpdate,
@@ -138,6 +139,35 @@ async def approve_policy(
     except PolicyError as exc:
         raise _http(exc)
     return {"policy": await _out(db, current_user, policy), "replaced": replaced}
+
+
+@router.post("/{policy_id}/assign", response_model=PolicyOut)
+async def assign_policy(
+    policy_id: uuid.UUID,
+    payload: PolicyForPropertyIn,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Approves a waiting policy for one property only (it becomes that property's own)."""
+    try:
+        policy = await policy_service.assign_policy(db, current_user, policy_id, payload.property_id)
+    except PolicyError as exc:
+        raise _http(exc)
+    return await _out(db, current_user, policy)
+
+
+@router.post("/{policy_id}/dismiss", status_code=status.HTTP_204_NO_CONTENT)
+async def dismiss_policy(
+    policy_id: uuid.UUID,
+    payload: PolicyForPropertyIn,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """"Not for this property": removes a waiting policy for that property only."""
+    try:
+        await policy_service.dismiss_policy(db, current_user, policy_id, payload.property_id)
+    except PolicyError as exc:
+        raise _http(exc)
 
 
 @router.delete("/{policy_id}", status_code=status.HTTP_204_NO_CONTENT)

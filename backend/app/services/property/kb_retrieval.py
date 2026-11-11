@@ -79,9 +79,10 @@ _STOPWORDS = frozenset(
     a an the and or but if then so of to in on at by for from with about into over under near nearby far away
     is are was were be been being am do does did done have has had having can could will would shall should may might
     i me my we our us you your he she it its they them their this that these those there here
-    what which who whom whose when where why how much many any some more most very too also just only
+    what which who whom whose when where why how much many any some more most very too also just only exactly
     please tell know let want like need get got give say said ask asked asking question questions
     yes no not ok okay hello hi hey sir madam ji
+    don didn doesn isn aren wasn weren won wouldn couldn shouldn happen up t s ll re ve d m
     property place villa apartment flat home house room stay staying booking available availability allowed allow
     permitted possible provide provided offer offered offers include included includes including whether
     distance distances kilometer kilometre km minute minutes hour hours drive walk walking reach reachable
@@ -105,6 +106,8 @@ _SYNONYM_GROUPS = [
     ("alcohol", "liquor", "drinks", "drinking", "booze", "beer", "wine"),
     ("party", "parties", "loud", "events", "gathering", "gatherings"),
     ("visitor", "visitors", "outsider", "outsiders"),
+    # A question about WHERE the property is answers from its neighborhood facts.
+    ("neighborhood", "neighbourhood", "location", "located", "locality", "area", "address", "situated"),
     ("cancel", "cancellation", "cancelled", "refund", "refunds"),
     ("checkin", "check", "arrival", "arrive", "arriving"),
     ("checkout", "departure", "depart", "leaving"),
@@ -119,11 +122,18 @@ _SYNONYM_TO_CANONICAL = {word: group[0] for group in _SYNONYM_GROUPS for word in
 _TOKEN_RE = re.compile(r"[^\W_]+", re.UNICODE)
 
 
+_SIBILANT_ENDINGS = ("ss", "x", "z", "ch", "sh")
+
+
 def _stem(token: str) -> str:
     if len(token) > 5 and token.endswith("ing"):
         return token[:-3]
     if len(token) > 4 and token.endswith("es"):
-        return token[:-2]
+        # "boxes" -> "box" and "glasses" -> "glass" drop the "es", but "couples" -> "couple",
+        # "dates" -> "date" and "houses" -> "house" only drop the "s": the old rule turned them
+        # into "coupl"/"dat"/"hous", which never matched the singular a guest actually says.
+        base = token[:-2]
+        return base if base.endswith(_SIBILANT_ENDINGS) else token[:-1]
     if len(token) > 3 and token.endswith("s") and not token.endswith("ss"):
         return token[:-1]
     return token
@@ -364,6 +374,12 @@ async def search_facts(
     if not query_tokens:
         # "Tell me about this place" / "what's it like": no specific topic,
         # so the overview facts are the right answer.
+        # "Where is it?" / "Where exactly?" has no content word left either, but what it asks
+        # for is the neighborhood, not the description.
+        if re.search(r"\bwhere\b", query or "", re.IGNORECASE):
+            located = [f for f in candidates if f.source_kind == "neighborhood"][:_MAX_FACTS_RETURNED]
+            if located:
+                return KbSearchResult("found", located)
         overview = [f for f in candidates if f.source_kind in ("description", "structured")][:_MAX_FACTS_RETURNED]
         return KbSearchResult("found" if overview else "none", overview)
 
@@ -403,7 +419,10 @@ async def search_facts(
     ]
 
     def _rank(item: tuple[float, float, int, Fact]) -> float:
-        return item[0] + item[1]
+        # The small bonus only ever breaks a tie: a rule written for this very property beats an
+        # equally matching host-wide one (otherwise ties fall to row order, i.e. topic name).
+        scoped = 0.01 if (item[3].meta or {}).get("scope") == "property" else 0.0
+        return item[0] + item[1] + scoped
 
     if found:
         chosen = sorted(found, key=_rank, reverse=True)[:_MAX_FACTS_RETURNED]

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { BookingReconciliationPanel } from "@/components/booking-reconciliation";
@@ -12,8 +13,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Cell, FieldRow, Hint, Sheet, SubField, Toolbar, WideCell } from "@/components/ui/sheet";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { cn, matchesSearch } from "@/lib/utils";
 import { stayScopeLabel } from "@/lib/format";
+import {
+  bookingsMatching,
+  findFreeProperties,
+  sortProperties,
+  type FinderResult,
+  type SortOrder,
+} from "@/lib/calendar-search";
 import type { BookingOut, PropertyOut, StayScope } from "@/lib/types";
 
 // Booking-source color mapping. Deliberately NOT drawn from the StatusTone
@@ -74,6 +82,16 @@ export default function CalendarPage() {
   // host isolate e.g. just Airbnb bookings before going to update Airbnb's
   // own calendar, without hiding manual blocks from the grid permanently.
   const [sourceFilter, setSourceFilter] = useState<"airbnb" | "manual" | null>(null);
+
+  // Search, sort and the "free from X to Y?" finder. All of it reads the bookings already on the page, with the
+  // same overlap rule as the grid, so what the finder says is free is what the grid shows as free.
+  const [search, setSearch] = useState("");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("default");
+  const [finderFrom, setFinderFrom] = useState("");
+  const [finderTo, setFinderTo] = useState("");
+  const [finderGuests, setFinderGuests] = useState("");
+  const [finder, setFinder] = useState<FinderResult | null>(null);
+  const [finderError, setFinderError] = useState<string | null>(null);
 
   const year = cursor.getFullYear();
   const month = cursor.getMonth();
@@ -184,6 +202,46 @@ export default function CalendarPage() {
     } finally {
       setUnblocking(false);
     }
+  }
+
+  const guestMatches = useMemo(() => bookingsMatching(search, bookings ?? []), [search, bookings]);
+  const visibleProperties = useMemo(() => {
+    const guestPropertyIds = new Set(guestMatches.map((b) => b.property_id));
+    const matching = (properties ?? []).filter(
+      (property) =>
+        matchesSearch(search, [property.name, property.city]) ||
+        guestPropertyIds.has(property.id),
+    );
+    return sortProperties(matching, sortOrder);
+  }, [properties, search, guestMatches, sortOrder]);
+  const propertyName = (id: string) => properties?.find((p) => p.id === id)?.name ?? "A property";
+
+  function runFinder(e: React.FormEvent) {
+    e.preventDefault();
+    const guests = finderGuests.trim() === "" ? null : Number(finderGuests);
+    const result = findFreeProperties(properties ?? [], bookings ?? [], finderFrom, finderTo, guests);
+    if ("error" in result) {
+      setFinder(null);
+      setFinderError(result.error);
+      return;
+    }
+    setFinderError(null);
+    setFinder(result);
+  }
+
+  function clearFinder() {
+    setFinder(null);
+    setFinderError(null);
+    setFinderFrom("");
+    setFinderTo("");
+    setFinderGuests("");
+  }
+
+  /** Show one month and (optionally) one booking's details. */
+  function jumpTo(isoDate: string, bookingId?: string) {
+    const [y, m] = isoDate.split("-").map(Number);
+    setCursor(new Date(y, m - 1, 1));
+    if (bookingId) setSelectedBookingId(bookingId);
   }
 
   const loading = loadingProperties || loadingBookings;

@@ -1,0 +1,10 @@
+{
+  "_note": "From the Spacez agent requirements document, Part 3. Only what the document states is here; the weekend rate, the meal bundle price, the pickup fare and which villa offers which add-on kit are not in it, so they are left out and the agent says the team will check. Add them to a villa's terms the moment they are known.",
+  "villas": [
+    {"name": "Casa Blu", "terms": {"base_guests": 8}},
+    {"name": "Crystal Hall", "terms": {"base_guests": 10}},
+    {"name": "Bombay Breeze", "terms": {"base_guests": 6}},
+    {"name": "Deccan Escape", "terms": {"base_guests": 8}},
+    {"name": "Soul Club", "terms": {"base_guests": 10, "partner": true}}
+  ]
+}

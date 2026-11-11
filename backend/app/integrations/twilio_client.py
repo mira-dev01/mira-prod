@@ -58,6 +58,14 @@ def _sender_identity() -> dict[str, str] | None:
 
 
 async def send_whatsapp_message(to_phone: str, body: str, timeout: float = 15.0) -> dict:
+    if settings.simulator_enabled:
+        # Test services: the message is logged for a tester to read instead of reaching a real guest.
+        from app.integrations import payment_simulator
+
+        try:
+            return {"status": "sent", "sid": await payment_simulator.record_message(to_phone, body), "twilio_status": "delivered"}
+        except payment_simulator.SimulatedOutage as exc:
+            raise TwilioError(str(exc)) from exc
     if not settings.twilio_enabled:
         return {"status": "skipped", "reason": "Twilio is disabled (TWILIO_ENABLED=false)"}
     if not (settings.twilio_account_sid and settings.twilio_auth_token):
@@ -134,6 +142,8 @@ async def send_whatsapp_tracked(to_phone: str, body: str, timeout: float = 15.0)
 async def fetch_message_status(message_sid: str, timeout: float = 10.0) -> tuple[str | None, int | None]:
     """(status, error_code) of a message already sent: queued / sent / delivered
     / read, or failed / undelivered (error_code explains why, e.g. 63016)."""
+    if message_sid.startswith("sim_msg_"):
+        return "delivered", None
     if not (settings.twilio_account_sid and settings.twilio_auth_token):
         raise TwilioError("Twilio is not configured")
     async with httpx.AsyncClient(timeout=timeout) as client:
@@ -155,6 +165,14 @@ async def send_whatsapp_template(
     button (custom label, no raw URL text, no link-preview card) rather than
     an auto-linkified URL. content_variables keys are the template's "{{N}}"
     placeholders as strings, e.g. {"1": "🔴", "2": "HIGH"}."""
+    if settings.simulator_enabled:
+        from app.integrations import payment_simulator
+
+        try:
+            sid = await payment_simulator.record_message(to_phone, f"[template {content_sid}] {json.dumps(content_variables)}", "template")
+            return {"status": "sent", "sid": sid, "twilio_status": "delivered"}
+        except payment_simulator.SimulatedOutage as exc:
+            raise TwilioError(str(exc)) from exc
     if not settings.twilio_enabled:
         return {"status": "skipped", "reason": "Twilio is disabled (TWILIO_ENABLED=false)"}
     if not (settings.twilio_account_sid and settings.twilio_auth_token):

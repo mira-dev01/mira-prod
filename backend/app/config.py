@@ -223,6 +223,12 @@ class Settings(BaseSettings):
     # already routes through it -- no other code should independently
     # re-derive "is Twilio usable" from just the credential vars.
     twilio_enabled: bool = True
+    # Test services for demos and acceptance runs (app/integrations/payment_simulator.py): a payment provider
+    # and a WhatsApp log that behave like the real ones and can be made to fail on demand, with no real
+    # money and no real guests. OFF everywhere unless set; a host only uses the simulated payment provider
+    # when its saved Razorpay key id starts with "sim_". SIMULATOR_TOKEN, when set, must accompany control calls.
+    simulator_enabled: bool = False
+    simulator_token: str = ""
 
     # ContentSid of the "mira_escalation" twilio/call-to-action template
     # (see scripts/create_escalation_template.py) -- gives the escalation

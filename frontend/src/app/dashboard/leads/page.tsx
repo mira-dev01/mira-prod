@@ -385,6 +385,7 @@ function BookingRequestsTabContent() {
       lead.urgency,
       lead.conversation_summary,
       ...lead.properties_discussed,
+      ...Object.values(lead.custom_details ?? {}).flatMap((detail) => [detail.label, detail.value]),
     ])
   );
   // updated_at, not created_at -- see leadsForColumn's comment above for why.

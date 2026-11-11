@@ -237,6 +237,68 @@ async def test_guest_speaking_again_cancels_a_pending_end_call():
     assert speak_frames[0].text == "Hello?"
 
 
+@pytest.mark.asyncio
+async def test_guest_starting_to_speak_over_the_closing_line_cancels_the_hangup():
+    """The guest talks over the goodbye: VAD fires UserStartedSpeakingFrame, the
+    bot is interrupted (BotStoppedSpeakingFrame) and the transcript has not
+    arrived yet. The hangup must not fire on that BotStopped -- the guest is
+    mid-sentence."""
+    state = ConversationState()
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=5.0, conversation_state=state)
+    await watchdog.request_end_after_current_turn()
+
+    down_frames, _ = await run_test(
+        watchdog,
+        frames_to_send=[
+            UserStartedSpeakingFrame(),
+            SleepFrame(sleep=0.05),
+            BotStoppedSpeakingFrame(),
+            SleepFrame(sleep=0.05),
+        ],
+    )
+
+    assert watchdog._end_requested is False
+    assert not any(isinstance(f, EndFrame) for f in down_frames)
+    assert state.closing_state == "open"
+
+
+@pytest.mark.asyncio
+async def test_end_call_requested_while_the_guest_is_speaking_is_not_armed():
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=5.0)
+
+    await run_test(watchdog, frames_to_send=[UserStartedSpeakingFrame(), SleepFrame(sleep=0.05)])
+    await watchdog.request_end_after_current_turn()
+
+    assert watchdog._end_requested is False
+    assert watchdog.hangup_pending is False
+
+
+@pytest.mark.asyncio
+async def test_end_call_can_be_armed_again_after_the_guest_finished_speaking():
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=5.0)
+
+    await run_test(
+        watchdog,
+        frames_to_send=[UserStartedSpeakingFrame(), SleepFrame(sleep=0.02), *_completed_turn("okay thanks")],
+    )
+    await watchdog.request_end_after_current_turn()
+
+    assert watchdog._end_requested is True
+
+
+@pytest.mark.asyncio
+async def test_a_stuck_guest_speaking_flag_expires_so_the_call_can_still_end(monkeypatch):
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=5.0)
+    await run_test(watchdog, frames_to_send=[UserStartedSpeakingFrame(), SleepFrame(sleep=0.02)])
+    assert watchdog.guest_is_speaking is True
+
+    monkeypatch.setattr(silence_watchdog_module, "GUEST_SPEAKING_STALE_SECONDS", 0.0)
+
+    assert watchdog.guest_is_speaking is False
+    await watchdog.request_end_after_current_turn()
+    assert watchdog._end_requested is True
+
+
 # --- Phase 5 (documentation/agent-conversation-improvement.md): conversation
 # lifecycle -- ConversationState.closing_state tracked as real state through
 # the arm/reopen/close sequence, not just this processor's own hangup_pending

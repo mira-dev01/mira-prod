@@ -116,4 +116,9 @@ class Lead(UUIDPkMixin, TimestampMixin, Base):
     # point is to capture verbatim what the guest said, not classify it.
     occasion: Mapped[str | None] = mapped_column(String(255))
 
+    # The host's own "also ask for" details (Agent page -> Collect -> custom), as
+    # {field_id: {"label": ..., "value": ...}}. The label is stored with the value so a
+    # later rename or removal of the field never leaves an answer nobody can read.
+    custom_details: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
+
     owner: Mapped["User"] = relationship(back_populates="leads")

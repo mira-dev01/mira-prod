@@ -1,14 +1,17 @@
 "use client";
 
 import { useState } from "react";
+import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { InfoTip } from "@/components/ui/info-tip";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { OptionCard } from "@/components/option-card";
 import { Sheet, SheetFooter, SheetHeading, WideCell } from "@/components/ui/sheet";
 import { SegmentedChoice } from "@/components/segmented-choice";
 import { api, ApiError } from "@/lib/api";
-import type { AgentCollectConfig, AgentConfig, AgentFieldMode } from "@/lib/types";
+import type { AgentCollectConfig, AgentConfig, AgentCustomField, AgentCustomKind, AgentFieldMode } from "@/lib/types";
 
 const FIELDS: { key: keyof AgentCollectConfig; title: string }[] = [
   { key: "dates", title: "Stay dates" },
@@ -24,14 +27,46 @@ export function CollectStep({ config, onSaved }: { config: AgentConfig; onSaved:
   const [saving, setSaving] = useState(false);
   const dirty = JSON.stringify(collect) !== JSON.stringify(config.collect);
 
-  function setMode(key: keyof AgentCollectConfig, mode: AgentFieldMode) {
+  function setMode(key: BuiltInField, mode: AgentFieldMode) {
     setCollect((current) => ({ ...current, [key]: mode }));
   }
 
+  function setCustom(index: number, change: Partial<AgentCustomField>) {
+    setCollect((current) => ({
+      ...current,
+      custom: current.custom.map((field, i) => (i === index ? { ...field, ...change } : field)),
+    }));
+  }
+
+  function addCustom() {
+    setCollect((current) => ({
+      ...current,
+      custom: [...current.custom, { id: "", label: "", kind: "text", mode: "optional" }],
+    }));
+  }
+
+  function removeCustom(index: number) {
+    setCollect((current) => ({ ...current, custom: current.custom.filter((_, i) => i !== index) }));
+  }
+
+  // Said before saving, so a host sees the problem next to the field instead of as a server error.
+  const labels = collect.custom.map((field) => field.label.trim().toLowerCase());
+  const customProblem = collect.custom.some((field) => field.label.trim().length < 2)
+    ? "Give every detail a name of at least 2 characters."
+    : labels.some((label, i) => labels.indexOf(label) !== i)
+      ? "Two details have the same name."
+      : null;
+
   async function save() {
+    if (customProblem) {
+      toast.error(customProblem);
+      return;
+    }
     setSaving(true);
     try {
-      const result = await api.agentConfig.update({ collect });
+      const result = await api.agentConfig.update({
+        collect: { ...collect, custom: collect.custom.map((field) => ({ ...field, label: field.label.trim() })) },
+      });
       onSaved(result.config);
       toast.success("Saved");
     } catch (err) {

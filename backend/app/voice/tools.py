@@ -64,7 +64,7 @@ from app.schemas.tool import (
     SendWhatsappArgs,
     UpdateLeadArgs,
 )
-from app.services import agent_config_service, lead_service, tool_handlers
+from app.services import agent_config_service, custom_fields, lead_service, tool_handlers
 from app.services.amenity_taxonomy import canonicalize_amenities, canonicalize_amenity
 from app.services.property.budget import coerce_budget_basis, infer_budget_basis, mentions_amount
 from app.services.property.pitch_formatter import (
@@ -329,14 +329,21 @@ def build_voice_tools(
 
     async def _note_missing_details(details: list[str]) -> None:
         """Tells the host which must-have details the guest never gave (once)."""
-        labels = [collect_gate.LABELS[d] for d in details]
+        config = await _agent_config()
+        labels = [collect_gate.label_of(d, config) for d in details]
         try:
             async with AsyncSessionLocal() as db:
                 await lead_service.note_missing_details(db, host_user_id, call_session_id, guest_profile_id, labels)
         except Exception:
             logger.exception("collect gate: could not note missing details on the lead")
 
-    @tool()
+    @tool(
+        internal_error_text=(
+            "The availability check FAILED, so you do not know whether these dates are free. Treat them as NOT "
+            "available: never say they are available and never suggest any other dates. Tell the guest you could "
+            "not check the calendar just now and that the team will confirm, then call escalate_to_host so it is logged."
+        )
+    )
     async def check_calendar(
         params: FunctionCallParams,
         property_id: str,
@@ -391,6 +398,19 @@ def build_voice_tools(
                             "check_calendar", {"property_name": property_.name, "available": available}
                         )
 
+                # Alternative-dates fidelity: tell the guard which dates the
+                # reply may name (the guest's own plus the verified windows).
+                def _on_alternatives(property_, requested_in, requested_out, windows):
+                    if property_recommendation_guard is not None:
+                        property_recommendation_guard.record_tool_result(
+                            "check_calendar_alternatives",
+                            {
+                                "property_name": property_.name,
+                                "requested": (requested_in, requested_out),
+                                "windows": [(w.check_in, w.check_out) for w in windows],
+                            },
+                        )
+
                 result = await tool_handlers.handle_check_calendar(
                     db,
                     args,
@@ -398,6 +418,7 @@ def build_voice_tools(
                     call_session_id,
                     guest_profile_id=guest_profile_id,
                     on_checked=_on_checked,
+                    on_alternatives=_on_alternatives,
                 )
                 if _is_bookable(args.check_in):
                     state.set_slot("check_in", args.check_in)
@@ -415,6 +436,10 @@ def build_voice_tools(
         property_id: str,
         guest_name: str | None = None,
         phone: str | None = None,
+        payment_option: str | None = None,
+        email: str | None = None,
+        purpose_of_stay: str | None = None,
+        special_request: str | None = None,
     ):
         """Send the guest a payment link on WhatsApp and hold their dates for them.
         Use ONLY after you have quoted the price for exact dates and the guest has agreed
@@ -423,9 +448,15 @@ def build_voice_tools(
 
         Args:
             property_id: The property's id, as given to you in your instructions.
-            guest_name: The guest's name, if known.
+            guest_name: The guest's full name, if known.
             phone: The WhatsApp number to send it to, ONLY if the guest gave a different number
                 from the one they are calling from.
+            payment_option: "full" or "split", exactly what the guest chose when you offered both.
+                Never choose for them.
+            email: The guest's email address (some bookings need it).
+            purpose_of_stay: Why they are staying, in the guest's own words (birthday, wedding,
+                family trip, a shoot ...).
+            special_request: Anything special the guest asked the villa team for, if they did.
         """
         async with AsyncSessionLocal() as db:
             result = await tool_handlers.handle_send_payment_link(
@@ -436,7 +467,29 @@ def build_voice_tools(
                 guest_name=guest_name or state.slots.get("guest_name"),
                 phone=phone,
                 call_session_id=call_session_id,
+                payment_option=payment_option,
+                email=email or state.slots.get("email"),
+                purpose_of_stay=purpose_of_stay or state.slots.get("purpose_of_stay"),
+                special_request=special_request,
             )
+        if property_recommendation_guard is not None:
+            # The next reply is held to "not confirmed until the payment says so".
+            property_recommendation_guard.record_tool_result("payment_status", {"paid": False})
+        await params.result_callback(result)
+
+    @tool()
+    async def get_payment_status(params: FunctionCallParams):
+        """Check right now whether the guest has paid the link you sent on this call. Call it when
+        the guest says they have paid, when they ask whether it went through, or before you say
+        anything about a booking being confirmed. Say only what the result tells you: a booking is
+        confirmed ONLY when it says PAID.
+        """
+        async with AsyncSessionLocal() as db:
+            result = await tool_handlers.handle_get_payment_status(
+                db, host_user_id=host_user_id, call_session_id=call_session_id
+            )
+        if property_recommendation_guard is not None:
+            property_recommendation_guard.record_tool_result("payment_status", {"paid": str(result).startswith("PAID")})
         await params.result_callback(result)
 
     @tool()
@@ -452,6 +505,13 @@ def build_voice_tools(
         requested_late_checkout: bool = False,
         stay_scope: str | None = None,
         rooms: int | None = None,
+        children: int | None = None,
+        pets: int | None = None,
+        meals: list[str] | None = None,
+        welcome_drinks: bool = False,
+        party_platter_qty: int | None = None,
+        addons: list[str] | None = None,
+        pickup_drop: bool = False,
     ):
         """Get total price including base rate, cleaning fee, taxes.
 
@@ -483,6 +543,16 @@ def build_voice_tools(
                 details you were given). "entire_place" (the default) or "rooms" to price
                 individual rooms at the room rate. Pass what the guest is actually booking.
             rooms: How many rooms, when stay_scope is "rooms".
+            children: How many of num_guests are children (ages 2 to 12), if any. num_guests is
+                everyone: adults plus children. Pets are never part of num_guests.
+            pets: How many pets are coming, if any.
+            meals: Which meals the guest wants priced, from breakfast, lunch, dinner. Only what the
+                guest asked for -- never add one yourself.
+            welcome_drinks: True only if the guest asked for welcome drinks and snacks.
+            party_platter_qty: How many party platters, if the guest asked.
+            addons: Add-on kits the guest asked for (for example "bbq experience"). If the result
+                says the kit is not on file, say the team will check; never quote a price yourself.
+            pickup_drop: True only if the guest asked for pickup and drop.
         """
         if await _collect_gate_blocks(
             params,
@@ -508,6 +578,13 @@ def build_voice_tools(
                     requested_late_checkout=requested_late_checkout,
                     stay_scope=stay_scope,
                     rooms=rooms,
+                    children=children or 0,
+                    pets=pets or 0,
+                    meals=meals or [],
+                    welcome_drinks=welcome_drinks,
+                    party_platter_qty=party_platter_qty or 0,
+                    addons=addons or [],
+                    pickup_drop=pickup_drop,
                 )
 
                 if _is_bookable(args.check_in):
@@ -560,6 +637,7 @@ def build_voice_tools(
                         is_estimate=breakdown.is_estimate,
                         stay_scope=args.stay_scope,
                         rooms=args.rooms,
+                        bill=breakdown.bill,
                     )
                     # Phase 4F: a plain get_pricing quote supersedes any
                     # earlier negotiation as "the current price fact" --
@@ -1401,6 +1479,7 @@ def build_voice_tools(
         transferred_to_host: bool | None = None,
         occasion: str | None = None,
         preferred_language: str | None = None,
+        custom_answers: list[str] | None = None,
     ):
         """Save or update this guest's CRM lead record. Call this silently
         (don't narrate it to the guest) whenever you learn something new about
@@ -1463,6 +1542,10 @@ def build_voice_tools(
                 this just because the guest is currently code-switching/speaking Hinglish
                 naturally -- that's the normal default and doesn't need this field. Only
                 for a direct, deliberate request to change how you speak.
+            custom_answers: Answers to the host's own extra details (listed in your instructions
+                with an id), each written "<id>: <what the guest said>", e.g.
+                ["arrival_time: 3 PM"]. Only ids from your instructions; only what the guest actually
+                said -- never a guess.
         """
         # Phase 3.3 (documentation/agent-conversation-improvement.md): an
         # explicit, guest-stated language request is a stronger signal than
@@ -1479,9 +1562,11 @@ def build_voice_tools(
             resolved = _LANGUAGE_PREFERENCE_MAP.get(preferred_language.strip().lower())
             if resolved is not None:
                 state.explicit_language_preference = resolved
+        parsed = custom_fields.parse_answers(await _agent_config(), custom_answers) if custom_answers else None
         async with AsyncSessionLocal() as db:
             try:
                 args = UpdateLeadArgs(
+                    custom_details=custom_fields.details_for_storage(parsed.accepted) if parsed and parsed.accepted else None,
                     guest_name=guest_name,
                     phone=phone or caller_number,
                     email=email,
@@ -1544,6 +1629,11 @@ def build_voice_tools(
                 state.set_slot("phone", args.phone)
                 state.set_slot("guest_name", args.guest_name)
                 state.set_slot("email", args.email)
+                for answer in (parsed.accepted if parsed else []):
+                    state.set_slot(custom_fields.slot_key(answer.id), answer.value)
+                if parsed and parsed.problems:
+                    # What could be saved was; the rest the agent must ask again, in plain words.
+                    result = ToolOutcome.needs_clarification("Saved the rest. " + " ".join(parsed.problems))
             except ValidationError as exc:
                 result = ToolOutcome.invalid_arguments(exc)
         await params.result_callback(result)
@@ -1649,7 +1739,7 @@ def build_voice_tools(
     return [
         check_calendar,
         get_pricing,
-        *([send_payment_link] if payments_enabled else []),
+        *([send_payment_link, get_payment_status] if payments_enabled else []),
         dispatch_technician,
         send_whatsapp,
         send_photos,

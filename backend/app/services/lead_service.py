@@ -3,6 +3,7 @@ upsert_lead repeatedly during a single call as the agent learns more about
 the guest; the dashboard's Leads page reads back through list_leads/get_lead.
 """
 
+import logging
 import uuid
 from datetime import date
 
@@ -14,7 +15,7 @@ from app.models.call_session import CallSession
 from app.models.lead import Lead
 from app.models.notification import Notification
 from app.models.user import User
-from app.services import agent_config_service
+from app.services import agent_config_service, custom_fields
 from app.services import lead_temperature as temperature
 from app.utils.dates import today_ist
 
@@ -161,6 +162,11 @@ async def upsert_lead(
         lead.guest_profile_id = guest_profile_id
 
     incoming_temperature = fields.pop("lead_temperature", None)
+    # The host's custom details MERGE (a call that saves one never erases another) and are
+    # reassigned as a new dict so SQLAlchemy sees the JSONB change.
+    custom = fields.pop("custom_details", None)
+    if custom:
+        lead.custom_details = {**(lead.custom_details or {}), **custom}
     for key, value in fields.items():
         if value is not None:
             setattr(lead, key, value)
@@ -174,10 +180,32 @@ async def upsert_lead(
             properties_discussed=lead.properties_discussed,
         ),
     )
+    await _apply_host_hot_rules(db, user_id, lead)
 
     await db.commit()
     await db.refresh(lead)
     return lead
+
+
+async def _apply_host_hot_rules(db: AsyncSession, user_id: uuid.UUID, lead: Lead) -> None:
+    """The host's own hot-lead conditions (Agent page -> Hot leads -> rules): any one that holds for
+    what is known about this lead makes it hot (raise-only, like every other floor). Decided here, by
+    code, so it never depends on the model noticing. Never raises into the call."""
+    try:
+        host = await db.get(User, user_id)
+        rules = agent_config_service.get_config(host).hot_lead.rules if host is not None else []
+        if rules and custom_fields.any_rule_matches(
+            rules,
+            lead.check_in,
+            lead.check_out,
+            guests=lead.num_guests,
+            budget=float(lead.budget) if lead.budget is not None else None,
+            custom=lead.custom_details,
+            today=today_ist(),
+        ):
+            lead.lead_temperature = temperature.merge_temperature(lead.lead_temperature, "hot")
+    except Exception:
+        logging.getLogger(__name__).exception("host hot-lead rules could not be applied lead=%s", lead.id)
 
 
 async def backfill_lead_from_engagement(
@@ -247,6 +275,7 @@ async def backfill_lead_from_engagement(
         lead.lead_temperature = temperature.merge_temperature(
             lead.lead_temperature, temperature.engagement_floor(engagement, hot_on)
         )
+    await _apply_host_hot_rules(db, user_id, lead)  # dates or guests just backfilled may satisfy one
 
     # Commit unconditionally, not just `if changed` -- _get_or_create_lead_for_call
     # may have just created a new lead or linked this call_session.lead_id for

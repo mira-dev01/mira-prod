@@ -228,8 +228,12 @@ def build_fact_chunks(property_, faq_entries, policies=None) -> list[FactDraft]:
     for policy in policies or []:
         # "Other" has no topic of its own, so the host's title names it.
         label = policy.title if policy.topic == "other" else TOPIC_LABELS.get(policy.topic, policy.title)
+        # A rule written for THIS property is marked, so retrieval can prefer it over an
+        # equally matching host-wide rule ("Parties are not allowed at Bombay Breeze" over a
+        # generic celebrations note).
+        scope_meta = {"scope": "property"} if policy.property_id is not None else None
         for piece in _pack_sentences(policy.text):
-            drafts.append(FactDraft(f"Policy ({label}): {piece}", "policy", f"policy_{policy.id}"))
+            drafts.append(FactDraft(f"Policy ({label}): {piece}", "policy", f"policy_{policy.id}", scope_meta))
 
     if not states_check_times:
         drafts.append(

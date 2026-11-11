@@ -486,6 +486,7 @@ class ConversationState:
         is_estimate: bool = False,
         stay_scope: str | None = None,
         rooms: int | None = None,
+        bill: dict | None = None,
     ) -> None:
         """Phase 4.1 -- always overwrites, never merges: a later quote (a
         discount applied on request, or different dates) is always the
@@ -506,6 +507,9 @@ class ConversationState:
             # the whole property (every quote before this existed).
             "stay_scope": stay_scope,
             "rooms": rooms,
+            # The line-by-line bill when the villa has full booking terms (None otherwise): what
+            # send_payment_link turns into the amount, the split and the confirmation message.
+            "bill": bill,
         }
 
     def record_negotiation_decision(

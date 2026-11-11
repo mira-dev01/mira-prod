@@ -15,13 +15,27 @@ too much into a single turn, not the pipeline invoking it spuriously.
 
 Sits between llm and tts (same position as escalation_phrase_guard). Does
 NOT withhold or rewrite any frames -- the text is fine and should be spoken
-as-is. It only watches: did this same turn both ask a real question (a "?"
-anywhere in the text) AND call end_call? If so, it cancels the pending
-hangup via silence_watchdog.cancel_end_request() -- the question still gets
-asked, but the call falls through to the normal silence-nudge path instead
-of ending the instant that line finishes playing, giving the guest an
-actual chance to reply.
+as-is. It only watches: did this same turn both ask a real question AND call
+end_call? If so, it cancels the pending hangup via
+silence_watchdog.cancel_end_request() -- the question still gets asked, but
+the call falls through to the normal silence-nudge path instead of ending the
+instant that line finishes playing, giving the guest an actual chance to reply.
+
+Frame order matters. In pipecat 1.6.0 a completion that both speaks and calls
+a tool emits LLMFullResponseStartFrame, the LLMTextFrames, then
+FunctionCallsStartedFrame (the tool runs), then LLMFullResponseEndFrame. The
+question is therefore ALREADY in the past when end_call shows up, so the text of
+every response is buffered from its start, never only after end_call is seen.
+(An earlier version began buffering at FunctionCallsStartedFrame, saw an empty
+buffer in production, and never cancelled anything; its tests sent the frames in
+an order the pipeline never produces.)
+
+What counts as a question: a question mark (Latin, fullwidth or Arabic), or an
+open offer worded without one -- "anything else", "aur kuch", "और कुछ" -- since
+spoken Hindi/Hinglish replies are often written without punctuation.
 """
+
+import re
 
 from loguru import logger
 
@@ -36,6 +50,21 @@ from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 from app.voice.silence_watchdog import SilenceWatchdogProcessor
 
+_QUESTION_MARKS = ("?", "\uff1f", "\u061f")
+
+# Open offers that invite an answer even when the text has no question mark.
+_OPEN_OFFER_RE = re.compile(
+    r"anything\s+else|something\s+else|any\s+other\s+(?:question|help|doubt)"
+    r"|aur\s+kuch|kuch\s+aur|koi\s+aur\s+(?:sawal|question|madad|help)"
+    r"|\u0914\u0930\s+\u0915\u0941\u091b|\u0915\u0941\u091b\s+\u0914\u0930",
+    re.IGNORECASE,
+)
+
+
+def asks_open_question(text: str) -> bool:
+    """True when the spoken text leaves the guest an open question to answer."""
+    return any(mark in text for mark in _QUESTION_MARKS) or _OPEN_OFFER_RE.search(text) is not None
+
 
 class PrematureEndCallGuardProcessor(FrameProcessor):
     """Cancels a same-turn end_call if that turn also asked the guest a
@@ -44,7 +73,7 @@ class PrematureEndCallGuardProcessor(FrameProcessor):
     def __init__(self, silence_watchdog: SilenceWatchdogProcessor):
         super().__init__()
         self._silence_watchdog = silence_watchdog
-        self._watching_for_question = False
+        self._end_call_seen = False
         self._buffer: list[str] = []
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
@@ -52,29 +81,27 @@ class PrematureEndCallGuardProcessor(FrameProcessor):
 
         if isinstance(frame, FunctionCallsStartedFrame):
             if any(fc.function_name == "end_call" for fc in frame.function_calls):
-                self._watching_for_question = True
-            await self.push_frame(frame, direction)
-            return
-
-        if self._watching_for_question and isinstance(frame, LLMFullResponseStartFrame):
+                self._end_call_seen = True
+        elif isinstance(frame, LLMFullResponseStartFrame):
+            # Every response is buffered from its first frame; the end_call
+            # flag is NOT reset here because a frame source that announces the
+            # tool call first (as this module's older tests did) must still work.
             self._buffer = []
-            await self.push_frame(frame, direction)
-            return
-
-        if self._watching_for_question and isinstance(frame, LLMTextFrame):
+            self._silence_watchdog.note_reply_asked_question(False)
+        elif isinstance(frame, LLMTextFrame):
             self._buffer.append(frame.text)
-            await self.push_frame(frame, direction)
-            return
-
-        if self._watching_for_question and isinstance(frame, LLMFullResponseEndFrame):
-            self._watching_for_question = False
-            if "?" in "".join(self._buffer):
+        elif isinstance(frame, LLMFullResponseEndFrame):
+            end_call_seen, self._end_call_seen = self._end_call_seen, False
+            text, self._buffer = "".join(self._buffer), []
+            asked = asks_open_question(text)
+            # end_call runs in a background task, so it may arm the hangup after this
+            # frame is seen: remember the question so a late arm is refused as well.
+            self._silence_watchdog.note_reply_asked_question(asked)
+            if end_call_seen and asked:
                 logger.warning(
                     "PrematureEndCallGuardProcessor: cancelling the pending hangup -- this turn also "
                     "asked the guest a real question"
                 )
                 self._silence_watchdog.cancel_end_request()
-            await self.push_frame(frame, direction)
-            return
 
         await self.push_frame(frame, direction)

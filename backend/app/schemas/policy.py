@@ -90,6 +90,10 @@ class PolicyPropertyOut(BaseModel):
     # The live policies this property actually follows (host-wide ones that are
     # about other properties only are not in it).
     policy_ids: list[uuid.UUID] = []
+    # Policies waiting on the host for this property: drafts and placeholders
+    # (a policy that named a property the dashboard could not map) to approve,
+    # edit or delete from the property's pane.
+    pending_policy_ids: list[uuid.UUID] = []
 
 
 class PolicyOverviewOut(BaseModel):
@@ -98,6 +102,9 @@ class PolicyOverviewOut(BaseModel):
     documents: list[PolicyDocumentOut]
     properties: list[PolicyPropertyOut]
     topics: list[PolicyTopicOut]
+    # Placeholders that name no property the host has: nothing to assign them to
+    # until the host clarifies which property they are about.
+    unmapped_policy_ids: list[uuid.UUID] = []
 
 
 class PolicyUploadOut(BaseModel):
@@ -119,6 +126,10 @@ class PolicyApproveOut(BaseModel):
     policy: PolicyOut
     # True when approving replaced a live policy for the same topic.
     replaced: bool
+
+
+class PolicyForPropertyIn(BaseModel):
+    property_id: uuid.UUID
 
 
 class PolicyApproveAllIn(BaseModel):

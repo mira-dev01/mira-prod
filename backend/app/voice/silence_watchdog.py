@@ -153,6 +153,12 @@ if TYPE_CHECKING:
 
 DEFAULT_SILENCE_TIMEOUT_SECONDS = 5.0
 DEFAULT_MAX_PROMPTS = 2
+# A guest counts as "speaking" from UserStartedSpeakingFrame until the turn
+# completes (UserStoppedSpeakingFrame). That frame only fires once the turn-stop
+# strategy has also seen a transcript, so a start with no completion (a cough,
+# line noise) would otherwise look like speech forever and the call could never
+# close. After this many seconds without a completion the flag is treated as stale.
+GUEST_SPEAKING_STALE_SECONDS = 15.0
 # Two distinct nudges, not the same line twice -- a human receptionist
 # doesn't repeat themselves verbatim (see GOLDEN_RULES's own "never repeat a
 # sentence" rule, same underlying reasoning applied here).
@@ -214,6 +220,15 @@ class SilenceWatchdogProcessor(FrameProcessor):
         self._nudges_held_until = 0.0
         self._ended = False
         self._end_requested = False
+        # Monotonic time of the latest UserStartedSpeakingFrame that has not been
+        # completed yet; None when the guest is not mid-utterance. See guest_is_speaking.
+        self._guest_speech_started_at: float | None = None
+        # True while the latest agent reply left the guest an open question (set by
+        # PrematureEndCallGuardProcessor at the end of every reply). A tool call runs in a
+        # background task, so end_call can arm the hangup before OR after that reply's end
+        # frame is seen; refusing to arm while this is set makes the outcome independent of
+        # which comes first.
+        self._reply_asked_question = False
 
         # Phase 5C shadow-mode repetition observation state -- see the
         # module-level EXPERIMENTAL SHADOW-MODE THRESHOLDS comment above.
@@ -244,6 +259,18 @@ class SilenceWatchdogProcessor(FrameProcessor):
         # Frame structurally cannot fire without a TranscriptionFrame having
         # arrived first for that same turn).
         self._pending_turn_is_repetition_candidate = False
+
+    def note_reply_asked_question(self, asked: bool) -> None:
+        """Called by PrematureEndCallGuardProcessor: did the agent's latest reply ask the
+        guest something? While it did, a hangup is not armed (see request_end_after_current_turn)."""
+        self._reply_asked_question = asked
+
+    @property
+    def guest_is_speaking(self) -> bool:
+        """True while the guest is mid-utterance (VAD said they started, the turn
+        has not completed). The call must never be ended in that state."""
+        started = self._guest_speech_started_at
+        return started is not None and (time.monotonic() - started) < GUEST_SPEAKING_STALE_SECONDS
 
     @property
     def hangup_pending(self) -> bool:
@@ -282,7 +309,20 @@ class SilenceWatchdogProcessor(FrameProcessor):
         of) the close, and arms _end_requested so the next
         BotStoppedSpeakingFrame -- i.e. once that closing line has actually
         finished playing, not when this method is called -- ends the call
-        instead of starting another nudge cycle."""
+        instead of starting another nudge cycle.
+
+        Refused while the guest is mid-utterance: a hangup armed now would fire
+        on the next BotStoppedSpeakingFrame, which a guest talking over the
+        agent produces before their transcript exists. The guest's words get a
+        normal reply (and, if they really are done, a fresh close) instead."""
+        if self.guest_is_speaking:
+            logger.info("call_end_not_armed_guest_speaking")
+            return
+        if self._reply_asked_question:
+            # The same reply asked the guest a question (end_call arrived after the reply's
+            # end frame was already seen): they must get the chance to answer.
+            logger.info("call_end_not_armed_reply_asked_question")
+            return
         logger.info("call_end_requested")
         self._end_requested = True
         if self._conversation_state is not None:
@@ -328,6 +368,12 @@ class SilenceWatchdogProcessor(FrameProcessor):
             logger.debug("silence_watchdog_timer_paused_bot_speaking")
             await self._cancel_timer()
         elif isinstance(frame, BotStoppedSpeakingFrame) and not self._ended:
+            if self._end_requested and self.guest_is_speaking:
+                # Defence in depth: UserStartedSpeakingFrame already un-arms the
+                # hangup, so this should be unreachable. Never hang up on a guest
+                # who is mid-sentence, whatever else the state says.
+                logger.warning("call_end_cancelled_guest_speaking_at_hangup")
+                self.cancel_end_request()
             if self._end_requested:
                 self._ended = True
                 logger.info("final_audio_completed")
@@ -370,7 +416,17 @@ class SilenceWatchdogProcessor(FrameProcessor):
             # turn (UserStoppedSpeakingFrame, below) counts as that.
             logger.debug("silence_watchdog_timer_paused_guest_speaking")
             await self._cancel_timer()
+            self._guest_speech_started_at = time.monotonic()
+            if self._end_requested:
+                # The guest is talking over the closing line. Their transcript
+                # does not exist yet, and the interruption makes the bot stop
+                # (BotStoppedSpeakingFrame) first -- without this the call would
+                # hang up on them mid-sentence. Real silence still ends the call
+                # later through the normal nudge path.
+                logger.info("call_end_cancelled_guest_started_speaking")
+                self.cancel_end_request()
         elif isinstance(frame, UserStoppedSpeakingFrame):
+            self._guest_speech_started_at = None
             # Phase 5D: THE meaningful-response boundary. This frame only
             # ever fires once pipecat's own turn-stop strategy has confirmed
             # BOTH a VAD-detected stop AND a non-empty transcript for that

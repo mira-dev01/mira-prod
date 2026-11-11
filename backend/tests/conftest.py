@@ -1,3 +1,4 @@
+import asyncio
 import os
 
 os.environ["DATABASE_URL"] = "postgresql+asyncpg://mira:mira@localhost:5432/mira_test"
@@ -52,6 +53,7 @@ def pytest_collection_modifyitems(config, items):
 from app.auth.dependencies import get_current_user
 from app.database import AsyncSessionLocal, Base, engine, get_db
 from app.integrations import redis_client
+from app.utils import background
 from app.main import app
 from app.models.call_session import CallSession
 from app.models.property import Property
@@ -89,12 +91,25 @@ async def _setup_database():
     await engine.dispose()
 
 
+async def _drain_background_tasks() -> None:
+    """Detached work (app/utils/background.spawn: the policy re-sync after a property change, embeddings,
+    ...) belongs to the test that started it. Left running, it holds row locks while the next test's
+    cleanup deletes those rows, and the two deadlock."""
+    pending = [task for task in background.tasks if not task.done()]
+    if pending:
+        _, still_running = await asyncio.wait(pending, timeout=15)
+        for task in still_running:
+            task.cancel()
+
+
 @pytest_asyncio.fixture(autouse=True)
 async def _clean_tables():
+    await _drain_background_tasks()
     async with engine.begin() as conn:
         for table in reversed(Base.metadata.sorted_tables):
             await conn.execute(table.delete())
     yield
+    await _drain_background_tasks()
 
 
 @pytest_asyncio.fixture(autouse=True)

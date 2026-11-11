@@ -661,6 +661,8 @@ export type LeadOut = {
   transferred_to_host: boolean;
   status: string;
   occasion: string | null;
+  /** The host's own "also ask for" details: {field id: {label, value}}. */
+  custom_details?: Record<string, { label: string; value: string }>;
   created_at: string;
   updated_at: string;
   // Not a Lead column -- backfilled from the most recent linked Notification
@@ -779,6 +781,16 @@ export type TicketOut = {
 export type AgentFieldMode = "off" | "optional" | "required";
 export type AgentHotSignal = "availability_confirmed" | "pricing_requested" | "negotiation_initiated";
 
+export type AgentCustomKind = "text" | "time" | "number" | "yes_no";
+
+/** A detail the host wants asked in their own words. `id` is made by the server from the label ("" while new). */
+export type AgentCustomField = {
+  id: string;
+  label: string;
+  kind: AgentCustomKind;
+  mode: "optional" | "required";
+};
+
 export type AgentCollectConfig = {
   dates: AgentFieldMode;
   guests: AgentFieldMode;
@@ -786,7 +798,11 @@ export type AgentCollectConfig = {
   location: AgentFieldMode;
   budget: AgentFieldMode;
   email: AgentFieldMode;
+  custom: AgentCustomField[];
 };
+
+/** A condition that makes a lead hot: a number (guests, nights, budget, days_until_checkin) or "custom:<id>". */
+export type AgentHotRule = { field: string; op: "gte" | "lte" | "eq"; value: number };
 
 export type AgentBusyCalls = {
   mode: "host_follows_up" | "callback_invite";
@@ -795,7 +811,7 @@ export type AgentBusyCalls = {
 
 export type AgentConfig = {
   collect: AgentCollectConfig;
-  hot_lead: { hot_on: AgentHotSignal[] };
+  hot_lead: { hot_on: AgentHotSignal[]; rules: AgentHotRule[] };
   booking: { confirm_by: "host" | "payment" };
   payment: {
     kind: "full" | "split";
@@ -876,6 +892,8 @@ export type PolicyOverview = {
   documents: { id: string; filename: string; item_count: number; truncated: boolean; created_at: string }[];
   properties: PolicyProperty[];
   topics: { key: string; label: string; hint: string }[];
+  /** Policies that name a place the host has no property for: nothing to assign them to until the host clarifies. */
+  unmapped_policy_ids: string[];
 };
 
 /** A property as the Policies tab sees it: what its approved policies say about parties/pets, and which live policies it follows. */
@@ -885,6 +903,8 @@ export type PolicyProperty = {
   city: string | null;
   labels: { key: string; label: string }[];
   policy_ids: string[];
+  /** Policies waiting on the host for this property (drafts, and ones that named it before it existed). */
+  pending_policy_ids: string[];
 };
 
 export type PolicyUpload = { document: PolicyOverview["documents"][number]; drafts: PolicyOut[]; skipped: number };

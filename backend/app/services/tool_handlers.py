@@ -17,7 +17,7 @@ from app.voice.conversation_state import NegotiationEvent
 
 from app.config import settings
 from app.utils import background
-from app.integrations import email_client, twilio_client
+from app.integrations import email_client, payment_simulator, twilio_client
 from app.integrations.email_templates import build_escalation_email_html, build_photos_email_html
 from app.models.call_session import CallSession
 from app.models.property import Property
@@ -42,6 +42,7 @@ from app.schemas.tool import (
 from app.database import AsyncSessionLocal
 from app.services import (
     billing_service,
+    booking_confirmation,
     calendar_service,
     capability_service,
     notification_preferences_service,
@@ -52,6 +53,8 @@ from app.services import (
     payment_service,
     price_event_service,
     pricing_engine,
+    pricing_terms,
+    stay_bill,
     stay_scope,
     technician_service,
     ticket_service,
@@ -367,6 +370,66 @@ async def _double_occupancy_answer(
     )
 
 
+async def _with_alternatives(
+    db: AsyncSession,
+    property_: Property,
+    host_user_id: uuid.UUID | None,
+    scope: str,
+    args: CheckCalendarArgs,
+    nights: int,
+    rooms: int,
+    base: str,
+    on_alternatives: Callable[[Property, date, date, list], None] | None,
+) -> str:
+    """The "not available" answer plus the closest verified open dates, or an
+    explicit "none found". The agent may offer ONLY what is listed here; the
+    voice guard holds the spoken reply to the same set. Any failure to search
+    degrades to "no dates to offer", never to a guess."""
+    saturday_rule = bool(property_.saturday_minimum_stay_enabled) and nights < 2
+
+    async def accept(start: date, end: date) -> bool:
+        # A suggestion must be bookable: same minimum-stay rules as the check itself.
+        if saturday_rule and any((start + timedelta(days=i)).weekday() == 5 for i in range(nights)):
+            return False
+        return await pricing_engine.minimum_stay_nights_violation(db, host_user_id, property_.id, start, end) is None
+
+    try:
+        windows = await calendar_service.closest_open_windows(
+            db, property_, scope, args.check_in, nights, rooms, accept=accept
+        )
+    except Exception:
+        logger.exception("closest_open_windows failed property_id=%s", property_.id)
+        windows = []
+        failed = True
+    else:
+        failed = False
+    if on_alternatives is not None:
+        on_alternatives(property_, args.check_in, args.check_out, windows)
+
+    plural = "s" if nights != 1 else ""
+    if windows:
+        listed = "; ".join(
+            f"{w.check_in.isoformat()} to {w.check_out.isoformat()} "
+            f"({abs(w.shift_days)} day{'s' if abs(w.shift_days) != 1 else ''} {'later' if w.shift_days > 0 else 'earlier'})"
+            for w in windows
+        )
+        return (
+            f"{base} Closest open dates for the same {nights} night{plural}, each checked against the calendar: "
+            f"{listed}. Offer ONLY these. For any other dates the guest suggests, call check_calendar for those "
+            "exact dates first and say nothing about them until it answers."
+        )
+    if failed:
+        return (
+            f"{base} The search for other dates failed, so you have NO dates to offer: do not suggest any. "
+            "Say you could not find open dates just now and that the team will follow up (escalate_to_host)."
+        )
+    return (
+        f"{base} No open {nights}-night window was found within {calendar_service.ALTERNATIVE_HORIZON_DAYS} days "
+        "either side of those dates. Do NOT suggest any dates: offer to look at a different property or have the "
+        "team follow up (escalate_to_host)."
+    )
+
+
 async def handle_check_calendar(
     db: AsyncSession,
     args: CheckCalendarArgs,
@@ -374,8 +437,14 @@ async def handle_check_calendar(
     call_session_id: uuid.UUID | None = None,
     guest_profile_id: uuid.UUID | None = None,
     on_checked: Callable[[Property, bool], None] | None = None,
+    on_alternatives: Callable[[Property, date, date, list], None] | None = None,
 ) -> str:
-    """on_checked (Phase 4b.1, documentation/agent-conversation-improvement.md):
+    """on_alternatives (alternative-dates fidelity): called only when the dates are
+    NOT available, with the property, the guest's requested check-in/check-out and
+    the verified alternative windows (calendar_service.OpenWindow; empty if none were
+    found). It lets the voice layer hold the reply to exactly those dates.
+
+    on_checked (Phase 4b.1, documentation/agent-conversation-improvement.md):
     same on_priced pattern as handle_get_pricing/handle_negotiate_rate -- an
     optional synchronous callback receiving the real Property and the actual
     availability bool right before it's rendered to the spoken string, called
@@ -383,6 +452,9 @@ async def handle_check_calendar(
     not-found/invalid-dates/capacity/minimum-nights early returns above,
     since none of those represent a real yes/no answer to "is it available").
     """
+    if settings.simulator_enabled and await payment_simulator.is_down("calendar"):
+        # Test services: the calendar is switched down, so the check fails the way a real outage would.
+        raise payment_simulator.SimulatedOutage("the availability service is switched down for this test")
     property_ = await _get_property(db, args.property_id)
     if property_ is None:
         return ToolBusinessError("I couldn't find that property. Could you confirm which listing you're asking about?")
@@ -489,13 +561,10 @@ async def handle_check_calendar(
             if availability.reason == "entire_place_taken"
             else f"fewer than {rooms} room{'s' if rooms != 1 else ''} are free on every night"
         )
-        window = await calendar_service.next_available_window_for_scope(
-            db, property_, stay_scope.ROOMS, args.check_in, nights, rooms
-        )
         base = f"{property_.name} has no {stay_scope.scope_label(scope, rooms)} available for those dates ({reason})."
-        if window:
-            return f"{base} The next open window of {nights} night{'s' if nights != 1 else ''} is {window[0].isoformat()} to {window[1].isoformat()}."
-        return f"{base} Nothing similar opens up in the next 90 days."
+        return await _with_alternatives(
+            db, property_, host_user_id, stay_scope.ROOMS, args, nights, rooms, base, on_alternatives
+        )
 
     # Whole place requested and the only thing in the way is other guests'
     # ROOM bookings: that is a double occupancy for the host to resolve, not a
@@ -508,13 +577,128 @@ async def handle_check_calendar(
             db, property_, args, occupancy.conflicts, host_user_id, call_session_id, guest_profile_id
         )
 
-    window = await calendar_service.next_available_window(db, property_.id, args.check_in, nights)
-    if window:
-        return (
-            f"{property_.name} is NOT available for those dates. The next open window of "
-            f"{nights} night{'s' if nights != 1 else ''} is {window[0].isoformat()} to {window[1].isoformat()}."
+    return await _with_alternatives(
+        db,
+        property_,
+        host_user_id,
+        stay_scope.ENTIRE_PLACE,
+        args,
+        nights,
+        1,
+        f"{property_.name} is NOT available for those dates.",
+        on_alternatives,
+    )
+
+
+_MEAL_NAMES = {"breakfast", "lunch", "dinner"}
+
+
+def _quote_from_terms(
+    property_: Property,
+    terms: "stay_bill.Terms",
+    args: GetPricingArgs,
+    on_priced: Callable[[Property, PriceBreakdown], None] | None,
+    host_user_id: uuid.UUID | None,
+    call_session_id: uuid.UUID | None,
+) -> str:
+    """The full booking bill for a villa that has commercial terms: stay, extra guests, meals, GST,
+    and both ways to pay. Anything the terms do not state stops the quote with a plain reason; the
+    agent never fills the gap. `total` handed to on_priced is what the guest pays in full."""
+    meals = {m.strip().lower() for m in args.meals}
+    adults = args.num_guests - args.children
+    kits = tuple(k.strip().lower().replace(" ", "_") for k in args.addons)
+    request = stay_bill.Request(
+        check_in=args.check_in,
+        check_out=args.check_out,
+        adults=adults,
+        children=args.children,
+        pets=args.pets,
+        breakfast="breakfast" in meals,
+        lunch="lunch" in meals,
+        dinner="dinner" in meals,
+        welcome_drinks=args.welcome_drinks,
+        party_platter_qty=args.party_platter_qty,
+        addons=kits,
+        pickup=args.pickup_drop,
+    )
+    if meals - _MEAL_NAMES:
+        return ToolBusinessError("Meals can only be breakfast, lunch or dinner.")
+    try:
+        bill = stay_bill.compute(terms, request)
+    except stay_bill.BillInvalid as exc:
+        return ToolBusinessError(f"{exc} Tell the guest this plainly and ask what they would like to change.")
+    except stay_bill.BillUnknown as exc:
+        return ToolBusinessError(
+            f"I can't price this stay: {exc.what} is not on file. Tell the guest the team will confirm that, "
+            "and call escalate_to_host so it is logged. Do not guess a number."
         )
-    return f"{property_.name} is NOT available for those dates, and no similar-length window opens up in the next 90 days."
+
+    r = stay_bill.rupees
+    nights = bill.nights
+    subject = property_.name
+    if bill.weekend_nights:
+        rate_phrase = f"about {r(bill.stay_total / nights)} a night"
+    else:
+        rate_phrase = f"{r(terms.base_rate)} a night"
+    others = [ln for ln in bill.lines if ln.label not in ("Stay", "Total reservation amount") and not ln.label.startswith(("GST", "Spacez"))]
+    extras = "; ".join(f"{ln.label} {r(ln.amount)}" if not ln.struck else f"{ln.label} included" for ln in others)
+    summary = (
+        f"For {subject}: {rate_phrase}, so {r(bill.stay_total)} for {nights} night{'s' if nights != 1 else ''}"
+        + (f", plus {extras}" if extras else "")
+        + f". The total reservation amount is {r(bill.total_reservation)}, GST at {int(bill.gst_rate * 100)}% is "
+        f"{r(bill.gst)}"
+        + (f", and pickup and drop is {r(bill.pickup)}" if bill.pickup else "")
+        + f", so {r(bill.full_payable)} in all."
+    )
+    if terms.partner:
+        summary += " This is a partner villa: payment is in full, with no split payment."
+    else:
+        summary += (
+            f" The guest can pay in full ({r(bill.full_payable)}) or split: {r(bill.split_now)} now and "
+            f"{r(bill.split_later)} before check-in."
+        )
+    if args.requested_early_checkin:
+        summary += f" Early check-in is a flat {r(terms.early_checkin_fee)} and depends on the villa being free; the team confirms it."
+    if args.requested_late_checkout:
+        summary += f" Late check-out is a flat {r(terms.late_checkout_fee)} and depends on the villa being free; the team confirms it."
+
+    breakdown = PriceBreakdown(
+        nights=nights,
+        base_total=float(bill.total_reservation),
+        discount_percent=0.0,
+        discount_amount=0.0,
+        total=float(bill.full_payable),
+        per_night_avg=round(float(bill.stay_total) / nights, 2),
+        bill={
+            **stay_bill.to_dict(bill),
+            "partner": terms.partner,
+            "request": {
+                "adults": adults,
+                "children": args.children,
+                "pets": args.pets,
+                "meals": sorted(meals),
+                "welcome_drinks": args.welcome_drinks,
+                "party_platter_qty": args.party_platter_qty,
+                "addons": list(kits),
+                "pickup": args.pickup_drop,
+            },
+        },
+    )
+    if on_priced is not None:
+        on_priced(property_, breakdown)
+    price_event_service.record_price_event_detached(
+        user_id=host_user_id,
+        property_id=property_.id,
+        call_session_id=call_session_id,
+        price_type="initial_quote",
+        source="mira_conversation",
+        price=breakdown.total,
+        list_price=breakdown.base_total,
+        nights=nights,
+        check_in=args.check_in,
+        check_out=args.check_out,
+    )
+    return summary
 
 
 async def handle_get_pricing(
@@ -600,6 +784,15 @@ async def handle_get_pricing(
             guest_profile_id=guest_profile_id,
             engagement="pricing_requested",
         )
+
+    terms = pricing_terms.terms_for(property_)
+    if terms is not None and scope == stay_scope.ENTIRE_PLACE:
+        if not has_exact_dates:
+            return ToolBusinessError(
+                f"{property_.name} is priced for exact dates (rates, GST and extras depend on them): ask the guest "
+                "for their check-in and check-out dates before quoting."
+            )
+        return _quote_from_terms(property_, terms, args, on_priced, host_user_id, call_session_id)
 
     breakdown = await pricing_engine.calculate_price(
         db,
@@ -705,6 +898,10 @@ async def handle_send_payment_link(
     guest_name: str | None,
     phone: str | None,
     call_session_id: uuid.UUID | None,
+    payment_option: str | None = None,
+    email: str | None = None,
+    purpose_of_stay: str | None = None,
+    special_request: str | None = None,
 ) -> str:
     """Sends the guest a payment link for the price Mira last quoted and holds
     their dates. The amount and dates come from `quote` -- what Mira herself
@@ -748,6 +945,48 @@ async def handle_send_payment_link(
     except ValueError:
         return ToolBusinessError("I need the exact check-in and check-out dates before sending a payment link.")
 
+    # A villa with a full bill: the booking needs the guest's details, and the guest chooses how to pay.
+    bill = quote.get("bill")
+    details: dict | None = None
+    split_due = None
+    force_host_confirm = False
+    shoot = False
+    if bill:
+        asks = []
+        if not booking_confirmation.valid_name(guest_name):
+            asks.append("their full name (letters only)")
+        if not booking_confirmation.valid_mobile(guest_phone):
+            asks.append("a mobile number (9 to 15 digits)")
+        if not booking_confirmation.valid_email(email):
+            asks.append("their email address")
+        purpose = booking_confirmation.map_purpose(purpose_of_stay)
+        if purpose is None:
+            asks.append("the purpose of the stay")
+        if asks:
+            return ToolBusinessError(
+                "Before sending the link, ask the guest for " + ", ".join(asks) + ". Ask one at a time, then call this again."
+            )
+        option = (payment_option or "").strip().lower() or None
+        if bill.get("partner"):
+            option = "full"
+        if option not in ("full", "split"):
+            return ToolBusinessError(
+                f"Ask the guest how they want to pay: in full ({payment_service.rupees(bill['full_payable'])}) or split "
+                f"({payment_service.rupees(bill['split_now'])} now and {payment_service.rupees(bill['split_later'])} before "
+                "check-in), then call this again with payment_option set to what they chose."
+            )
+        shoot = booking_confirmation.is_shoot(purpose)
+        force_host_confirm = shoot
+        split_due = bill["split_now"] if option == "split" else None
+        details = {
+            "bill": bill,
+            "purpose": purpose,
+            "email": email.strip(),
+            "special_request": (special_request or "").strip()[:500] or None,
+            "payment_option": option,
+            "shoot": shoot,
+        }
+
     # Make sure this opportunity is on file whatever else happens.
     await lead_service.backfill_lead_from_engagement(
         db, host_user_id, call_session_id, property_.name, check_in, check_out, None, engagement="availability_confirmed"
@@ -758,6 +997,8 @@ async def handle_send_payment_link(
         request = await payment_service.create_payment_request(
             db, host, property_, check_in=check_in, check_out=check_out, total=quote["total"],
             guest_name=guest_name, guest_phone=guest_phone, lead_id=lead_id, call_session_id=call_session_id,
+            payment_option=details["payment_option"] if details else None, split_due=split_due, details=details,
+            force_host_confirm=force_host_confirm,
         )
     except payment_service.DatesOnHold as exc:
         if _is_own_hold(exc.hold, guest_phone, call_session_id):
@@ -778,11 +1019,94 @@ async def handle_send_payment_link(
     if request.kind == "advance":
         rest = f" That is the advance; the remaining {payment_service.rupees(request.total_amount - request.amount_due)} is due by {request.balance_due_on:%d %b %Y}."
     sent = "sent on WhatsApp" if request.link_sent_at else "being sent by the host on WhatsApp shortly (WhatsApp did not accept it just now)"
+    closing = (
+        "Tell the guest the amount, that the link is on WhatsApp, and how long the dates are held. "
+        "Do not read out the link and never ask for card or UPI details on the call."
+    )
+    if details:
+        closing += (
+            " The booking is NOT confirmed yet: only a successful payment confirms it. When the guest says they have paid, "
+            "or when they ask, call get_payment_status and say only what it tells you."
+        )
+        if shoot:
+            closing += (
+                " This is a shoot booking: once paid, the dates are held and the team calls to understand the crew and "
+                "setup, then confirms. Never call it confirmed."
+            )
     return (
         f"The payment link for {payment_service.rupees(request.amount_due)} is {sent}.{rest} "
         f"{property_.name} is held for this guest from {check_in:%d %b %Y} to {check_out:%d %b %Y} for the next {minutes} minutes. "
-        "Tell the guest the amount, that the link is on WhatsApp, and how long the dates are held. "
-        "Do not read out the link and never ask for card or UPI details on the call."
+        + closing
+    )
+
+
+async def handle_get_payment_status(
+    db: AsyncSession, *, host_user_id: uuid.UUID, call_session_id: uuid.UUID | None
+) -> str:
+    """Whether the guest on this call has paid, asked of the payment provider right now. The only thing
+    that may make the agent say a booking is confirmed."""
+    from app.models.payment import PaymentRequest
+
+    request = None
+    if call_session_id is not None:
+        request = await db.scalar(
+            select(PaymentRequest)
+            .where(PaymentRequest.user_id == host_user_id, PaymentRequest.call_session_id == call_session_id)
+            .order_by(PaymentRequest.created_at.desc())
+            .limit(1)
+        )
+    if request is None:
+        return ToolBusinessError(
+            "No payment link has been sent on this call, so there is no payment to check. Do not say anything about a payment."
+        )
+    try:
+        request, last_attempt, provider_down = await payment_service.refresh_request(db, request.id)
+    except payment_service.PaymentError as exc:
+        return ToolBusinessError(str(exc))
+    rupees = payment_service.rupees
+    if provider_down:
+        return ToolBusinessError(
+            "I could not check the payment just now: the payment service did not answer. You do NOT know whether the guest has "
+            "paid, so do not say it has or has not gone through and never say the booking is confirmed. Tell the guest you cannot "
+            "see the payment right now and that the team will confirm it, then call escalate_to_host so it is logged."
+        )
+    details = request.details or {}
+    if request.status == "paid":
+        code = details.get("stay_code")
+        shoot = bool(details.get("shoot"))
+        ref = booking_confirmation.booking_ref(request) if details.get("bill") else None
+        if shoot:
+            return (
+                f"PAID: {rupees(request.amount_due)} received. This is a shoot booking, so the dates are HELD, not yet confirmed: tell the "
+                "guest their dates are held and the team will call to understand the crew and setup, then confirm. Never call it confirmed."
+            )
+        rest = ""
+        if request.kind == "advance" and request.total_amount > request.amount_due:
+            rest = f" The remaining {rupees(request.total_amount - request.amount_due)} is due before check-in."
+        return (
+            f"PAID: {rupees(request.amount_due)} received.{rest} The booking is now confirmed"
+            + (f", booking id {ref}" if ref else "")
+            + (f", and the guest's four-digit stay code is {code}" if code else "")
+            + ". The confirmation with every detail is on their WhatsApp. You may now tell the guest the payment went through and the "
+            "booking is confirmed."
+        )
+    if request.status in ("expired", "cancelled"):
+        return (
+            f"NOT PAID: this payment request has {'expired' if request.status == 'expired' else 'been cancelled'} and the dates are no "
+            "longer held. Do NOT say the booking is confirmed. If the guest still wants the stay, check the dates again and send a new link."
+        )
+    minutes = _minutes_until(request.hold_expires_at)
+    if last_attempt == "failed":
+        return (
+            "NOT PAID: the guest's last payment attempt did not go through (they see: Payment unsuccessful. Almost there! Your villa is "
+            f"held, just one more try needed to finish booking your stay). The dates stay held for about {minutes} more minute"
+            f"{'s' if minutes != 1 else ''} and the same link can be tried again. Say that calmly, offer to wait while they try again, and "
+            "do NOT say the booking is confirmed."
+        )
+    return (
+        f"NOT PAID YET: the link for {rupees(request.amount_due)} was sent but no payment has come through. The dates are held for about "
+        f"{minutes} more minute{'s' if minutes != 1 else ''}. Do NOT say the booking is confirmed; if the guest says they paid, ask them to "
+        "wait a moment and check again."
     )
 
 
@@ -1478,6 +1802,15 @@ async def handle_negotiate_rate(
     scope, rooms = _resolve_scope(property_, args.stay_scope, args.rooms)
     if scope == stay_scope.ROOMS and (error := stay_scope.validate_room_request(property_, rooms, args.num_guests)):
         return ToolBusinessError(error)
+
+    if pricing_terms.terms_for(property_) is not None:
+        # A villa with full booking terms has no discount rule on file: the price quoted stands, and
+        # a discount is never invented. The team can look at it.
+        return ToolBusinessError(
+            "There is no discount available on this stay: the price already quoted stands. Say so plainly, "
+            "do not offer or hint at any reduction, and offer to note the request for the team "
+            "(escalate_to_host)."
+        )
 
     if host_user_id is not None:
         await lead_service.backfill_lead_from_engagement(

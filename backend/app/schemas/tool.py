@@ -88,6 +88,15 @@ class GetPricingArgs(BaseModel):
     # forbids for discounts; the same "only when asked" rule applies here.
     requested_early_checkin: bool = False
     requested_late_checkout: bool = False
+    # Only read for a property with full booking terms (properties.pricing_terms): the rest of the
+    # party and what they want on top of the stay. num_guests above is adults + children.
+    children: int = Field(default=0, ge=0)
+    pets: int = Field(default=0, ge=0)
+    meals: list[str] = Field(default_factory=list)  # any of breakfast, lunch, dinner
+    welcome_drinks: bool = False
+    party_platter_qty: int = Field(default=0, ge=0)
+    addons: list[str] = Field(default_factory=list)  # kit names the guest asked for
+    pickup_drop: bool = False
 
     @model_validator(mode="after")
     def _check_dates_xor_nights(self) -> "GetPricingArgs":
@@ -309,6 +318,10 @@ class UpdateLeadArgs(BaseModel):
     escalated: bool | None = None
     transferred_to_host: bool | None = None
     occasion: str | None = None
+    # Internal, not offered to the model: the host's custom details already parsed and
+    # normalised by app/services/custom_fields.py ({id: {"label", "value"}}), merged into
+    # the lead by upsert_lead.
+    custom_details: dict | None = None
 
 
 class SearchFaqArgs(BaseModel):

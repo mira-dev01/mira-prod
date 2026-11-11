@@ -169,6 +169,12 @@ def _format_slots(state: ConversationState) -> str:
         if salience is not None and salience.count >= 2:
             text += f" (guest has restated this {salience.count}x -- weigh it heavily)"
         parts.append(text)
+    # The host's own details ("custom:<id>" slots) are listed too, so the agent does not ask for them again.
+    from app.voice.collect_gate import CUSTOM_PREFIX, label_of
+
+    for key, value in state.slots.items():
+        if key.startswith(CUSTOM_PREFIX) and value not in (None, ""):
+            parts.append(f"{label_of(key)}: {value}")
     return ", ".join(parts)
 
 
@@ -319,9 +325,10 @@ def build_state_block_content(state: ConversationState, quality: "ConversationQu
     if slot_summary:
         lines.append(f"Already collected this call: {slot_summary}. Do not re-ask for these.")
     if state.waived_fields:
-        from app.voice.collect_gate import LABELS
+        from app.voice.collect_gate import label_of
 
-        waived = ", ".join(LABELS[d] for d in state.waived_fields)
+        # label_of never raises: a custom detail has no entry in the built-in table.
+        waived = ", ".join(label_of(d) for d in state.waived_fields)
         lines.append(
             f"The guest did not give {waived} after being asked twice. Do not ask for it again; carry on and "
             "the host will follow up for it."

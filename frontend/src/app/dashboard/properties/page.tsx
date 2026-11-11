@@ -25,6 +25,7 @@ import { PropertyFaqManager } from "@/components/property-faq-manager";
 import { PropertyFormSection } from "@/components/property-form-section";
 import { PropertyFormFields } from "@/components/property-form-fields";
 import { PolicyLabelChips, PropertyPoliciesInEffect } from "@/components/property-policies-in-effect";
+import { PropertyPendingPolicies, pendingCount } from "@/components/property-pending-policies";
 import { PropertyRoomRentalTab } from "@/components/property-room-rental-tab";
 import { PropertyPhotoCarousel } from "@/components/property-photo-carousel";
 import { PropertyPhotosManager } from "@/components/property-photos-manager";
@@ -104,7 +105,16 @@ function propertyToForm(property: PropertyOut): PropertyCreate {
   };
 }
 
-function PropertiesList({ policies, onOpenPolicies }: { policies: PolicyOverview | null; onOpenPolicies: () => void }) {
+function PropertiesList({
+  policies,
+  onOpenPolicies,
+  onPoliciesChanged,
+}: {
+  policies: PolicyOverview | null;
+  onOpenPolicies: () => void;
+  /** Re-reads the policies: a new property can have policies waiting for it, and the pane settles them. */
+  onPoliciesChanged: () => void;
+}) {
   const { isInternalOrg, user } = useAuth();
   const perPropertyTransfer = user?.notification_preferences.transfer_number_mode === "per_property";
   const { data: properties, loading, refetch } = useAsync(() => api.properties.list(), []);
@@ -168,6 +178,7 @@ function PropertiesList({ policies, onOpenPolicies }: { policies: PolicyOverview
       setOpen(false);
       setForm(emptyForm);
       refetch();
+      onPoliciesChanged();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Failed to create property");
     } finally {
@@ -505,6 +516,11 @@ function PropertiesList({ policies, onOpenPolicies }: { policies: PolicyOverview
                   ₹{property.base_price.toLocaleString("en-IN")} / night · {property.max_guests} guests
                 </p>
                 <PolicyLabelChips overview={policies} propertyId={property.id} />
+                {pendingCount(policies, property.id) > 0 && (
+                  <div>
+                    <StatusChip status={`Policy approval pending (${pendingCount(policies, property.id)})`} tone="pending" />
+                  </div>
+                )}
                 {property.exophone && <p className="text-[13px] text-muted-foreground">{property.exophone}</p>}
                 {perPropertyTransfer && !property.host_transfer_phone && (
                   <p className="text-[13px] text-(--status-pending-strong)" onClick={(e) => e.stopPropagation()}>
@@ -598,6 +614,14 @@ function PropertiesList({ policies, onOpenPolicies }: { policies: PolicyOverview
                 )}
                 <PropertyFormFields form={editForm} onChange={setEditForm} />
                 {editing && (
+                  <PropertyPendingPolicies
+                    overview={policies}
+                    propertyId={editing.id}
+                    propertyName={editing.name}
+                    onChanged={onPoliciesChanged}
+                  />
+                )}
+                {editing && (
                   <PropertyPoliciesInEffect
                     overview={policies}
                     propertyId={editing.id}
@@ -640,7 +664,8 @@ function PropertiesPageTabs() {
   const tab: PropertiesTab = TABS.includes(requested as PropertiesTab) ? (requested as PropertiesTab) : "properties";
   // One fetch for the whole page so the tab can say how many policies are waiting for review.
   const policies = useAsync(() => api.policies.overview(), []);
-  const toReview = policies.data?.drafts.length ?? 0;
+  // Drafts to review, plus held-back policies that name a place the host has no property for yet.
+  const toReview = (policies.data?.drafts.length ?? 0) + (policies.data?.unmapped_policy_ids.length ?? 0);
 
   function handleTabChange(value: unknown) {
     if (typeof value !== "string" || !TABS.includes(value as PropertiesTab)) return;
@@ -661,7 +686,11 @@ function PropertiesPageTabs() {
           </TabsTrigger>
         </TabsList>
         <TabsContent value="properties" className="pt-4">
-          <PropertiesList policies={policies.data} onOpenPolicies={() => handleTabChange("policies")} />
+          <PropertiesList
+            policies={policies.data}
+            onOpenPolicies={() => handleTabChange("policies")}
+            onPoliciesChanged={policies.refetch}
+          />
         </TabsContent>
         <TabsContent value="policies" className="pt-4">
           <PoliciesTab overview={policies.data} loading={policies.loading} onChanged={policies.refetch} />

@@ -29,6 +29,7 @@ from app.api.v1 import (
     preferences,
     pricing,
     properties,
+    simulator,
     take_call,
     billing,
     payments,
@@ -44,7 +45,7 @@ from app.database import AsyncSessionLocal, engine, pool_stats
 from app.observability import health, http_hook, probes
 from app.observability.logging_setup import configure_logging
 from app.observability.middleware import ObservabilityMiddleware, install_db_hook
-from app.services import health_monitor_service, payment_service, recovery_service
+from app.services import health_monitor_service, payment_service, policy_audit, recovery_service
 from app.services.calendar_service import sync_all_properties
 from app.services.call_service import reconcile_stuck_call_sessions
 from app.services.smart_pricing_service import refresh_live_pricing_cache, refresh_smart_pricing
@@ -136,6 +137,17 @@ async def _reconcile_stuck_call_sessions() -> None:
             await reconcile_stuck_call_sessions(db)
     except Exception:
         logger.exception("Stuck-call-session reconciliation failed -- will retry on the next interval")
+
+
+async def _scheduled_kb_audit() -> None:
+    """Nightly: re-sync any property whose stored knowledge no longer matches its
+    fields, FAQs and policies (policy_audit.audit_and_repair_all). Failures are
+    logged only, never fatal."""
+    try:
+        stats = await policy_audit.audit_and_repair_all(AsyncSessionLocal)
+        logger.info("kb_audit_done %s", stats)
+    except Exception:
+        logger.exception("Nightly knowledge-base audit failed -- will retry tomorrow")
 
 
 async def _check_busy_callbacks() -> None:
@@ -317,6 +329,12 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(
         _reconcile_stuck_call_sessions, "interval", minutes=10, id="reconcile_stuck_call_sessions"
     )
+    # Nightly knowledge-base audit, 20:30 UTC = 02:00 IST (the quietest hour for calls).
+    # It repairs drift only; edits already re-sync what they touch, so a repair it
+    # logs (kb_drift_repaired) points at a change path that forgot to.
+    scheduler.add_job(
+        _scheduled_kb_audit, "cron", hour=20, minute=30, id="kb_audit", max_instances=1, coalesce=True
+    )
     # Once a day, "in the morning" -- 1:00 UTC is ~6:30am IST. Render runs in
     # UTC; adjust the hour here if the deploy target's timezone differs.
     scheduler.add_job(_scheduled_smart_pricing_refresh, "cron", hour=1, minute=0, id="smart_pricing_refresh")
@@ -412,6 +430,7 @@ app.include_router(exotel.router, prefix=API_PREFIX)
 app.include_router(admin_auth.router, prefix=API_PREFIX)
 app.include_router(admin.router, prefix=API_PREFIX)
 app.include_router(whatsapp.router, prefix=API_PREFIX)
+app.include_router(simulator.router, prefix=API_PREFIX)
 
 
 @app.get("/health")

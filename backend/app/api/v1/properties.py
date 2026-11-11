@@ -25,7 +25,8 @@ from app.schemas.property import (
     PropertyUpdate,
     TransferNumbersUpdate,
 )
-from app.services import faq_service
+from app.services import faq_service, policy_service
+from app.utils import background
 from app.services.airbnb_import import parse_airbnb_listing, parse_bright_data_listing
 from app.services.geo.property_location import ensure_property_location
 from app.services.amenity_taxonomy import canonicalize_amenities
@@ -149,6 +150,19 @@ def _check_room_rental_complete(values: dict) -> None:
         )
 
 
+# The names a host-wide policy is matched against ("Parties are not allowed at Soul
+# Club"). Changing any of them, or adding/removing a property, can change which
+# properties a policy is about.
+_NAME_FIELDS = frozenset({"name", "display_name", "spoken_name"})
+
+
+def _resync_policy_scopes(user_id: uuid.UUID) -> None:
+    """After a property is created, renamed, imported or deleted: re-derive which
+    policies each of the host's properties follows and rebuild the ones that
+    changed (in the background, so the request is not slowed)."""
+    background.spawn(policy_service.sync_policy_scopes_detached(user_id), name="sync_policy_scopes")
+
+
 async def _resync_facts(db: AsyncSession, property_: Property) -> None:
     """Never fails the request: a missed sync is caught later by
     kb_retrieval's staleness check (property.updated_at is newer than the
@@ -215,6 +229,7 @@ async def _upsert_property_from_parsed(
             await ensure_property_location(db, existing)
             faq_count = await faq_service.sync_imported_faq_entries(db, user_id, existing.id, faq_entries)
             await sync_property_chunks(db, existing)
+            _resync_policy_scopes(user_id)
             return PropertyImportResult(
                 filename=label, status="updated", property=existing, faq_entries_created=faq_count
             )
@@ -226,6 +241,7 @@ async def _upsert_property_from_parsed(
         await ensure_property_location(db, property_)
         faq_count = await faq_service.sync_imported_faq_entries(db, user_id, property_.id, faq_entries)
         await sync_property_chunks(db, property_)
+        _resync_policy_scopes(user_id)
         return PropertyImportResult(
             filename=label, status="created", property=property_, faq_entries_created=faq_count
         )
@@ -375,6 +391,7 @@ async def create_property(
     await db.commit()
     await db.refresh(property_)
     await _resync_facts(db, property_)
+    _resync_policy_scopes(current_user.id)
     return property_
 
 
@@ -423,6 +440,8 @@ async def update_property(
     await db.refresh(property_)
     if _KB_FIELDS & updates.keys():
         await _resync_facts(db, property_)
+    if _NAME_FIELDS & updates.keys():
+        _resync_policy_scopes(current_user.id)
     return property_
 
 
@@ -497,6 +516,7 @@ async def renormalize_property_name(
     await _renormalize_one(db, property_)
     await db.commit()
     await db.refresh(property_)
+    _resync_policy_scopes(current_user.id)
     return property_
 
 
@@ -517,6 +537,7 @@ async def renormalize_all_property_names(
     await db.commit()
     for property_ in properties:
         await db.refresh(property_)
+    _resync_policy_scopes(current_user.id)
     return properties
 
 
@@ -592,6 +613,7 @@ async def delete_property(
     property_ = await get_owned_property(db, property_id, current_user)
     await db.delete(property_)
     await db.commit()
+    _resync_policy_scopes(current_user.id)
 
 
 @router.post("/{property_id}/sync-ical")

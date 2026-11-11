@@ -186,6 +186,20 @@ export function LeadDetailPanel({
         </>
       )}
 
+      {lead && Object.keys(lead.custom_details ?? {}).length > 0 && (
+        <div className="space-y-1" aria-label="Details the guest gave">
+          <Label>Details the guest gave</Label>
+          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+            {Object.entries(lead.custom_details ?? {}).map(([id, detail]) => (
+              <div key={id} className="contents">
+                <dt className="text-muted-foreground">{detail.label}</dt>
+                <dd className="font-medium">{detail.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      )}
+
       <div className="space-y-2">
         <Label>Status</Label>
         <LeadStatusStepper status={status} onSelect={handleStatusChange} />

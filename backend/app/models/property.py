@@ -206,6 +206,10 @@ class Property(UUIDPkMixin, TimestampMixin, Base):
     # payment only), as {"payment": {...only the fields that differ...}}. None =
     # follows the portfolio. See app/services/agent_config_service.py.
     agent_config_overrides: Mapped[dict | None] = mapped_column(JSONB)
+    # The villa's commercial terms for the full booking bill (base guests, weekend rate, partner villa,
+    # meal and add-on prices ...), see app/services/pricing_terms.py. NULL = the flat base_price
+    # quote every property has always had. Anything not stated in it is UNKNOWN, never defaulted.
+    pricing_terms: Mapped[dict | None] = mapped_column(JSONB)
     exact_airbnb_pricing: Mapped[bool] = mapped_column(default=False, server_default="false")
 
     # Recommendation conversations ("Phase X"): host-set, never LLM-inferred --
