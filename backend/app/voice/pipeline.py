@@ -63,6 +63,7 @@ from app.schemas.call_classification import QUALIFIED_CALL_TYPES, Classification
 from app.utils import background as _background
 from app.services import (
     payment_service,
+    spacez_stay_requests,
     call_classification_service,
     call_coordinator,
     call_service,
@@ -1781,6 +1782,13 @@ async def _run_pipeline_inner(
                 payments_enabled = await payment_service.payments_enabled_for(await billing_db.get(User, host_user_id))
         except Exception:
             logger.exception("could not check whether payments are enabled; running without the payment tool")
+        # Spacez only: a host with Spacez villas also gets the early check-in / late check-out request tool.
+        spacez_enabled = False
+        try:
+            async with AsyncSessionLocal() as spacez_db:
+                spacez_enabled = await spacez_stay_requests.host_has_spacez_villas(spacez_db, host_user_id)
+        except Exception:
+            logger.exception("could not check for Spacez villas; running without the early/late check-out tool")
         tools = build_voice_tools(
             call_session_id,
             property_id,
@@ -1792,6 +1800,7 @@ async def _run_pipeline_inner(
             property_recommendation_guard=property_recommendation_guard,
             kb_grounding_guard=kb_grounding_guard,
             payments_enabled=payments_enabled,
+            spacez_enabled=spacez_enabled,
         )
         # first_message is pre-seeded as an assistant turn so the LLM knows
         # it was already said (the "don't repeat greeting" rule relies on
@@ -2693,7 +2702,7 @@ async def run_voice_pipeline(websocket: WebSocket, call_data: CallData) -> None:
                     payments_enabled=await payment_service.payments_enabled_for(lead_user),
                     has_party_rules=await policy_stance.host_has_party_rules(db, lead_user.id, properties),
                 )
-                first_message = lead_first_message_for(lead_user)
+                first_message = lead_first_message_for(lead_user, guest)
                 property_id = None
                 property_name = None
                 voice_gender = lead_user.agent_voice_gender
@@ -2942,7 +2951,7 @@ async def run_voice_pipeline_twilio(websocket: WebSocket, call_data: CallData) -
                     payments_enabled=await payment_service.payments_enabled_for(lead_user),
                     has_party_rules=await policy_stance.host_has_party_rules(db, lead_user.id, properties),
                 )
-                first_message = lead_first_message_for(lead_user)
+                first_message = lead_first_message_for(lead_user, guest)
                 property_id = None
                 property_name = None
                 voice_gender = lead_user.agent_voice_gender
@@ -3068,7 +3077,7 @@ async def run_browser_lead_pipeline(connection: SmallWebRTCConnection, user: Use
             payments_enabled=await payment_service.payments_enabled_for(user),
             has_party_rules=await policy_stance.host_has_party_rules(db, user.id, properties),
         )
-        first_message = lead_first_message_for(user)
+        first_message = lead_first_message_for(user, guest)
         call_session_id = session.id
         guest_profile_id = guest.id if guest else None
 

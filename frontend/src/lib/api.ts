@@ -1,4 +1,5 @@
 import type {
+  ActiveBookingsOut,
   AirbnbUrlImportStatus,
   AnalyticsEntryInput,
   AnalyticsLayout,
@@ -449,10 +450,22 @@ export const api = {
     setScope: (id: string, scope: FaqScope) =>
       request<FaqEntryOut[]>(`/faq/${id}/scope`, { method: "PUT", body: JSON.stringify(scope) }),
   },
+  activeBookings: {
+    list: () => request<ActiveBookingsOut>("/bookings/active"),
+    activityCount: () => request<{ count: number }>("/bookings/active/activity-count"),
+    markSeen: (leadId: string) =>
+      request<{ cleared: number }>(`/bookings/active/${leadId}/activity/read`, { method: "POST" }),
+  },
   tickets: {
     list: (state: "open" | "resolved" | "all" = "open") => request<TicketOut[]>(`/tickets${buildQuery({ state })}`),
     setStatus: (id: string, status: TicketStatus) =>
       request<TicketOut>(`/tickets/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
+  },
+  // Spacez only: the team's yes / no on a guest's early check-in / late check-out request (a "stay_request"
+  // ticket). Yes sends the guest a payment link for the flat fee on WhatsApp; no tells them the team can't.
+  spacezStayRequests: {
+    approve: (ticketId: string) => request<{ status: string }>(`/spacez/stay-requests/${ticketId}/approve`, { method: "POST" }),
+    decline: (ticketId: string) => request<{ status: string }>(`/spacez/stay-requests/${ticketId}/decline`, { method: "POST" }),
   },
   policies: {
     overview: () => request<PolicyOverview>("/policies"),

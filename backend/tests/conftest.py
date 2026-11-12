@@ -53,6 +53,7 @@ def pytest_collection_modifyitems(config, items):
 from app.auth.dependencies import get_current_user
 from app.database import AsyncSessionLocal, Base, engine, get_db
 from app.integrations import redis_client
+from app.services import price_event_service
 from app.utils import background
 from app.main import app
 from app.models.call_session import CallSession
@@ -95,6 +96,9 @@ async def _drain_background_tasks() -> None:
     """Detached work (app/utils/background.spawn: the policy re-sync after a property change, embeddings,
     ...) belongs to the test that started it. Left running, it holds row locks while the next test's
     cleanup deletes those rows, and the two deadlock."""
+    # Price events keep their own task set (price_event_service); a quote leaves one running that holds row
+    # locks on users/properties while the next test's cleanup deletes them.
+    await price_event_service.drain_pending_writes()
     pending = [task for task in background.tasks if not task.done()]
     if pending:
         _, still_running = await asyncio.wait(pending, timeout=15)

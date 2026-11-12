@@ -247,6 +247,9 @@ export type PropertyOut = {
   smart_price_updated_at: string | null;
   exact_airbnb_pricing: boolean;
   is_premium: boolean;
+  // "Weekend rate differs": when on, Friday and Saturday nights cost weekend_price instead of base_price.
+  weekend_rate_enabled: boolean;
+  weekend_price: number | null;
   // Live transfers/alerts for this property go here when the host uses a
   // number per group of properties; null = the account number.
   host_transfer_phone: string | null;
@@ -297,6 +300,8 @@ export type PropertyCreate = {
   room_ical_url?: string | null;
   exact_airbnb_pricing?: boolean;
   is_premium?: boolean;
+  weekend_rate_enabled?: boolean;
+  weekend_price?: number | null;
   // DEPRECATED -- superseded by the account-global Host call hours window
   // on the user. Still on the backend's PropertyUpdate schema and returned
   // by PropertyOut (the columns exist), but no UI writes them and the
@@ -559,6 +564,8 @@ export type NotificationOut = {
   message: string;
   status: string;
   created_at: string;
+  // Set for a request from a guest who has an active booking (Leads -> Active bookings).
+  booking_lead_id?: string | null;
 };
 
 // Mirrors app/services/pricing_engine.PriceBreakdown exactly -- no synthetic
@@ -756,7 +763,7 @@ export type FaqGapAnswer = {
 
 // --- Tickets (GET /tickets): what Mira told a guest would happen, still open ---
 
-export type TicketKind = "escalation" | "transfer" | "technician" | "photos" | "whatsapp" | "promise" | "missed_call" | "payment";
+export type TicketKind = "escalation" | "transfer" | "technician" | "photos" | "whatsapp" | "promise" | "missed_call" | "payment" | "stay_request";
 export type TicketStatus = "open" | "done" | "dismissed";
 
 export type TicketOut = {
@@ -801,6 +808,9 @@ export type AgentCollectConfig = {
   custom: AgentCustomField[];
 };
 
+/** The six details Mira always knows how to collect (the host's own added ones live in `custom`). */
+export type BuiltInField = Exclude<keyof AgentCollectConfig, "custom">;
+
 /** A condition that makes a lead hot: a number (guests, nights, budget, days_until_checkin) or "custom:<id>". */
 export type AgentHotRule = { field: string; op: "gte" | "lte" | "eq"; value: number };
 
@@ -809,10 +819,13 @@ export type AgentBusyCalls = {
   callback_wait_minutes: number;
 };
 
+export type ActiveWhen = "confirmed" | "paid" | "link_sent";
+
 export type AgentConfig = {
   collect: AgentCollectConfig;
   hot_lead: { hot_on: AgentHotSignal[]; rules: AgentHotRule[] };
-  booking: { confirm_by: "host" | "payment" };
+  // active_when: when a guest counts as an active booking (Leads -> Active bookings).
+  booking: { confirm_by: "host" | "payment"; active_when?: ActiveWhen };
   payment: {
     kind: "full" | "split";
     split_percent: number;
@@ -856,6 +869,63 @@ export type PaymentRequestOut = {
   paid_at: string | null;
   short_url: string | null;
   created_at: string;
+};
+
+// Leads -> Active bookings (GET /bookings/active). A booking is a closed lead (or one a verified payment booked).
+export type PaymentStateKey =
+  | "no_link"
+  | "link_pending"
+  | "link_sent"
+  | "delivery_failed"
+  | "payment_failed"
+  | "part_paid"
+  | "paid"
+  | "expired"
+  | "cancelled";
+
+export type ActiveBookingPayment = {
+  state: PaymentStateKey;
+  label: string;
+  tone: "neutral" | "pending" | "progress" | "destructive" | "orange" | "live";
+  payment_down: boolean;
+  amount_due: number | null;
+  total_amount: number | null;
+  balance: number | null; // still to pay after a part payment
+  balance_due_on: string | null;
+  paid_at: string | null;
+  link_sent_at: string | null;
+  hold_expires_at: string | null;
+  short_url: string | null;
+  stay_code: string | null;
+  request_id: string | null;
+};
+
+export type ActiveBookingActivity = { id: string; message: string; urgency: string; created_at: string };
+
+export type ActiveBooking = {
+  lead_id: string;
+  guest_name: string | null;
+  phone: string | null;
+  property_id: string | null;
+  property_name: string | null;
+  check_in: string | null;
+  check_out: string | null;
+  check_in_at: string | null;
+  check_out_at: string | null;
+  nights: number | null;
+  num_guests: number | null;
+  phase: "upcoming" | "in_stay";
+  payment: ActiveBookingPayment;
+  activity_count: number;
+  activities: ActiveBookingActivity[];
+};
+
+export type ActiveBookingsOut = {
+  active_when: ActiveWhen;
+  payment_down: boolean;
+  unread_activity: number;
+  in_stay: ActiveBooking[];
+  upcoming: ActiveBooking[];
 };
 
 // Policies (Properties -> Policies). `state` drives the colour dot of a topic row.

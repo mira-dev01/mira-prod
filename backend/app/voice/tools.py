@@ -61,10 +61,11 @@ from app.schemas.tool import (
     RequestHostTransferArgs,
     SearchFaqArgs,
     SendPhotosArgs,
+    SendShortlistArgs,
     SendWhatsappArgs,
     UpdateLeadArgs,
 )
-from app.services import agent_config_service, custom_fields, lead_service, tool_handlers
+from app.services import agent_config_service, custom_fields, lead_service, spacez_stay_requests, tool_handlers
 from app.services.amenity_taxonomy import canonicalize_amenities, canonicalize_amenity
 from app.services.property.budget import coerce_budget_basis, infer_budget_basis, mentions_amount
 from app.services.property.pitch_formatter import (
@@ -189,6 +190,7 @@ def build_voice_tools(
     property_recommendation_guard: PropertyRecommendationGuardProcessor | None = None,
     kb_grounding_guard: KnowledgeGroundingGuardProcessor | None = None,
     payments_enabled: bool = False,
+    spacez_enabled: bool = False,
 ) -> list:
     """Build the tool functions for one call, bound to its call_session_id/property_id/host_user_id.
 
@@ -478,18 +480,60 @@ def build_voice_tools(
         await params.result_callback(result)
 
     @tool()
-    async def get_payment_status(params: FunctionCallParams):
+    async def get_payment_status(params: FunctionCallParams, guest_says_payment_failed: bool = False):
         """Check right now whether the guest has paid the link you sent on this call. Call it when
         the guest says they have paid, when they ask whether it went through, or before you say
         anything about a booking being confirmed. Say only what the result tells you: a booking is
         confirmed ONLY when it says PAID.
+
+        Args:
+            guest_says_payment_failed: True when the guest says their payment did not go through,
+                the page showed an error, or they closed the payment page. The same link is sent to
+                them again on WhatsApp and the dates stay held.
         """
         async with AsyncSessionLocal() as db:
             result = await tool_handlers.handle_get_payment_status(
-                db, host_user_id=host_user_id, call_session_id=call_session_id
+                db, host_user_id=host_user_id, call_session_id=call_session_id, guest_says_failed=guest_says_payment_failed
             )
         if property_recommendation_guard is not None:
             property_recommendation_guard.record_tool_result("payment_status", {"paid": str(result).startswith("PAID")})
+        await params.result_callback(result)
+
+    # -- SPACEZ ONLY: a guest who already has a confirmed booking asks for an early check-in / late check-out.
+    # Only offered to a host with Spacez villas (spacez_enabled). The logic is in
+    # app/services/spacez_stay_requests.py: it finds the booking by phone, quotes the flat fee, and opens a
+    # ticket for the team to say yes or no (yes -> payment link on WhatsApp, no -> "can't do it" on WhatsApp).
+    @tool()
+    async def request_early_late_checkout(
+        params: FunctionCallParams,
+        early_checkin: bool = False,
+        late_checkout: bool = False,
+        phone: str | None = None,
+        note: str | None = None,
+    ):
+        """For a guest who ALREADY HAS a confirmed booking and asks for an early check-in and/or a late
+        check-out. Looks up their booking, tells you the flat charge, and sends the request to the team to
+        confirm. Never promise it: say you will let the team check, and if it is possible you will share the
+        payment link on WhatsApp. For a NEW booking enquiry do not use this -- pass requested_early_checkin /
+        requested_late_checkout to get_pricing instead.
+
+        Args:
+            early_checkin: True if they want an early check-in.
+            late_checkout: True if they want a late check-out.
+            phone: The number the booking was made with, ONLY if the guest gave a different one from the
+                number they are calling from.
+            note: The time they asked for, in their own words, if they said one.
+        """
+        async with AsyncSessionLocal() as db:
+            result = await spacez_stay_requests.handle_request(
+                db,
+                host_user_id=host_user_id,
+                call_session_id=call_session_id,
+                guest_phone=phone or caller_number,
+                early_checkin=early_checkin,
+                late_checkout=late_checkout,
+                note=note,
+            )
         await params.result_callback(result)
 
     @tool()
@@ -505,6 +549,7 @@ def build_voice_tools(
         requested_late_checkout: bool = False,
         stay_scope: str | None = None,
         rooms: int | None = None,
+        # Spacez only (read just for a villa with booking terms -- they shape its bill): children ... pickup_drop.
         children: int | None = None,
         pets: int | None = None,
         meals: list[str] | None = None,
@@ -765,8 +810,43 @@ def build_voice_tools(
             return
         async with AsyncSessionLocal() as db:
             try:
-                args = SendPhotosArgs(property_id=property_id, guest_phone=resolved_phone)
+                args = SendPhotosArgs(
+                    property_id=property_id, guest_phone=resolved_phone, guest_name=state.slots.get("guest_name")
+                )
                 result = await tool_handlers.handle_send_photos(db, args, call_session_id, host_user_id)
+            except ValidationError as exc:
+                result = ToolOutcome.invalid_arguments(exc)
+        await params.result_callback(result)
+
+    @tool()
+    async def send_property_list(
+        params: FunctionCallParams,
+        property_ids: list[str] | None = None,
+        guest_phone: str | None = None,
+    ):
+        """Send the guest ONE WhatsApp message with the list of the properties you recommended on this
+        call and a link to see every one of them with its photos. Use it when the guest asks you to send
+        "the list", "all the options", "photos of all of them" or "everything we discussed". For photos
+        of just one property use send_photos instead.
+
+        Args:
+            property_ids: Which properties to send. Leave unset to send every property you have recommended
+                on this call (the system knows them).
+            guest_phone: The guest's phone number. Leave unset to use the number they are calling from.
+        """
+        resolved_phone = guest_phone or caller_number
+        if not resolved_phone:
+            await params.result_callback(
+                ToolOutcome.needs_clarification("I don't have a phone number for that yet -- could you share one?")
+            )
+            return
+        ids = list(property_ids or [])
+        if not ids:
+            ids = [str(o.get("property_id")) for o in state.recommendations_shown if o.get("property_id")]
+        async with AsyncSessionLocal() as db:
+            try:
+                args = SendShortlistArgs(property_ids=ids, guest_phone=resolved_phone, guest_name=state.slots.get("guest_name"))
+                result = await tool_handlers.handle_send_shortlist(db, args, call_session_id, host_user_id)
             except ValidationError as exc:
                 result = ToolOutcome.invalid_arguments(exc)
         await params.result_callback(result)
@@ -1740,9 +1820,11 @@ def build_voice_tools(
         check_calendar,
         get_pricing,
         *([send_payment_link, get_payment_status] if payments_enabled else []),
+        *([request_early_late_checkout] if spacez_enabled else []),  # Spacez only
         dispatch_technician,
         send_whatsapp,
         send_photos,
+        send_property_list,
         escalate_to_host,
         request_host_transfer,
         lookup_booking,

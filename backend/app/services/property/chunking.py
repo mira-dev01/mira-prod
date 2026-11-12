@@ -312,6 +312,12 @@ def build_fact_chunks(property_, faq_entries, policies=None) -> list[FactDraft]:
             )
         )
 
+    # Spacez only: the villa's profile and its rates/add-on prices (from properties.pricing_terms). Empty for
+    # every other property.
+    from app.services import spacez_knowledge
+
+    drafts.extend(spacez_knowledge.facts_for(property_))
+
     seen: set[str] = set()
     unique: list[FactDraft] = []
     for draft in drafts:

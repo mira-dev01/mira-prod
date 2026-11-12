@@ -17,7 +17,7 @@ from app.voice.conversation_state import NegotiationEvent
 
 from app.config import settings
 from app.utils import background
-from app.integrations import email_client, payment_simulator, twilio_client
+from app.integrations import email_client, twilio_client
 from app.integrations.email_templates import build_escalation_email_html, build_photos_email_html
 from app.models.call_session import CallSession
 from app.models.property import Property
@@ -34,6 +34,7 @@ from app.schemas.tool import (
     RequestHostTransferArgs,
     SearchFaqArgs,
     SendPhotosArgs,
+    SendShortlistArgs,
     SendWhatsappArgs,
     ToolBusinessError,
     UpdateLeadArgs,
@@ -42,7 +43,7 @@ from app.schemas.tool import (
 from app.database import AsyncSessionLocal
 from app.services import (
     billing_service,
-    booking_confirmation,
+    spacez_booking_confirmation,
     calendar_service,
     capability_service,
     notification_preferences_service,
@@ -53,11 +54,12 @@ from app.services import (
     payment_service,
     price_event_service,
     pricing_engine,
-    pricing_terms,
-    stay_bill,
+    spacez_pricing_terms,
+    spacez_stay_bill,
     stay_scope,
     technician_service,
     ticket_service,
+    whatsapp_templates,
 )
 from app.services.pricing_engine import NegotiationResult, PriceBreakdown
 from app.services.property import kb_retrieval
@@ -452,9 +454,6 @@ async def handle_check_calendar(
     not-found/invalid-dates/capacity/minimum-nights early returns above,
     since none of those represent a real yes/no answer to "is it available").
     """
-    if settings.simulator_enabled and await payment_simulator.is_down("calendar"):
-        # Test services: the calendar is switched down, so the check fails the way a real outage would.
-        raise payment_simulator.SimulatedOutage("the availability service is switched down for this test")
     property_ = await _get_property(db, args.property_id)
     if property_ is None:
         return ToolBusinessError("I couldn't find that property. Could you confirm which listing you're asking about?")
@@ -595,19 +594,19 @@ _MEAL_NAMES = {"breakfast", "lunch", "dinner"}
 
 def _quote_from_terms(
     property_: Property,
-    terms: "stay_bill.Terms",
+    terms: "spacez_stay_bill.Terms",
     args: GetPricingArgs,
     on_priced: Callable[[Property, PriceBreakdown], None] | None,
     host_user_id: uuid.UUID | None,
     call_session_id: uuid.UUID | None,
 ) -> str:
-    """The full booking bill for a villa that has commercial terms: stay, extra guests, meals, GST,
+    """SPACEZ ONLY. The full booking bill for a villa that has commercial terms: stay, extra guests, meals, GST,
     and both ways to pay. Anything the terms do not state stops the quote with a plain reason; the
     agent never fills the gap. `total` handed to on_priced is what the guest pays in full."""
     meals = {m.strip().lower() for m in args.meals}
     adults = args.num_guests - args.children
     kits = tuple(k.strip().lower().replace(" ", "_") for k in args.addons)
-    request = stay_bill.Request(
+    request = spacez_stay_bill.Request(
         check_in=args.check_in,
         check_out=args.check_out,
         adults=adults,
@@ -620,47 +619,65 @@ def _quote_from_terms(
         party_platter_qty=args.party_platter_qty,
         addons=kits,
         pickup=args.pickup_drop,
+        # Billed ONLY when the guest asked for it on this call (get_pricing never sets these on its own).
+        early_checkin=args.requested_early_checkin,
+        late_checkout=args.requested_late_checkout,
     )
     if meals - _MEAL_NAMES:
         return ToolBusinessError("Meals can only be breakfast, lunch or dinner.")
     try:
-        bill = stay_bill.compute(terms, request)
-    except stay_bill.BillInvalid as exc:
+        bill = spacez_stay_bill.compute(terms, request)
+    except spacez_stay_bill.BillInvalid as exc:
         return ToolBusinessError(f"{exc} Tell the guest this plainly and ask what they would like to change.")
-    except stay_bill.BillUnknown as exc:
+    except spacez_stay_bill.BillUnknown as exc:
         return ToolBusinessError(
             f"I can't price this stay: {exc.what} is not on file. Tell the guest the team will confirm that, "
             "and call escalate_to_host so it is logged. Do not guess a number."
         )
 
-    r = stay_bill.rupees
+    # SPACEZ ONLY -- what the agent is told to say aloud. By design the call hears just the room price and the
+    # ONE total for the stay (everything that applies to the party, GST included); the line-by-line bill
+    # summary goes to the guest on WhatsApp with the payment link (spacez_booking_confirmation.
+    # payment_request_text). Coupons / offers are never answered on the call: the team gets a ticket.
+    r = spacez_stay_bill.rupees
     nights = bill.nights
     subject = property_.name
-    if bill.weekend_nights:
-        rate_phrase = f"about {r(bill.stay_total / nights)} a night"
+    if bill.weekend_nights and bill.weekend_rate != bill.weeknight_rate:
+        rate_phrase = (
+            f"{r(bill.weeknight_rate)} a night on weeknights and {r(bill.weekend_rate)} a night on Friday and Saturday nights"
+        )
     else:
-        rate_phrase = f"{r(terms.base_rate)} a night"
-    others = [ln for ln in bill.lines if ln.label not in ("Stay", "Total reservation amount") and not ln.label.startswith(("GST", "Spacez"))]
-    extras = "; ".join(f"{ln.label} {r(ln.amount)}" if not ln.struck else f"{ln.label} included" for ln in others)
+        rate_phrase = f"{r(bill.weeknight_rate)} a night"
+    extras = []
+    if bill.early_checkin:
+        extras.append("the early check-in")
+    if bill.late_checkout:
+        extras.append("the late check-out")
     summary = (
-        f"For {subject}: {rate_phrase}, so {r(bill.stay_total)} for {nights} night{'s' if nights != 1 else ''}"
-        + (f", plus {extras}" if extras else "")
-        + f". The total reservation amount is {r(bill.total_reservation)}, GST at {int(bill.gst_rate * 100)}% is "
-        f"{r(bill.gst)}"
-        + (f", and pickup and drop is {r(bill.pickup)}" if bill.pickup else "")
-        + f", so {r(bill.full_payable)} in all."
+        f"For {subject}: the room is {rate_phrase}, for {nights} night{'s' if nights != 1 else ''}. "
+        f"With everything that applies to this stay for {adults} adult{'s' if adults != 1 else ''}"
+        + (f" and {args.children} child{'ren' if args.children != 1 else ''}" if args.children else "")
+        + (f" (including {' and '.join(extras)})" if extras else "")
+        + f", the total for the stay comes to {r(bill.full_payable)}, GST included. "
+        "Say ONLY the room price and this one total -- do not read out a line-by-line breakdown. Then tell the guest "
+        "you will share the payment link on WhatsApp shortly, with the bill summary. "
     )
     if terms.partner:
-        summary += " This is a partner villa: payment is in full, with no split payment."
+        summary += "This is a partner villa: payment is in full, with no split payment. "
     else:
         summary += (
-            f" The guest can pay in full ({r(bill.full_payable)}) or split: {r(bill.split_now)} now and "
-            f"{r(bill.split_later)} before check-in."
+            "If the guest wants to book, ask whether they would like to pay in full or split the payment half now and half "
+            "before check-in, and only then use send_payment_link. "
         )
-    if args.requested_early_checkin:
-        summary += f" Early check-in is a flat {r(terms.early_checkin_fee)} and depends on the villa being free; the team confirms it."
-    if args.requested_late_checkout:
-        summary += f" Late check-out is a flat {r(terms.late_checkout_fee)} and depends on the villa being free; the team confirms it."
+    if bill.early_checkin or bill.late_checkout:
+        summary += (
+            "The early check-in / late check-out is a flat charge that depends on the villa being free: say the team will "
+            "confirm it. "
+        )
+    summary += (
+        "If the guest asks about any coupon, bank offer or discount, do NOT answer it or say whether one exists: tell them "
+        "the team will get back to them about it, and call escalate_to_host with the request as the reason."
+    )
 
     breakdown = PriceBreakdown(
         nights=nights,
@@ -670,7 +687,7 @@ def _quote_from_terms(
         total=float(bill.full_payable),
         per_night_avg=round(float(bill.stay_total) / nights, 2),
         bill={
-            **stay_bill.to_dict(bill),
+            **spacez_stay_bill.to_dict(bill),
             "partner": terms.partner,
             "request": {
                 "adults": adults,
@@ -681,6 +698,8 @@ def _quote_from_terms(
                 "party_platter_qty": args.party_platter_qty,
                 "addons": list(kits),
                 "pickup": args.pickup_drop,
+                "early_checkin": args.requested_early_checkin,
+                "late_checkout": args.requested_late_checkout,
             },
         },
     )
@@ -785,7 +804,8 @@ async def handle_get_pricing(
             engagement="pricing_requested",
         )
 
-    terms = pricing_terms.terms_for(property_)
+    # SPACEZ ONLY: a villa with booking terms is priced by the full bill (spacez_stay_bill), not the flat rate.
+    terms = spacez_pricing_terms.terms_for(property_)
     if terms is not None and scope == stay_scope.ENTIRE_PLACE:
         if not has_exact_dates:
             return ToolBusinessError(
@@ -937,6 +957,7 @@ async def handle_send_payment_link(
             "booking and send the payment details. Make sure the host knows (escalate_to_host)."
         )
     guest_phone, lead_id = await _caller_of(db, call_session_id)
+    calling_from = guest_phone  # Spacez only: kept with the booking so a call back from it is recognised
     guest_phone = _normalize_phone(phone) if phone else guest_phone
     if not guest_phone:
         return ToolBusinessError("Ask the guest for the WhatsApp number to send the payment link to.")
@@ -945,7 +966,9 @@ async def handle_send_payment_link(
     except ValueError:
         return ToolBusinessError("I need the exact check-in and check-out dates before sending a payment link.")
 
-    # A villa with a full bill: the booking needs the guest's details, and the guest chooses how to pay.
+    # SPACEZ ONLY -- a villa with a full bill: the booking needs the guest's details, and the guest chooses how
+    # to pay. The WhatsApp message that carries the link then also carries the bill summary
+    # (spacez_booking_confirmation.payment_request_text, picked in payment_service._send_request_message).
     bill = quote.get("bill")
     details: dict | None = None
     split_due = None
@@ -953,13 +976,13 @@ async def handle_send_payment_link(
     shoot = False
     if bill:
         asks = []
-        if not booking_confirmation.valid_name(guest_name):
+        if not spacez_booking_confirmation.valid_name(guest_name):
             asks.append("their full name (letters only)")
-        if not booking_confirmation.valid_mobile(guest_phone):
+        if not spacez_booking_confirmation.valid_mobile(guest_phone):
             asks.append("a mobile number (9 to 15 digits)")
-        if not booking_confirmation.valid_email(email):
+        if not spacez_booking_confirmation.valid_email(email):
             asks.append("their email address")
-        purpose = booking_confirmation.map_purpose(purpose_of_stay)
+        purpose = spacez_booking_confirmation.map_purpose(purpose_of_stay)
         if purpose is None:
             asks.append("the purpose of the stay")
         if asks:
@@ -975,7 +998,7 @@ async def handle_send_payment_link(
                 f"({payment_service.rupees(bill['split_now'])} now and {payment_service.rupees(bill['split_later'])} before "
                 "check-in), then call this again with payment_option set to what they chose."
             )
-        shoot = booking_confirmation.is_shoot(purpose)
+        shoot = spacez_booking_confirmation.is_shoot(purpose)
         force_host_confirm = shoot
         split_due = bill["split_now"] if option == "split" else None
         details = {
@@ -985,6 +1008,7 @@ async def handle_send_payment_link(
             "special_request": (special_request or "").strip()[:500] or None,
             "payment_option": option,
             "shoot": shoot,
+            "caller_phone": calling_from,
         }
 
     # Make sure this opportunity is on file whatever else happens.
@@ -1020,7 +1044,7 @@ async def handle_send_payment_link(
         rest = f" That is the advance; the remaining {payment_service.rupees(request.total_amount - request.amount_due)} is due by {request.balance_due_on:%d %b %Y}."
     sent = "sent on WhatsApp" if request.link_sent_at else "being sent by the host on WhatsApp shortly (WhatsApp did not accept it just now)"
     closing = (
-        "Tell the guest the amount, that the link is on WhatsApp, and how long the dates are held. "
+        "Tell the guest the amount, that the link is on WhatsApp together with their bill summary, and how long the dates are held. "
         "Do not read out the link and never ask for card or UPI details on the call."
     )
     if details:
@@ -1041,7 +1065,7 @@ async def handle_send_payment_link(
 
 
 async def handle_get_payment_status(
-    db: AsyncSession, *, host_user_id: uuid.UUID, call_session_id: uuid.UUID | None
+    db: AsyncSession, *, host_user_id: uuid.UUID, call_session_id: uuid.UUID | None, guest_says_failed: bool = False
 ) -> str:
     """Whether the guest on this call has paid, asked of the payment provider right now. The only thing
     that may make the agent say a booking is confirmed."""
@@ -1074,7 +1098,7 @@ async def handle_get_payment_status(
     if request.status == "paid":
         code = details.get("stay_code")
         shoot = bool(details.get("shoot"))
-        ref = booking_confirmation.booking_ref(request) if details.get("bill") else None
+        ref = spacez_booking_confirmation.booking_ref(request) if details.get("bill") else None
         if shoot:
             return (
                 f"PAID: {rupees(request.amount_due)} received. This is a shoot booking, so the dates are HELD, not yet confirmed: tell the "
@@ -1086,7 +1110,7 @@ async def handle_get_payment_status(
         return (
             f"PAID: {rupees(request.amount_due)} received.{rest} The booking is now confirmed"
             + (f", booking id {ref}" if ref else "")
-            + (f", and the guest's four-digit stay code is {code}" if code else "")
+            + (f", and the guest's stay code is {code} (letters first, then the number: read it out slowly, letter by letter)" if code else "")
             + ". The confirmation with every detail is on their WhatsApp. You may now tell the guest the payment went through and the "
             "booking is confirmed."
         )
@@ -1096,7 +1120,10 @@ async def handle_get_payment_status(
             "longer held. Do NOT say the booking is confirmed. If the guest still wants the stay, check the dates again and send a new link."
         )
     minutes = _minutes_until(request.hold_expires_at)
-    if last_attempt == "failed":
+    if last_attempt == "failed" or guest_says_failed:
+        # Razorpay does not tell us about a failed attempt on a link that stays open, so the guest saying so is
+        # the signal: record it (the dashboard shows it) and send the "try again" message with the same link.
+        await payment_service.note_failed_attempt(db, request.id, source="provider" if last_attempt == "failed" else "guest")
         return (
             "NOT PAID: the guest's last payment attempt did not go through (they see: Payment unsuccessful. Almost there! Your villa is "
             f"held, just one more try needed to finish booking your stay). The dates stay held for about {minutes} more minute"
@@ -1214,13 +1241,22 @@ async def handle_dispatch_technician(
     )
 
 
-async def _send_whatsapp_or_open_ticket(to_phone: str, body: str, **ticket) -> None:
+async def _send_whatsapp_or_open_ticket(
+    to_phone: str, body: str, *, template: tuple[str, list] | None = None, **ticket
+) -> None:
     """Sends in the background (the guest is still on the line), and if
     WhatsApp does not accept the message after the agent said it was sent,
     opens the ticket that makes sure the host sends it instead. A result of
-    None (an unknown sender, e.g. a test double) is not treated as a failure."""
+    None (an unknown sender, e.g. a test double) is not treated as a failure.
+
+    `template` = (key, values) sends the approved WhatsApp template of that name (whatsapp_templates.py,
+    which also says where its SID is set) with `body` as the free-text fallback; a guest who has not messaged
+    the business in the last 24 hours can only be reached that way."""
     try:
-        accepted = await twilio_client.send_whatsapp_best_effort(to_phone, body)
+        if template is not None and whatsapp_templates.TEMPLATES[template[0]].sid:
+            accepted = bool(await whatsapp_templates.send(to_phone, template[0], template[1], fallback_text=body))
+        else:  # no template set up for this message yet: free text, exactly as before templates existed
+            accepted = await twilio_client.send_whatsapp_best_effort(to_phone, body)
         if accepted is False:
             async with AsyncSessionLocal() as db:
                 await ticket_service.open_ticket(db, **ticket)
@@ -1322,10 +1358,15 @@ async def handle_send_photos(
     # customer-service session window -- see twilio_account_sid's docstring
     # in config.py.
     if settings.twilio_enabled:
+        host = await db.get(User, host_user_id)
         background.spawn(
             _send_whatsapp_or_open_ticket(
                 args.guest_phone,
                 f"Here are photos of {property_.name} -- {gallery_url}",
+                template=(
+                    "photos",
+                    [_first_name(args.guest_name), property_.display_name or property_.name, gallery_url, _host_label(host)],
+                ),
                 kind="photos",
                 summary=f"Send photos of {property_.name} to {args.guest_phone}",
                 detail=f"WhatsApp did not accept Mira's message. Gallery: {gallery_url}",
@@ -1379,6 +1420,87 @@ async def handle_send_photos(
     return (
         f"Got it -- I've let the host know you'd like to see photos of {property_.name}, and they'll "
         f"reach out to you shortly." + _phone_confirmation_warning(args.guest_phone)
+    )
+
+
+def _first_name(name: str | None) -> str:
+    parts = (name or "").split()
+    return parts[0] if parts else "there"
+
+
+def _host_label(host: User | None) -> str:
+    return (host.business_name or host.name or "your host") if host is not None else "your host"
+
+
+MAX_SHORTLIST = 8
+
+
+async def handle_send_shortlist(
+    db: AsyncSession, args: SendShortlistArgs, call_session_id: uuid.UUID | None, host_user_id: uuid.UUID
+) -> str:
+    """Sends the guest ONE WhatsApp message listing the properties recommended on the call, with a link to a page
+    that shows each of them with its photos. Only this host's properties are ever listed."""
+    ids: list[uuid.UUID] = []
+    for raw in args.property_ids:
+        try:
+            ids.append(uuid.UUID(str(raw)))
+        except ValueError:
+            continue
+    ids = list(dict.fromkeys(ids))[:MAX_SHORTLIST]
+    if not ids:
+        return ToolBusinessError("There are no properties to send yet. Recommend some first, then send the list.")
+    rows = (
+        await db.scalars(select(Property).where(Property.id.in_(ids), Property.user_id == host_user_id))
+    ).all()
+    by_id = {p.id: p for p in rows}
+    properties = [by_id[i] for i in ids if i in by_id]
+    if not properties:
+        return ToolBusinessError("I couldn't find those properties to send.")
+    link = f"{settings.frontend_base_url}/p/list?ids=" + ",".join(str(p.id) for p in properties)
+    listing = " ".join(
+        f"{n}) {p.display_name or p.name}" + (f", {p.city}" if p.city else "") for n, p in enumerate(properties, start=1)
+    )
+    host = await db.get(User, host_user_id)
+    guest = _first_name(args.guest_name)
+    await notification_service.create_notification(
+        db,
+        channel="whatsapp",
+        property_id=properties[0].id,
+        call_session_id=call_session_id,
+        urgency="low",
+        message=f"To {args.guest_phone}: the properties we recommended ({listing}) -- {link}",
+    )
+    if settings.twilio_enabled:
+        background.spawn(
+            _send_whatsapp_or_open_ticket(
+                args.guest_phone,
+                whatsapp_templates.render("shortlist", [guest, listing, link, _host_label(host)]),
+                template=("shortlist", [guest, listing, link, _host_label(host)]),
+                kind="photos",
+                summary=f"Send the property list and photos to {args.guest_phone}",
+                detail=f"WhatsApp did not accept Mira's message. List page: {link}",
+                user_id=host_user_id,
+                property_id=properties[0].id,
+                call_session_id=call_session_id,
+            )
+        )
+        return (
+            f"Got it, I've sent {args.guest_phone} one WhatsApp message with the list of {len(properties)} propert"
+            f"{'y' if len(properties) == 1 else 'ies'} we talked about and a link to see each with photos."
+            + _phone_confirmation_warning(args.guest_phone)
+        )
+    await ticket_service.open_ticket(
+        db,
+        kind="photos",
+        summary=f"Send the property list and photos to {args.guest_phone}",
+        detail=f"Mira could not send them by WhatsApp. List page: {link}",
+        user_id=host_user_id,
+        property_id=properties[0].id,
+        call_session_id=call_session_id,
+    )
+    return (
+        "Got it -- I've let the host know you'd like the list and photos, and they'll reach out to you shortly."
+        + _phone_confirmation_warning(args.guest_phone)
     )
 
 
@@ -1803,13 +1925,15 @@ async def handle_negotiate_rate(
     if scope == stay_scope.ROOMS and (error := stay_scope.validate_room_request(property_, rooms, args.num_guests)):
         return ToolBusinessError(error)
 
-    if pricing_terms.terms_for(property_) is not None:
+    if spacez_pricing_terms.terms_for(property_) is not None:
         # A villa with full booking terms has no discount rule on file: the price quoted stands, and
         # a discount is never invented. The team can look at it.
+        # SPACEZ ONLY: coupons / bank offers / discounts are never answered on the call. The agent neither
+        # confirms nor denies one exists; the team gets a ticket and gets back to the guest.
         return ToolBusinessError(
-            "There is no discount available on this stay: the price already quoted stands. Say so plainly, "
-            "do not offer or hint at any reduction, and offer to note the request for the team "
-            "(escalate_to_host)."
+            "Do NOT answer whether any coupon, offer or discount exists or applies, and never offer or hint at a reduction. "
+            "Tell the guest the team will get back to them about it, and call escalate_to_host now with the guest's "
+            "coupon/offer/discount request as the reason (urgency medium)."
         )
 
     if host_user_id is not None:

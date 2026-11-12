@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { OnboardingProvider, useOnboarding } from "@/lib/onboarding-context";
 import { CapabilitiesProvider } from "@/lib/capabilities-context";
+import { BookingActivityProvider } from "@/lib/booking-activity-context";
 import { NavigationProvider } from "@/lib/navigation-context";
 import { SidebarNav } from "@/components/sidebar-nav";
 import { DateRangeProvider } from "@/components/date-range-context";
@@ -63,6 +64,7 @@ function OnboardingGate({ children }: { children: React.ReactNode }) {
   // and shared by the sidebar, Overview and Settings (one source of truth).
   return (
     <CapabilitiesProvider>
+    <BookingActivityProvider>
     <NavigationProvider>
     <DateRangeProvider>
       {/* fixed inset-0 (not h-screen + flex-1) -- this div is a flex item of
@@ -88,6 +90,7 @@ function OnboardingGate({ children }: { children: React.ReactNode }) {
       </div>
     </DateRangeProvider>
     </NavigationProvider>
+    </BookingActivityProvider>
     </CapabilitiesProvider>
   );
 }

@@ -70,6 +70,8 @@ class PropertyCreate(BaseModel):
     max_guests: int = 4
     minimum_nights: int = Field(default=1, ge=1)
     saturday_minimum_stay_enabled: bool = False
+    weekend_rate_enabled: bool = False
+    weekend_price: float | None = Field(default=None, ge=0)
     room_rental_enabled: bool = False
     room_base_price: float | None = Field(default=None, ge=0)
     rentable_room_count: int | None = Field(default=None, ge=1)
@@ -126,6 +128,8 @@ class PropertyUpdate(BaseModel):
     max_guests: int | None = None
     minimum_nights: int | None = Field(default=None, ge=1)
     saturday_minimum_stay_enabled: bool | None = None
+    weekend_rate_enabled: bool | None = None
+    weekend_price: float | None = Field(default=None, ge=0)
     room_rental_enabled: bool | None = None
     room_base_price: float | None = Field(default=None, ge=0)
     rentable_room_count: int | None = Field(default=None, ge=1)
@@ -274,6 +278,8 @@ class PropertyOut(BaseModel):
     max_guests: int
     minimum_nights: int
     saturday_minimum_stay_enabled: bool
+    weekend_rate_enabled: bool = False
+    weekend_price: float | None = None
     room_rental_enabled: bool = False
     room_base_price: float | None = None
     rentable_room_count: int | None = None

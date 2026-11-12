@@ -51,12 +51,14 @@ from app.models.user import User
 from app.services import (
     agent_config_service,
     billing_service,
-    booking_confirmation,
+    spacez_booking_confirmation,
+    spacez_stay_requests,
     calendar_service,
     capability_service,
     notification_preferences_service,
     notification_service,
     ticket_service,
+    whatsapp_templates,
 )
 from app.utils.secrets import SecretsError
 from app.utils.throttle import Throttle
@@ -334,7 +336,31 @@ async def create_payment_request(
     await db.refresh(request)
 
     await _send_request_message(db, user, property_, request, plan["hold_minutes"])
+    if agent_config_service.get_config(user).booking.active_when == "link_sent":
+        # The host's rule: a guest counts as a booking the moment the link is sent (Leads -> Active bookings).
+        await _book_lead(db, request)
     return request
+
+
+async def _book_lead(db: AsyncSession, request: PaymentRequest) -> None:
+    """Closes the request's lead (it then appears in Active bookings and as closed in Booking requests),
+    and fills in the stay's dates and party size if the call never recorded them. Never raises."""
+    if not request.lead_id:
+        return
+    try:
+        lead = await db.get(Lead, request.lead_id)
+        if lead is None:
+            return
+        lead.status = "closed"  # shows in Booking requests -> Closed leads and in Active bookings
+        lead.check_in = lead.check_in or request.check_in
+        lead.check_out = lead.check_out or request.check_out
+        bill_guests = (((request.details or {}).get("bill") or {}).get("request") or {})
+        if lead.num_guests is None and bill_guests.get("adults"):
+            lead.num_guests = int(bill_guests["adults"]) + int(bill_guests.get("children") or 0)
+        await db.commit()
+    except Exception:
+        logger.exception("could not close the lead request=%s", request.id)
+        await db.rollback()
 
 
 def _values(user: User, property_: Property, request: PaymentRequest, hold_minutes: int = 0) -> dict[str, str]:
@@ -357,8 +383,18 @@ def _values(user: User, property_: Property, request: PaymentRequest, hold_minut
 
 
 async def _send_request_message(db: AsyncSession, user: User, property_: Property, request: PaymentRequest, hold_minutes: int) -> None:
-    body = billing_service.render(billing_service.template_text(user, "payment_request"), _values(user, property_, request, hold_minutes))
-    sid = await twilio_client.send_whatsapp_tracked(request.guest_phone, body)
+    if (request.details or {}).get("bill"):
+        # Spacez only: a booking made from a full bill carries the calculation of the grand total with its link,
+        # as the approved "spacez_payment_link" WhatsApp template (whatsapp_templates.py).
+        sid = await whatsapp_templates.send(
+            request.guest_phone,
+            "spacez_payment_link",
+            spacez_booking_confirmation.payment_link_values(property_, request, hold_minutes),
+            fallback_text=spacez_booking_confirmation.payment_request_text(property_, request, hold_minutes),
+        )
+    else:
+        body = billing_service.render(billing_service.template_text(user, "payment_request"), _values(user, property_, request, hold_minutes))
+        sid = await twilio_client.send_whatsapp_tracked(request.guest_phone, body)
     if sid:
         request.link_sent_at, request.link_message_sid = _now(), sid
         await db.commit()
@@ -456,6 +492,49 @@ async def cancel_request(db: AsyncSession, user: User, request_id: uuid.UUID) ->
     if released is not None:
         await _notify_waiters(db, released)
     return released is not None
+
+
+FAILED_ATTEMPT_MESSAGE_GAP = timedelta(minutes=3)
+
+
+async def note_failed_attempt(db: AsyncSession, request_id: uuid.UUID, *, source: str) -> bool:
+    """A payment attempt on this link did not go through (the guest said so on the call, or the provider
+    reported it) while the link is still open. Records it, which the dashboard shows as "Payment failed, link
+    still open", and -- for a Spacez booking -- sends the guest the "Payment unsuccessful. Almost there! Your villa
+    is held, just one more try needed" message with the same link, at most once every few minutes so a guest
+    who keeps reporting it is not flooded. Returns True when a message went out. Never raises."""
+    try:
+        request = await db.scalar(select(PaymentRequest).where(PaymentRequest.id == request_id))
+        if request is None or request.status != "active":
+            return False
+        details = dict(request.details or {})
+        last = details.get("failed_attempt_at")
+        details["failed_attempt_at"] = _now().isoformat()
+        details["failed_attempts"] = int(details.get("failed_attempts") or 0) + 1
+        details["failed_attempt_source"] = source
+        recently = False
+        if last:
+            try:
+                recently = _now() - datetime.fromisoformat(last) < FAILED_ATTEMPT_MESSAGE_GAP
+            except ValueError:
+                recently = False
+        request.details = details
+        await db.commit()
+        if recently or not details.get("bill") or not request.guest_phone or not request.short_url:
+            return False
+        hold_until = request.hold_expires_at.astimezone(timezone(timedelta(hours=5, minutes=30)))
+        hold_text = f"{hold_until:%I:%M %p} IST on {_day(hold_until.date())}"
+        sid = await whatsapp_templates.send(
+            request.guest_phone,
+            "spacez_payment_unsuccessful",
+            spacez_booking_confirmation.payment_unsuccessful_values(request, hold_text),
+            fallback_text=spacez_booking_confirmation.payment_unsuccessful_text(request, hold_text),
+        )
+        return bool(sid)
+    except Exception:
+        logger.exception("could not record a failed payment attempt request=%s", request_id)
+        await db.rollback()
+        return False
 
 
 async def refresh_request(db: AsyncSession, request_id: uuid.UUID) -> tuple[PaymentRequest, str | None, bool]:
@@ -630,14 +709,30 @@ async def _after_payment(db: AsyncSession, request_id: uuid.UUID) -> None:
     booking.mira_attribution_lead_id = request.lead_id
     await db.flush()
     request.booking_id = booking.id
+    # Spacez only (a booking made from a full bill):
     if (request.details or {}).get("bill") and not (request.details or {}).get("stay_code"):
-        # The guest's four-digit stay code exists from the moment the money is in, so the agent can read it
-        # out when it checks the payment (and the guest can quote it on a bank transfer).
-        request.details = {**request.details, "stay_code": booking_confirmation.new_stay_code()}
-    if confirmed and request.lead_id:
+        # The guest's stay code (the villa's letters + its running booking number, DECC-0007) exists from the
+        # moment the money is in, so the agent can read it out when it checks the payment (and the guest can
+        # quote it on a bank transfer). The number comes from one atomic increment, so two bookings paid at the
+        # same moment can never share a code.
+        number = await db.scalar(
+            update(Property).where(Property.id == property_.id).values(booking_counter=Property.booking_counter + 1).returning(Property.booking_counter)
+        )
+        request.details = {
+            **request.details,
+            "stay_code": spacez_booking_confirmation.format_stay_code(property_.display_name or property_.name, number),
+        }
+    if request.lead_id:
         lead = await db.get(Lead, request.lead_id)
         if lead is not None:
-            lead.status = "booked"
+            rule = agent_config_service.get_config(user).booking.active_when if user is not None else "confirmed"
+            if rule == "paid":
+                # The host's rule: a paid link is a booking. Closed = what Booking requests calls a closed lead.
+                lead.status = "closed"
+            elif confirmed and lead.status != "closed":
+                lead.status = "booked"  # a verified payment confirmed it (as it always has); never reopens a closed lead
+            lead.check_in = lead.check_in or request.check_in
+            lead.check_out = lead.check_out or request.check_out
     await db.commit()
 
     told = (
@@ -678,17 +773,30 @@ async def _after_payment(db: AsyncSession, request_id: uuid.UUID) -> None:
     except Exception:
         logger.exception("payment received but the host WhatsApp failed request=%s", request_id)
     try:
+        # Spacez only: a booking made from a full bill gets the booking-flow confirmation, not the host template.
         full_bill = bool((request.details or {}).get("bill"))
-        body = (
-            booking_confirmation.confirmation_text(property_, request)
-            if full_bill
-            else billing_service.render(billing_service.template_text(user, "payment_success"), _values(user, property_, request))
-        )
-        if request.guest_phone and await twilio_client.send_whatsapp_best_effort(request.guest_phone, body):
+        if full_bill:
+            # The document's two outcomes: a stay is "confirmed" (details + stay code), a shoot is "dates held"
+            # (the team calls to understand the crew and setup, then confirms). Both carry the stay code.
+            if (request.details or {}).get("shoot") or spacez_booking_confirmation.is_shoot((request.details or {}).get("purpose")):
+                key, values, text = (
+                    "spacez_shoot_held",
+                    spacez_booking_confirmation.shoot_held_values(property_, request),
+                    spacez_booking_confirmation.shoot_held_text(property_, request),
+                )
+            else:
+                key, values, text = (
+                    "spacez_booking_confirmed",
+                    spacez_booking_confirmation.confirmation_values(property_, request),
+                    spacez_booking_confirmation.confirmation_text(property_, request),
+                )
+            sent = bool(request.guest_phone) and bool(await whatsapp_templates.send(request.guest_phone, key, values, fallback_text=text))
+        else:
+            body = billing_service.render(billing_service.template_text(user, "payment_success"), _values(user, property_, request))
+            sent = bool(request.guest_phone) and bool(await twilio_client.send_whatsapp_best_effort(request.guest_phone, body))
+        if sent:
             await db.execute(update(PaymentRequest).where(PaymentRequest.id == request_id).values(success_sent_at=_now()))
             await db.commit()
-            if full_bill and (extra := booking_confirmation.stay_code_text(request)):
-                await twilio_client.send_whatsapp_best_effort(request.guest_phone, extra)
     except Exception:
         logger.exception("payment received but the guest receipt failed request=%s", request_id)
 
@@ -1008,6 +1116,8 @@ async def _check_link_delivery(db: AsyncSession) -> int:
             if outcome == "failed" and claimed is not None:
                 failures += 1
                 request = await db.scalar(select(PaymentRequest).where(PaymentRequest.id == request_id))
+                request.details = {**(request.details or {}), "link_delivery": "failed"}  # the dashboard tags it
+                await db.commit()
                 await _link_not_delivered(db, request, f"WhatsApp reported the message as {status}" + (f" (error {error_code})." if error_code else "."))
         except Exception:
             logger.exception("delivery check failed for request=%s; carrying on with the rest", request_id)
@@ -1018,13 +1128,15 @@ async def _check_link_delivery(db: AsyncSession) -> int:
 async def process_payments() -> dict:
     """The once-a-minute sweep. Never raises, and no step can stop another: each
     runs in its own session, so one failing leaves the rest working."""
-    result = {"paid": 0, "expired": 0, "conflicts": 0, "repaired": 0, "undelivered": 0}
+    result = {"paid": 0, "expired": 0, "conflicts": 0, "repaired": 0, "undelivered": 0, "stay_fees_paid": 0}
     steps = (
         ("paid", _poll),
         ("expired", _expire_lapsed),
         ("conflicts", _detect_conflicts),
         ("repaired", _repair_paid),
         ("undelivered", _check_link_delivery),
+        # Spacez only: the approved early check-in / late check-out fee links (spacez_stay_requests.py).
+        ("stay_fees_paid", spacez_stay_requests.sweep),
     )
     for key, step in steps:
         try:

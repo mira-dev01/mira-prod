@@ -7,17 +7,18 @@ functions the voice agent calls), with the document's villas, rates and calendar
   guest's details, creates the booking, sends the link, and confirms once the link shows paid.
 """
 
+import uuid
 from datetime import date
 
 import pytest
 from sqlalchemy import select
 
 from app.config import settings
-from app.integrations import payment_simulator as sim
+from tests import fake_providers as sim
+from tests.fake_providers import fake_providers_on  # noqa: F401  (autouse: fake payment provider + WhatsApp)
 from app.models.booking import Booking
 from app.models.payment import PaymentRequest
 from app.models.property import Property
-from app.models.simulator import SimMessage
 from app.models.user import User
 from app.schemas.agent_config import AgentConfig, BookingConfig, PaymentConfig
 from app.voice.conversation_state import ConversationState
@@ -43,10 +44,8 @@ class _Params:
 
 @pytest.fixture
 async def world(db_session, test_user, test_call_session, monkeypatch):
-    monkeypatch.setattr(settings, "simulator_enabled", True)
-    monkeypatch.setattr(settings, "simulator_token", "")
     user = await db_session.get(User, test_user.id)
-    user.billing_config = {"razorpay": {"key_id": "sim_spacez", "secret_enc": "sim", "mode": "test", "verified_at": "2026-11-10T00:00:00+00:00"}}
+    user.billing_config = sim.billing_config()
     user.agent_config = AgentConfig(payment=PaymentConfig(hold_minutes=10), booking=BookingConfig(confirm_by="payment")).model_dump()
 
     def villa(name, rate, mx, base, city, **extra):
@@ -101,9 +100,9 @@ async def test_the_documents_first_test_from_enquiry_to_confirmed(world, db_sess
 
     # 3. the quote: total reservation 14,000; GST 5% is 700; total 14,700; split 7,350 now
     quote = await _call(w, "get_pricing", property_id=w.deccan_id, check_in="2026-12-08", check_out="2026-12-10", num_guests=8)
-    assert "₹7,000 a night" in quote.text and "₹14,000 for 2 nights" in quote.text
-    assert "GST at 5% is ₹700" in quote.text and "₹14,700 in all" in quote.text
-    assert "split: ₹7,350 now and ₹7,350 before check-in" in quote.text
+    # (the call hears the room price and the one total; the line-by-line bill goes out with the link)
+    assert "₹7,000 a night" in quote.text and "₹14,700" in quote.text
+    assert "bill summary" in quote.text
     assert w.state.quoted_price["total"] == 14700 and w.state.quoted_price["bill"]["split_now"] == 7350
 
     # 4. the booking needs details; the agent may not choose how to pay for the guest
@@ -137,7 +136,7 @@ async def test_the_documents_first_test_from_enquiry_to_confirmed(world, db_sess
     request = await db_session.scalar(select(PaymentRequest).where(PaymentRequest.user_id == w.user_id))
     booking = await db_session.get(Booking, request.booking_id)
     assert (booking.check_in, booking.check_out, booking.status, booking.kind) == (date(2026, 12, 8), date(2026, 12, 10), "confirmed", "reservation")
-    texts = [m.body for m in (await db_session.scalars(select(SimMessage).order_by(SimMessage.created_at))).all()]
+    texts = sim.message_bodies()
     confirmation = next(t for t in texts if "Your Booking is now confirmed" in t)
     assert "Check in Date: 08 Dec, 2026" in confirmation and "Check Out Date: 10 Dec, 2026" in confirmation
     assert "Stay Name: Deccan Escape" in confirmation and "Number of Guests: 8 Adults, 0 Children, 0 Pets" in confirmation
@@ -163,3 +162,50 @@ async def test_the_document_calendar_blocks_exactly_the_nights_it_lists(world):
     # Deccan Escape nights 12 and 13 are booked
     assert "NOT available" in await asks(world.deccan_id, "2026-12-13", "2026-12-14")
     assert "AVAILABLE" in await asks(world.deccan_id, "2026-12-14", "2026-12-15")
+
+
+async def test_the_whole_requirement_journey_through_the_real_tool_wrappers(world, db_session):
+    """Weekend rate -> a short spoken quote (early check-in asked for) -> the link with the bill summary -> paid ->
+    the guest rings back for a late check-out -> the team gets a ticket. The tools are the ones the agent calls."""
+    from app.models.property import Property
+    from app.models.ticket import Ticket
+
+    w = world
+    deccan = await db_session.get(Property, uuid.UUID(w.deccan_id))
+    deccan.weekend_rate_enabled, deccan.weekend_price = True, 9000
+    await db_session.commit()
+    tools = build_voice_tools(
+        call_session_id=w.call_id, property_id=None, host_user_id=w.user_id, conversation_state=w.state,
+        property_recommendation_guard=w.guard, payments_enabled=True, caller_number="+919876543210", spacez_enabled=True,
+    )
+    w.tool = {t.__name__: t for t in tools}
+    w.state.set_slot("guest_name", "Asha Rao")
+    w.state.set_slot("phone", "9876543210")
+
+    # Fri 18 and Sat 19 December at the weekend rate; the guest asked for an early check-in
+    quote = await _call(w, "get_pricing", property_id=w.deccan_id, check_in="2026-12-18", check_out="2026-12-20", num_guests=8,
+                        requested_early_checkin=True)
+    assert "₹9,000 a night" in quote.text and "₹22,240" in quote.text  # 18,000 + 18% GST 3,240 + early check-in 1,000
+    assert "GST at" not in quote.text and "bill summary" in quote.text
+    assert w.state.quoted_price["total"] == 22240
+
+    sent = await _call(w, "send_payment_link", property_id=w.deccan_id, guest_name="Asha Rao", email="asha@example.com",
+                       purpose_of_stay="birthday", payment_option="full",
+                       phone="9876543210")  # the guest gave this number for the link, so a call back from it is recognised
+    assert "₹22,240" in sent.text and "together with their bill summary" in sent.text
+    body = sim.message_bodies()[-1]
+    for line in ("complete your Spacez booking payment here: https://rzp.test/pay/",
+                 "Bill: Stay ₹18,000 (2 Friday/Saturday night(s) at ₹9,000) + GST (18%) ₹3,240 + Early check-in ₹1,000",
+                 "Grand total: ₹22,240 (full payment)"):
+        assert line in body, line
+    assert "Lunch" not in body and "Pickup" not in body  # only what applies
+
+    request = await db_session.scalar(select(PaymentRequest).where(PaymentRequest.user_id == w.user_id))
+    await sim.set_outcome(request.razorpay_link_id, "paid")
+    assert (await _call(w, "get_payment_status")).text.startswith("PAID")
+
+    # the guest rings back (same number) and asks for a late check-out
+    late = await _call(w, "request_early_late_checkout", late_checkout=True, note="around 3 pm")
+    assert "₹1,000" in late.text and "let the team check whether it is possible" in late.text
+    ticket = await db_session.scalar(select(Ticket).where(Ticket.user_id == w.user_id, Ticket.kind == "stay_request"))
+    assert ticket is not None and ticket.status == "open"

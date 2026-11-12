@@ -200,6 +200,7 @@ export function PaymentsStep({
   onOverridesChanged: (next: Overrides) => void;
 }) {
   const [confirmBy, setConfirmBy] = useState(config.booking.confirm_by);
+  const [activeWhen, setActiveWhen] = useState(config.booking.active_when ?? "confirmed");
   const [payment, setPayment] = useState<Payment>(config.payment);
   const [saving, setSaving] = useState(false);
   const billing = useAsync(() => api.billing.get(), []);
@@ -207,13 +208,15 @@ export function PaymentsStep({
 
   const valid = inRange(String(payment.split_percent), LIMITS.percent) && inRange(String(payment.hold_minutes), LIMITS.hold);
   const dirty =
-    confirmBy !== config.booking.confirm_by || JSON.stringify(payment) !== JSON.stringify(config.payment);
+    confirmBy !== config.booking.confirm_by ||
+    activeWhen !== (config.booking.active_when ?? "confirmed") ||
+    JSON.stringify(payment) !== JSON.stringify(config.payment);
   const connected = billing.data?.razorpay.connected ?? false;
 
   async function save() {
     setSaving(true);
     try {
-      const result = await api.agentConfig.update({ booking: { confirm_by: confirmBy }, payment });
+      const result = await api.agentConfig.update({ booking: { confirm_by: confirmBy, active_when: activeWhen }, payment });
       onSaved(result.config);
       toast.success("Saved");
     } catch (err) {
@@ -256,6 +259,27 @@ export function PaymentsStep({
                 onCheckedChange={(on) => on && setConfirmBy("payment")}
                 title="A verified payment does"
                 description="Mira checks the payment with Razorpay and confirms. You're told straight away."
+              />
+            </div>
+          </FieldRow>
+
+          <FieldRow label="Show as an active booking">
+            <div>
+              <OptionCard
+                checked={activeWhen === "confirmed"}
+                onCheckedChange={(on) => on && setActiveWhen("confirmed")}
+                title="When it is confirmed"
+              />
+              <OptionCard
+                checked={activeWhen === "paid"}
+                onCheckedChange={(on) => on && setActiveWhen("paid")}
+                title="When the guest has paid"
+              />
+              <OptionCard
+                checked={activeWhen === "link_sent"}
+                onCheckedChange={(on) => on && setActiveWhen("link_sent")}
+                title="When the payment link is sent"
+                description="The guest is listed in Active bookings and the request is closed in Booking requests."
               />
             </div>
           </FieldRow>

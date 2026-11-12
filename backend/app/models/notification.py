@@ -50,6 +50,13 @@ class Notification(UUIDPkMixin, TimestampMixin, Base):
     # unrelated future mutation, not a purpose-built response timestamp.
     responded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    # Set when this is a service request / escalation from a guest who has an ACTIVE BOOKING (a booked lead
+    # whose stay has not ended): the lead that booking belongs to. It is what puts a number on the Active
+    # bookings tab and the sidebar, and what a banner is shown for. NULL for every other notification.
+    booking_lead_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("leads.id", ondelete="SET NULL"), index=True
+    )
+
     property: Mapped["Property"] = relationship(back_populates="notifications")
     call_session: Mapped["CallSession"] = relationship(back_populates="notifications")
 

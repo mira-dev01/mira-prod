@@ -167,6 +167,22 @@ A host's payment setup and the payment links Mira has sent (`app/services/billin
 | `GET /payments` | The host's payment links / date holds, newest first (`status`: `active` / `paid` / `expired` / `cancelled`) | required |
 | `POST /payments/{id}/cancel` | Release a hold: closes the Razorpay link, frees the dates, tells waiting guests. Refused if the guest has just paid | required |
 
+## `active_bookings.py` — `/bookings/active`
+
+| Endpoint | Purpose | Auth |
+|---|---|---|
+| `GET /bookings/active` | Booked leads whose stay is not over: `in_stay` and `upcoming` (soonest first), each with its payment tag (`state`/`label`: no_link, link_pending, link_sent, delivery_failed, payment_failed, part_paid, paid, expired, cancelled; `payment_down` while Razorpay is unreachable) and unseen requests from that guest; plus `active_when` (the host's rule) and `unread_activity` | required |
+| `GET /bookings/active/activity-count` | `{count}`: requests from booked guests not yet seen (the number on the tab and sidebar) | required |
+| `POST /bookings/active/{lead_id}/activity/read` | The host has seen this guest's requests | required |
+
+## `whatsapp_monitor.py` — `/whatsapp-monitor`
+
+| Endpoint | Purpose | Auth |
+|---|---|---|
+| `GET /whatsapp-monitor/messages` | Twilio's recent WhatsApp messages (both directions, status and error code) for the Streamlit monitor. 404 unless `WHATSAPP_MONITOR_TOKEN` is set | `X-Monitor-Token` |
+
+`GET /properties/gallery?ids=a,b,c` (public, no auth): the properties' names, cities and photos, for the guest-facing list page `/p/list`.
+
 ## `policies.py` — `/policies`
 
 The host's booking and house policies (cancellation, age limits, pets, …), host-wide or per property, and how uploaded documents become drafts (`app/services/policy_service.py`, `policy_documents.py`). Approved policies become knowledge-base facts immediately. All routes are scoped to the signed-in host; another host's ids are 404.

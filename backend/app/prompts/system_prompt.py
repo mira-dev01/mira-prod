@@ -26,6 +26,7 @@ from app.models.guest_profile import GuestProfile
 from app.services.amenity_taxonomy import NOTABLE_AMENITY_TAGS
 from app.services.call_service import BROWSER_TEST_CALLER_NUMBER
 from app.schemas.agent_config import AgentConfig
+from app.prompts import spacez_prompt
 from app.services import agent_config_service, notification_preferences_service, stay_scope
 from app.services.guest_booking_service import BookingMatch
 from app.models.property import Property
@@ -961,6 +962,9 @@ def build_system_prompt(
     payment_section = _payment_section(payments_enabled)
     if payment_section:
         sections.append(payment_section)
+    # Spacez only (empty for any other property): how to quote, coupons, early check-in / late check-out.
+    if spacez_text := spacez_prompt.spacez_section([property_]):
+        sections.append(spacez_text)
     caller_phone_section = _caller_phone_section(caller_phone)
     if caller_phone_section:
         sections.append(caller_phone_section)
@@ -1026,6 +1030,14 @@ def _guest_memory_section(guest: GuestProfile | None, repeat_guest_discount: boo
     # this very call (see call_service.get_or_create_guest_profile) -- a
     # genuinely first-time caller, not a returning one.
     if not guest.total_stays:
+        known = _known_guest_name(guest)
+        if known:
+            # A caller who has rung before and given their name (but has no stay yet) is greeted by it
+            # (first_message_for / lead_first_message_for) -- the model must not ask for it again.
+            return (
+                "\nThis caller is not in our guest records as a past guest -- treat them as a new guest. We do have their name "
+                f"on file: {known}. You already greeted them by it: use it naturally and never ask for it again."
+            )
         return "\nThis caller is not in our guest records -- treat them as a new guest."
 
     parts = [f"This caller is a returning guest: {guest.name or 'name unknown'}."]
@@ -1107,6 +1119,22 @@ def _active_booking_section(booking: BookingMatch | None) -> str:
     )
 
 
+def _known_guest_name(guest: GuestProfile | None) -> str | None:
+    """The caller's saved name, for greeting a guest who rings back. None for a first-time caller, a caller
+    whose name was never captured, and the shared browser-test placeholder identity."""
+    if guest is None or guest.phone == BROWSER_TEST_CALLER_NUMBER:
+        return None
+    return (guest.name or "").strip() or None
+
+
+def _greet_by_name(message: str, template: str, name: str | None) -> str:
+    """A host-written greeting that never uses {guest_name} would greet a returning guest like a stranger,
+    so the saved name is put in front of it. A template that already says {guest_name} is left alone."""
+    if name and "{guest_name}" not in template:
+        return f"Hi {name}! {message}"
+    return message
+
+
 def first_message_for(property_: Property, guest: GuestProfile | None, host: User) -> str:
     # Same placeholder-identity issue as _guest_memory_section above -- every
     # browser test call for a host shares one GuestProfile row named
@@ -1116,12 +1144,16 @@ def first_message_for(property_: Property, guest: GuestProfile | None, host: Use
         guest = None
     spoken_property_name = property_.spoken_name or property_.display_name or property_.name
     if host.agent_first_message:
-        return _resolve_template(
+        return _greet_by_name(
+            _resolve_template(
+                host.agent_first_message,
+                host_name=host.name or "us",
+                property_name=spoken_property_name,
+                city=property_.city,
+                guest_name=guest.name if guest else None,
+            ),
             host.agent_first_message,
-            host_name=host.name or "us",
-            property_name=spoken_property_name,
-            city=property_.city,
-            guest_name=guest.name if guest else None,
+            _known_guest_name(guest),
         )
     if guest is not None and guest.name:
         return f"Namaste {guest.name}! I'm Mira, your virtual assistant for {spoken_property_name}. How can I help you today?"
@@ -1236,6 +1268,10 @@ Lead qualification workflow:
    people share details once they see something they want, not while just browsing. And do NOT ask for
    email at all unless the guest is finalising a booking. Only after you have their name and phone,
    move on to check_calendar / get_pricing for that property.
+   If the guest asks you to send "the list", "all the options" or photos of EVERY property you recommended,
+   confirm their WhatsApp number the same way, then call send_property_list: it sends one WhatsApp message
+   with the list and a link that shows each property with its photos. For photos of a single property
+   call send_photos. Never say either has been sent without calling the tool and reading its result back.
    check_calendar specifically needs the guest's exact, finalized check-in/check-out dates -- it's a
    real availability check against real bookings, so it cannot run on a vague window or a stay length
    alone. If the guest is ready with exact dates, ALWAYS call check_calendar with them at this point,
@@ -1474,10 +1510,12 @@ def _payment_section(payments_enabled: bool) -> str:
         "locked in or that you have received the payment -- not after sending the link, not when the guest says they have "
         "paid. Call get_payment_status when they say they paid or ask, and say only what it tells you.\n"
         "- If the payment did not go through, stay calm: say what the tool says, that their dates are still held, and that "
-        "they can try the same link again. If you cannot check the payment, say you cannot see it right now and the team will "
+        "they can try the same link again. If the guest says the payment failed, an error showed, or they closed the page, call "
+        "get_payment_status with guest_says_payment_failed=true: the same link is sent to them again on WhatsApp. If you cannot "
+        "check the payment, say you cannot see it right now and the team will "
         "confirm it, and log it with escalate_to_host. Never guess either way.\n"
         "- When it says PAID, tell the guest the payment went through and the booking is confirmed, mention the confirmation "
-        "on WhatsApp, and read out the stay code if it gives one.\n"
+        "on WhatsApp, and read out the stay code if it gives one (letters first, then the digits, slowly).\n"
         "- Do not discuss refunds or cancellation terms unless search_faq returns them."
     )
 
@@ -1557,6 +1595,9 @@ def build_lead_system_prompt(
         gathering_section = _gathering_section(has_party_rules)
         if gathering_section:
             sections.append(gathering_section)
+        # Spacez only (empty unless the host has a villa with booking terms).
+        if spacez_text := spacez_prompt.spacez_section(properties):
+            sections.append(spacez_text)
     else:
         sections.append("\nNo properties are configured in the portfolio yet -- escalate any enquiry to the host.")
 
@@ -1571,16 +1612,28 @@ def build_lead_system_prompt(
     return "\n".join(sections)
 
 
-def lead_first_message_for(user: User) -> str:
+def lead_first_message_for(user: User, guest: GuestProfile | None = None) -> str:
+    # A guest ringing back is greeted by the name saved on file (guest=None, a first-time caller or the browser
+    # test identity all greet exactly as before).
+    guest_name = _known_guest_name(guest)
     if user.agent_first_message:
-        return _resolve_template(
+        return _greet_by_name(
+            _resolve_template(
+                user.agent_first_message,
+                host_name=user.name or "us",
+                property_name=None,
+                city=None,
+                guest_name=guest_name,
+            ),
             user.agent_first_message,
-            host_name=user.name or "us",
-            property_name=None,
-            city=None,
-            guest_name=None,
+            guest_name,
         )
     host_name = user.name or "us"
+    if guest_name:
+        return (
+            f"Hi {guest_name}! Thanks for contacting {host_name}. I'm Mira, your virtual host. "
+            f"I'd be happy to help you with your stay."
+        )
     return (
         f"Hi! Thanks for contacting {host_name}. I'm Mira, your virtual host. "
         f"I'd be happy to help you find the perfect stay."

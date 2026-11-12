@@ -1,19 +1,28 @@
-"""A villa's commercial terms for the full booking bill, read from properties.pricing_terms.
+"""SPACEZ ONLY. A villa's commercial terms for the full booking bill, read from properties.pricing_terms.
 
 Stored as a small JSON object; every key is optional and an absent key means "not on file" (for the
 things a bill cannot guess) or the documented default (meal prices). Unknown stays unknown: see
-app/services/stay_bill.py.
+app/services/spacez_stay_bill.py.
 
     {"base_guests": 8, "partner": false, "breakfast_included": false,
-     "weekend_rate": 12000, "meal_bundle_price": null, "pickup_fare": null,
-     "addons": {"bbq_experience": 1500}, "breakfast_price": 250, ...}
+     "meal_bundle_price": null, "pickup_fare": null,
+     "addons": {"bbq_experience": 1500}, "breakfast_price": 250, ...,
+     "parties": "small gatherings only", "pets": "allowed", "food": "Veg and non-veg"}
+
+The weekend rate is NOT in this JSON. It is the property's own "weekend rate differs" toggle
+(properties.weekend_rate_enabled / weekend_price, set in the dashboard like any other property setting);
+a villa with it off charges the weeknight rate on Friday and Saturday nights too.
+
+The `parties` / `pets` / `food` / `area` keys are the villa's profile from the Spacez knowledge base. They
+do not touch the bill: app/services/spacez_knowledge.py turns them (and the prices) into the property's
+knowledge-base facts so the agent can answer a guest's questions from what is on file.
 """
 
 from decimal import Decimal, InvalidOperation
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from app.services import stay_bill
+from app.services import spacez_stay_bill
 
 
 class PricingTermsConfig(BaseModel):
@@ -22,7 +31,6 @@ class PricingTermsConfig(BaseModel):
     base_guests: int = Field(ge=1, le=100)
     partner: bool = False
     breakfast_included: bool = False
-    weekend_rate: float | None = Field(default=None, ge=0)
     meal_bundle_price: float | None = Field(default=None, ge=0)
     pickup_fare: float | None = Field(default=None, ge=0)
     breakfast_price: float | None = Field(default=None, ge=0)
@@ -33,6 +41,11 @@ class PricingTermsConfig(BaseModel):
     early_checkin_fee: float | None = Field(default=None, ge=0)
     late_checkout_fee: float | None = Field(default=None, ge=0)
     addons: dict[str, float] = Field(default_factory=dict)
+    # Knowledge-base profile (free text, spoken only via search_faq -- see spacez_knowledge.py).
+    parties: str | None = Field(default=None, max_length=120)
+    pets: str | None = Field(default=None, max_length=120)
+    food: str | None = Field(default=None, max_length=160)
+    area: str | None = Field(default=None, max_length=160)
 
 
 def _d(value) -> Decimal | None:
@@ -44,7 +57,16 @@ def _d(value) -> Decimal | None:
         return None
 
 
-def terms_for(property_) -> stay_bill.Terms | None:
+def weekend_rate_for(property_) -> Decimal | None:
+    """The villa's Friday/Saturday nightly rate when the host turned "weekend rate differs" on and gave
+    one; None otherwise (weekend nights then use the weeknight rate)."""
+    if not getattr(property_, "weekend_rate_enabled", False):
+        return None
+    price = _d(getattr(property_, "weekend_price", None))
+    return price if price is not None and price > 0 else None
+
+
+def terms_for(property_) -> spacez_stay_bill.Terms | None:
     """The villa's terms, or None when it has none (it keeps the flat base_price quote). A stored value
     that no longer validates counts as none rather than raising into a live call."""
     stored = getattr(property_, "pricing_terms", None)
@@ -56,12 +78,12 @@ def terms_for(property_) -> stay_bill.Terms | None:
         return None
     if not property_.base_price or Decimal(str(property_.base_price)) <= 0:
         return None  # no weeknight rate on file: nothing to build a bill from
-    defaults = stay_bill.Terms(base_rate=Decimal(1), base_guests=1, max_guests=1)
-    return stay_bill.Terms(
+    defaults = spacez_stay_bill.Terms(base_rate=Decimal(1), base_guests=1, max_guests=1)
+    return spacez_stay_bill.Terms(
         base_rate=Decimal(str(property_.base_price)),
         base_guests=cfg.base_guests,
         max_guests=property_.max_guests,
-        weekend_rate=_d(cfg.weekend_rate),
+        weekend_rate=weekend_rate_for(property_),
         partner=cfg.partner,
         breakfast_included=cfg.breakfast_included,
         breakfast_price=_d(cfg.breakfast_price) or defaults.breakfast_price,

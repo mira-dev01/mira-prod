@@ -36,6 +36,7 @@ class Ticket(UUIDPkMixin, TimestampMixin, Base):
     )
 
     # escalation | transfer | technician | photos | whatsapp | promise | missed_call | payment
+    # | stay_request (Spacez only: early check-in / late check-out awaiting the team's yes or no)
     kind: Mapped[str] = mapped_column(String(24), nullable=False)
     # What the host has to do, in one line.
     summary: Mapped[str] = mapped_column(String(255), nullable=False)

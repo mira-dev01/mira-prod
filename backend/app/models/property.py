@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -206,10 +206,19 @@ class Property(UUIDPkMixin, TimestampMixin, Base):
     # payment only), as {"payment": {...only the fields that differ...}}. None =
     # follows the portfolio. See app/services/agent_config_service.py.
     agent_config_overrides: Mapped[dict | None] = mapped_column(JSONB)
-    # The villa's commercial terms for the full booking bill (base guests, weekend rate, partner villa,
-    # meal and add-on prices ...), see app/services/pricing_terms.py. NULL = the flat base_price
+    # SPACEZ ONLY. The villa's commercial terms for the full booking bill (base guests, partner villa,
+    # meal and add-on prices, villa profile ...), see app/services/spacez_pricing_terms.py. NULL = the flat base_price
     # quote every property has always had. Anything not stated in it is UNKNOWN, never defaulted.
     pricing_terms: Mapped[dict | None] = mapped_column(JSONB)
+    # "Weekend rate differs" (host toggle, any property): when on, a Friday or Saturday night is charged
+    # weekend_price instead of base_price. Off (the default) = every night costs base_price, as it always
+    # has. Read by pricing_engine (flat quotes) and spacez_pricing_terms (the Spacez bill). Ignored for a
+    # live Airbnb smart-pricing quote, which has its own per-date rate.
+    weekend_rate_enabled: Mapped[bool] = mapped_column(default=False, server_default="false")
+    weekend_price: Mapped[float | None] = mapped_column(Numeric(10, 2))
+    # SPACEZ ONLY. How many paid bookings this villa has had: the number in its guests' stay codes
+    # (DECC-0007). Only ever increased, atomically, by payment_service when a booking is paid.
+    booking_counter: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     exact_airbnb_pricing: Mapped[bool] = mapped_column(default=False, server_default="false")
 
     # Recommendation conversations ("Phase X"): host-set, never LLM-inferred --

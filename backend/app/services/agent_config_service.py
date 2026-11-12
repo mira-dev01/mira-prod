@@ -97,7 +97,11 @@ async def update_config(db: AsyncSession, user: User, payload: AgentConfigUpdate
     for name in _SECTIONS:
         section = getattr(payload, name)
         if section is not None:
-            current[name] = section.model_dump()
+            if name == "booking":
+                # A caller that sends only one of the booking fields (confirm_by, active_when) leaves the other as saved.
+                current[name] = {**current[name], **section.model_dump(exclude_unset=True)}
+            else:
+                current[name] = section.model_dump()
     user.agent_config = AgentConfig.model_validate(current).model_dump()
     await db.commit()
     await db.refresh(user)

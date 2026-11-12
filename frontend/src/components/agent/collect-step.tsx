@@ -11,9 +11,13 @@ import { OptionCard } from "@/components/option-card";
 import { Sheet, SheetFooter, SheetHeading, WideCell } from "@/components/ui/sheet";
 import { SegmentedChoice } from "@/components/segmented-choice";
 import { api, ApiError } from "@/lib/api";
-import type { AgentCollectConfig, AgentConfig, AgentCustomField, AgentCustomKind, AgentFieldMode } from "@/lib/types";
+import type { AgentCollectConfig, AgentConfig, AgentCustomField, AgentCustomKind, AgentFieldMode, BuiltInField } from "@/lib/types";
 
-const FIELDS: { key: keyof AgentCollectConfig; title: string }[] = [
+// The server keeps at most this many of the host's own details.
+const MAX_CUSTOM = 10;
+const KIND_LABEL: Record<AgentCustomKind, string> = { text: "Text", time: "Time", number: "Number", yes_no: "Yes / No" };
+
+const FIELDS: { key: BuiltInField; title: string }[] = [
   { key: "dates", title: "Stay dates" },
   { key: "guests", title: "Number of guests" },
   { key: "purpose", title: "Reason for the stay" },
@@ -111,6 +115,51 @@ export function CollectStep({ config, onSaved }: { config: AgentConfig; onSaved:
             </OptionCard>
           ))}
         </div>
+
+        <SheetHeading title="Your own details" />
+        <div className="col-span-12 space-y-3 px-5 py-4">
+          {collect.custom.length === 0 && <p className="text-sm text-muted-foreground">Nothing added yet.</p>}
+          {collect.custom.map((field, index) => (
+            <div key={index} className="flex flex-wrap items-center gap-2 border-b border-border pb-3 last:border-0 last:pb-0">
+              <Input
+                aria-label="Detail name"
+                placeholder="e.g. Arrival time"
+                value={field.label}
+                maxLength={60}
+                className="w-56"
+                onChange={(e) => setCustom(index, { label: e.target.value })}
+              />
+              <Select value={field.kind} onValueChange={(v) => v && setCustom(index, { kind: v as AgentCustomKind })}>
+                <SelectTrigger className="w-32" aria-label="Kind of answer">
+                  <SelectValue>{KIND_LABEL[field.kind]}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="text">Text</SelectItem>
+                  <SelectItem value="time">Time</SelectItem>
+                  <SelectItem value="number">Number</SelectItem>
+                  <SelectItem value="yes_no">Yes / No</SelectItem>
+                </SelectContent>
+              </Select>
+              <SegmentedChoice
+                label={`${field.label || "Detail"}: how important`}
+                value={field.mode}
+                onChange={(mode) => setCustom(index, { mode })}
+                options={[
+                  { value: "optional", label: "Nice to have" },
+                  { value: "required", label: "Must have" },
+                ]}
+              />
+              <Button type="button" size="icon-sm" variant="ghost" aria-label="Remove detail" onClick={() => removeCustom(index)}>
+                <Trash2 className="size-4" />
+              </Button>
+            </div>
+          ))}
+          {customProblem && <p className="text-[13px] text-destructive">{customProblem}</p>}
+          <Button type="button" size="sm" variant="outline" disabled={collect.custom.length >= MAX_CUSTOM} onClick={addCustom}>
+            <Plus className="size-4" /> Add a detail
+          </Button>
+        </div>
+
         <SheetFooter>
           <Button variant="cta" onClick={save} disabled={!dirty || saving}>
             {saving ? "Saving…" : "Save"}

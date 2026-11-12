@@ -1,6 +1,6 @@
 """The whole booking flow on the test services: a quote with GST, the details the booking needs, the guest's
 choice of how to pay, a payment that can fail or succeed on demand, the agent learning the outcome, and the
-confirmation. Real Postgres; the payment provider and WhatsApp are the simulator, so no real money and no real guests."""
+confirmation. Real Postgres; the payment provider and WhatsApp are the in-memory fakes in tests/fake_providers.py, so no real money and no real guests."""
 
 import re
 from datetime import date, timedelta
@@ -9,23 +9,17 @@ import pytest
 from sqlalchemy import select
 
 from app.config import settings
-from app.integrations import payment_simulator as sim
+from tests import fake_providers as sim
+from tests.fake_providers import fake_providers_on  # noqa: F401  (autouse: fake payment provider + WhatsApp)
 from app.models.booking import Booking
 from app.models.payment import PaymentRequest
 from app.models.property import Property
-from app.models.simulator import SimMessage
 from app.models.user import User
 from app.schemas.agent_config import AgentConfig, BookingConfig, PaymentConfig
 from app.schemas.tool import CheckCalendarArgs, GetPricingArgs
 from app.services import payment_service, tool_handlers
 from app.voice.conversation_state import ConversationState
 from tests.conftest import auth_headers_for
-
-
-@pytest.fixture(autouse=True)
-def _simulator_on(monkeypatch):
-    monkeypatch.setattr(settings, "simulator_enabled", True)
-    monkeypatch.setattr(settings, "simulator_token", "")
 
 
 def _tue() -> date:
@@ -37,7 +31,7 @@ def _tue() -> date:
 
 async def _host(db, test_user) -> User:
     user = await db.get(User, test_user.id)
-    user.billing_config = {"razorpay": {"key_id": "sim_spacez", "secret_enc": "sim", "mode": "test", "verified_at": "2026-11-10T00:00:00+00:00"}}
+    user.billing_config = sim.billing_config()
     user.agent_config = AgentConfig(payment=PaymentConfig(hold_minutes=10), booking=BookingConfig(confirm_by="payment")).model_dump()
     await db.commit()
     return user
@@ -157,8 +151,8 @@ async def test_a_partner_villa_can_only_be_paid_in_full(db_session, test_user, t
 async def test_the_link_goes_to_the_guest_on_the_test_whatsapp(db_session, booking):
     await _send_on_call(db_session, booking)
 
-    messages = (await db_session.scalars(select(SimMessage))).all()
-    assert len(messages) == 1 and messages[0].to_phone.endswith("9876543210") and "/api/v1/sim/pay/sim_" in messages[0].body
+    messages = sim.messages()
+    assert len(messages) == 1 and messages[0].to_phone.endswith("9876543210") and "https://rzp.test/pay/" in messages[0].body
 
 
 # -- the agent can tell what happened -----------------------------------------------------------------
@@ -189,10 +183,10 @@ async def test_a_paid_link_becomes_a_confirmed_booking_with_the_documents_confir
 
     db_session.expire_all()
     request = await _request(db_session, booking.user_id)
-    assert request.status == "paid" and re.fullmatch(r"\d{4}", request.details["stay_code"])
+    assert request.status == "paid" and re.fullmatch(r"DECC-0001", request.details["stay_code"])
     reservation = await db_session.get(Booking, request.booking_id)
     assert reservation.kind == "reservation" and reservation.status == "confirmed" and reservation.final_booking_price == 14700
-    texts = [m.body for m in (await db_session.scalars(select(SimMessage).order_by(SimMessage.created_at))).all()]
+    texts = sim.message_bodies()
     confirmation = next(t for t in texts if t.startswith("Hello Asha, Your Booking is now confirmed"))
     for line in (
         "The Booking Details is following:", f"Booking ID: SPZ-{request.id.hex[:6].upper()}", "Stay Name: Deccan Escape",
@@ -202,7 +196,7 @@ async def test_a_paid_link_becomes_a_confirmed_booking_with_the_documents_confir
         "Booking Status: Pending Host Approval", "Regards,\nTeam Spacez", "www.spacez.co",
     ):
         assert line in confirmation, line
-    assert any("four-digit stay code is" in t for t in texts)
+    assert "Your stay code: DECC-0001" in confirmation  # the villa's letters + its first booking
 
 
 async def test_paying_in_full_says_paid_in_full(db_session, booking):
@@ -211,7 +205,7 @@ async def test_paying_in_full_says_paid_in_full(db_session, booking):
     await sim.set_outcome(request.razorpay_link_id, "paid")
     await _status(db_session, booking.user, booking.call)
 
-    texts = [m.body for m in (await db_session.scalars(select(SimMessage))).all()]
+    texts = sim.message_bodies()
     assert any("Payment Status: Paid in full" in t and "Payment Remaining: ₹0" in t for t in texts)
 
 
@@ -242,6 +236,178 @@ async def test_a_shoot_is_held_not_confirmed(db_session, booking):
     paid = await _status(db_session, booking.user, booking.call)
 
     assert "HELD, not yet confirmed" in paid and "team will call" in paid and "now confirmed" not in paid
+
+
+# -- the messages are WhatsApp templates, with free text as the fallback ----------------------------------------------
+
+
+async def test_with_the_templates_sids_set_each_message_goes_as_that_template(db_session, booking, monkeypatch):
+    from app.services import whatsapp_templates as wt
+
+    monkeypatch.setattr(wt, "SPACEZ_PAYMENT_LINK_SID", "HXlink")
+    monkeypatch.setattr(wt, "SPACEZ_BOOKING_CONFIRMED_SID", "HXconfirmed")
+    await _send_on_call(db_session, booking, payment_option="full")
+    request = await _request(db_session, booking.user.id)
+    link_message = sim.messages()[-1]
+    assert link_message.kind == "template" and link_message.content_sid == "HXlink"
+    assert link_message.variables["2"].startswith("https://rzp.test/pay/") and len(link_message.variables) == 5
+    assert link_message.variables["5"] == "₹14,700 (full payment)"
+
+    await sim.set_outcome(request.razorpay_link_id, "paid")
+    await _status(db_session, booking.user, booking.call)
+
+    confirmed = sim.messages()[-1]
+    assert confirmed.content_sid == "HXconfirmed" and len(confirmed.variables) == 18
+    assert confirmed.variables["18"] == "DECC-0001" and confirmed.variables["17"] == "Paid in full"
+    assert all("\n" not in v for v in confirmed.variables.values())  # a placeholder takes one line only
+
+
+async def test_a_template_that_fails_falls_back_to_the_same_text_as_free_text(db_session, booking, monkeypatch):
+    from app.integrations import twilio_client
+    from app.services import whatsapp_templates as wt
+
+    async def refuse(*args, **kwargs):
+        raise twilio_client.TwilioError("template not approved")
+
+    monkeypatch.setattr(wt, "SPACEZ_PAYMENT_LINK_SID", "HXnotapproved")
+    monkeypatch.setattr(twilio_client, "send_whatsapp_template", refuse)
+
+    await _send_on_call(db_session, booking, payment_option="full")
+
+    sent = sim.messages()[-1]
+    assert sent.kind == "text" and sent.body.startswith("Hi Asha, complete your Spacez booking payment here:")
+    assert (await _request(db_session, booking.user.id)).link_message_sid  # the link counts as sent
+
+
+async def test_a_shoot_gets_the_dates_are_held_message_not_a_confirmation(db_session, booking):
+    await _send_on_call(db_session, booking, purpose_of_stay="a film shoot for an ad", payment_option="full")
+    request = await _request(db_session, booking.user.id)
+    await sim.set_outcome(request.razorpay_link_id, "paid")
+    await _status(db_session, booking.user, booking.call)
+
+    held = next(t for t in sim.message_bodies() if "Your dates are held." in t and "Payment successful" in t)
+    assert "Our team will call you to understand the crew and setup, then confirm your booking." in held
+    assert "Your stay code: DECC-0001" in held
+    assert not any("Your Booking is now confirmed" in t for t in sim.message_bodies())
+
+
+async def test_a_failed_payment_sends_the_try_again_message_once_and_is_recorded(db_session, booking):
+    await _send_on_call(db_session, booking)
+    request = await _request(db_session, booking.user.id)
+
+    first = await tool_handlers.handle_get_payment_status(
+        db_session, host_user_id=booking.user.id, call_session_id=booking.call, guest_says_failed=True
+    )
+    again = await tool_handlers.handle_get_payment_status(
+        db_session, host_user_id=booking.user.id, call_session_id=booking.call, guest_says_failed=True
+    )
+
+    assert first.startswith("NOT PAID") and "Payment unsuccessful" in first and again.startswith("NOT PAID")
+    retries = [t for t in sim.message_bodies() if "Payment unsuccessful. Almost there! Your villa is held" in t]
+    assert len(retries) == 1 and request.short_url in retries[0]  # the same link, not flooded
+    db_session.expire_all()
+    details = (await _request(db_session, booking.user_id)).details
+    assert details["failed_attempts"] == 2 and details["failed_attempt_source"] == "guest"
+
+
+async def test_stay_codes_count_each_villas_bookings(db_session, booking, test_user):
+    await _send_on_call(db_session, booking, payment_option="full")
+    first = await _request(db_session, booking.user.id)
+    await sim.set_outcome(first.razorpay_link_id, "paid")
+    await _status(db_session, booking.user, booking.call)
+
+    state = ConversationState()
+    later = _tue() + timedelta(days=14)
+    await _quote(db_session, booking.user, booking.prop, state, check_in=later)
+    await tool_handlers.handle_send_payment_link(
+        db_session, host_user_id=booking.user.id, property_id=str(booking.prop.id), quote=state.quoted_price, call_session_id=booking.call,
+        guest_name="Ravi Kumar", phone="9123456780", email="r@example.com", purpose_of_stay="family trip", payment_option="full",
+    )
+    second = await _request(db_session, booking.user.id)
+    await sim.set_outcome(second.razorpay_link_id, "paid")
+    await _status(db_session, booking.user, booking.call)
+
+    db_session.expire_all()
+    codes = sorted(r.details["stay_code"] for r in (await db_session.scalars(select(PaymentRequest).where(PaymentRequest.status == "paid"))).all())
+    assert codes == ["DECC-0001", "DECC-0002"]
+
+
+# -- the host's rule for when a guest counts as an active booking ------------------------------------------------
+
+
+async def _set_rule(db, user, active_when, confirm_by="payment"):
+    user = await db.get(User, user.id)
+    user.agent_config = AgentConfig(
+        payment=PaymentConfig(hold_minutes=10), booking=BookingConfig(confirm_by=confirm_by, active_when=active_when)
+    ).model_dump()
+    await db.commit()
+
+
+async def _lead_status(db, user_id) -> str | None:
+    from app.models.lead import Lead
+
+    return await db.scalar(select(Lead.status).where(Lead.user_id == user_id).execution_options(populate_existing=True))
+
+
+async def test_by_default_a_guest_is_booked_only_when_the_booking_is_confirmed(db_session, booking):
+    from app.services import active_booking_service
+
+    await _send_on_call(db_session, booking, payment_option="full")
+    assert await _lead_status(db_session, booking.user_id) not in ("booked", "closed")  # a sent link alone books nobody
+
+    request = await _request(db_session, booking.user.id)
+    await sim.set_outcome(request.razorpay_link_id, "paid")
+    await _status(db_session, booking.user, booking.call)
+
+    assert await _lead_status(db_session, booking.user_id) == "booked"  # as ever: a verified payment confirmed it
+    out = await active_booking_service.list_active(db_session, await db_session.get(User, booking.user_id))
+    assert [g["payment"]["state"] for g in out["upcoming"]] == ["paid"]
+
+
+async def test_when_the_rule_is_link_sent_the_lead_is_closed_and_an_active_booking_at_once(db_session, booking):
+    from app.services import active_booking_service
+
+    await _set_rule(db_session, booking.user, "link_sent", confirm_by="host")
+
+    await _send_on_call(db_session, booking, payment_option="full")
+
+    assert await _lead_status(db_session, booking.user_id) == "closed"  # Booking requests -> Closed leads
+    out = await active_booking_service.list_active(db_session, await db_session.get(User, booking.user_id))
+    (guest,) = out["upcoming"]
+    assert guest["check_in"] == _tue().isoformat() and guest["payment"]["state"] == "link_sent"
+    assert out["active_when"] == "link_sent"
+
+
+async def test_a_closed_lead_is_not_reopened_as_booked_when_it_is_then_paid(db_session, booking):
+    await _set_rule(db_session, booking.user, "link_sent", confirm_by="payment")
+    await _send_on_call(db_session, booking, payment_option="full")
+    request = await _request(db_session, booking.user.id)
+    await sim.set_outcome(request.razorpay_link_id, "paid")
+    await _status(db_session, booking.user, booking.call)
+
+    assert await _lead_status(db_session, booking.user_id) == "closed"
+
+
+async def test_when_the_rule_is_paid_a_paid_link_closes_the_lead_even_if_the_host_confirms_by_hand(db_session, booking):
+    await _set_rule(db_session, booking.user, "paid", confirm_by="host")
+    await _send_on_call(db_session, booking, payment_option="full")
+    assert await _lead_status(db_session, booking.user_id) not in ("booked", "closed")
+
+    request = await _request(db_session, booking.user.id)
+    await sim.set_outcome(request.razorpay_link_id, "paid")
+    await _status(db_session, booking.user, booking.call)
+
+    assert await _lead_status(db_session, booking.user_id) == "closed"
+
+
+async def test_with_the_default_rule_and_a_host_who_confirms_by_hand_a_paid_link_does_not_book_the_guest(db_session, booking):
+    await _set_rule(db_session, booking.user, "confirmed", confirm_by="host")
+    await _send_on_call(db_session, booking, payment_option="full")
+    request = await _request(db_session, booking.user.id)
+    await sim.set_outcome(request.razorpay_link_id, "paid")
+    await _status(db_session, booking.user, booking.call)
+
+    assert await _lead_status(db_session, booking.user_id) not in ("booked", "closed")  # the host confirms
 
 
 # -- tool outages -----------------------------------------------------------------------------------------
@@ -286,80 +452,10 @@ async def test_when_messaging_is_down_the_host_is_told_to_send_the_link(db_sessi
     result = await _send_on_call(db_session, booking)
 
     assert "being sent by the host on WhatsApp shortly" in result
-    assert [m.status for m in (await db_session.scalars(select(SimMessage))).all()] == ["failed"]
+    assert [m.status for m in sim.messages()] == ["failed"]
 
 
-async def test_a_simulated_key_does_nothing_when_the_simulator_is_off(db_session, booking, monkeypatch):
-    monkeypatch.setattr(settings, "simulator_enabled", False)
-
-    result = await _send_on_call(db_session, booking)
-
-    assert "isn't set up" in result or "isn't working" in result or "couldn't" in result.lower()
-    assert await _request(db_session, booking.user.id) is None
-
-
-# -- the control panel ----------------------------------------------------------------------------------------
-
-
-async def test_the_control_panel_is_invisible_unless_enabled(client, monkeypatch):
-    monkeypatch.setattr(settings, "simulator_enabled", False)
-    assert (await client.get("/api/v1/sim/state")).status_code == 404
-    assert (await client.get("/api/v1/sim/pay/sim_x")).status_code == 404
-
-
-async def test_control_calls_need_the_token_when_one_is_set(client, monkeypatch):
-    monkeypatch.setattr(settings, "simulator_token", "s3cret")
-    assert (await client.get("/api/v1/sim/state")).status_code == 401
-    assert (await client.get("/api/v1/sim/state", headers={"X-Sim-Token": "s3cret"})).status_code == 200
-
-
-async def test_the_outage_switch_and_outcomes_work_over_http(client, db_session, booking):
-    await _send_on_call(db_session, booking)
-    request = await _request(db_session, booking.user.id)
-
-    down = await client.post("/api/v1/sim/outage", json={"target": "payment", "down": True})
-    assert down.json()["down"]["payment"] is True
-    assert (await client.post("/api/v1/sim/outage", json={"target": "payment", "down": False})).json()["down"]["payment"] is False
-    assert (await client.post("/api/v1/sim/outage", json={"target": "fax", "down": True})).status_code == 422
-
-    failed = await client.post(f"/api/v1/sim/payments/{request.razorpay_link_id}", json={"outcome": "failed"})
-    assert failed.json() == {"id": request.razorpay_link_id, "status": "created", "last_attempt": "failed"}
-    paid = await client.post(f"/api/v1/sim/payments/{request.razorpay_link_id}", json={"outcome": "paid"})
-    assert paid.json()["status"] == "paid"
-    again = await client.post(f"/api/v1/sim/payments/{request.razorpay_link_id}", json={"outcome": "paid"})
-    assert again.status_code == 409 and "already paid" in again.json()["detail"]
-    assert (await client.post("/api/v1/sim/payments/sim_nope", json={"outcome": "paid"})).status_code == 404
-    assert (await client.post(f"/api/v1/sim/payments/{request.razorpay_link_id}", json={"outcome": "explode"})).status_code == 422
-
-
-async def test_the_guest_side_pay_page_follows_the_gateways_wording(client, db_session, booking):
-    await _send_on_call(db_session, booking)
-    request = await _request(db_session, booking.user.id)
-    link = request.razorpay_link_id
-
-    page = await client.get(f"/api/v1/sim/pay/{link}")
-    assert page.status_code == 200 and "Pay ₹7,350" in page.text and "no real money" in page.text
-
-    failed = await client.post(f"/api/v1/sim/pay/{link}/failed")
-    assert "Payment unsuccessful" in failed.text and "Your villa is held, just one more try needed" in failed.text
-    retry = await client.get(f"/api/v1/sim/pay/{link}")
-    assert "Payment unsuccessful." in retry.text
-
-    done = await client.post(f"/api/v1/sim/pay/{link}/paid")
-    assert "Payment successful" in done.text
-    assert "already paid" in (await client.get(f"/api/v1/sim/pay/{link}")).text
-    assert (await client.get("/api/v1/sim/pay/sim_nothing")).status_code == 404
-
-
-async def test_the_test_whatsapp_log_can_be_read(client, db_session, booking):
-    await _send_on_call(db_session, booking)
-
-    messages = (await client.get("/api/v1/sim/messages")).json()
-
-    assert len(messages) == 1 and messages[0]["status"] == "sent" and "complete your" not in messages[0]["body"].lower() or messages[0]["body"]
-
-
-async def test_the_ordinary_payment_poller_also_confirms_a_simulated_payment(db_session, booking):
+async def test_the_ordinary_payment_poller_also_confirms_a_payment(db_session, booking):
     # Nobody calls get_payment_status: the minute-by-minute poller must reach the same result.
     await _send_on_call(db_session, booking)
     request = await _request(db_session, booking.user.id)

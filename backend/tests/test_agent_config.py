@@ -34,7 +34,7 @@ async def test_new_host_gets_the_documented_defaults(client, auth_headers):
     }
     assert config["hot_lead"]["rules"] == []
     assert set(config["hot_lead"]["hot_on"]) == {"availability_confirmed", "pricing_requested", "negotiation_initiated"}
-    assert config["booking"] == {"confirm_by": "host"}
+    assert config["booking"] == {"confirm_by": "host", "active_when": "confirmed"}
     assert config["payment"] == {
         "kind": "full",
         "split_percent": 30,
@@ -169,3 +169,21 @@ async def test_busy_call_defaults_keep_todays_behaviour_and_are_validated(client
 
     for bad in ({"mode": "agent_call"}, {"mode": "nonsense"}, {"callback_wait_minutes": 0}, {"callback_wait_minutes": 61}):
         assert (await client.put(URL, headers=auth_headers, json={"busy_calls": bad})).status_code == 422, bad
+
+
+async def test_the_active_booking_rule_saves_and_rejects_unknown_values(client, auth_headers):
+    saved = await client.put(URL, headers=auth_headers, json={"booking": {"confirm_by": "host", "active_when": "link_sent"}})
+    assert saved.status_code == 200 and saved.json()["config"]["booking"]["active_when"] == "link_sent"
+    assert (await client.get(URL, headers=auth_headers)).json()["config"]["booking"]["active_when"] == "link_sent"
+
+    bad = await client.put(URL, headers=auth_headers, json={"booking": {"active_when": "whenever"}})
+    assert bad.status_code == 422
+
+
+async def test_sending_only_one_booking_field_keeps_the_other_as_saved(client, auth_headers):
+    await client.put(URL, headers=auth_headers, json={"booking": {"confirm_by": "payment", "active_when": "link_sent"}})
+
+    await client.put(URL, headers=auth_headers, json={"booking": {"confirm_by": "host"}})
+
+    booking = (await client.get(URL, headers=auth_headers)).json()["config"]["booking"]
+    assert booking == {"confirm_by": "host", "active_when": "link_sent"}

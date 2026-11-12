@@ -9,6 +9,7 @@ import { ListRow, ListRowFooter, ListRowHeader } from "@/components/ui/list-row"
 import { Skeleton } from "@/components/ui/skeleton";
 import { Cell, Sheet, Toolbar } from "@/components/ui/sheet";
 import { SegmentedChoice } from "@/components/segmented-choice";
+import { SpacezStayRequestActions } from "@/components/spacez-stay-request-actions";
 import { StatusChip, type StatusTone } from "@/components/status-chip";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError } from "@/lib/api";
@@ -25,6 +26,7 @@ const KIND_LABEL: Record<TicketKind, string> = {
   promise: "Promise",
   missed_call: "Call back",
   payment: "Payment",
+  stay_request: "Early / late", // Spacez only: early check-in / late check-out awaiting the team's yes or no
 };
 
 const URGENCY_TONE: Partial<Record<TicketOut["urgency"], StatusTone>> = {
@@ -112,7 +114,16 @@ export function TicketsTab({ onChanged }: { onChanged?: () => void }) {
                       )}
                     </div>
                     <div className="flex gap-2">
-                      {ticket.status === "open" ? (
+                      {ticket.status === "open" && ticket.kind === "stay_request" ? (
+                        // Spacez only: answered with yes / no (which messages the guest), never "mark done".
+                        <SpacezStayRequestActions
+                          ticketId={ticket.id}
+                          onAnswered={() => {
+                            refetch();
+                            onChanged?.();
+                          }}
+                        />
+                      ) : ticket.status === "open" ? (
                         <>
                           <Button size="sm" disabled={busyId === ticket.id} onClick={() => setStatus(ticket, "done")}>
                             Mark done

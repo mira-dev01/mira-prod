@@ -96,10 +96,6 @@ def _link(data: dict) -> PaymentLink:
 
 async def verify_credentials(key_id: str, key_secret: str) -> None:
     """Raises RazorpayError unless the keys are accepted (a cheap read-only call)."""
-    from app.integrations import payment_simulator
-
-    if payment_simulator.is_sim_key(key_id):
-        return await payment_simulator.verify_credentials()
     await _call("GET", "/payment_links", key_id, key_secret, params={"count": 1})
 
 
@@ -115,10 +111,6 @@ async def create_payment_link(
     customer_contact: str | None = None,
     notes: dict | None = None,
 ) -> PaymentLink:
-    from app.integrations import payment_simulator
-
-    if payment_simulator.is_sim_key(key_id):
-        return await payment_simulator.create_payment_link(amount_rupees=amount_rupees, description=description)
     paise = to_paise(amount_rupees)
     if paise < MIN_AMOUNT_PAISE:
         raise RazorpayError("That amount is too small to collect online.")
@@ -142,18 +134,10 @@ async def create_payment_link(
 
 
 async def fetch_payment_link(key_id: str, key_secret: str, link_id: str) -> PaymentLink:
-    from app.integrations import payment_simulator
-
-    if payment_simulator.is_sim_key(key_id):
-        return await payment_simulator.fetch_payment_link(link_id)
     return _link(await _call("GET", f"/payment_links/{link_id}", key_id, key_secret))
 
 
 async def cancel_payment_link(key_id: str, key_secret: str, link_id: str) -> PaymentLink:
     """Only a link that is still unpaid can be cancelled; callers treat a
     refusal as 'already paid or expired' and re-fetch."""
-    from app.integrations import payment_simulator
-
-    if payment_simulator.is_sim_key(key_id):
-        return await payment_simulator.cancel_payment_link(link_id)
     return _link(await _call("POST", f"/payment_links/{link_id}/cancel", key_id, key_secret))

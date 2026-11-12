@@ -13,6 +13,7 @@ from app.integrations import llm_clients
 from app.utils import background
 from app.voice import handoff_signal
 from app.api.v1 import (
+    active_bookings,
     analytics,
     auth,
     bookings,
@@ -29,14 +30,15 @@ from app.api.v1 import (
     preferences,
     pricing,
     properties,
-    simulator,
     take_call,
     billing,
     payments,
     policies,
+    spacez_stay_requests,
     tickets,
     technicians,
     voice,
+    whatsapp_monitor,
 )
 from app.api.v1.webhooks import exotel, whatsapp
 from app.api.v1 import admin, admin_auth
@@ -405,6 +407,8 @@ app.add_middleware(
 API_PREFIX = "/api/v1"
 app.include_router(auth.router, prefix=API_PREFIX)
 app.include_router(properties.router, prefix=API_PREFIX)
+# Before bookings: /bookings/active must not be read as /bookings/{booking_id}.
+app.include_router(active_bookings.router, prefix=API_PREFIX)
 app.include_router(bookings.router, prefix=API_PREFIX)
 app.include_router(calls.router, prefix=API_PREFIX)
 app.include_router(guests.router, prefix=API_PREFIX)
@@ -421,6 +425,7 @@ app.include_router(billing.router, prefix=API_PREFIX)
 app.include_router(payments.router, prefix=API_PREFIX)
 app.include_router(policies.router, prefix=API_PREFIX)
 app.include_router(tickets.router, prefix=API_PREFIX)
+app.include_router(spacez_stay_requests.router, prefix=API_PREFIX)  # Spacez only: early check-in / late check-out yes-no
 app.include_router(onboarding.router, prefix=API_PREFIX)
 app.include_router(preferences.router, prefix=API_PREFIX)
 app.include_router(notification_settings.router, prefix=API_PREFIX)
@@ -430,7 +435,7 @@ app.include_router(exotel.router, prefix=API_PREFIX)
 app.include_router(admin_auth.router, prefix=API_PREFIX)
 app.include_router(admin.router, prefix=API_PREFIX)
 app.include_router(whatsapp.router, prefix=API_PREFIX)
-app.include_router(simulator.router, prefix=API_PREFIX)
+app.include_router(whatsapp_monitor.router, prefix=API_PREFIX)
 
 
 @app.get("/health")

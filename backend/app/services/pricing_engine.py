@@ -70,7 +70,7 @@ class PriceBreakdown:
     # off it). Distinct from the nights-only case above because the guest DID
     # give exact dates -- the spoken caveat differs.
     live_rate_unavailable: bool = False
-    # The line-by-line bill (stay_bill.to_dict) when the property has full booking terms. Then `total`
+    # SPACEZ ONLY: the line-by-line bill (spacez_stay_bill.to_dict) when the property has full booking terms. Then `total`
     # is what the guest PAYS in full (total reservation + GST + pickup), the one number to say aloud.
     bill: dict | None = None
 
@@ -197,6 +197,24 @@ def _stay_totals(
     base_total = round(live_total, 2) if live_total is not None else round(base_price * nights, 2)
     discount_amount = round(base_total * discount_percent / 100, 2)
     return base_total, discount_amount, round(base_total - discount_amount, 2)
+
+
+def _static_stay_total(property_: Property, check_in: date | None, check_out: date | None, nights: int | None) -> float | None:
+    """The stay total from the host's own rates when the property has "weekend rate differs" on: Friday and
+    Saturday nights cost weekend_price, every other night base_price. None when the toggle is off, there is
+    no weekend price, or no exact dates (a nights-only quote has no way to know which nights are weekend) --
+    the caller then uses base_price * nights exactly as it always did."""
+    if not property_.weekend_rate_enabled or not property_.weekend_price or float(property_.weekend_price) <= 0:
+        return None
+    if check_in is None or check_out is None or check_out <= check_in:
+        return None
+    weekend_price = float(property_.weekend_price)
+    base_price = float(property_.base_price)
+    total = 0.0
+    for offset in range((check_out - check_in).days):
+        night = check_in + timedelta(days=offset)
+        total += weekend_price if night.weekday() in (4, 5) else base_price  # Friday = 4, Saturday = 5
+    return round(total, 2)
 
 
 def _stay_includes_weekend_night(check_in: date, check_out: date) -> bool:
@@ -504,6 +522,9 @@ async def calculate_price(
         live_rate_unavailable = False
     elif live_rate_unavailable:
         is_estimate = True
+    if live_total is None:
+        # The host's own weekend rate (a live Airbnb rate above already carries its own per-date prices).
+        live_total = _static_stay_total(property_, check_in, check_out, resolved_nights)
     discount_percent = 0.0
     if apply_discounts:
         discount_percent = await _length_of_stay_discount_percent(db, property_.id, resolved_nights, host_id=host_id)
@@ -641,7 +662,11 @@ async def evaluate_stay_prices(
             [r for r in negotiation_rules if property_str in (r.property_ids or [])],
             resolved_nights,
         )
-        standard_total, _, total = _stay_totals(float(p.base_price), resolved_nights, live_total, offer_percent)
+        # The host's own weekend rate when "weekend rate differs" is on (never overrides a live/cached rate).
+        host_total = _static_stay_total(p, check_in, check_out, resolved_nights) if live_total is None and exact_dates else None
+        standard_total, _, total = _stay_totals(
+            float(p.base_price), resolved_nights, live_total if live_total is not None else host_total, offer_percent
+        )
         prices[p.id] = StayPrice(
             nights=resolved_nights,
             per_night=round(total / resolved_nights, 2),

@@ -141,7 +141,7 @@ const properties = ["Hunzuru Wabi Sabi Villa near Manali", "The Slow-life Cottag
   saturday_minimum_stay_enabled: i === 0, room_rental_enabled: i === 1, room_base_price: i === 1 ? 4500 : null,
   rentable_room_count: i === 1 ? 3 : null, room_max_guests: i === 1 ? 2 : null, room_details: null, room_ical_url: null,
   airbnb_listing_id: null, smart_price_estimate: null, smart_price_sample_size: 0, smart_price_updated_at: null,
-  exact_airbnb_pricing: i === 0, is_premium: i === 0, host_transfer_phone: null,
+  exact_airbnb_pricing: i === 0, is_premium: i === 0, weekend_rate_enabled: i === 1, weekend_price: i === 1 ? 18000 : null, host_transfer_phone: null,
   call_handling_mode: "MIRA", call_handling_schedule_start: null, call_handling_schedule_end: null,
   timezone: "Asia/Kolkata", created_at: "2026-10-01T00:00:00Z",
 }));
@@ -360,7 +360,7 @@ const agentConfig = {
   config: {
     collect: { dates: "required", guests: "required", purpose: "optional", location: "optional", budget: "off", email: "off" },
     hot_lead: { hot_on: ["availability_confirmed", "pricing_requested"] },
-    booking: { confirm_by: "host" },
+    booking: { confirm_by: "host", active_when: "confirmed" },
     payment: { kind: "split", split_percent: 30, balance_due_days_before_checkin: 7, hold_minutes: 30 },
     busy_calls: { mode: "callback_invite", callback_wait_minutes: 10 },
   },
@@ -380,6 +380,37 @@ const guestDetail = {
   recent_calls: [{ id: "c1", property_id: "preview-prop-0", property_name: "Hunzuru Wabi Sabi Villa near Manali", status: "completed", ai_summary: callDetail.ai_summary, started_at: ago(2) }],
 };
 
+// Leads -> Active bookings: one guest in stay with two unseen requests, and upcoming guests in each payment state.
+const dayFromNow = (n: number) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+const at = (n: number, time: string) => `${dayFromNow(n)}T${time}:00+05:30`;
+const pay = (state: string, label: string, tone: string, extra: Record<string, unknown> = {}) => ({
+  state, label, tone, payment_down: false, amount_due: 14700, total_amount: 14700, balance: null, balance_due_on: null, paid_at: null,
+  link_sent_at: null, hold_expires_at: null, short_url: null, stay_code: null, request_id: "preview-pay", ...extra,
+});
+const guest = (id: string, name: string, villa: string, inDays: number, nights: number, phase: string, payment: unknown, activities: unknown[] = []) => ({
+  lead_id: id, guest_name: name, phone: "+919876543210", property_id: "preview-prop-2", property_name: villa,
+  check_in: dayFromNow(inDays), check_out: dayFromNow(inDays + nights), check_in_at: at(inDays, "14:00"), check_out_at: at(inDays + nights, "11:00"),
+  nights, num_guests: 8, phase, payment, activity_count: activities.length, activities,
+});
+const activeBookings = {
+  active_when: "link_sent",
+  payment_down: false,
+  unread_activity: 2,
+  in_stay: [
+    guest("a1", "Asha Rao", "Deccan Escape", -1, 3, "in_stay", pay("part_paid", "Part paid", "pending", { amount_due: 7350, balance: 7350, balance_due_on: dayFromNow(1), stay_code: "DECC-0007" }), [
+      { id: "n1", message: "Needs extra towels and a hair dryer", urgency: "medium", created_at: new Date(Date.now() - 20 * 60000).toISOString() },
+      { id: "n2", message: "Asked for a late check-out around 3 pm", urgency: "high", created_at: new Date(Date.now() - 5 * 60000).toISOString() },
+    ]),
+  ],
+  upcoming: [
+    guest("a2", "Ravi Kumar", "Woodhouse Farm", 3, 2, "upcoming", pay("paid", "Paid", "live", { stay_code: "WOOD-0003" })),
+    guest("a3", "Meena Shah", "Casa Blu", 6, 2, "upcoming", pay("link_sent", "Link sent, awaiting payment", "progress", { hold_expires_at: at(0, "23:30"), short_url: "https://rzp.io/l/abc" })),
+    guest("a4", "Rohan Das", "Deccan Escape", 9, 4, "upcoming", pay("payment_failed", "Payment failed, link open", "orange", { hold_expires_at: at(0, "23:30"), short_url: "https://rzp.io/l/def" })),
+    guest("a5", "Isha Verma", "Casa Blu", 14, 2, "upcoming", pay("delivery_failed", "Link not delivered", "destructive", { short_url: "https://rzp.io/l/ghi" })),
+    guest("a6", "Karan Mehta", "Woodhouse Farm", 20, 3, "upcoming", pay("no_link", "No payment link", "neutral", { amount_due: null, total_amount: null })),
+  ],
+};
+
 const routes: Array<[RegExp, unknown]> = [
   [/^\/analytics\/overview/, overview],
   [/^\/leads\/service-requests/, serviceRequests],
@@ -387,7 +418,14 @@ const routes: Array<[RegExp, unknown]> = [
   [/^\/calls\/[^/]+/, callDetail],
   [/^\/calls/, calls],
   [/^\/faq\/gaps|^\/faq-gaps|^\/unanswered/, faqGaps],
-  [/^\/tickets/, []],
+  // Spacez only: an early check-in / late check-out request waiting for the team's yes / no.
+  [/^\/tickets/, [{
+    id: "preview-ticket-1", kind: "stay_request", summary: "Late check-out? Asha Rao at Woodhouse Farm", urgency: "high", status: "open", source: "tool",
+    detail: "Asha Rao has a confirmed booking at Woodhouse Farm (18 Dec 2026 to 20 Dec 2026) and asks for late check-out (around 3 pm). The flat charge is ₹1,000. Can the villa do it? Approve to send the guest a payment link on WhatsApp, or decline and the guest is told the team cannot.",
+    created_at: ago(20), resolved_at: null, property_id: "preview-prop-2", property_name: "Woodhouse Farm", call_session_id: null, guest_name: "Asha Rao", guest_phone: "+919876543210",
+  }]],
+  [/^\/bookings\/active\/activity-count/, { count: 2 }],
+  [/^\/bookings\/active/, activeBookings],
   [/^\/bookings\/reconciliation/, { items: [], total: 0 }],
   [/^\/preferences\/navigation/, navigation],
   [/^\/auth\/me\/call-hours-status/, { enabled: false, current_owner: "MIRA", checked_at: "2026-11-09T10:00:00Z" }],

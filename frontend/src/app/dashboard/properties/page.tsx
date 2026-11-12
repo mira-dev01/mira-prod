@@ -56,6 +56,8 @@ const emptyForm: PropertyCreate = {
   room_rental_enabled: false,
   exact_airbnb_pricing: false,
   is_premium: false,
+  weekend_rate_enabled: false,
+  weekend_price: null,
 };
 
 function normalizeForSubmit(form: PropertyCreate): PropertyCreate {
@@ -72,6 +74,8 @@ function normalizeForSubmit(form: PropertyCreate): PropertyCreate {
     neighborhood_info: form.neighborhood_info || null,
     room_details: form.room_details || null,
     room_ical_url: form.room_ical_url || null,
+    // A weekend rate only means something while the toggle is on.
+    weekend_price: form.weekend_rate_enabled ? form.weekend_price || null : null,
   };
 }
 
@@ -102,6 +106,8 @@ function propertyToForm(property: PropertyOut): PropertyCreate {
     room_ical_url: property.room_ical_url ?? "",
     exact_airbnb_pricing: property.exact_airbnb_pricing,
     is_premium: property.is_premium,
+    weekend_rate_enabled: property.weekend_rate_enabled,
+    weekend_price: property.weekend_price,
   };
 }
 

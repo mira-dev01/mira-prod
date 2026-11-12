@@ -58,14 +58,6 @@ def _sender_identity() -> dict[str, str] | None:
 
 
 async def send_whatsapp_message(to_phone: str, body: str, timeout: float = 15.0) -> dict:
-    if settings.simulator_enabled:
-        # Test services: the message is logged for a tester to read instead of reaching a real guest.
-        from app.integrations import payment_simulator
-
-        try:
-            return {"status": "sent", "sid": await payment_simulator.record_message(to_phone, body), "twilio_status": "delivered"}
-        except payment_simulator.SimulatedOutage as exc:
-            raise TwilioError(str(exc)) from exc
     if not settings.twilio_enabled:
         return {"status": "skipped", "reason": "Twilio is disabled (TWILIO_ENABLED=false)"}
     if not (settings.twilio_account_sid and settings.twilio_auth_token):
@@ -142,8 +134,6 @@ async def send_whatsapp_tracked(to_phone: str, body: str, timeout: float = 15.0)
 async def fetch_message_status(message_sid: str, timeout: float = 10.0) -> tuple[str | None, int | None]:
     """(status, error_code) of a message already sent: queued / sent / delivered
     / read, or failed / undelivered (error_code explains why, e.g. 63016)."""
-    if message_sid.startswith("sim_msg_"):
-        return "delivered", None
     if not (settings.twilio_account_sid and settings.twilio_auth_token):
         raise TwilioError("Twilio is not configured")
     async with httpx.AsyncClient(timeout=timeout) as client:
@@ -157,6 +147,42 @@ async def fetch_message_status(message_sid: str, timeout: float = 10.0) -> tuple
     return data.get("status"), data.get("error_code")
 
 
+async def list_recent_whatsapp_messages(limit: int = 100, timeout: float = 15.0) -> list[dict]:
+    """The account's most recent WhatsApp messages, both directions, newest first, with what became of each
+    (Twilio's own record: status, error code such as 63016). Read-only; raises TwilioError when Twilio cannot
+    be asked. Used by the message monitor (app/api/v1/whatsapp_monitor.py)."""
+    if not (settings.twilio_account_sid and settings.twilio_auth_token):
+        raise TwilioError("Twilio is not configured")
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        response = await client.get(
+            f"{_BASE_URL}/Accounts/{settings.twilio_account_sid}/Messages.json",
+            auth=(settings.twilio_account_sid, settings.twilio_auth_token),
+            params={"PageSize": max(1, min(int(limit), 1000))},
+        )
+    if response.status_code >= 400:
+        raise TwilioError(f"message list failed ({response.status_code})")
+    out = []
+    for item in response.json().get("messages", []):
+        sender, to = str(item.get("from") or ""), str(item.get("to") or "")
+        if not (sender.startswith("whatsapp:") or to.startswith("whatsapp:")):
+            continue  # SMS and other channels on the same account are not ours to show
+        out.append(
+            {
+                "sid": item.get("sid"),
+                "direction": "inbound" if str(item.get("direction") or "").startswith("inbound") else "outbound",
+                "from": sender.removeprefix("whatsapp:"),
+                "to": to.removeprefix("whatsapp:"),
+                "body": item.get("body") or "",
+                "status": item.get("status"),
+                "error_code": item.get("error_code"),
+                "error_message": item.get("error_message"),
+                "num_media": int(item.get("num_media") or 0),
+                "at": item.get("date_sent") or item.get("date_created"),
+            }
+        )
+    return out
+
+
 async def send_whatsapp_template(
     to_phone: str, content_sid: str, content_variables: dict[str, str], timeout: float = 15.0
 ) -> dict:
@@ -165,14 +191,6 @@ async def send_whatsapp_template(
     button (custom label, no raw URL text, no link-preview card) rather than
     an auto-linkified URL. content_variables keys are the template's "{{N}}"
     placeholders as strings, e.g. {"1": "🔴", "2": "HIGH"}."""
-    if settings.simulator_enabled:
-        from app.integrations import payment_simulator
-
-        try:
-            sid = await payment_simulator.record_message(to_phone, f"[template {content_sid}] {json.dumps(content_variables)}", "template")
-            return {"status": "sent", "sid": sid, "twilio_status": "delivered"}
-        except payment_simulator.SimulatedOutage as exc:
-            raise TwilioError(str(exc)) from exc
     if not settings.twilio_enabled:
         return {"status": "skipped", "reason": "Twilio is disabled (TWILIO_ENABLED=false)"}
     if not (settings.twilio_account_sid and settings.twilio_auth_token):

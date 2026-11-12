@@ -27,8 +27,10 @@ import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { RailBrand, RailLabel, RailSection, RailSidebar, useRail } from "@/components/rail-sidebar";
+import { ActivityBadge } from "@/components/activity-badge";
 import { TalkToMiraDialog } from "@/components/talk-to-mira-dialog";
 import { useAuth } from "@/lib/auth-context";
+import { useBookingActivity } from "@/lib/booking-activity-context";
 import { hrefsForInterests } from "@/lib/use-cases";
 
 // Technicians stayed a Settings tab (see app/dashboard/settings/page.tsx) --
@@ -61,6 +63,8 @@ function NavLinks({ onNavigate, onTalkToMira }: { onNavigate?: () => void; onTal
   // rail's centre line (see rail-sidebar.tsx); the mobile drawer keeps its
   // original paddings and always-visible labels.
   const { rail } = useRail();
+  // Requests from guests with an active booking: a number on the Leads link, in the rail and in the drawer.
+  const { count: bookingActivity } = useBookingActivity();
 
   function renderLink(link: (typeof links)[number]) {
     const active =
@@ -79,7 +83,12 @@ function NavLinks({ onNavigate, onTalkToMira }: { onNavigate?: () => void; onTal
           active ? "bg-accent font-medium text-accent-foreground" : "font-normal text-muted-foreground"
         )}
       >
-        <Icon className="size-4 shrink-0" />
+        <span className="relative shrink-0">
+          <Icon className="size-4" />
+          {link.href === "/dashboard/leads" && bookingActivity > 0 && (
+            <ActivityBadge count={bookingActivity} className="absolute -top-2 -right-3 size-4 text-[10px]" />
+          )}
+        </span>
         <RailLabel>{link.label}</RailLabel>
       </Link>
     );

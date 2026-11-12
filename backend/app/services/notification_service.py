@@ -26,11 +26,25 @@ async def create_notification(
     call_session_id: uuid.UUID | None = None,
     urgency: str = "low",
     lead_id: uuid.UUID | None = None,
+    guest_phone: str | None = None,
+    from_guest: bool | None = None,
 ) -> Notification:
+    """`from_guest`: whether this is a request from a guest (the host may need to act), so that if the guest has an
+    active booking it is counted on Leads -> Active bookings (active_booking_service.resolve_booking_lead). Left as None
+    it is decided by the channel: a WhatsApp or escalation notice is a guest's request, a system notice is not.
+    `guest_phone` says who, when the notice has no call behind it."""
+    booking_lead_id = None
+    if from_guest if from_guest is not None else channel in GUEST_REQUEST_CHANNELS:
+        from app.services import active_booking_service  # here: it imports models that import this module's callers
+
+        # Decided BEFORE the notification is saved, so the dashboard's live stream (which reads it the moment it
+        # exists) never sees it untagged and the banner always knows which booked guest it is about.
+        booking_lead_id = await active_booking_service.resolve_booking_lead(db, property_id, call_session_id, guest_phone)
     notification = Notification(
         property_id=property_id,
         call_session_id=call_session_id,
         lead_id=lead_id,
+        booking_lead_id=booking_lead_id,
         channel=channel,
         urgency=urgency,
         message=message,
@@ -40,6 +54,12 @@ async def create_notification(
     await db.commit()
     await db.refresh(notification)
     return notification
+
+
+# Channels whose notifications are a guest asking for something. "system" notices (a payment arrived, a link did
+# not reach the guest) are about the guest, not requests from them, so they are not counted unless the caller
+# says from_guest=True.
+GUEST_REQUEST_CHANNELS = ("whatsapp", "escalation")
 
 
 async def list_notifications(

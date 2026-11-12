@@ -155,6 +155,15 @@ class BookingConfig(_Section):
     # host: the host confirms every booking by hand.
     # payment: a verified payment confirms it.
     confirm_by: Literal["host", "payment"] = "host"
+    # When a guest counts as a booking on Leads -> "Active bookings" (and the request shows as closed in
+    # Booking requests, where the lead is closed). A dashboard label only: what the agent tells a guest is still decided by
+    # confirm_by above and by the payment provider.
+    #   confirmed:  when the booking is confirmed by the rule above (payment verified, or the host confirms it) --
+    #               how it has always worked;
+    #   paid:       as soon as the payment provider says the link is paid, even if the host has yet to confirm;
+    #   link_sent:  the moment the payment link has been sent (Spacez).
+    # A host can always mark a request as booked by hand in Booking requests, whatever this says.
+    active_when: Literal["confirmed", "paid", "link_sent"] = "confirmed"
 
 
 class PaymentConfig(_Section):

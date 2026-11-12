@@ -1,4 +1,4 @@
-"""The bill (app/services/stay_bill.py) against the booking-flow rules, including the document's own
+"""The bill (app/services/spacez_stay_bill.py) against the booking-flow rules, including the document's own
 two worked examples."""
 
 from datetime import date
@@ -6,8 +6,8 @@ from decimal import Decimal as D
 
 import pytest
 
-from app.services import stay_bill as sb
-from app.services.stay_bill import BillInvalid, BillUnknown, Request, Terms
+from app.services import spacez_stay_bill as sb
+from app.services.spacez_stay_bill import BillInvalid, BillUnknown, Request, Terms
 
 
 def terms(**kw) -> Terms:
@@ -75,10 +75,10 @@ def test_split_now_rounds_up():
 # -- the stay -------------------------------------------------------------------------------------
 
 
-def test_friday_and_saturday_nights_need_a_weekend_rate_and_never_default_to_the_weeknight_rate():
-    with pytest.raises(BillUnknown) as unknown:
-        sb.compute(terms(), req("2026-12-11", "2026-12-13"))  # Fri 11, Sat 12
-    assert "Friday and Saturday" in unknown.value.what
+def test_friday_and_saturday_nights_use_the_weeknight_rate_when_the_villa_has_no_weekend_rate():
+    bill = sb.compute(terms(), req("2026-12-11", "2026-12-13"))  # Fri 11, Sat 12
+    assert bill.stay_total == 20000 and bill.weekend_nights == 2  # 2 nights at the 10,000 rate
+    assert bill.weekend_rate == bill.weeknight_rate == 10000
 
 
 def test_a_configured_weekend_rate_is_used_for_those_nights_only():
@@ -165,6 +165,17 @@ def test_a_discount_comes_off_the_stay_only_never_meals():
 # -- pickup -----------------------------------------------------------------------------------------
 
 
+def test_early_checkin_and_late_checkout_are_lines_only_when_asked_flat_outside_gst_and_paid_now():
+    plain = sb.compute(terms(), req())
+    asked = sb.compute(terms(), req(early_checkin=True, late_checkout=True))
+    labels = [ln.label for ln in asked.lines]
+    assert "Early check-in" not in [ln.label for ln in plain.lines] and "Late check-out" not in [ln.label for ln in plain.lines]
+    assert "Early check-in" in labels and "Late check-out" in labels
+    assert asked.gst == plain.gst and asked.total_reservation == plain.total_reservation  # outside GST
+    assert asked.full_payable == plain.full_payable + 2000
+    assert asked.split_now == plain.split_now + 2000 and asked.split_later == plain.split_later
+
+
 def test_pickup_is_outside_gst_and_paid_in_full_even_on_split():
     bill = sb.compute(terms(base_rate=D(7000), pickup_fare=D(1800)), req(pickup=True))
     assert bill.gst == 700 and bill.full_payable == 14000 + 700 + 1800
@@ -208,3 +219,14 @@ def test_checkout_must_be_after_checkin():
 def test_the_bill_round_trips_to_json():
     out = sb.to_dict(sb.compute(terms(base_rate=D(7000)), req()))
     assert out["full_payable"] == 14700 and out["split_now"] == 7350 and out["lines"][0]["label"] == "Stay"
+
+
+def test_the_stay_line_names_only_the_nights_it_charges():
+    mixed = sb.compute(terms(weekend_rate=D(14000)), req("2026-12-10", "2026-12-13"))  # Thu, Fri, Sat
+    weekend_only = sb.compute(terms(weekend_rate=D(14000)), req("2026-12-11", "2026-12-13"))
+    same_rate = sb.compute(terms(), req("2026-12-11", "2026-12-13"))
+    note = lambda bill: next(ln.note for ln in bill.lines if ln.label == "Stay")  # noqa: E731
+
+    assert note(mixed) == "1 weeknight(s) at ₹10,000 and 2 Friday/Saturday night(s) at ₹14,000"
+    assert note(weekend_only) == "2 Friday/Saturday night(s) at ₹14,000"
+    assert note(same_rate) == "2 night(s) at ₹10,000"

@@ -3,7 +3,7 @@ import logging
 import re
 import uuid
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -128,6 +128,11 @@ _KB_FIELDS = frozenset(
     }
 )
 
+# Spacez only: a villa with booking terms states its rates and bedrooms in its knowledge base
+# (app/services/spacez_knowledge.py), so these rebuild the facts for THAT kind of property -- an ordinary
+# property's base price is not a fact and must not cost a rebuild.
+_SPACEZ_KB_FIELDS = frozenset({"base_price", "weekend_rate_enabled", "weekend_price", "bedroom_count"})
+
 
 _ROOM_RENTAL_FIELDS = ("room_rental_enabled", "room_base_price", "rentable_room_count", "room_max_guests")
 
@@ -147,6 +152,16 @@ def _check_room_rental_complete(values: dict) -> None:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             "To rent by the room, set the price per room, how many rooms can be rented, and the guests per room.",
+        )
+
+
+def _check_weekend_rate_complete(values: dict) -> None:
+    """"Weekend rate differs" needs the weekend rate: a toggle that is on with no price would leave a
+    Friday/Saturday quote with nothing to charge, so it is refused up front."""
+    if values.get("weekend_rate_enabled") and not (values.get("weekend_price") or 0) > 0:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Enter the weekend rate (₹ per night) to turn on a different Friday and Saturday rate.",
         )
 
 
@@ -381,6 +396,7 @@ async def create_property(
     payload: PropertyCreate, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ) -> Property:
     _check_room_rental_complete(payload.model_dump())
+    _check_weekend_rate_complete(payload.model_dump())
     property_ = Property(
         user_id=current_user.id,
         **payload.model_dump(exclude={"faq"}),
@@ -393,6 +409,25 @@ async def create_property(
     await _resync_facts(db, property_)
     _resync_policy_scopes(current_user.id)
     return property_
+
+
+@router.get("/gallery", response_model=list[PropertyGalleryOut])
+async def get_properties_gallery(ids: str = Query("", max_length=600), db: AsyncSession = Depends(get_db)) -> list[Property]:
+    """No-auth public endpoint behind the guest-facing list page (frontend /p/list?ids=a,b,c): the properties the
+    agent recommended on a call, each with its photos. Same minimal PropertyGalleryOut as the single gallery;
+    at most 8 ids, in the order given; an id that is not a property is skipped. Declared before
+    /{property_id} so "gallery" is not read as an id."""
+    wanted: list[uuid.UUID] = []
+    for raw in ids.split(","):
+        try:
+            wanted.append(uuid.UUID(raw.strip()))
+        except ValueError:
+            continue
+    wanted = list(dict.fromkeys(wanted))[:8]
+    if not wanted:
+        return []
+    found = {p.id: p for p in (await db.scalars(select(Property).where(Property.id.in_(wanted)))).all()}
+    return [found[i] for i in wanted if i in found]
 
 
 @router.get("/{property_id}", response_model=PropertyOut)
@@ -425,6 +460,10 @@ async def update_property(
     updates = payload.model_dump(exclude_unset=True)
     if updates.keys() & set(_ROOM_RENTAL_FIELDS):
         _check_room_rental_complete({f: updates.get(f, getattr(property_, f)) for f in _ROOM_RENTAL_FIELDS})
+    if updates.keys() & {"weekend_rate_enabled", "weekend_price"}:
+        _check_weekend_rate_complete(
+            {f: updates.get(f, getattr(property_, f)) for f in ("weekend_rate_enabled", "weekend_price")}
+        )
     if "faq" in updates and updates["faq"] is not None:
         updates["faq"] = [item if isinstance(item, dict) else item.model_dump() for item in payload.faq]
     if "amenities" in updates:
@@ -438,7 +477,7 @@ async def update_property(
         setattr(property_, field, value)
     await db.commit()
     await db.refresh(property_)
-    if _KB_FIELDS & updates.keys():
+    if _KB_FIELDS & updates.keys() or (property_.pricing_terms and _SPACEZ_KB_FIELDS & updates.keys()):
         await _resync_facts(db, property_)
     if _NAME_FIELDS & updates.keys():
         _resync_policy_scopes(current_user.id)

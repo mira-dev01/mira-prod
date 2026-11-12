@@ -13,7 +13,6 @@ from app.models.notification import Notification
 from app.models.price_event import PriceEvent
 from app.models.pricing_rule import PricingRule
 from app.models.service_incident import ServiceIncident
-from app.models.simulator import SimMessage, SimPaymentLink, SimulatorFlag
 from app.models.service_usage_event import ServiceUsageEvent
 from app.models.property import Property
 from app.models.property_chunk import PropertyChunk
@@ -21,6 +20,7 @@ from app.models.technician import Technician
 from app.models.payment import HoldWaiter, PaymentRequest
 from app.models.place import AdminRegion, Place, PlaceAlias
 from app.models.policy import Policy, PolicyDocument
+from app.models.spacez_stay_request import SpacezStayRequest
 from app.models.ticket import Ticket
 from app.models.unanswered_question import UnansweredQuestion
 from app.models.user import User
@@ -46,9 +46,6 @@ __all__ = [
     "Property",
     "PropertyChunk",
     "ServiceIncident",
-    "SimMessage",
-    "SimPaymentLink",
-    "SimulatorFlag",
     "ServiceUsageEvent",
     "Technician",
     "HoldWaiter",
@@ -57,6 +54,7 @@ __all__ = [
     "PlaceAlias",
     "Policy",
     "PolicyDocument",
+    "SpacezStayRequest",
     "Ticket",
     "UnansweredQuestion",
     "User",

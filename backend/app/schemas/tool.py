@@ -88,7 +88,7 @@ class GetPricingArgs(BaseModel):
     # forbids for discounts; the same "only when asked" rule applies here.
     requested_early_checkin: bool = False
     requested_late_checkout: bool = False
-    # Only read for a property with full booking terms (properties.pricing_terms): the rest of the
+    # SPACEZ ONLY -- read just for a property with full booking terms (properties.pricing_terms): the rest of the
     # party and what they want on top of the stay. num_guests above is adults + children.
     children: int = Field(default=0, ge=0)
     pets: int = Field(default=0, ge=0)
@@ -332,6 +332,20 @@ class SearchFaqArgs(BaseModel):
 class SendPhotosArgs(BaseModel):
     property_id: str
     guest_phone: str
+    guest_name: str | None = None  # only used to greet them in the WhatsApp message
+
+    @field_validator("guest_phone")
+    @classmethod
+    def _clean_guest_phone(cls, value: str) -> str:
+        return _normalize_phone(value)
+
+
+class SendShortlistArgs(BaseModel):
+    """The properties recommended on the call, sent as one list with a link to see them all with photos."""
+
+    property_ids: list[str]
+    guest_phone: str
+    guest_name: str | None = None
 
     @field_validator("guest_phone")
     @classmethod

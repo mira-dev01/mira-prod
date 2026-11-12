@@ -1,10 +1,19 @@
 {
-  "_note": "From the Spacez agent requirements document, Part 3. Only what the document states is here; the weekend rate, the meal bundle price, the pickup fare and which villa offers which add-on kit are not in it, so they are left out and the agent says the team will check. Add them to a villa's terms the moment they are known.",
+  "_note": "From the Spacez agent requirements document, Part 3 (Knowledge base). Villa profile, base/max guests, the weekend rate ('Friday and Saturday use the sample weekend rate') and the add-on prices are as the document lists them. NOT in the document, so left out and the agent says the team will check: the meal bundle price, the pickup fare, and which villa offers which add-on kit (every kit is listed for every villa here -- remove a kit from a villa's terms if it does not offer it). The weeknight rate is each property's own base price in the dashboard; this file never changes it. If 'weekend_rate' turns out to be the weeknight column of the document, set it as the property's base price instead and clear 'weekend_rate'.",
+  "common_terms": {
+    "addons": {"bbq_experience": 1500, "movie_kit": 1000, "floating_kit": 800},
+    "party_platter_price": 500
+  },
   "villas": [
-    {"name": "Casa Blu", "terms": {"base_guests": 8}},
-    {"name": "Crystal Hall", "terms": {"base_guests": 10}},
-    {"name": "Bombay Breeze", "terms": {"base_guests": 6}},
-    {"name": "Deccan Escape", "terms": {"base_guests": 8}},
-    {"name": "Soul Club", "terms": {"base_guests": 10, "partner": true}}
+    {"name": "Casa Blu", "bedrooms": 4, "max_guests": 10, "weekend_rate": 10000,
+     "terms": {"base_guests": 8, "area": "Whitefield, Bengaluru", "parties": "small gatherings only", "pets": "allowed", "food": "Veg and non-veg"}},
+    {"name": "Crystal Hall", "bedrooms": 4, "max_guests": 16, "weekend_rate": 25000,
+     "terms": {"base_guests": 10, "area": "Rampura, Bengaluru", "parties": "welcome", "pets": "allowed", "food": "Veg and non-veg"}},
+    {"name": "Bombay Breeze", "bedrooms": 3, "max_guests": 8, "weekend_rate": 8000,
+     "terms": {"base_guests": 6, "area": "Mulund West, Mumbai", "parties": "not allowed", "pets": "not allowed", "food": "Veg and non-veg"}},
+    {"name": "Deccan Escape", "bedrooms": 4, "max_guests": 12, "weekend_rate": 7000,
+     "terms": {"base_guests": 8, "area": "Madhapur, Hyderabad", "parties": "welcome", "pets": "not allowed", "food": "Veg and non-veg"}},
+    {"name": "Soul Club", "bedrooms": 3, "max_guests": 20, "weekend_rate": 13000,
+     "terms": {"base_guests": 10, "partner": true, "area": "Hosur side, Bengaluru", "parties": "not allowed", "pets": "not allowed", "food": "Partner villa, no Spacez meals"}}
   ]
 }

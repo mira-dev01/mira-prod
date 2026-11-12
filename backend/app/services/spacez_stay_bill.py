@@ -1,12 +1,17 @@
-"""The bill for a stay, line by line, exactly as the booking flow shows it (Spacez "Part 2: The bill").
+"""SPACEZ ONLY. The bill for a stay, line by line, exactly as the booking flow shows it (Spacez "Part 2: The bill").
+
+Everything in this file is specific to the Spacez profile (villas with `properties.pricing_terms`); every
+Spacez-only module is named `spacez_*` so they are easy to find. Nothing outside those modules should
+need to know the rules below -- callers go through `compute()`.
 
 Pure functions, no I/O, so the money is tested without a call. Everything the rules need but the
-host's terms do not state is UNKNOWN, never defaulted: a missing weekend rate, a meal bundle with no
-price, a pickup fare nobody gave. An unknown stops the quote with a plain reason (BillUnknown) and
-the agent says the team will confirm; it never fills the gap with a number.
+host's terms do not state is UNKNOWN, never defaulted: a meal bundle with no price, a pickup fare
+nobody gave, an add-on kit the villa does not list. An unknown stops the quote with a plain reason
+(BillUnknown) and the agent says the team will confirm; it never fills the gap with a number.
 
 Rules implemented (all amounts in rupees):
-  * nightly price x nights, Friday and Saturday nights at the weekend rate when the villa has one;
+  * nightly price x nights; Friday and Saturday nights use the villa's weekend rate when the host turned
+    "weekend rate differs" on (properties.weekend_rate_enabled), otherwise the weeknight rate;
   * Rs 1,000 a night for each guest above the villa's base guests; pets are never counted, and
     children are free until the group goes over the base number, after which each costs like an adult;
   * breakfast / lunch / dinner per adult per night (breakfast free where the villa includes it);
@@ -15,7 +20,9 @@ Rules implemented (all amounts in rupees):
   * GST on the total reservation amount: 5% when the total / nights is up to Rs 7,500, else 18%,
     rounded to the nearest rupee; the Spacez service fee is shown and charged at Rs 0;
   * pickup & drop sits outside GST and is always paid in full now;
-  * pay in full = total + GST + pickup; split = half of (total + GST), rounded UP, + pickup.
+  * early check-in / late check-out: a flat fee, a bill line ONLY when the guest asked for it; like pickup
+    it sits outside GST and is paid in full now (the document does not say how these are taxed);
+  * pay in full = total + GST + flat fees; split = half of (total + GST), rounded UP, + flat fees.
 """
 
 from dataclasses import dataclass, field
@@ -57,7 +64,7 @@ class Terms:
     base_rate: Decimal  # the weeknight rate, before GST
     base_guests: int
     max_guests: int
-    weekend_rate: Decimal | None = None
+    weekend_rate: Decimal | None = None  # None = weekend nights use base_rate (the villa's rate does not differ)
     partner: bool = False  # a partner villa: no meal / welcome lines, no split payment
     breakfast_included: bool = False
     breakfast_price: Decimal = DEFAULT_BREAKFAST
@@ -87,6 +94,8 @@ class Request:
     party_platter_qty: int = 0
     addons: tuple[str, ...] = ()  # kit names, one each
     pickup: bool = False
+    early_checkin: bool = False  # the guest asked for it: only then does it appear in the bill
+    late_checkout: bool = False
     discount: Decimal = Decimal("0")  # coupon / bank offer: off the stay only
     last_minute_offer: bool = False
 
@@ -108,11 +117,15 @@ class Bill:
     gst_rate: Decimal
     gst: Decimal
     pickup: Decimal
-    full_payable: Decimal  # total + GST + pickup
-    split_now: Decimal  # half of (total + GST), rounded up, + pickup
+    full_payable: Decimal  # total + GST + pickup + early/late fees
+    split_now: Decimal  # half of (total + GST), rounded up, + pickup + early/late fees
     split_later: Decimal  # the rest, due before check-in
     weekend_nights: int = 0
     extra_guests: int = 0
+    early_checkin: Decimal = Decimal(0)
+    late_checkout: Decimal = Decimal(0)
+    weeknight_rate: Decimal = Decimal(0)  # what a weeknight costs (for "X on weeknights, Y on Fri/Sat")
+    weekend_rate: Decimal = Decimal(0)  # what a Friday/Saturday night costs (== weeknight_rate when it does not differ)
 
 
 def money(value) -> Decimal:
@@ -163,14 +176,19 @@ def compute(terms: Terms, request: Request) -> Bill:
     lines: list[Line] = []
 
     # -- the stay ---------------------------------------------------------------------------
+    # A villa whose rate does not differ at weekends (weekend_rate None) charges the weeknight rate on
+    # Friday and Saturday nights as well -- never a guess, the host's own toggle decides.
+    weekend_rate = terms.weekend_rate if terms.weekend_rate is not None else terms.base_rate
     weekend = [n for n in night_dates if is_weekend_night(n)]
-    if weekend and terms.weekend_rate is None:
-        raise BillUnknown("the Friday and Saturday rate")
     weeknights = nights - len(weekend)
-    stay = terms.base_rate * weeknights + (terms.weekend_rate or Decimal(0)) * len(weekend)
-    note = f"{weeknights} night(s) at {rupees(terms.base_rate)}"
-    if weekend:
-        note += f" and {len(weekend)} Friday/Saturday night(s) at {rupees(terms.weekend_rate)}"
+    stay = terms.base_rate * weeknights + weekend_rate * len(weekend)
+    if weekend and weekend_rate != terms.base_rate:
+        parts = ([f"{weeknights} weeknight(s) at {rupees(terms.base_rate)}"] if weeknights else []) + [
+            f"{len(weekend)} Friday/Saturday night(s) at {rupees(weekend_rate)}"
+        ]
+        note = " and ".join(parts)
+    else:
+        note = f"{nights} night(s) at {rupees(terms.base_rate)}"
     lines.append(Line("Stay", stay, note))
 
     heads = extra_guest_heads(terms, request)
@@ -244,10 +262,20 @@ def compute(terms: Terms, request: Request) -> Bill:
         pickup = terms.pickup_fare
         lines.append(Line("Pickup & Drop", pickup, "taxes included; paid in full now"))
 
+    # Early check-in / late check-out are billed ONLY when the guest asked for them (flat fee, outside GST,
+    # paid now). The team still has to confirm the villa is free, so the line says so.
+    early = terms.early_checkin_fee if request.early_checkin else Decimal(0)
+    late = terms.late_checkout_fee if request.late_checkout else Decimal(0)
+    if early:
+        lines.append(Line("Early check-in", early, "flat fee; subject to the team's confirmation"))
+    if late:
+        lines.append(Line("Late check-out", late, "flat fee; subject to the team's confirmation"))
+    flat_fees = pickup + early + late
+
     base_with_gst = total_reservation + gst
-    full = base_with_gst + pickup
+    full = base_with_gst + flat_fees
     half = (base_with_gst / 2).quantize(Decimal("1"), rounding=ROUND_CEILING)
-    split_now = half + pickup
+    split_now = half + flat_fees
     split_later = base_with_gst - half
     return Bill(
         nights=nights,
@@ -262,6 +290,10 @@ def compute(terms: Terms, request: Request) -> Bill:
         split_later=split_later,
         weekend_nights=len(weekend),
         extra_guests=heads,
+        early_checkin=early,
+        late_checkout=late,
+        weeknight_rate=terms.base_rate,
+        weekend_rate=weekend_rate,
     )
 
 
@@ -274,6 +306,11 @@ def to_dict(bill: Bill) -> dict:
         "gst_rate": float(bill.gst_rate),
         "gst": int(bill.gst),
         "pickup": int(bill.pickup),
+        "early_checkin": int(bill.early_checkin),
+        "late_checkout": int(bill.late_checkout),
+        "weeknight_rate": int(bill.weeknight_rate),
+        "weekend_rate": int(bill.weekend_rate),
+        "weekend_nights": bill.weekend_nights,
         "full_payable": int(bill.full_payable),
         "split_now": int(bill.split_now),
         "split_later": int(bill.split_later),

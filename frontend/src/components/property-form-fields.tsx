@@ -81,6 +81,25 @@ export function PropertyFormFields({
               onChange={(e) => onChange({ ...form, base_price: Number(e.target.value) })}
             />
           </SubField>
+          <ToggleField
+            id="weekend_rate_enabled"
+            label="Weekend rate differs"
+            hint="Charge a different nightly rate for Friday and Saturday nights. Off: every night costs the base price."
+            checked={form.weekend_rate_enabled ?? false}
+            onChange={(checked) => onChange({ ...form, weekend_rate_enabled: checked })}
+          />
+          {form.weekend_rate_enabled && (
+            <SubField label="Weekend price (₹/night, Fri and Sat)" htmlFor="weekend_price" className="sm:max-w-56">
+              <Input
+                id="weekend_price"
+                type="number"
+                min={1}
+                required
+                value={form.weekend_price ?? ""}
+                onChange={(e) => onChange({ ...form, weekend_price: e.target.value === "" ? null : Number(e.target.value) })}
+              />
+            </SubField>
+          )}
           <CapabilityNotice
             capabilityId="live_airbnb_pricing"
             whenUnavailable="Live Airbnb prices aren't connected for your workspace yet, so Mira quotes the base price above even with Smart pricing on."

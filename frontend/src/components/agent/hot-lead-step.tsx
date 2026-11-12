@@ -5,10 +5,22 @@ import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { OptionCard } from "@/components/option-card";
 import { Sheet, SheetFooter, SheetHeading, WideCell } from "@/components/ui/sheet";
 import { api, ApiError } from "@/lib/api";
-import type { AgentConfig, AgentHotSignal } from "@/lib/types";
+import type { AgentConfig, AgentHotRule, AgentHotSignal } from "@/lib/types";
+
+// The numbers a hot-lead rule can test without any custom detail (the server reads the same four names).
+const BUILT_IN_FIELDS: { value: string; label: string }[] = [
+  { value: "guests", label: "Number of guests" },
+  { value: "nights", label: "Nights" },
+  { value: "budget", label: "Budget" },
+  { value: "days_until_checkin", label: "Days until check-in" },
+];
+
+// The server keeps at most this many conditions.
+const MAX_RULES = 5;
 
 const SIGNALS: { key: AgentHotSignal; title: string }[] = [
   { key: "availability_confirmed", title: "Their dates are free" },
@@ -67,6 +79,64 @@ export function HotLeadStep({ config, onSaved }: { config: AgentConfig; onSaved:
             <OptionCard key={key} checked={hotOn.includes(key)} onCheckedChange={(on) => toggle(key, on)} title={title} />
           ))}
         </div>
+
+        <SheetHeading title="Your own conditions" />
+        <div className="col-span-12 space-y-3 px-5 py-4">
+          {rules.length === 0 && <p className="text-sm text-muted-foreground">Nothing added yet.</p>}
+          {rules.map((rule, index) => (
+            <div key={index} className="flex flex-wrap items-center gap-2 border-b border-border pb-3 last:border-0 last:pb-0">
+              <span className="text-sm">Hot when</span>
+              <Select value={rule.field} onValueChange={(v) => v && setRuleField(index, v)}>
+                <SelectTrigger className="w-48" aria-label="Detail">
+                  <SelectValue>{labelOf(rule.field)}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {fieldOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {isYesNo(rule.field) ? (
+                <span className="text-sm">is Yes</span>
+              ) : (
+                <>
+                  <Select value={rule.op} onValueChange={(v) => v && setRule(index, { op: v as AgentHotRule["op"] })}>
+                    <SelectTrigger className="w-40" aria-label="Comparison">
+                      <SelectValue>{{ gte: "is at least", lte: "is at most", eq: "is exactly" }[rule.op]}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="gte">is at least</SelectItem>
+                      <SelectItem value="lte">is at most</SelectItem>
+                      <SelectItem value="eq">is exactly</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    aria-label="Number"
+                    type="number"
+                    value={rule.value}
+                    className="w-28"
+                    onChange={(e) => setRule(index, { value: Number(e.target.value) })}
+                  />
+                </>
+              )}
+              <Button type="button" size="icon-sm" variant="ghost" aria-label="Remove condition" onClick={() => setRules((r) => r.filter((_, i) => i !== index))}>
+                <Trash2 className="size-4" />
+              </Button>
+            </div>
+          ))}
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={rules.length >= MAX_RULES}
+            onClick={() => setRules((r) => [...r, { field: "guests", op: "gte", value: 1 }])}
+          >
+            <Plus className="size-4" /> Add a condition
+          </Button>
+        </div>
+
         <SheetFooter>
           <Button variant="cta" onClick={save} disabled={!dirty || saving}>
             {saving ? "Saving…" : "Save"}

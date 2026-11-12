@@ -1170,3 +1170,57 @@ def test_lead_prompt_single_location_says_never_ask_where():
 
 def test_lead_prompt_no_locations_section_without_properties():
     assert "Locations:" not in build_lead_system_prompt(_user(), [])
+
+
+# -- a guest ringing back is greeted by the name saved on file --------------------------------------------------
+
+
+def test_lead_agent_greets_a_returning_guest_by_name_by_default():
+    host = _user(name="Spacez", agent_first_message=None)
+
+    msg = lead_first_message_for(host, _guest(name="Asha Rao", total_stays=1))
+
+    assert msg.startswith("Hi Asha Rao!") and "Spacez" in msg
+
+
+def test_lead_agent_greets_a_caller_whose_name_is_saved_even_with_no_stay_yet():
+    msg = lead_first_message_for(_user(agent_first_message=None), _guest(name="Asha Rao", total_stays=0))
+
+    assert msg.startswith("Hi Asha Rao!")
+
+
+def test_a_first_time_caller_and_the_browser_test_guest_get_the_normal_greeting():
+    host = _user(name="Spacez", agent_first_message=None)
+    plain = lead_first_message_for(host)
+
+    assert lead_first_message_for(host, None) == plain and lead_first_message_for(host, _guest(name=None)) == plain
+    browser = _guest(name="Browser test guest", phone=system_prompt.BROWSER_TEST_CALLER_NUMBER)
+    assert lead_first_message_for(host, browser) == plain and "Browser test guest" not in plain
+
+
+def test_a_host_greeting_without_guest_name_gets_the_saved_name_put_in_front():
+    host = _user(name="Spacez", agent_first_message="Welcome to {host_name}!")
+
+    msg = lead_first_message_for(host, _guest(name="Asha Rao"))
+    property_msg = first_message_for(_property(), _guest(name="Asha Rao"), host)
+
+    assert msg == "Hi Asha Rao! Welcome to Spacez!" and property_msg == "Hi Asha Rao! Welcome to Spacez!"
+
+
+def test_a_host_greeting_that_already_uses_guest_name_is_left_alone():
+    host = _user(name="Spacez", agent_first_message="Hello {guest_name}, this is {host_name}.")
+
+    assert lead_first_message_for(host, _guest(name="Asha Rao")) == "Hello Asha Rao, this is Spacez."
+    assert lead_first_message_for(host, None) == "Hello , this is Spacez."  # unchanged behaviour for no name
+
+
+def test_the_property_agent_still_greets_by_name_without_a_host_template():
+    msg = first_message_for(_property(), _guest(name="Asha Rao"), _user(agent_first_message=None))
+
+    assert msg.startswith("Namaste Asha Rao!")
+
+
+def test_a_saved_name_with_no_stay_tells_the_model_not_to_ask_for_it_again():
+    prompt = build_lead_system_prompt(_user(), [], _guest(name="Asha Rao", total_stays=0))
+
+    assert "not in our guest records" in prompt and "name on file: Asha Rao" in prompt and "never ask for it again" in prompt

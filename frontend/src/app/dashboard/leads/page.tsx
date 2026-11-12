@@ -17,18 +17,22 @@ import { StatusChip, type StatusTone } from "@/components/status-chip";
 import { CloseLeadDialog } from "@/components/close-lead-dialog";
 import { DateRangePicker } from "@/components/date-range-picker";
 import { LeadDetailPanel, LEAD_STATUSES, leadUrgencyTone } from "@/components/lead-detail-panel";
+import { ActiveBookingsTab } from "@/components/active-bookings-tab";
+import { ActivityBadge } from "@/components/activity-badge";
 import { MissedCallsTab } from "@/components/missed-calls-tab";
 import { TicketsTab } from "@/components/tickets-tab";
 import { ServiceRequestsTable } from "@/components/service-requests-table";
 import { WhatsAppButton } from "@/components/whatsapp-button";
 import { useAsync } from "@/hooks/use-async";
+import { useBookingActivity } from "@/lib/booking-activity-context";
 import { useDateRange } from "@/hooks/use-date-range";
 import { api, ApiError } from "@/lib/api";
 import { leadGuestLabel, leadPhoneLabel, useLeadLabels } from "@/lib/leads";
 import { cn, isBrowserTestIdentity, matchesSearch } from "@/lib/utils";
 import type { LeadOut, LeadStatus } from "@/lib/types";
 
-const VALID_TABS = ["service", "booking", "missed", "tickets"] as const;
+// Tab order on the page: Active bookings, Tickets, Booking requests, Missed calls, Service requests.
+const VALID_TABS = ["active", "tickets", "booking", "missed", "service"] as const;
 type RequestsTab = (typeof VALID_TABS)[number];
 
 const STATUSES = LEAD_STATUSES;
@@ -584,12 +588,14 @@ function LiveRequestsPageContent() {
   const searchParams = useSearchParams();
   const initialTab = searchParams.get("tab");
   const [tab, setTab] = useState<RequestsTab>(
-    VALID_TABS.includes(initialTab as RequestsTab) ? (initialTab as RequestsTab) : "service"
+    VALID_TABS.includes(initialTab as RequestsTab) ? (initialTab as RequestsTab) : "active"
   );
 
   // Open-ticket count for the tab label; the tab itself reloads its own list.
   const { data: openTicketList, refetch: refetchTickets } = useAsync(() => api.tickets.list("open"), []);
   const openTickets = openTicketList?.length ?? 0;
+  // Requests from guests with an active booking that the host has not seen yet.
+  const { count: bookingActivity } = useBookingActivity();
 
   function handleTabChange(value: unknown) {
     if (typeof value !== "string" || !VALID_TABS.includes(value as RequestsTab)) return;
@@ -603,16 +609,23 @@ function LiveRequestsPageContent() {
 
       <Tabs value={tab} onValueChange={handleTabChange}>
         <TabsList>
-          <TabsTrigger value="service">Service Requests</TabsTrigger>
-          <TabsTrigger value="booking">Booking Requests</TabsTrigger>
-          <TabsTrigger value="missed">Missed calls</TabsTrigger>
+          <TabsTrigger value="active">
+            Active bookings
+            <ActivityBadge count={bookingActivity} className="ml-1.5" />
+          </TabsTrigger>
           <TabsTrigger value="tickets">
             Tickets
             {openTickets > 0 && <span className="ml-1.5 text-xs text-muted-foreground">({openTickets})</span>}
           </TabsTrigger>
+          <TabsTrigger value="booking">Booking Requests</TabsTrigger>
+          <TabsTrigger value="missed">Missed calls</TabsTrigger>
+          <TabsTrigger value="service">Service Requests</TabsTrigger>
         </TabsList>
-        <TabsContent value="service" className="pt-4">
-          <ServiceRequestsTabContent />
+        <TabsContent value="active" className="pt-4">
+          <ActiveBookingsTab />
+        </TabsContent>
+        <TabsContent value="tickets" className="pt-4">
+          <TicketsTab onChanged={refetchTickets} />
         </TabsContent>
         <TabsContent value="booking" className="pt-4">
           <BookingRequestsTabContent />
@@ -620,8 +633,8 @@ function LiveRequestsPageContent() {
         <TabsContent value="missed" className="pt-4">
           <MissedCallsTab />
         </TabsContent>
-        <TabsContent value="tickets" className="pt-4">
-          <TicketsTab onChanged={refetchTickets} />
+        <TabsContent value="service" className="pt-4">
+          <ServiceRequestsTabContent />
         </TabsContent>
       </Tabs>
     </div>
