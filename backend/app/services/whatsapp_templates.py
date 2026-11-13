@@ -37,17 +37,25 @@ logger = logging.getLogger(__name__)
 # =====================================================================================================
 
 # --- SPACEZ ONLY: the booking flow -------------------------------------------------------------------
-SPACEZ_PAYMENT_LINK_SID = ""          # sent the moment the guest agrees to book: the bill and the payment link
-SPACEZ_BOOKING_CONFIRMED_SID = ""     # sent once the payment is received (stay villa): details + stay code
-SPACEZ_SHOOT_HELD_SID = ""            # sent once the payment is received (a shoot): "your dates are held"
-SPACEZ_PAYMENT_UNSUCCESSFUL_SID = ""  # sent when the guest's payment failed / the checkout was closed: try again
-SPACEZ_STAY_FEE_LINK_SID = ""         # early check-in / late check-out approved by the team: the fee's payment link
-SPACEZ_STAY_REQUEST_DECLINED_SID = "" # early check-in / late check-out declined by the team
-SPACEZ_STAY_FEE_RECEIVED_SID = ""     # early check-in / late check-out fee received
+SPACEZ_PAYMENT_LINK_SID = "HXb5cb14f9d85feb9c122a0912eec7606a"          # sent the moment the guest agrees to book: the bill and the payment link
+SPACEZ_BOOKING_CONFIRMED_SID = "HX99cec2c7017564549aec73565e025719"     # sent once the payment is received (stay villa): details + stay code
+SPACEZ_SHOOT_HELD_SID = "HX68d73026d5d58cf4306b9372f427447a"         # sent once the payment is received (a shoot): "your dates are held"
+SPACEZ_PAYMENT_UNSUCCESSFUL_SID = "HXb4ae3182f8cd8f5f77ea8533acd769df"  # sent when the guest's payment failed / the checkout was closed: try again
+SPACEZ_STAY_FEE_LINK_SID = "HXe29e0e8b5077e31b736995c7ecd17a6d"         # early check-in / late check-out approved by the team: the fee's payment link
+SPACEZ_STAY_REQUEST_DECLINED_SID = "HX7ef197fc70d7bddf8debf66f2b3457cd" # early check-in / late check-out declined by the team
+SPACEZ_STAY_FEE_RECEIVED_SID = "HXad5f915415854a0e3bd220d23a737ee2"     # early check-in / late check-out fee received
 
 # --- ALL HOSTS: photos and property lists ----------------------------------------------------------
-PHOTOS_SID = ""                       # photos of ONE property (a link to its gallery page)
-SHORTLIST_SID = ""                    # the list of every property recommended on the call + one link with their photos
+PHOTOS_SID = "HX3609a3fad76886c626e83f24b9f98428"                       # photos of ONE property (a link to its gallery page)
+SHORTLIST_SID = "HXdb9a01d8c2065aa36e5d19fc9cfbe510"                    # the list of every property recommended on the call + one link with their photos
+
+# --- ALL HOSTS: busy line + host alerts ------------------------------------------------------------
+# These four are not in TEMPLATES below: their bodies live in scripts/create_*_template.py (two have a
+# dashboard button) and each caller builds its own plain-text fallback. "" = that plain-text fallback.
+BUSY_RECOVERY_SID = "HX02e0139a6bb81225ed92d0b3efea7b74"   # mira_busy_recovery: guest's call was rejected as busy -> numbered menu
+AVAILABILITY_SID = "HXc49915f7f771c6f32142739573901deb"    # mira_availability: that guest, once the line is free again
+ESCALATION_SID = "HXdf0bc43de0842a2de1745345d714a1c7"      # mira_escalation: host alert (escalation / missed call), "Go to Dashboard" button
+GUEST_CALLING_SID = ""                                     # mira_guest_calling: host alert "a guest is calling Mira now" + Take Call link
 
 
 @dataclass(frozen=True)

@@ -10,7 +10,7 @@ Take Call link as plain text ({{3}}) -- WhatsApp auto-links any https://
 URL appearing in a text body, so this is how a dynamic, signed, single-use
 link reaches the host even though the button itself can't carry it. This
 is a body-content change from Phase 5's original template, so re-running
-this script mints a NEW ContentSid -- TWILIO_GUEST_CALLING_TEMPLATE_SID
+this script mints a NEW ContentSid -- whatsapp_templates.GUEST_CALLING_SID
 must be updated to the new value, the same "re-run whenever the template
 needs to change" discipline this script's docstring already documented for
 FRONTEND_BASE_URL changes.
@@ -18,8 +18,9 @@ FRONTEND_BASE_URL changes.
 Usage:
     cd backend && source .venv/bin/activate && python -m scripts.create_guest_calling_template
 
-Prints the ContentSid to set as TWILIO_GUEST_CALLING_TEMPLATE_SID in .env
-(local) or the Render dashboard (production) -- then restart the backend.
+Prints the ContentSid to paste into GUEST_CALLING_SID in app/services/whatsapp_templates.py
+("PASTE THE SIDs HERE"), then submit the template for WhatsApp approval in the
+Twilio console (this script only creates it) and redeploy.
 """
 
 import asyncio
@@ -29,8 +30,8 @@ from app.integrations.twilio_client import create_call_to_action_template
 
 _BODY = (
     "📞 *Guest is calling Mira*\n*Property:* {{1}}\n*Guest:* {{2}}\n\n"
-    "Mira is currently handling the call.\n\nTake the call yourself: {{3}}"
-)
+    "Mira is currently handling the call.\n\nTake the call yourself: {{3}}\n\nSent by Mira."
+)  # WhatsApp rejects a body that ends with a {{n}}, hence the closing line.
 
 _VARIABLE_SAMPLES = {
     "1": "Sample Villa",
@@ -50,7 +51,7 @@ async def main() -> None:
         variable_samples=_VARIABLE_SAMPLES,
     )
     print(f"\nCreated ContentSid: {content_sid}")
-    print(f"Set TWILIO_GUEST_CALLING_TEMPLATE_SID={content_sid} and restart the backend.")
+    print("Paste it into GUEST_CALLING_SID in app/services/whatsapp_templates.py, submit the template for WhatsApp approval in the Twilio console, and redeploy.")
 
 
 if __name__ == "__main__":

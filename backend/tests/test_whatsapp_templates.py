@@ -34,10 +34,19 @@ def test_every_template_is_well_formed(key):
     assert len(template.body) <= 1024
 
 
-def test_every_sid_constant_named_by_a_template_exists_and_is_empty_by_default():
+def test_every_sid_constant_named_by_a_template_exists_and_holds_a_twilio_content_sid_or_nothing():
+    """The fixture in conftest blanks the SIDs for every test, so read what the file itself holds."""
+    from pathlib import Path
+
+    source = Path(wt.__file__).read_text(encoding="utf-8")
+    sids = dict(re.findall(r'^([A-Z_]+_SID) = "([^"]*)"', source, flags=re.M))
+
     for template in wt.TEMPLATES.values():
-        assert template.sid_const in vars(wt), template.key
-    assert all(t.sid == "" for t in wt.TEMPLATES.values()), "SIDs are pasted by hand; the repo ships them blank"
+        assert template.sid_const in sids, template.key
+    for name in ("BUSY_RECOVERY_SID", "AVAILABILITY_SID", "ESCALATION_SID", "GUEST_CALLING_SID"):
+        assert name in sids, name
+    for name, value in sids.items():
+        assert value == "" or re.fullmatch(r"HX[0-9a-f]{32}", value), f"{name} is not a Content SID: {value!r}"
 
 
 def test_values_become_one_clean_line():

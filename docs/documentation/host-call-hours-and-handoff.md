@@ -78,7 +78,7 @@ design-level writeup. Summary of the moving parts:
   MIRA-owned call. Re-checks `resolve_effective_call_owner` (must be `MIRA`), then:
   - creates an in-app `Notification` (`channel="guest_calling"`, idempotent on
     `(call_session_id, channel)`),
-  - sends the host a WhatsApp (`twilio_guest_calling_template_sid`, or a plain-text fallback)
+  - sends the host a WhatsApp (`whatsapp_templates.GUEST_CALLING_SID`, or a plain-text fallback)
     containing a **signed, single-use *Take Call* link**.
 - `backend/app/services/take_call_token.py` — `issue_take_call_token` / `verify_take_call_token`,
   HMAC-signed, short-lived, scoped to exactly one `(call_session_id, property_id, host_user_id)`.
@@ -282,7 +282,7 @@ following must be true — call these out as a deploy checklist in the PR:
 - Exotel Passthru parameter names — `exotel.py` accepts `From`/`To` and `CallFrom`/`CallTo`
   aliases defensively because they're unverified against a live account. Confirm which the account
   sends.
-- `TWILIO_GUEST_CALLING_TEMPLATE_SID` is set (else the plain-text fallback is used, which is
+- `GUEST_CALLING_SID` is set in `app/services/whatsapp_templates.py` (else the plain-text fallback is used, which is
   subject to WhatsApp's 24h customer-service-window rule for freeform messages).
 - Take Call now works with more than one replica (Redis pub/sub, see above) as long as `REDIS_URL` is set on
   every process. (The scheduler and health monitor still assume one process.)

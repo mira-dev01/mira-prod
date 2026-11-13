@@ -1,9 +1,0 @@
-{
-  "detector": {
-    "ignoreRules": [],
-    "ignoreFiles": [
-      ".impeccable/mocks/**"
-    ],
-    "ignoreValues": []
-  }
-}

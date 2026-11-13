@@ -9,7 +9,7 @@ import uuid
 from app.integrations import twilio_client
 from app.models.call_session import CallSession
 from app.models.property import Property
-from app.services import guest_calling_notification
+from app.services import guest_calling_notification, whatsapp_templates
 from app.services.notification_service import list_notifications
 
 
@@ -113,7 +113,7 @@ async def test_whatsapp_unconfigured_does_not_raise(test_property, db_session, t
 
     monkeypatch.setattr(settings, "twilio_account_sid", None)
     monkeypatch.setattr(settings, "twilio_auth_token", None)
-    monkeypatch.setattr(settings, "twilio_guest_calling_template_sid", None)
+    monkeypatch.setattr(whatsapp_templates, "GUEST_CALLING_SID", "")
 
     session = await _call_session_for(db_session, test_property)
     # send_whatsapp_best_effort itself no-ops cleanly when Twilio isn't
@@ -342,7 +342,7 @@ async def test_whatsapp_message_includes_a_valid_take_call_link(test_property, d
     monkeypatch.setattr(twilio_client, "send_whatsapp_best_effort", _capture)
     from app.config import settings
 
-    monkeypatch.setattr(settings, "twilio_guest_calling_template_sid", None)
+    monkeypatch.setattr(whatsapp_templates, "GUEST_CALLING_SID", "")
 
     session = await _call_session_for(db_session, test_property)
     await guest_calling_notification.maybe_notify_guest_calling(test_property.id, session.id, "+919999999999")

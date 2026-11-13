@@ -64,6 +64,7 @@ from app.services import (
     notification_preferences_service,
     notification_service,
     ticket_service,
+    whatsapp_templates,
 )
 from app.services.lead_service import _REUSABLE_LEAD_STATUSES
 from app.services.whatsapp_reply_service import MENU_DISPLAY_TEXT
@@ -111,7 +112,7 @@ AVAILABILITY_WINDOW = timedelta(minutes=30)
 # leave a guest un-notified for long.
 STALE_CLAIM_THRESHOLD = timedelta(minutes=2)
 
-# Plain-text fallback for when TWILIO_BUSY_RECOVERY_TEMPLATE_SID isn't
+# Plain-text fallback for when whatsapp_templates.BUSY_RECOVERY_SID isn't
 # configured -- same "template preferred, plain text always works" contract
 # as tool_handlers._build_escalation_whatsapp_text. MENU_DISPLAY_TEXT
 # (imported from whatsapp_reply_service.py) is the single source of truth
@@ -325,10 +326,10 @@ async def _handle_busy_recovery(
 
 
 async def _send_guest_recovery_whatsapp(to_phone: str, property_name: str | None) -> None:
-    if settings.twilio_busy_recovery_template_sid:
+    if whatsapp_templates.BUSY_RECOVERY_SID:
         await twilio_client.send_whatsapp_template_best_effort(
             to_phone,
-            settings.twilio_busy_recovery_template_sid,
+            whatsapp_templates.BUSY_RECOVERY_SID,
             {"1": property_name or "us"},
         )
     else:
@@ -351,10 +352,10 @@ async def _send_host_recovery_whatsapp(
     # Falls back to the same plain-text shape as before when unconfigured.
     dashboard_url = f"{settings.frontend_base_url}/dashboard/leads"
     property_label = property_name or dialed_number or "a lead line"
-    if settings.twilio_escalation_template_sid:
+    if whatsapp_templates.ESCALATION_SID:
         await twilio_client.send_whatsapp_template_best_effort(
             to_phone,
-            settings.twilio_escalation_template_sid,
+            whatsapp_templates.ESCALATION_SID,
             {
                 "1": "\U0001F7E0",
                 "2": "MISSED CALL",
@@ -600,9 +601,9 @@ async def _notify_availability(db: AsyncSession, lead: Lead, property_id: uuid.U
     # unlike handle_busy_recovery's own guest/host sends (those are truly
     # fire-and-forget with nothing to roll back if they fail).
     try:
-        if settings.twilio_availability_template_sid:
+        if whatsapp_templates.AVAILABILITY_SID:
             result = await twilio_client.send_whatsapp_template(
-                phone, settings.twilio_availability_template_sid, {}
+                phone, whatsapp_templates.AVAILABILITY_SID, {}
             )
         else:
             result = await twilio_client.send_whatsapp_message(phone, _AVAILABILITY_WHATSAPP_TEXT)

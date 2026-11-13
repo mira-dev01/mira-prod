@@ -22,6 +22,7 @@ from app.services import (
     notification_preferences_service as prefs_service,
     recovery_service,
     tool_handlers,
+    whatsapp_templates,
 )
 from tests.conftest import auth_headers_for
 from tests.test_exotel_connect_routing import _call_session_for, _numbers, _property_with
@@ -272,7 +273,7 @@ async def test_guest_calling_alert_toggle(db_session, test_user, test_property, 
         sent.append(to_phone)
 
     monkeypatch.setattr(twilio_client, "send_whatsapp_best_effort", capture)
-    monkeypatch.setattr(settings, "twilio_guest_calling_template_sid", None)
+    monkeypatch.setattr(whatsapp_templates, "GUEST_CALLING_SID", "")
     session = await _call_session_for(db_session, test_property)
     await guest_calling_notification.maybe_notify_guest_calling(test_property.id, session.id, "+919999999999")
     assert sent == []

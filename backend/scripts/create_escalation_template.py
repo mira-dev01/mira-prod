@@ -8,8 +8,9 @@ creation time, not passed per-message).
 Usage:
     cd backend && source .venv/bin/activate && python -m scripts.create_escalation_template
 
-Prints the ContentSid to set as TWILIO_ESCALATION_TEMPLATE_SID in .env
-(local) or the Render dashboard (production) -- then restart the backend.
+Prints the ContentSid to paste into ESCALATION_SID in app/services/whatsapp_templates.py
+("PASTE THE SIDs HERE"), then submit the template for WhatsApp approval in the
+Twilio console (this script only creates it) and redeploy.
 """
 
 import asyncio
@@ -17,7 +18,11 @@ import asyncio
 from app.config import settings
 from app.integrations.twilio_client import create_call_to_action_template
 
-_BODY = "{{1}} *{{2}} ESCALATION*\n*Property:* {{3}}\n*Issue:* {{4}}\n*Summary:* {{5}}\n*Guest:* {{6}}"
+# WhatsApp rejects a body that starts or ends with a {{n}}, hence the fixed text around the placeholders.
+_BODY = (
+    "Mira alert: {{1}} *{{2}} ESCALATION*\n*Property:* {{3}}\n*Issue:* {{4}}\n*Summary:* {{5}}\n*Guest:* {{6}}\n\n"
+    "Open your Mira dashboard to follow up."
+)
 
 _VARIABLE_SAMPLES = {
     "1": "🔴",
@@ -40,7 +45,7 @@ async def main() -> None:
         variable_samples=_VARIABLE_SAMPLES,
     )
     print(f"\nCreated ContentSid: {content_sid}")
-    print(f"Set TWILIO_ESCALATION_TEMPLATE_SID={content_sid} and restart the backend.")
+    print("Paste it into ESCALATION_SID in app/services/whatsapp_templates.py, submit the template for WhatsApp approval in the Twilio console, and redeploy.")
 
 
 if __name__ == "__main__":

@@ -81,6 +81,18 @@ async def _override_get_current_user(request: Request, db=Depends(get_db)) -> Us
     return user
 
 
+@pytest.fixture(autouse=True)
+def _blank_whatsapp_template_sids(monkeypatch):
+    """Same idea as the settings rebuild above: the real Twilio Content SIDs are pasted into
+    app/services/whatsapp_templates.py, and a test must not depend on which ones are. Every test starts
+    with all of them blank (= the free-text path); a test about the template path sets its own fake SID."""
+    from app.services import whatsapp_templates
+
+    for name in list(vars(whatsapp_templates)):
+        if name.endswith("_SID") and isinstance(getattr(whatsapp_templates, name), str):
+            monkeypatch.setattr(whatsapp_templates, name, "")
+
+
 @pytest_asyncio.fixture(scope="session", autouse=True)
 async def _setup_database():
     async with engine.begin() as conn:

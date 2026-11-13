@@ -224,38 +224,9 @@ class Settings(BaseSettings):
     # re-derive "is Twilio usable" from just the credential vars.
     twilio_enabled: bool = True
 
-    # ContentSid of the "mira_escalation" twilio/call-to-action template
-    # (see scripts/create_escalation_template.py) -- gives the escalation
-    # WhatsApp message a real "Go to Dashboard" button instead of a raw,
-    # auto-linkified URL (which also triggers WhatsApp's link-preview
-    # card). Unset = escalate_to_host falls back to a plain-text message
-    # with the bare URL.
-    twilio_escalation_template_sid: str | None = None
-
-    # ContentSid of the "mira_busy_recovery" twilio/text template (see
-    # scripts/create_busy_recovery_template.py) -- the numbered-menu message
-    # RecoveryService sends a guest whose call was rejected as BUSY_RECOVERY
-    # (see app/services/recovery_service.py, app/services/call_coordinator.py).
-    # Unset = falls back to an equivalent plain-text message built inline,
-    # same fallback discipline as twilio_escalation_template_sid above.
-    twilio_busy_recovery_template_sid: str | None = None
-
-    # ContentSid of the `mira_availability` WhatsApp template (see
-    # scripts/create_availability_template.py) -- sent to a busy-recovery
-    # guest once Mira's CallCoordinator lease for that host/property is
-    # actually released (see app/services/recovery_service.py's
-    # process_availability_recovery). Unset = falls back to an equivalent
-    # plain-text message, same fallback discipline as
-    # twilio_busy_recovery_template_sid above.
-    twilio_availability_template_sid: str | None = None
-
-    # ContentSid of the `mira_guest_calling` twilio/call-to-action template
-    # (see scripts/create_guest_calling_template.py) -- Phase 5's "guest is
-    # calling Mira right now" host notification (see app/services/
-    # guest_calling_notification.py), fired once per live MIRA-owned call.
-    # Unset = falls back to an equivalent plain-text message, same fallback
-    # discipline as twilio_escalation_template_sid above.
-    twilio_guest_calling_template_sid: str | None = None
+    # WhatsApp template SIDs (escalation, busy recovery, availability, guest
+    # calling, and every guest message) are not env vars: they live in
+    # app/services/whatsapp_templates.py, "PASTE THE SIDs HERE".
 
     # HS256 signing secret for the Take Call action token (Phase 6, see
     # app/services/take_call_token.py) -- a short-lived, single-use grant

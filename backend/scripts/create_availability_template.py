@@ -7,8 +7,9 @@ call_coordinator.py). Run once per Twilio account/environment.
 Usage:
     cd backend && source .venv/bin/activate && python -m scripts.create_availability_template
 
-Prints the ContentSid to set as TWILIO_AVAILABILITY_TEMPLATE_SID in .env
-(local) or the Render dashboard (production) -- then restart the backend.
+Prints the ContentSid to paste into AVAILABILITY_SID in app/services/whatsapp_templates.py
+("PASTE THE SIDs HERE"), then submit the template for WhatsApp approval in the
+Twilio console (this script only creates it) and redeploy.
 """
 
 import asyncio
@@ -25,7 +26,7 @@ async def main() -> None:
         variable_samples={},
     )
     print(f"Created ContentSid: {content_sid}")
-    print(f"Set TWILIO_AVAILABILITY_TEMPLATE_SID={content_sid} and restart the backend.")
+    print("Paste it into AVAILABILITY_SID in app/services/whatsapp_templates.py, submit the template for WhatsApp approval in the Twilio console, and redeploy.")
 
 
 if __name__ == "__main__":

@@ -44,7 +44,7 @@ from app.integrations import twilio_client
 from app.models.notification import Notification
 from app.models.property import Property
 from app.models.user import User
-from app.services import call_ownership, notification_preferences_service, notification_service
+from app.services import call_ownership, notification_preferences_service, notification_service, whatsapp_templates
 from app.services.take_call_token import issue_take_call_token
 
 logger = logging.getLogger(__name__)
@@ -176,10 +176,10 @@ async def _maybe_notify_guest_calling(
     take_call_token = issue_take_call_token(call_session_id, property_.id, host.id)
     take_call_url = f"{settings.backend_base_url}/api/v1/take-call?token={take_call_token}"
 
-    if settings.twilio_guest_calling_template_sid:
+    if whatsapp_templates.GUEST_CALLING_SID:
         await twilio_client.send_whatsapp_template_best_effort(
             host_phone,
-            settings.twilio_guest_calling_template_sid,
+            whatsapp_templates.GUEST_CALLING_SID,
             {"1": property_name, "2": guest_label, "3": take_call_url},
         )
     else:

@@ -164,10 +164,10 @@ async def _send_escalation_whatsapp(
     # consolidated to the same wrapper recovery_service.py already uses, so
     # there is exactly one place that contract is implemented).
     emoji = _URGENCY_EMOJI.get(urgency, "⚪")
-    if settings.twilio_escalation_template_sid:
+    if whatsapp_templates.ESCALATION_SID:
         await twilio_client.send_whatsapp_template_best_effort(
             to_phone,
-            settings.twilio_escalation_template_sid,
+            whatsapp_templates.ESCALATION_SID,
             {
                 "1": emoji,
                 "2": urgency.upper(),
