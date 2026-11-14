@@ -9,7 +9,7 @@ from app.voice import pipeline
 def test_build_llm_defaults_to_groq_with_low_reasoning_effort(monkeypatch):
     monkeypatch.setattr(pipeline.settings, "llm_provider", "groq")
     monkeypatch.setattr(pipeline.settings, "groq_api_key", "test-key")
-    monkeypatch.setattr(pipeline.settings, "groq_models", ["openai/gpt-oss-120b", "llama-3.1-8b-instant"])
+    monkeypatch.setattr(pipeline.settings, "groq_models", ["openai/gpt-oss-120b", "qwen/qwen3.8-27b"])
     monkeypatch.setattr(main_mod, "llm_health", {})
 
     llm = pipeline._build_llm()
@@ -36,7 +36,7 @@ def test_build_llm_groq_caps_max_completion_tokens(monkeypatch):
     a reasoning leak. The Groq path had no token cap at all before this fix."""
     monkeypatch.setattr(pipeline.settings, "llm_provider", "groq")
     monkeypatch.setattr(pipeline.settings, "groq_api_key", "test-key")
-    monkeypatch.setattr(pipeline.settings, "groq_models", ["openai/gpt-oss-120b", "llama-3.1-8b-instant"])
+    monkeypatch.setattr(pipeline.settings, "groq_models", ["openai/gpt-oss-120b", "qwen/qwen3.8-27b"])
     monkeypatch.setattr(main_mod, "llm_health", {})
 
     llm = pipeline._build_llm()
@@ -51,7 +51,7 @@ def test_build_llm_skips_groq_model_marked_down_in_health_check(monkeypatch):
     monkeypatch.setattr(pipeline.settings, "llm_provider", "groq")
     monkeypatch.setattr(pipeline.settings, "groq_api_key", "test-key")
     monkeypatch.setattr(
-        pipeline.settings, "groq_models", ["openai/gpt-oss-120b", "llama-3.1-8b-instant", "openai/gpt-oss-20b"]
+        pipeline.settings, "groq_models", ["openai/gpt-oss-120b", "qwen/qwen3.8-27b", "openai/gpt-oss-20b"]
     )
     monkeypatch.setattr(
         main_mod,
@@ -62,8 +62,8 @@ def test_build_llm_skips_groq_model_marked_down_in_health_check(monkeypatch):
     llm = pipeline._build_llm()
 
     assert isinstance(llm, GroqLLMService)
-    assert llm._settings.model == "llama-3.1-8b-instant"
-    # Regression: reasoning_effort is gpt-oss-specific -- llama-3.1-8b-instant
+    assert llm._settings.model == "qwen/qwen3.8-27b"
+    # Regression: reasoning_effort is gpt-oss-specific -- qwen/qwen3.8-27b
     # rejects it outright with a 400 (confirmed against Groq's live API),
     # which would break the exact fallback call this chain exists to save.
     assert llm._settings.extra == {}
@@ -72,7 +72,7 @@ def test_build_llm_skips_groq_model_marked_down_in_health_check(monkeypatch):
 def test_build_llm_falls_back_to_openrouter_when_all_groq_models_down(monkeypatch):
     monkeypatch.setattr(pipeline.settings, "llm_provider", "groq")
     monkeypatch.setattr(pipeline.settings, "groq_api_key", "test-key")
-    monkeypatch.setattr(pipeline.settings, "groq_models", ["openai/gpt-oss-120b", "llama-3.1-8b-instant"])
+    monkeypatch.setattr(pipeline.settings, "groq_models", ["openai/gpt-oss-120b", "qwen/qwen3.8-27b"])
     monkeypatch.setattr(pipeline.settings, "openrouter_api_key", "test-key")
     monkeypatch.setattr(pipeline.settings, "openrouter_model", "openai/gpt-4.1")
     monkeypatch.setattr(
@@ -80,7 +80,7 @@ def test_build_llm_falls_back_to_openrouter_when_all_groq_models_down(monkeypatc
         "llm_health",
         {
             "openai/gpt-oss-120b": {"ok": False, "latency_s": None, "checked_at": "x", "error": "429"},
-            "llama-3.1-8b-instant": {"ok": False, "latency_s": None, "checked_at": "x", "error": "429"},
+            "qwen/qwen3.8-27b": {"ok": False, "latency_s": None, "checked_at": "x", "error": "429"},
         },
     )
 

@@ -270,3 +270,40 @@ async def test_nothing_is_looked_up_when_every_needed_detail_is_known(test_user,
     )
     assert params.envelope["status"] == "ok"
     assert len(lookups) == 1  # the tool's own lookup only, none added by the gate
+
+
+async def test_area_lock_treats_a_respelled_locality_as_the_locked_area(test_user):
+    """The slot holds the host's "Indiranagar"; the model next passes the guest's "Indira Nagar". Same area:
+    the search must not be held back to ask whether they have changed their mind."""
+    async with AsyncSessionLocal() as db:
+        db.add_all(
+            [
+                Property(user_id=test_user.id, name="Jugglers Rest", city="Bengaluru", locality="Indiranagar",
+                         locality_key="indiranagar", base_price=5000, max_guests=4),
+                Property(user_id=test_user.id, name="Goa Villa", city="Goa", base_price=5000, max_guests=4),
+            ]
+        )
+        await db.commit()
+    state = ConversationState()
+    state.set_slot("preferred_location", "Indiranagar")
+    recommend = _tool(state, test_user.id, "recommend_properties")
+
+    respelled = _Params(guest_says="show me more please")
+    await recommend(respelled, preferred_location="Indira Nagar")
+    assert respelled.envelope["status"] != "needs_clarification"
+
+    different = _Params(guest_says="show me more please")
+    await recommend(different, preferred_location="Goa")
+    assert different.envelope["status"] == "needs_clarification"
+
+
+async def test_the_slot_stores_the_hosts_spelling_of_the_area(test_user):
+    async with AsyncSessionLocal() as db:
+        db.add(Property(user_id=test_user.id, name="Jugglers Rest", city="Bengaluru", locality="Indiranagar",
+                        locality_key="indiranagar", base_price=5000, max_guests=4))
+        await db.commit()
+    state = ConversationState()
+
+    await _tool(state, test_user.id, "recommend_properties")(_Params(guest_says="Indira Nagar"), preferred_location="Indira Nagar")
+
+    assert state.slots["preferred_location"] == "Indiranagar"

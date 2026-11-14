@@ -137,6 +137,8 @@ from loguru import logger
 from pipecat.frames.frames import (
     BotStartedSpeakingFrame,
     BotStoppedSpeakingFrame,
+    CancelFrame,
+    EndFrame,
     EndWorkerFrame,
     Frame,
     TranscriptionFrame,
@@ -146,6 +148,7 @@ from pipecat.frames.frames import (
 )
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
+from app.voice.low_confidence_transcript_guard import INAUDIBLE_MARKER
 from app.voice.repetition_guard import _normalize, _word_overlap
 
 if TYPE_CHECKING:
@@ -347,7 +350,13 @@ class SilenceWatchdogProcessor(FrameProcessor):
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
 
-        if isinstance(frame, BotStartedSpeakingFrame) and not self._ended:
+        if isinstance(frame, (CancelFrame, EndFrame)):
+            # The call is over (the caller hung up, or the pipeline is shutting down): nothing may
+            # nudge or hang up on it any more. Without this the timer outlived teardown and kept
+            # logging prompts and "ending call" for a call that no longer existed.
+            self._ended = True
+            await self._cancel_timer()
+        elif isinstance(frame, BotStartedSpeakingFrame) and not self._ended:
             # The bot (a real reply, a slow_tool_filler filler line, or one
             # of this processor's own nudges) is now actually producing
             # audio on the line. Confirmed live: this frame was previously
@@ -472,7 +481,11 @@ class SilenceWatchdogProcessor(FrameProcessor):
                 # UserStoppedSpeakingFrame itself carries no text (it's a
                 # bare marker frame), so this is the only point where the
                 # text is available to judge.
-                self._pending_turn_is_repetition_candidate = self._observe_repetition_shadow(frame.text)
+                # An [inaudible] turn is still the guest talking, so it counts as a completed turn that
+                # resets the strike counter; it is never a "repeated background pattern".
+                self._pending_turn_is_repetition_candidate = (
+                    False if frame.text.strip() == INAUDIBLE_MARKER else self._observe_repetition_shadow(frame.text)
+                )
                 # Cancels a pending end-of-call request the moment ANY
                 # transcript arrives, deliberately NOT gated on full turn
                 # completion: if the guest speaks up again while/after the
@@ -574,10 +587,17 @@ class SilenceWatchdogProcessor(FrameProcessor):
 
     async def _restart_timer(self):
         await self._cancel_timer()
+        if self._ended:
+            return
         if time.monotonic() < self._nudges_held_until:
             logger.debug("silence_watchdog_timer_not_started_nudges_held")
             return
         self._timer_task = self.create_task(self._on_timeout(), "silence_watchdog_timer")
+
+    async def cleanup(self):
+        self._ended = True
+        await self._cancel_timer()
+        await super().cleanup()
 
     async def _cancel_timer(self):
         if self._timer_task:

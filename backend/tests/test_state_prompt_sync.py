@@ -460,3 +460,53 @@ async def test_pending_correction_flows_through_the_real_processor():
     state_block = next(m for m in messages if _is_injected_state_block(m, "sys"))
     assert "did not match this" in state_block["content"]
     assert quality.pending_style_correction is False
+
+
+def test_low_confidence_hint_appears_only_while_the_last_transcript_was_flagged():
+    state = ConversationState()
+    assert build_state_block_content(state) == ""
+
+    state.last_transcript_low_confidence = True
+    block = build_state_block_content(state)
+    assert "low transcription confidence" in block
+    assert "confirm it back" in block
+
+    state.last_transcript_low_confidence = False
+    assert "low transcription confidence" not in build_state_block_content(state)
+
+
+def test_low_confidence_hint_names_no_example_place():
+    """A hint that gave an example place would invite the model to say it."""
+    state = ConversationState()
+    state.last_transcript_low_confidence = True
+    block = build_state_block_content(state)
+    assert not any(word in block for word in ("Indiranagar", "Koramangala", "Juhu", "Bengaluru", "Goa"))
+
+
+def test_call_sequence_with_an_area_does_not_say_collected_and_still_need_the_area():
+    """The 2026-11-13 test call: 2 guests, 3 nights, area Indiranagar, no purpose. The prompt said the
+    area was already collected AND that the area was still needed."""
+    state = ConversationState()
+    state.set_slot("num_guests", 2)
+    state.set_slot("nights", 3)
+    state.set_slot("preferred_location", "Indiranagar")
+
+    block = build_state_block_content(state)
+
+    assert "area: Indiranagar" in block
+    assert "Still need the guest's preferred area" not in block
+
+
+def test_unserved_area_is_told_once_and_the_still_need_the_area_hint_is_dropped():
+    state = ConversationState()
+    state.set_slot("num_guests", 2)
+    state.set_slot("nights", 3)
+    state.area_not_served = "Indiranagar"
+
+    block = build_state_block_content(state)
+
+    assert "asked about Indiranagar, but nothing is on file there" in block
+    assert "Do not ask them for an area again" in block
+    assert "area: Indiranagar" not in block  # never listed as collected
+    assert "Still need the guest's preferred area" not in block
+    assert "Enough is known to recommend" not in block

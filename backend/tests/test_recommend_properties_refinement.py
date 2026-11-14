@@ -379,3 +379,30 @@ async def test_an_ordinary_stay_through_the_tool_ignores_party_rules(db_session,
 
     assert "Sea View" in params.result
     assert "hosting_gathering" not in state.slots
+
+
+async def test_area_with_no_property_is_recorded_as_not_served_not_as_collected(db_session, test_user):
+    await _property(db_session, test_user, name="Goa Villa", city="Goa")
+    state = ConversationState()
+    tools = build_voice_tools(call_session_id=None, property_id=None, host_user_id=test_user.id, conversation_state=state)
+    recommend_properties = next(t for t in tools if t.__name__ == "recommend_properties")
+    update_lead = next(t for t in tools if t.__name__ == "update_lead")
+
+    params = _FakeFunctionCallParams()
+    params.context = _GuestSaid("a stay in Narnia please")
+    await recommend_properties(params, preferred_location="Narnia")
+
+    assert "preferred_location" not in state.slots
+    assert state.area_not_served == "Narnia"
+
+    # The model saving what the guest asked for must not turn it into a collected area either.
+    await update_lead(_FakeFunctionCallParams(), preferred_location="narnia")
+    assert "preferred_location" not in state.slots
+
+    # A later search that finds something clears it and records the real area.
+    params = _FakeFunctionCallParams()
+    params.context = _GuestSaid("ok then Goa")
+    await recommend_properties(params, preferred_location="Goa")
+    assert "Goa Villa" in params.result
+    assert state.area_not_served is None
+    assert state.slots["preferred_location"] == "Goa"

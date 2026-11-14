@@ -30,7 +30,7 @@ import asyncio
 import uuid
 
 import pytest
-from pipecat.frames.frames import BotStoppedSpeakingFrame, EndFrame, TranscriptionFrame, TTSSpeakFrame
+from pipecat.frames.frames import BotStoppedSpeakingFrame, EndFrame, EndWorkerFrame, TranscriptionFrame, TTSSpeakFrame
 from pipecat.tests.utils import SleepFrame, run_test
 
 from app.config import settings
@@ -195,7 +195,9 @@ async def test_ceiling_still_fires_despite_continuous_real_transcripts(monkeypat
     # past the 50ms ceiling configured above, all comfortably inside the
     # watchdog's own 5s timeout window (so it never independently times out
     # either -- confirming the frames really are what's keeping it alive).
-    await run_test(watchdog, frames_to_send=_continuous_activity_frames(["I have a question"], 20, 0.02))
+    down_frames, _ = await run_test(
+        watchdog, frames_to_send=_continuous_activity_frames(["I have a question"], 20, 0.02)
+    )
 
     await asyncio.wait_for(ceiling_task, timeout=1.0)
 
@@ -206,7 +208,8 @@ async def test_ceiling_still_fires_despite_continuous_real_transcripts(monkeypat
     # And the watchdog genuinely never hung up on its own -- confirms the
     # continuous activity really was keeping it alive, not that it happened
     # to also time out coincidentally.
-    assert watchdog._ended is False
+    # (_ended itself no longer tells: run_test's teardown marks a watchdog ended.)
+    assert not any(isinstance(f, EndWorkerFrame) for f in down_frames)
     assert watchdog._prompts_sent == 0
 
 
@@ -223,13 +226,16 @@ async def test_ceiling_still_fires_despite_noise_derived_non_blank_transcripts(m
 
     ceiling_task = asyncio.create_task(pipeline._enforce_max_call_duration(worker, call_session_id))
 
-    await run_test(watchdog, frames_to_send=_continuous_activity_frames(["No", "Yeah", "No"], 20, 0.02))
+    down_frames, _ = await run_test(
+        watchdog, frames_to_send=_continuous_activity_frames(["No", "Yeah", "No"], 20, 0.02)
+    )
 
     await asyncio.wait_for(ceiling_task, timeout=1.0)
 
     assert len(worker.queued) == 2
     assert isinstance(worker.queued[1], EndFrame)
-    assert watchdog._ended is False
+    # (_ended itself no longer tells: run_test's teardown marks a watchdog ended.)
+    assert not any(isinstance(f, EndWorkerFrame) for f in down_frames)
 
 
 # ---------------------------------------------------------------------------

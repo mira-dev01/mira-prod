@@ -34,6 +34,7 @@ from pipecat.services.sarvam.tts import SarvamTTSService
 from pipecat.transcriptions.language import Language
 
 from app.voice.conversation_state import ConversationState
+from app.voice.low_confidence_transcript_guard import INAUDIBLE_MARKER
 
 # Sarvam STT tags codemixed Hindi/English speech (and anything it can't
 # confidently place) as Hindi -- see _map_language_code_to_enum's fallback in
@@ -64,7 +65,9 @@ class LanguageSyncProcessor(FrameProcessor):
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
 
-        if isinstance(frame, TranscriptionFrame) and frame.language is not None:
+        # The [inaudible] marker is not speech in any language: it must not move the TTS voice
+        # or the detected spoken language.
+        if isinstance(frame, TranscriptionFrame) and frame.language is not None and frame.text != INAUDIBLE_MARKER:
             if self._conversation_state is not None:
                 self._conversation_state.current_spoken_language = frame.language
 

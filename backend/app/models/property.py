@@ -59,6 +59,13 @@ class Property(UUIDPkMixin, TimestampMixin, Base):
     bedroom_count: Mapped[int | None] = mapped_column()
 
     city: Mapped[str | None] = mapped_column(String(120))
+    # The area inside the city a guest actually asks for ("Indiranagar", "Koramangala"). The
+    # location search never looked at it before: it lived only in the property NAME, which the
+    # filter does not search. `locality` is what Mira says; `locality_key` is the same word
+    # folded for matching (app/services/geo/text.py), so "Indira Nagar" and "Indiranagar" are one
+    # value. Always write both together through app/services/property/locality.py.
+    locality: Mapped[str | None] = mapped_column(String(120))
+    locality_key: Mapped[str | None] = mapped_column(String(120), index=True)
     exophone: Mapped[str | None] = mapped_column(String(32), unique=True, index=True)
     # Twilio equivalent of exophone above -- a Twilio phone number routed to
     # this property's Guest Support line, independent of and never read by

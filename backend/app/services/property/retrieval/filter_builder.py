@@ -12,6 +12,7 @@ from sqlalchemy import ColumnElement, Select, and_, or_, select
 from app.models.property import Property
 from app.schemas.tool import RecommendPropertiesArgs
 from app.services.amenity_taxonomy import canonicalize_amenities
+from app.services.property.retrieval.location_match import LocationMatch
 
 # Property.city/neighborhood_info are free text -- most properties only ever
 # say "Goa" or one specific locality ("Colva", "Siolim"), never the literal
@@ -93,6 +94,7 @@ def build_base_filters(
     host_user_id: uuid.UUID,
     extra_location_property_ids: "set[uuid.UUID] | None" = None,
     text_match_only_where: "ColumnElement[bool] | None" = None,
+    resolved: "LocationMatch | None" = None,
 ) -> Select:
     """Budget/location/amenity filters only -- deliberately excludes the
     guest-count filter (see build_guest_count_filter below), so callers can
@@ -153,9 +155,19 @@ def build_base_filters(
             # for it (see _city_synonyms above) -- a property stored under
             # either name is found regardless of which one the guest used.
             terms = [args.preferred_location, *_city_synonyms(args.preferred_location)]
+            if resolved is not None and resolved.locality:
+                terms.append(resolved.locality)  # a property with no locality yet may spell it the host's way
             location_filter = or_(
                 *[or_(Property.city.ilike(f"%{term}%"), Property.neighborhood_info.ilike(f"%{term}%")) for term in terms]
             )
+        locality_filter = None
+        if resolved is not None and resolved.is_locality and resolved.locality_key:
+            # The guest named one of the host's own areas: match on the stored key, which joins
+            # "Indira Nagar" to "Indiranagar". The free-text match below survives ONLY for properties
+            # that have no locality set yet -- a landmark line that merely mentions the area ("5 minutes
+            # from Indiranagar") must not pull in a property whose locality is somewhere else.
+            locality_filter = Property.locality_key == resolved.locality_key
+            location_filter = and_(Property.locality_key.is_(None), location_filter)
         if extra_location_property_ids is not None:
             # Properties matched by map position / state (app/services/geo) are found
             # by where they actually are ("Pangan" is a village, not "Himachal"). The
@@ -164,6 +176,8 @@ def build_base_filters(
             # must not pull in a property that is nowhere near it.
             text_filter = location_filter if text_match_only_where is None else and_(location_filter, text_match_only_where)
             location_filter = or_(text_filter, Property.id.in_(extra_location_property_ids))
+        if locality_filter is not None:
+            location_filter = or_(locality_filter, location_filter)
         stmt = stmt.where(location_filter)
 
     # required_amenities is a SOFT ranking preference (see apply_amenity_boost

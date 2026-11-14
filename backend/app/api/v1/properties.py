@@ -32,6 +32,7 @@ from app.services.geo.property_location import ensure_property_location
 from app.services.amenity_taxonomy import canonicalize_amenities
 from app.services.calendar_service import sync_property_ical
 from app.services.property.chunking import sync_property_chunks, sync_property_facts
+from app.services.property.locality import set_locality
 from app.services.property_normalizer import (
     NAME_DELIMITER_RE,
     normalize_property_name,
@@ -153,6 +154,14 @@ def _check_room_rental_complete(values: dict) -> None:
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             "To rent by the room, set the price per room, how many rooms can be rented, and the guests per room.",
         )
+
+
+def _apply_locality(property_: Property, value: str | None) -> None:
+    """Write locality and its matching key together (the search reads the key), or refuse with a message the form can show."""
+    try:
+        set_locality(property_, value)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)) from error
 
 
 def _check_weekend_rate_complete(values: dict) -> None:
@@ -399,10 +408,11 @@ async def create_property(
     _check_weekend_rate_complete(payload.model_dump())
     property_ = Property(
         user_id=current_user.id,
-        **payload.model_dump(exclude={"faq"}),
+        **payload.model_dump(exclude={"faq", "locality"}),
         faq=[item.model_dump() for item in payload.faq],
         amenity_tags=canonicalize_amenities(payload.amenities),
     )
+    _apply_locality(property_, payload.locality)
     db.add(property_)
     await db.commit()
     await db.refresh(property_)
@@ -473,6 +483,8 @@ async def update_property(
         # dashboard silently leaves the amenity filter matching against
         # stale tags.
         updates["amenity_tags"] = canonicalize_amenities(updates["amenities"] or [])
+    if "locality" in updates:
+        _apply_locality(property_, updates.pop("locality"))
     for field, value in updates.items():
         setattr(property_, field, value)
     await db.commit()

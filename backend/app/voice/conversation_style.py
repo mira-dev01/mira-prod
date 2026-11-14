@@ -43,6 +43,7 @@ from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 from app.voice.conversation_state import ConversationState
 from app.voice.language_heuristics import devanagari_ratio, english_word_ratio, has_hinglish_token
+from app.voice.low_confidence_transcript_guard import INAUDIBLE_MARKER
 
 Language3 = Literal["ENGLISH", "HINDI", "HINGLISH"]
 Script = Literal["DEVANAGARI", "ROMAN"]
@@ -460,14 +461,17 @@ class ConversationStyleProcessor(FrameProcessor):
         await super().process_frame(frame, direction)
 
         if isinstance(frame, TranscriptionFrame) and self._conversation_state is not None and frame.text:
-            self._turn_index += 1
-            signal = ConversationAnalyzer.analyze_turn(frame.text)
-            new_style = self._engine.update(
-                signal,
-                self._conversation_state.conversation_style,
-                turn_index=self._turn_index,
-            )
-            self._conversation_state.conversation_style = new_style
+            # The [inaudible] marker says nothing about how the guest speaks: it stays out of the
+            # style window (it is still a turn for the attention counter below).
+            if frame.text != INAUDIBLE_MARKER:
+                self._turn_index += 1
+                signal = ConversationAnalyzer.analyze_turn(frame.text)
+                new_style = self._engine.update(
+                    signal,
+                    self._conversation_state.conversation_style,
+                    turn_index=self._turn_index,
+                )
+                self._conversation_state.conversation_style = new_style
             # Also the shared per-call turn counter for ConversationState's
             # own attention/salience tracking (touch_attention/
             # attention_score, see conversation_state.py) -- reuses this

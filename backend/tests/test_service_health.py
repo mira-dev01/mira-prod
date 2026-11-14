@@ -492,3 +492,53 @@ async def test_api_middleware_tracks_5xx_and_crashes():
     window = next(s for s in health.snapshot() if s["key"] == "api")["window"]
     assert (window["ok"], window["errors"]) == (1, 2)
     assert "handler exploded" in health.last_error("api")["message"]
+
+
+async def test_daily_digest_reports_flagged_calls_and_the_top_reason(sent_emails, monkeypatch, db_session, test_user):
+    from datetime import datetime, timezone
+
+    from app.models.call_quality_event import CALL_SCORECARD_RULE, CallQualityEvent
+    from app.models.call_session import CallSession
+
+    async def _balances(db, refresh=False):
+        return []
+
+    monkeypatch.setattr(admin_monitor_service, "balances", _balances)
+    for flags in ([{"code": "repeated_question", "detail": "asked 4 times"}], [{"code": "repeated_question", "detail": "x"}, {"code": "tool_error", "detail": "y"}], []):
+        call = CallSession(exotel_call_id=f"c-{len(flags)}-{datetime.now().timestamp()}", user_id=test_user.id, caller_number="+919999999999", status="completed")
+        db_session.add(call)
+        await db_session.flush()
+        db_session.add(
+            CallQualityEvent(
+                call_session_id=call.id, rule=CALL_SCORECARD_RULE, severity="WARNING" if flags else "INFO", confidence=1.0,
+                turn_index=1, processing_time_ms=0.0, metadata_json={"scorecard": {"flagged": bool(flags), "flags": flags}},
+            )
+        )
+    await db_session.commit()
+    sent_emails.clear()
+
+    result = await health_monitor_service.send_daily_digest(force=True)
+
+    assert result["status"] == "sent"
+    email = sent_emails[0]
+    assert "2 flagged calls" in email["subject"]
+    assert "Call quality" in email["html"]
+    assert "2</strong> of 3 scored calls" in email["html"]
+    assert "Mira repeated the same question" in email["html"] and "(2)" in email["html"]
+
+
+async def test_daily_digest_still_sends_when_call_quality_cannot_be_read(sent_emails, monkeypatch):
+    async def _balances(db, refresh=False):
+        return []
+
+    async def _broken(db, scope, limit=200):
+        raise RuntimeError("database hiccup")
+
+    monkeypatch.setattr(admin_monitor_service, "balances", _balances)
+    monkeypatch.setattr(admin_monitor_service, "flagged_calls", _broken)
+    sent_emails.clear()
+
+    result = await health_monitor_service.send_daily_digest(force=True)
+
+    assert result["status"] == "sent"
+    assert "Call quality" not in sent_emails[0]["html"]

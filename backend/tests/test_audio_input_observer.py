@@ -98,7 +98,9 @@ async def test_bot_speech_tap_records_spoken_text_and_passes_through():
     assert "kitne guests" in context.recent_bot_text(since=0)
 
 
-def test_low_probability_short_transcript_is_recorded_as_guard_trigger_with_text():
+def test_low_probability_short_transcript_is_not_a_guard_trigger_but_keeps_its_text():
+    """A short utterance scores low on language ID whatever it is, so the guard passes it
+    (and the observer, which asks the same rule, must agree)."""
     clock = FakeClock()
     _, quality, observer = _make(clock)
 
@@ -106,11 +108,23 @@ def test_low_probability_short_transcript_is_recorded_as_guard_trigger_with_text
     meta = _telemetry(observer, quality)
 
     segment = meta["segments"][0]
-    assert segment["guard_would_trigger"] is True
+    assert segment["guard_would_trigger"] is False
     assert segment["short_text"] == "Okay"
     assert segment["token_class"] == "backchannel"
+    assert meta["summary"].get("guard_triggers", 0) == 0
+    assert meta["summary"].get("guard_triggers_short", 0) == 0
+
+
+def test_low_probability_long_transcript_is_recorded_as_guard_trigger():
+    clock = FakeClock()
+    _, quality, observer = _make(clock)
+
+    observer._observe(_transcript("mujhe kal ke liye ek achha sa villa chahiye", prob=0.2), DOWN)
+    meta = _telemetry(observer, quality)
+
+    assert meta["segments"][0]["guard_would_trigger"] is True
     assert meta["summary"]["guard_triggers"] == 1
-    assert meta["summary"]["guard_triggers_short"] == 1
+    assert meta["summary"].get("guard_triggers_short", 0) == 0
 
 
 def test_long_transcript_text_is_not_stored():

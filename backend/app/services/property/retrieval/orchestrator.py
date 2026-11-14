@@ -11,6 +11,7 @@ for the full reasoning and fail-open guarantees.
 """
 
 import logging
+import re
 import uuid
 from datetime import date
 
@@ -22,11 +23,12 @@ from app.models.property import Property
 from app.schemas.tool import RecommendPropertiesArgs
 from app.services import calendar_service, policy_stance, pricing_engine
 from app.services.geo import search as geo_search
+from app.services.geo.text import normalize
 from app.services.pricing_engine import StayPrice
 from app.services.amenity_taxonomy import canonicalize_amenities
 from app.services.property.budget import UPSELL_MAX_OVER_BUDGET, BudgetConstraint
 from app.services.property.pitch_formatter import RecommendationResult
-from app.services.property.retrieval import context_builder, filter_builder, ranking, semantic_search, sql_search
+from app.services.property.retrieval import context_builder, filter_builder, location_match, ranking, semantic_search, sql_search
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +41,10 @@ _MAX_COMBO_UNITS_SHOWN = 4
 # (evaluate_stay_prices is 2 DB queries + cached-rate lookups, no live API
 # calls, so pricing a few dozen candidates stays in the tens of ms).
 _BUDGET_CANDIDATE_POOL = 50
+# Cities named when a guest's area has nothing: enough to offer a choice without reading out a long list.
+_MAX_AREAS_OFFERED = 15
+# Closest option at least this far (straight line) from the named place: say there is none in the place itself.
+_NOT_IN_AREA_KM = 5.0
 # Properties within this many km of each other count as equally close when
 # ordering by distance, so price still breaks ties inside one neighbourhood.
 _GEO_DISTANCE_BUCKET_KM = 10.0
@@ -99,6 +105,9 @@ async def recommend_properties(
     budget_active = budget is not None and budget.is_applicable
 
     geo = await _geo_match(db, args, host_user_id)
+    resolved = await _resolve_location(db, args, host_user_id)
+    # Properties in the city the guest named are in the place; only the ones elsewhere are "nearby".
+    city_named = resolved.city if resolved is not None and resolved.via == "city" else None
     # Ordering by distance needs every candidate (the default query keeps only the cheapest few).
     geo_ranked = geo is not None and bool(geo.distances_km)
     base_stmt = filter_builder.build_base_filters(
@@ -106,6 +115,7 @@ async def recommend_properties(
         host_user_id,
         extra_location_property_ids=geo.property_ids if geo is not None else None,
         text_match_only_where=geo.unlocated if geo is not None else None,
+        resolved=resolved,
     )
     sql_results, combo_note = await sql_search.run_sql_search(
         db,
@@ -184,7 +194,7 @@ async def recommend_properties(
     merged = ranking.merge_and_rank(sql_results, semantic_results)
     if geo_ranked:
         # Nearest first (stable: price order is kept within a neighbourhood).
-        merged = sorted(merged, key=lambda p: round(geo.distances_km.get(p.id, 1e6) / _GEO_DISTANCE_BUCKET_KM))
+        merged = sorted(merged, key=lambda p: _geo_order(p, geo, city_named))
     candidate_count = len(merged)
 
     # The host's own party/event policy, per property (see policy_stance).
@@ -302,12 +312,43 @@ async def recommend_properties(
         upsell=upsell,
         upsell_reason=upsell_reason,
         policy_notes=policy_notes,
-        location_notes=_location_notes(geo, properties_to_show),
+        location_notes=_location_notes(geo, properties_to_show, resolved),
     )
     result.gathering_blocked = gathering_blocked
+    if resolved is not None and resolved.is_locality:
+        result.resolved_location = resolved.locality or ""
     if result.not_found and args.preferred_location:
-        await _describe_missing_location(db, result, args, geo, host_user_id)
+        # Only an AREA with nothing in it is "not on file". A search that found nothing because of the
+        # budget, the group size or an amenity, in an area the host does have, must not say the area is
+        # missing (it would also stop the agent asking about it again).
+        if not await _area_has_properties(db, args, host_user_id, geo, resolved):
+            await _describe_missing_location(db, result, args, geo, host_user_id)
     return result
+
+
+async def _area_has_properties(
+    db: AsyncSession,
+    args: RecommendPropertiesArgs,
+    host_user_id: uuid.UUID,
+    geo: "geo_search.GeoMatch | None",
+    resolved: "location_match.LocationMatch | None",
+) -> bool:
+    """Does the host have ANY property in the area the guest named, ignoring every other constraint?
+    Fails open to False (the old behaviour: describe the area as missing)."""
+    try:
+        location_only = RecommendPropertiesArgs(preferred_location=args.preferred_location)
+        stmt = filter_builder.build_base_filters(
+            location_only,
+            host_user_id,
+            extra_location_property_ids=geo.property_ids if geo is not None else None,
+            text_match_only_where=geo.unlocated if geo is not None else None,
+            resolved=resolved,
+        ).limit(1)
+        return (await db.execute(stmt)).first() is not None
+    except Exception:
+        await db.rollback()
+        logger.exception("could not check whether the area has any property; treating it as missing")
+        return False
 
 
 async def _geo_match(
@@ -326,21 +367,71 @@ async def _geo_match(
         return None
 
 
-def _location_notes(geo: "geo_search.GeoMatch | None", properties: list[Property]) -> dict[uuid.UUID, str]:
-    """How far each shown property is from the place the guest named. Straight-line
-    km, said as such -- hill roads are much longer, so never a drive time."""
-    if geo is None or not geo.distances_km:
-        return {}
+async def _resolve_location(
+    db: AsyncSession, args: RecommendPropertiesArgs, host_user_id: uuid.UUID
+) -> "location_match.LocationMatch | None":
+    """Which of the host's own areas the guest's words name (location_match.resolve). Fails open:
+    any error means the old free-text location match runs alone."""
+    if not args.preferred_location:
+        return None
+    try:
+        places = await location_match.load_host_places(db, host_user_id)
+        return location_match.resolve(args.preferred_location, places.localities, places.cities)
+    except Exception:
+        await db.rollback()
+        logger.exception("could not resolve the guest's area against the host's localities; using the text match only")
+        return None
+
+
+def _geo_order(p: Property, geo: "geo_search.GeoMatch", city_named: str | None) -> int:
+    """Sort key: nearest first, in 10 km steps. When the guest named a CITY, everything in that city comes first
+    (distance from a city's centre says nothing about which of its properties to show), then the rest by distance."""
+    if city_named and location_match.same_city(p.city, city_named):
+        return 0
+    bucket = round(geo.distances_km.get(p.id, 1e6) / _GEO_DISTANCE_BUCKET_KM)
+    return bucket + 1 if city_named else bucket
+
+
+def _location_notes(
+    geo: "geo_search.GeoMatch | None",
+    properties: list[Property],
+    resolved: "location_match.LocationMatch | None" = None,
+) -> dict[uuid.UUID, str]:
+    """What to tell the guest about where each shown property is relative to the place they named.
+    Three tiers, so the reply says what it found rather than implying every option is in the place:
+
+      * in the area -- the property's own locality is the one the guest named;
+      * nearby -- straight-line km from the named place (hill roads are much longer, so NEVER a drive
+        time), and, when nothing shown is in the area itself, an explicit "none in X itself";
+      * in the city the guest named, or nothing -- no note (the pitch already names the city).
+    """
+    exact_key = resolved.locality_key if resolved is not None and resolved.is_locality else None
+    in_area = {p.id for p in properties if exact_key and p.locality_key == exact_key}
+    in_named_city = {
+        p.id for p in properties if resolved is not None and resolved.via == "city" and location_match.same_city(p.city, resolved.city)
+    }
+    shown_km = [geo.distances_km[p.id] for p in properties if geo is not None and p.id in geo.distances_km]
+    # "None in X itself" is only said when even the closest option is clearly elsewhere; a villa 2 km
+    # from a village's centre is reasonably "in" it, and distance alone cannot say otherwise.
+    none_in_area_itself = not in_area and not in_named_city and bool(shown_km) and min(shown_km) >= _NOT_IN_AREA_KM
     notes: dict[uuid.UUID, str] = {}
     for p in properties:
-        distance = geo.distances_km.get(p.id)
+        if p.id in in_area:
+            notes[p.id] = f"in {resolved.locality}"
+            continue
+        if p.id in in_named_city:
+            continue  # in the city the guest named: the pitch already says so, a distance would only mislead
+        distance = geo.distances_km.get(p.id) if geo is not None and geo.distances_km else None
         if distance is None:
             continue
         km = max(1, round(distance))
+        label = geo.location.label
         if geo.farther:
-            notes[p.id] = f"the closest we have to {geo.location.label}, about {km} km away in a straight line"
+            notes[p.id] = f"the closest we have to {label}, about {km} km away in a straight line"
+        elif none_in_area_itself:
+            notes[p.id] = f"about {km} km from {label} in a straight line -- we have no property in {label} itself"
         else:
-            notes[p.id] = f"about {km} km from {geo.location.label} in a straight line"
+            notes[p.id] = f"about {km} km from {label} in a straight line"
     return notes
 
 
@@ -355,10 +446,39 @@ async def _describe_missing_location(
     so the reply offers real alternatives instead of a bare hand-off."""
     result.missing_location = geo.location.label if geo is not None else args.preferred_location
     try:
-        result.available_areas = await geo_search.list_areas(db, host_user_id)
+        areas = await geo_search.list_areas(db, host_user_id)
+        localities = await geo_search.list_localities(db, host_user_id)
     except Exception:
         await db.rollback()
         logger.exception("could not list the host's areas")
+        return
+    result.available_areas = _areas_to_offer(areas, args.preferred_location, localities)
+
+
+def _areas_to_offer(
+    areas: list[tuple[str, int]],
+    guest_phrase: str | None,
+    localities: "dict[str, list[tuple[str, int]]] | None" = None,
+) -> list[str]:
+    """"Bengaluru (53; areas: Indiranagar (1), Koramangala (3))" for each of the host's cities, the one
+    the guest's own words name ("Juhu Bangalore") first, then most properties first. A city whose
+    properties have no locality set is just "Bengaluru (53)"."""
+    spoken = normalize(guest_phrase)
+    localities = localities or {}
+
+    def named(city: str) -> bool:
+        names = {normalize(city), *(normalize(alt) for alt in filter_builder._city_synonyms(city))}
+        return any(name and re.search(rf"\b{re.escape(name)}\b", spoken) for name in names)
+
+    def describe(city: str, count: int) -> str:
+        inside = localities.get(normalize(city))
+        if not inside:
+            return f"{city} ({count})"
+        listed = ", ".join(f"{name} ({n})" for name, n in inside)
+        return f"{city} ({count}; areas: {listed})"
+
+    ordered = sorted(areas, key=lambda area: not named(area[0]))  # stable: keeps the most-properties order
+    return [describe(city, count) for city, count in ordered[:_MAX_AREAS_OFFERED]]
 
 
 async def _apply_gathering_policy(

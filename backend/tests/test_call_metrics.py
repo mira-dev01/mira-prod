@@ -17,7 +17,7 @@ from pipecat.tests.utils import run_test
 from app.models.call_quality_event import CALL_METRICS_RULE
 from app.voice.call_metrics import CallMetricsCollector
 
-GROQ_MODELS = ["openai/gpt-oss-120b", "llama-3.1-8b-instant"]
+GROQ_MODELS = ["openai/gpt-oss-120b", "qwen/qwen3.8-27b"]
 
 
 class FakeClock:
@@ -58,7 +58,7 @@ async def test_frames_pass_through_unchanged():
 def test_tokens_billed_to_provider_by_model_including_fallback():
     c = _collector()
     c._observe(_llm_usage("openai/gpt-oss-120b", 1000, 100))
-    c._observe(_llm_usage("llama-3.1-8b-instant", 500, 50))  # Groq fallback model, same processor
+    c._observe(_llm_usage("qwen/qwen3.8-27b", 500, 50))  # Groq fallback model, same processor
     c._observe(_llm_usage("openai/gpt-4.1", 300, 30, processor="OpenRouterLLMService#0"))
     c._observe(MetricsFrame(data=[TTSUsageMetricsData(processor="SarvamTTSService#0", value=420)]))
 
@@ -66,7 +66,7 @@ def test_tokens_billed_to_provider_by_model_including_fallback():
 
     rows = {(u.service, u.unit, u.model): u.quantity for u in usage}
     assert rows[("groq", "prompt_tokens", "openai/gpt-oss-120b")] == 1000
-    assert rows[("groq", "completion_tokens", "llama-3.1-8b-instant")] == 50
+    assert rows[("groq", "completion_tokens", "qwen/qwen3.8-27b")] == 50
     assert rows[("openrouter", "prompt_tokens", "openai/gpt-4.1")] == 300
     assert rows[("sarvam_tts", "characters", "bulbul:v3")] == 420
     assert rows[("sarvam_stt", "audio_seconds", "saaras:v3")] == 61.5

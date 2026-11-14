@@ -1,0 +1,22 @@
+# Confirmed live 2026-11-13: the guest answered the area question with "Koramangala" and the system
+# replaced the answer, so nothing was searched. A bare place name as the answer must reach recommend_properties.
+name: koramangala_answer_triggers_search
+user:
+  modality: text
+judge:
+  modality: text
+  eval:
+    factory: eval.judge_llm.make_judge_llm
+
+turns:
+  - user: "Hi, I need a place to stay for a few days."
+    expect:
+      - event: llm_response
+        eval: "Replies to the guest and asks where they want to stay, or for dates or guests."
+  - user: "Koramangala"
+    expect:
+      - event: function_call
+        calls:
+          - name: recommend_properties
+      - event: llm_response
+        eval: "Offers or describes the 2BHK Courtyard Home in Koramangala. It does not say nothing is available there."

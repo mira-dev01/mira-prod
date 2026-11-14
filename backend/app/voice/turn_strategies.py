@@ -30,6 +30,8 @@ from pipecat.frames.frames import (
 from pipecat.turns.types import ProcessFrameResult
 from pipecat.turns.user_stop.base_user_turn_stop_strategy import BaseUserTurnStopStrategy
 
+from app.voice.low_confidence_transcript_guard import INAUDIBLE_MARKER
+
 # Trailing words that suggest the sentence isn't over yet, in the languages
 # guests actually mix mid-call (see system_prompt.py's Hinglish rule).
 # Sarvam STT (mode="codemix", app/voice/pipeline.py) transcribes Hindi in
@@ -54,6 +56,8 @@ def _is_incomplete(text: str) -> bool:
     stripped = text.strip()
     if not stripped:
         return True
+    if stripped == INAUDIBLE_MARKER:
+        return False  # a whole turn: nothing is coming that a longer wait would catch
     words = stripped.rstrip(".,!?").split()
     if not words:
         return True

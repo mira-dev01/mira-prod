@@ -68,6 +68,7 @@ from app.schemas.tool import (
 from app.services import agent_config_service, custom_fields, lead_service, spacez_stay_requests, tool_handlers
 from app.services.amenity_taxonomy import canonicalize_amenities, canonicalize_amenity
 from app.services.property.budget import coerce_budget_basis, infer_budget_basis, mentions_amount
+from app.services.property.retrieval import location_match
 from app.services.property.pitch_formatter import (
     RECOMMENDATION_FAILED_TEXT,
     recommendation_failed_result,
@@ -238,9 +239,9 @@ def build_voice_tools(
         locked = state.slots.get("preferred_location")
         if not requested or not locked:
             return False
-        a, b = str(requested).strip().lower(), str(locked).strip().lower()
-        if a == b or a in b or b in a:
-            return False
+        a = str(requested).strip().lower()
+        if location_match.same_area(requested, locked):
+            return False  # "Indira Nagar" is the locked "Indiranagar"
         guest_texts = _recent_guest_texts(params)
         if any(not text.isascii() for text in guest_texts):
             # The guest may have said the place in another script (e.g. Hindi),
@@ -1210,7 +1211,8 @@ def build_voice_tools(
                 rupees (e.g. "USD") -- never convert it yourself.
             nights: Number of nights the guest wants to stay, if known.
             num_guests: Number of guests, if known.
-            preferred_location: Preferred city/area, if known.
+            preferred_location: Preferred city/area, if known. Write the place name in
+                English letters ("Indiranagar", never Devanagari): the search matches on Latin spelling.
             purpose_of_stay: e.g. family trip, couples getaway, workcation.
             required_amenities: Specific amenities the guest asked for, e.g.
                 ["pool", "projector"], if any. Accumulates across calls this
@@ -1500,7 +1502,15 @@ def build_voice_tools(
             # Same rule as update_lead's wrapper: a nights-only stay length
             # is only kept while no exact check-in is known.
             state.set_slot("nights", nights)
-        state.set_slot("preferred_location", effective_location)
+        if structured_result.missing_location:
+            # Nothing on file there: the area is not "collected", and the state prompt must not
+            # ask for it again.
+            state.area_not_served = effective_location
+        else:
+            # The host's own spelling when the search resolved the area to one of their localities, so
+            # the area lock and the prompt see "Indiranagar", not the guest's "Indira Nagar".
+            state.set_slot("preferred_location", structured_result.resolved_location or effective_location)
+            state.area_not_served = None
         state.set_slot("purpose_of_stay", effective_purpose)
         state.set_slot("required_amenities", effective_amenities)
         budget = structured_result.budget
@@ -1602,7 +1612,8 @@ def build_voice_tools(
                 name and meaning as recommend_properties' budget_amount).
             budget_basis: "per_night" or "total_stay", exactly as for
                 recommend_properties -- leave unset if the guest didn't say.
-            preferred_location: Preferred city/area, if known.
+            preferred_location: Preferred city/area, if known. Write the place name in
+                English letters ("Indiranagar", never Devanagari): the search matches on Latin spelling.
             lead_temperature: One of very_hot, hot, warm, cold. very_hot only when the guest
                 explicitly says they want to go ahead with the booking.
             properties_discussed: Property names discussed so far (the dashboard's Leads
@@ -1704,7 +1715,8 @@ def build_voice_tools(
                 # back by recommend_properties' wrapper.
                 if coerce_budget_basis(budget_basis) != "unspecified":
                     state.set_slot("budget_basis", coerce_budget_basis(budget_basis))
-                state.set_slot("preferred_location", args.preferred_location)
+                if not state.is_area_not_served(args.preferred_location):
+                    state.set_slot("preferred_location", args.preferred_location)
                 state.set_slot("purpose_of_stay", args.purpose_of_stay)
                 state.set_slot("phone", args.phone)
                 state.set_slot("guest_name", args.guest_name)

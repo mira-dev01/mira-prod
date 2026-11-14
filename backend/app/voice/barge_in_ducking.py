@@ -43,16 +43,18 @@ def scale_pcm16(audio: bytes, gain: float) -> bytes:
 
 
 class BargeInDuckingProcessor(FrameProcessor):
-    def __init__(self, *, duck_gain: float = 0.3, clock=time.monotonic):
+    def __init__(self, *, duck_gain: float = 0.3, now=time.monotonic):
         super().__init__()
         self._duck_gain = duck_gain
-        self._clock = clock
+        # Deliberately not named after pipecat's own clock attribute: FrameProcessor replaces
+        # that one with a clock object at setup, so calling it raised TypeError on every frame.
+        self._now = now
         self._ducked_at: float | None = None
 
     def _is_ducked(self) -> bool:
         if self._ducked_at is None:
             return False
-        if self._clock() - self._ducked_at > _MAX_DUCK_SECS:
+        if self._now() - self._ducked_at > _MAX_DUCK_SECS:
             self._ducked_at = None
             return False
         return True
@@ -61,7 +63,7 @@ class BargeInDuckingProcessor(FrameProcessor):
         await super().process_frame(frame, direction)
         try:
             if isinstance(frame, VADUserStartedSpeakingFrame):
-                self._ducked_at = self._clock()
+                self._ducked_at = self._now()
             elif isinstance(
                 frame, (VADUserStoppedSpeakingFrame, InterruptionFrame, BotStoppedSpeakingFrame)
             ):

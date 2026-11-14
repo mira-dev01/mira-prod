@@ -9,6 +9,7 @@ from pipecat.frames.frames import (
     VADUserStoppedSpeakingFrame,
 )
 from pipecat.processors.frame_processor import FrameDirection
+from pipecat.tests.utils import SleepFrame, run_test
 
 from app.voice.barge_in_ducking import BargeInDuckingProcessor, scale_pcm16
 
@@ -29,15 +30,15 @@ def test_scale_pcm16_unity_gain_is_untouched():
 
 
 class _Probe(BargeInDuckingProcessor):
-    def __init__(self, clock):
-        super().__init__(duck_gain=0.5, clock=clock)
+    def __init__(self, now):
+        super().__init__(duck_gain=0.5, now=now)
         self.pushed = []
 
     async def process_frame(self, frame, direction):
         # bypass FrameProcessor's pipeline plumbing; exercise only our logic
         try:
             if isinstance(frame, VADUserStartedSpeakingFrame):
-                self._ducked_at = self._clock()
+                self._ducked_at = self._now()
             elif isinstance(frame, (VADUserStoppedSpeakingFrame, BotStoppedSpeakingFrame)):
                 self._ducked_at = None
             elif isinstance(frame, OutputAudioRawFrame) and self._is_ducked():
@@ -74,3 +75,27 @@ async def test_never_stays_ducked_if_stop_signal_is_lost():
     frame = _audio()
     await p.process_frame(frame, FrameDirection.DOWNSTREAM)
     assert list(array.array("h", frame.audio)) == [1000, 1000]
+
+
+@pytest.mark.asyncio
+async def test_ducks_through_real_pipecat_setup():
+    """The tests above call process_frame on a subclass that skips FrameProcessor's
+    setup, so they could not see pipecat replacing a processor's own attributes at
+    StartFrame. This one runs the real processor in a real pipeline: it ducked
+    nothing (and logged barge_in_ducking_failed) while the timer shared a name with
+    pipecat's clock."""
+    processor = BargeInDuckingProcessor(duck_gain=0.5)
+    audio = _audio()
+
+    down_frames, _ = await run_test(
+        processor,
+        frames_to_send=[
+            VADUserStartedSpeakingFrame(start_secs=0.35, timestamp=0),
+            SleepFrame(sleep=0.05),
+            audio,
+        ],
+    )
+
+    out = [f for f in down_frames if isinstance(f, OutputAudioRawFrame)]
+    assert len(out) == 1
+    assert list(array.array("h", out[0].audio)) == [500, 500]

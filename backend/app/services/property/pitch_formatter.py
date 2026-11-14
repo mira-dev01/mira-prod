@@ -83,11 +83,15 @@ class RecommendationResult:
     # the host's policy does not allow the party/event the guest described.
     gathering_blocked: bool = False
     # Set when nothing matched the area the guest named (see
-    # orchestrator._describe_missing_location): the area, and the states the
-    # host DOES have properties in, so the reply offers real alternatives
-    # instead of handing the guest to the host over a place we simply don't cover.
+    # orchestrator._describe_missing_location): the area, and the cities (with
+    # property counts) the host DOES have properties in, so the reply offers real
+    # alternatives instead of handing the guest to the host over a place we don't cover.
     missing_location: str = ""
     available_areas: list[str] = field(default_factory=list)
+    # The host's own spelling of the area the guest named ("Indiranagar" for "Indira Nagar"), set only
+    # when the search resolved it to one of the host's localities (location_match). It is what the
+    # preferred_location slot stores, so the area lock compares like with like.
+    resolved_location: str = ""
 
 
 def recommendation_failed_result() -> RecommendationResult:
@@ -327,11 +331,17 @@ def _offer_line(result: RecommendationResult) -> str:
 
 
 def _missing_location_text(location: str, areas: list[str]) -> str:
-    where = f" We do have properties in {', '.join(areas)}." if areas else ""
+    if not areas:
+        return (
+            f"We don't have a property in or near {location}. Do not name any other area or place. Say so "
+            "plainly and offer to connect them with the host."
+        )
     return (
-        f"We don't have a property in or near {location}.{where} Say so plainly and offer to look at "
-        "another area instead -- do NOT hand the guest to the host just because this area isn't covered. "
-        "Only if they'd rather not look elsewhere, offer to connect them with the host."
+        f"We don't have a property in or near {location}. We do have properties in: {', '.join(areas)}. "
+        "Name only places from this list. Never name any other area. If the guest asks for one not listed, "
+        "say we don't have it. Say so plainly and offer to look at one of these instead -- do NOT hand the "
+        "guest to the host just because this area isn't covered. Only if they'd rather not look elsewhere, "
+        "offer to connect them with the host."
     )
 
 

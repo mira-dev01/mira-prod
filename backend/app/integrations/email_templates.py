@@ -516,8 +516,10 @@ def build_health_digest_email_html(
     credits: list[dict],
     admin_url: str,
     date_label: str,
+    flagged: dict | None = None,
 ) -> str:
-    """services: [{label, group_label, state, availability, errors_24h, note}]
+    """flagged: {flagged, scored, top_reason, top_count} -- call quality for the last 24 hours, or None to leave it out.
+    services: [{label, group_label, state, availability, errors_24h, note}]
     incidents: [{label, severity, opened_at, duration, resolved, first_error}]
     credits: [{label, remaining, used_of, days_left, level}]"""
     th = f'style="text-align:left;font-size:12px;color:{_MUTED};font-weight:600;padding:6px 8px;border-bottom:1px solid {_BORDER};"'
@@ -568,8 +570,21 @@ def build_health_digest_email_html(
         "degraded": "Some services are degraded",
         "down": "One or more services are down",
     }.get(overall, "Daily health report")
+    quality_section = ""
+    if flagged is not None:
+        if flagged["flagged"]:
+            quality = (
+                f'<div style="font-size:13px;"><strong>{_esc(flagged["flagged"])}</strong> of {_esc(flagged["scored"])} scored calls '
+                f"were flagged. Most common reason: <strong>{_esc(flagged['top_reason'])}</strong> ({_esc(flagged['top_count'])}).</div>"
+            )
+        else:
+            quality = (
+                f'<div style="font-size:13px;color:{_MUTED};">No flagged calls out of {_esc(flagged["scored"])} scored in the last 24 hours.</div>'
+            )
+        quality_section = section("Call quality", quality)
     body = (
         f'<tr><td style="padding:4px 28px 0 28px;font-size:13px;color:{_MUTED};">{_esc(date_label)} · last 24 hours</td></tr>'
+        + quality_section
         + section("Credits left", table(["Account", "Level", "Remaining", "Days left"], credit_rows) if credit_rows else "<div style='font-size:13px;color:#635747;'>No balances configured yet.</div>")
         + section(
             f"Incidents ({len(incidents)})",

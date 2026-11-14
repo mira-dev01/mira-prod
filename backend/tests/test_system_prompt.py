@@ -1224,3 +1224,74 @@ def test_a_saved_name_with_no_stay_tells_the_model_not_to_ask_for_it_again():
     prompt = build_lead_system_prompt(_user(), [], _guest(name="Asha Rao", total_stays=0))
 
     assert "not in our guest records" in prompt and "name on file: Asha Rao" in prompt and "never ask for it again" in prompt
+
+
+def test_both_agents_are_told_what_the_inaudible_marker_means():
+    from app.prompts.system_prompt import GUEST_SUPPORT_INSTRUCTIONS, LEAD_AGENT_INSTRUCTIONS
+
+    for instructions in (GUEST_SUPPORT_INSTRUCTIONS, LEAD_AGENT_INSTRUCTIONS):
+        assert "UNCLEAR AUDIO: a guest message that is exactly [inaudible]" in instructions
+        assert "never repeat your previous question in the same words" in instructions
+
+
+def test_both_agents_are_forbidden_from_naming_places_that_are_not_listed():
+    from app.prompts.system_prompt import GUEST_SUPPORT_INSTRUCTIONS, LEAD_AGENT_INSTRUCTIONS
+
+    for instructions in (GUEST_SUPPORT_INSTRUCTIONS, LEAD_AGENT_INSTRUCTIONS):
+        assert "PLACE NAMES: never name an area, neighbourhood or city that is not in the Locations section" in instructions
+
+
+# -- locality in the prompt (Task 14) ------------------------------------------------------------------------
+
+
+def _located_property(name, city, locality, **extra) -> Property:
+    from app.services.property.locality import set_locality
+
+    prop = _property(name=name, city=city, **extra)
+    set_locality(prop, locality)
+    return prop
+
+
+def test_lead_prompt_portfolio_line_puts_the_locality_before_the_city():
+    prompt = build_lead_system_prompt(_user(), [_located_property("Jugglers Rest", "Bengaluru", "Indiranagar")])
+    assert "-- Indiranagar, Bengaluru, ₹4,500/night, sleeps 4" in prompt
+
+
+def test_lead_prompt_portfolio_line_without_a_locality_is_unchanged():
+    prompt = build_lead_system_prompt(_user(), [_property(name="Cove", city="Goa")])
+    assert "-- Goa, ₹4,500/night, sleeps 4" in prompt
+
+
+def test_lead_prompt_lists_each_citys_areas_with_counts():
+    props = [
+        _located_property("A", "Bengaluru", "Koramangala"),
+        _located_property("B", "Bengaluru", "Indira Nagar"),
+        _located_property("C", "Bengaluru", "Koramangala"),
+        _located_property("D", "Bengaluru", "Indiranagar"),
+        _located_property("F", "Bengaluru", "Indiranagar"),
+        _property(name="E", city="Goa"),
+    ]
+    locations = build_lead_system_prompt(_user(), props).split("Locations:")[1]
+    # Indira Nagar / Indiranagar are one area (shown as its most common spelling), areas alphabetical;
+    # the city with no locality gets no areas line.
+    assert "Bengaluru areas: Indiranagar (3), Koramangala (2)" in locations
+    assert "Goa areas" not in locations
+    assert "never name another area" in locations
+
+
+def test_lead_prompt_has_no_areas_rule_when_no_locality_is_set():
+    locations = build_lead_system_prompt(_user(), [_property(city="Goa")]).split("Locations:")[1]
+    assert "areas" not in locations.lower().replace("areas listed", "")
+    assert "never name another area" not in locations
+
+
+def test_lead_prompt_is_byte_identical_across_builds_and_input_order():
+    props = [
+        _located_property("Zed", "Bengaluru", "Koramangala"),
+        _located_property("Alpha", "Bengaluru", "Indiranagar"),
+        _property(name="Mid", city="Goa"),
+    ]
+    host = _user()
+    first = build_lead_system_prompt(host, props)
+    assert build_lead_system_prompt(host, list(props)) == first
+    assert build_lead_system_prompt(host, list(reversed(props))) == first

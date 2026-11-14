@@ -51,9 +51,11 @@ from app.integrations.twilio_voice import (
 )
 from app.models.user import User
 from app.services import faq_service
+from app.voice.eval_mode import eval_route_authorized
 from app.voice.pipeline import (
     run_browser_lead_pipeline,
     run_browser_voice_pipeline,
+    run_eval_voice_pipeline,
     run_voice_pipeline,
     run_voice_pipeline_twilio,
 )
@@ -138,6 +140,20 @@ async def exotel_voice_ws(websocket: WebSocket, token: str) -> None:
     await websocket.accept()
     _transport_type, call_data = await parse_telephony_websocket(websocket)
     await run_voice_pipeline(websocket, call_data)
+
+
+@router.websocket("/eval/ws/{token}")
+async def eval_voice_ws(websocket: WebSocket, token: str) -> None:
+    """The eval harness (`pipecat eval run --bot-url ws://.../api/v1/voice/eval/ws/<token>`) against a deployed
+    instance. Off unless EVAL_ROUTE_TOKEN is set; see app.voice.eval_mode.eval_route_authorized. Refused before
+    the handshake completes otherwise (a websocket cannot answer 404; the plain HTTP path does)."""
+    if not eval_route_authorized(token):
+        logger.warning("Rejected eval voice websocket")
+        await websocket.close(code=4401)
+        return
+
+    await websocket.accept()
+    await run_eval_voice_pipeline(websocket)
 
 
 @router.post("/twilio/incoming/{token}")

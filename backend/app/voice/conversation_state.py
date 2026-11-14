@@ -151,9 +151,10 @@ _SLOT_GOAL_PRIORITY: list[tuple[str, ConversationGoal]] = [
     ("check_in", "collecting_dates"),
     ("check_out", "collecting_dates"),
     ("num_guests", "collecting_guests"),
-    ("preferred_location", "collecting_location_or_purpose"),
-    ("purpose_of_stay", "collecting_location_or_purpose"),
 ]
+# The last step is "an area OR a purpose" (either is enough to search on), checked
+# separately in _recompute_goal -- listing both keys above would demand both.
+_LOCATION_OR_PURPOSE_SLOTS = ("preferred_location", "purpose_of_stay")
 
 # A guest who has given a length of stay (nights), but not yet exact/
 # confirmed check-in and check-out dates, has still answered the substance
@@ -234,6 +235,22 @@ class ConversationState:
     # TYPE_CHECKING (see import above) to keep this lightweight dataclass
     # module free of a hard runtime dependency on pipecat's enum.
     current_spoken_language: "Language | None" = None
+
+    # Written by LowConfidenceTranscriptGuardProcessor for every guest transcript:
+    # True while the LATEST transcript scored low on language confidence but was kept
+    # as the guest's real words (a place, number or date in it should be confirmed
+    # back). Overwritten by the next transcript, so it is a one-turn hint.
+    last_transcript_low_confidence: bool = False
+
+    # The area the guest asked for when recommend_properties found nothing there. Kept OUT of
+    # `slots` on purpose: a slot reads as "already collected", but nothing is on file for this
+    # area. Cleared by the next search that does not report a missing area.
+    area_not_served: str | None = None
+
+    def is_area_not_served(self, location: str | None) -> bool:
+        """True when `location` is the area a search just found nothing in, so update_lead
+        does not record it as a usable preferred area."""
+        return bool(location and self.area_not_served) and location.strip().lower() == self.area_not_served.strip().lower()
 
     # Phase 3.3 -- a guest's EXPLICIT, stated language request ("can you
     # speak Hindi?", "English mein baat karo please"), distinct from
@@ -647,6 +664,9 @@ class ConversationState:
             if key not in self.slots:
                 self.conversation_goal = goal
                 return
+        if not any(key in self.slots for key in _LOCATION_OR_PURPOSE_SLOTS):
+            self.conversation_goal = "collecting_location_or_purpose"
+            return
         # Every core slot known and no property locked/recommended yet --
         # enough is known to recommend.
         if not self.selected_property_id and not self.recommendations_shown:

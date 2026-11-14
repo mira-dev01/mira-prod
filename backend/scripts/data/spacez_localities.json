@@ -1,0 +1,8 @@
+{
+  "_note": "Hand-checked localities for titles the parser cannot read. A 'name' matches a property whose name starts with it (case-insensitive) and must match exactly one. Only add an area the title or the host actually states; leave the rest out and they stay without a locality (the dry run lists them).",
+  "overrides": [
+    {"name": "Glasshouse 5BHK Spacez Villa w/ Patio Koramangala", "locality": "Koramangala"},
+    {"name": "1BHK In Jakkur Lucent Elite Apartment", "locality": "Jakkur"},
+    {"name": "5BHK villa In Kukatpally Ivory Court", "locality": "Kukatpally"}
+  ]
+}

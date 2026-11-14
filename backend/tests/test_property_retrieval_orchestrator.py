@@ -5,6 +5,7 @@ from app.models.property import Property
 from app.models.property_chunk import PropertyChunk
 from app.schemas.tool import RecommendPropertiesArgs
 from app.services import embedding_service
+from app.services.property.pitch_formatter import render_recommendation_text
 from app.services.property.retrieval import orchestrator
 
 
@@ -380,3 +381,318 @@ async def test_recommend_properties_nights_defaults_from_check_in_check_out_span
     assert result_shorter_stay.options == []
     assert len(result_shorter_stay.partially_available) == 1
     assert result_shorter_stay.partially_available[0].spoken_name == "Short Stay Villa"
+
+
+async def _city_property(db_session, user, name, city, exophone):
+    property_ = Property(user_id=user.id, name=name, city=city, base_price=3000, max_guests=4, exophone=exophone)
+    db_session.add(property_)
+    await db_session.commit()
+    return property_
+
+
+async def test_unknown_area_miss_names_only_the_hosts_real_cities(test_user, db_session):
+    """The 2026-11-13 call: nothing was found, the model was told to "offer another area" with no list
+    and made up Koramangala and Juhu. The miss text must carry the real places and forbid the rest."""
+    await _city_property(db_session, test_user, "Villa One", "Bengaluru", "+918011129101")
+    await _city_property(db_session, test_user, "Villa Two", "Bengaluru", "+918011129102")
+    await _city_property(db_session, test_user, "Villa Three", "Mumbai", "+918011129103")
+
+    result = await orchestrator.recommend_properties(
+        db_session, RecommendPropertiesArgs(preferred_location="Narnia"), test_user.id
+    )
+    text = render_recommendation_text(result)
+
+    assert result.not_found and result.missing_location == "Narnia"
+    assert "We do have properties in: Bengaluru (2), Mumbai (1)." in text
+    assert "Name only places from this list. Never name any other area." in text
+    for invented in ("Juhu", "Koramangala", "Goa", "Delhi"):
+        assert invented not in text
+
+
+async def test_miss_lists_the_guests_own_city_first_even_with_fewer_properties(test_user, db_session):
+    await _city_property(db_session, test_user, "Villa One", "Bengaluru", "+918011129111")
+    await _city_property(db_session, test_user, "Villa Two", "Bengaluru", "+918011129112")
+    await _city_property(db_session, test_user, "Villa Three", "Mumbai", "+918011129113")
+
+    result = await orchestrator.recommend_properties(
+        db_session, RecommendPropertiesArgs(preferred_location="Juhu Mumbai"), test_user.id
+    )
+
+    assert result.available_areas == ["Mumbai (1)", "Bengaluru (2)"]
+
+
+async def test_miss_with_no_cities_on_file_forbids_naming_any_place(test_user, db_session):
+    property_ = Property(user_id=test_user.id, name="No City", base_price=3000, max_guests=4, exophone="+918011129121")
+    db_session.add(property_)
+    await db_session.commit()
+
+    result = await orchestrator.recommend_properties(
+        db_session, RecommendPropertiesArgs(preferred_location="Narnia"), test_user.id
+    )
+    text = render_recommendation_text(result)
+
+    assert "Do not name any other area or place" in text
+    assert "We do have properties in" not in text
+
+
+# --- locality search (Task 12): the area word lives in `locality`, not in the property name ---
+
+
+def _located(user_id, name, city, locality, exophone, **extra):
+    from app.services.property.locality import set_locality
+
+    prop = Property(user_id=user_id, name=name, city=city, base_price=5000, max_guests=4, exophone=exophone, **extra)
+    set_locality(prop, locality)
+    return prop
+
+
+async def _spacez_like_host(db_session, user_id):
+    db_session.add_all(
+        [
+            _located(user_id, "Jugglers Rest", "Bengaluru", "Indiranagar", "+918011131001"),
+            _located(user_id, "Classic Charm", "Bengaluru", "Koramangala", "+918011131002"),
+            Property(user_id=user_id, name="Sunny Loft", city="Bengaluru", base_price=5000, max_guests=4, exophone="+918011131003"),
+        ]
+    )
+    await db_session.commit()
+
+
+async def test_every_spelling_of_an_area_finds_the_property_in_it(test_user, db_session):
+    await _spacez_like_host(db_session, test_user.id)
+
+    for phrase in ("Indiranagar", "Indira Nagar", "indiranagar ", "Indra Nagar"):
+        result = await orchestrator.recommend_properties(
+            db_session, RecommendPropertiesArgs(preferred_location=phrase), test_user.id
+        )
+        assert [o.spoken_name for o in result.options] == ["Jugglers Rest"], phrase
+        assert result.resolved_location == "Indiranagar", phrase
+
+
+async def test_a_landmark_mention_does_not_pull_in_a_property_in_another_area(test_user, db_session):
+    db_session.add_all(
+        [
+            _located(test_user.id, "Jugglers Rest", "Bengaluru", "Indiranagar", "+918011131011"),
+            _located(
+                test_user.id, "Classic Charm", "Bengaluru", "Koramangala", "+918011131012",
+                neighborhood_info="Twenty minutes from Indiranagar's restaurants.",
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    result = await orchestrator.recommend_properties(
+        db_session, RecommendPropertiesArgs(preferred_location="Indiranagar"), test_user.id
+    )
+
+    assert [o.spoken_name for o in result.options] == ["Jugglers Rest"]
+
+
+async def test_a_property_with_no_locality_yet_is_still_found_by_the_old_text_match(test_user, db_session):
+    db_session.add_all(
+        [
+            _located(test_user.id, "Jugglers Rest", "Bengaluru", "Indiranagar", "+918011131021"),
+            Property(
+                user_id=test_user.id, name="Not Yet Filled In", city="Bengaluru", base_price=5000, max_guests=4,
+                exophone="+918011131022", neighborhood_info="Quiet lane in Indiranagar, near the metro.",
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    result = await orchestrator.recommend_properties(
+        db_session, RecommendPropertiesArgs(preferred_location="Indiranagar"), test_user.id
+    )
+
+    assert {o.spoken_name for o in result.options} == {"Jugglers Rest", "Not Yet Filled In"}
+
+
+async def test_an_area_the_host_does_not_have_is_reported_missing_not_matched_to_the_city(test_user, db_session):
+    await _spacez_like_host(db_session, test_user.id)
+
+    result = await orchestrator.recommend_properties(
+        db_session, RecommendPropertiesArgs(preferred_location="Juhu Bangalore"), test_user.id
+    )
+
+    assert result.options == []
+    assert result.missing_location == "Juhu Bangalore"
+    assert result.resolved_location == ""
+    assert any("Bengaluru" in area for area in result.available_areas)
+
+
+async def test_a_city_search_still_returns_every_property_in_the_city(test_user, db_session):
+    await _spacez_like_host(db_session, test_user.id)
+
+    result = await orchestrator.recommend_properties(
+        db_session, RecommendPropertiesArgs(preferred_location="Bangalore"), test_user.id
+    )
+
+    assert len(result.options) == 3
+    assert result.resolved_location == ""  # a city is not a locality; the slot keeps what the guest said
+
+
+# --- offering real areas, and saying where each option is (Tasks 13 and 14) ---
+
+
+def test_the_missing_area_offer_lists_the_areas_inside_each_city():
+    areas = [("Bengaluru", 4), ("Goa", 2)]
+    localities = {"bengaluru": [("Koramangala", 3), ("Indiranagar", 1)]}
+
+    offered = orchestrator._areas_to_offer(areas, "Juhu Bangalore", localities)
+
+    assert offered == ["Bengaluru (4; areas: Koramangala (3), Indiranagar (1))", "Goa (2)"]
+
+
+def test_the_missing_area_offer_without_localities_is_just_the_cities():
+    assert orchestrator._areas_to_offer([("Bengaluru", 4), ("Goa", 2)], None) == ["Bengaluru (4)", "Goa (2)"]
+
+
+async def test_a_missing_area_reply_offers_the_hosts_real_areas(test_user, db_session):
+    await _spacez_like_host(db_session, test_user.id)
+
+    result = await orchestrator.recommend_properties(
+        db_session, RecommendPropertiesArgs(preferred_location="Juhu"), test_user.id
+    )
+    text = render_recommendation_text(result)
+
+    assert "Juhu" in text
+    assert "Bengaluru (3; areas: Indiranagar (1), Koramangala (1))" in text
+
+
+def _geo(label, distances, farther=False):
+    from app.services.geo.gazetteer import ResolvedLocation
+    from app.services.geo.search import GeoMatch
+
+    return GeoMatch(ResolvedLocation(kind="place", label=label, lat=0.0, lng=0.0), set(distances), dict(distances), farther=farther)
+
+
+def _prop(name, locality=None, city="Bengaluru"):
+    from app.services.property.locality import set_locality
+
+    prop = Property(id=__import__("uuid").uuid4(), name=name, city=city, base_price=1, max_guests=2)
+    set_locality(prop, locality)
+    return prop
+
+
+def test_a_property_in_the_named_area_is_labelled_in_it():
+    from app.services.property.retrieval.location_match import LocationMatch
+
+    inside, other = _prop("Inside", "Indiranagar"), _prop("Other", "Koramangala")
+    geo = _geo("Indiranagar", {inside.id: 1.0, other.id: 6.0})
+
+    notes = orchestrator._location_notes(geo, [inside, other], LocationMatch("Bengaluru", "Indiranagar", "locality"))
+
+    assert notes[inside.id] == "in Indiranagar"
+    assert notes[other.id] == "about 6 km from Indiranagar in a straight line"  # something is in the area itself: no disclaimer
+
+
+def test_a_nearby_option_says_there_is_none_in_the_place_itself_and_gives_a_distance_only():
+    near = _prop("Near")
+    geo = _geo("Kasol", {near.id: 12.4})
+
+    notes = orchestrator._location_notes(geo, [near], None)
+
+    assert notes[near.id] == "about 12 km from Kasol in a straight line -- we have no property in Kasol itself"
+    assert "minute" not in notes[near.id] and "drive" not in notes[near.id]
+
+
+def test_a_property_a_couple_of_km_away_is_not_declared_outside_the_place():
+    near = _prop("Near")
+    notes = orchestrator._location_notes(_geo("Kasol", {near.id: 2.0}), [near], None)
+    assert notes[near.id] == "about 2 km from Kasol in a straight line"
+
+
+def test_the_wider_ring_is_called_the_closest_we_have():
+    far = _prop("Far")
+    notes = orchestrator._location_notes(_geo("Kasol", {far.id: 90.0}, farther=True), [far], None)
+    assert notes[far.id] == "the closest we have to Kasol, about 90 km away in a straight line"
+
+
+def test_no_geo_and_no_area_means_no_notes():
+    assert orchestrator._location_notes(None, [_prop("X")], None) == {}
+
+
+async def test_a_miss_caused_by_the_budget_does_not_say_the_area_is_missing(test_user, db_session):
+    """Found in the Phase 3 recheck: "We don't have a property in or near Indiranagar ... we do have
+    Indiranagar (1)". An area the host has, searched with a budget nothing fits, is a budget miss."""
+    await _spacez_like_host(db_session, test_user.id)
+
+    result = await orchestrator.recommend_properties(
+        db_session,
+        RecommendPropertiesArgs(preferred_location="Indiranagar", budget_amount=100, budget_basis="per_night"),
+        test_user.id,
+    )
+    text = render_recommendation_text(result)
+
+    assert result.options == []
+    assert result.missing_location == "" and result.available_areas == []
+    assert "don't have a property in or near" not in text
+    assert "budget" in text.lower()
+
+
+async def test_a_miss_in_a_hosted_city_caused_by_an_amenity_or_group_does_not_say_the_city_is_missing(test_user, db_session):
+    await _spacez_like_host(db_session, test_user.id)
+
+    result = await orchestrator.recommend_properties(
+        db_session, RecommendPropertiesArgs(preferred_location="Bangalore", budget_amount=100, budget_basis="per_night"), test_user.id
+    )
+
+    assert result.missing_location == ""
+
+
+async def test_the_area_check_fails_open_to_describing_the_area_as_missing(test_user, db_session, monkeypatch):
+    await _spacez_like_host(db_session, test_user.id)
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("filter builder broke")
+
+    real = orchestrator.filter_builder.build_base_filters
+    calls = {"n": 0}
+
+    def flaky(*args, **kwargs):
+        calls["n"] += 1
+        if kwargs.get("resolved") is not None and calls["n"] > 1:  # the second call is the area check
+            _boom()
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(orchestrator.filter_builder, "build_base_filters", flaky)
+
+    result = await orchestrator.recommend_properties(
+        db_session, RecommendPropertiesArgs(preferred_location="Indiranagar", budget_amount=100, budget_basis="per_night"), test_user.id
+    )
+
+    assert result.missing_location == "Indiranagar"  # the old behaviour, never a crash
+
+
+# --- a plain city query must not read like a nearby-area query (found replaying on the located Spacez data) ---
+
+
+def test_a_property_in_the_named_city_gets_no_distance_note():
+    from app.services.property.retrieval.location_match import LocationMatch
+
+    inside = _prop("Inside", city="Bengaluru")
+    geo = _geo("Bangalore", {inside.id: 12.0})
+
+    notes = orchestrator._location_notes(geo, [inside], LocationMatch(city="Bengaluru", via="city"))
+
+    assert notes == {}  # "about 12 km from Bangalore ... no property in Bangalore itself" would be false
+
+
+def test_a_property_in_another_city_still_gets_its_distance_when_a_city_was_named():
+    from app.services.property.retrieval.location_match import LocationMatch
+
+    inside, village = _prop("Inside", city="Kasol"), _prop("Village", city="Jari")
+    geo = _geo("Kasol", {inside.id: 1.0, village.id: 7.0})
+
+    notes = orchestrator._location_notes(geo, [inside, village], LocationMatch(city="Kasol", via="city"))
+
+    assert inside.id not in notes
+    assert notes[village.id] == "about 7 km from Kasol in a straight line"  # something is in the city, so no "none in X itself"
+
+
+def test_in_city_properties_sort_before_nearby_ones_and_a_plain_search_keeps_pure_distance():
+    near_village, in_city = _prop("Village", city="Jari"), _prop("InCity", city="Kasol")
+    geo = _geo("Kasol", {near_village.id: 1.0, in_city.id: 28.0})
+
+    assert orchestrator._geo_order(in_city, geo, "Kasol") < orchestrator._geo_order(near_village, geo, "Kasol")
+    # No city named (an area or a village): nearest first, as before.
+    assert orchestrator._geo_order(near_village, geo, None) < orchestrator._geo_order(in_city, geo, None)

@@ -60,6 +60,19 @@ async def conversations(scope: monitor.Scope = Depends(admin_scope), db: AsyncSe
     return await monitor.conversations(db, scope)
 
 
+@router.get("/flagged-calls")
+async def flagged_calls(scope: monitor.Scope = Depends(admin_scope), db: AsyncSession = Depends(get_db)) -> dict:
+    return await monitor.flagged_calls(db, scope)
+
+
+@router.get("/flagged-calls/{call_id}")
+async def flagged_call_detail(call_id: uuid.UUID, db: AsyncSession = Depends(get_db)) -> dict:
+    detail = await monitor.flagged_call_detail(db, call_id)
+    if detail is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Call not found")
+    return detail
+
+
 @router.get("/performance")
 async def performance(scope: monitor.Scope = Depends(admin_scope), db: AsyncSession = Depends(get_db)) -> dict:
     return await monitor.performance(db, scope)

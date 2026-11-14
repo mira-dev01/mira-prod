@@ -1,0 +1,4 @@
+# Only for running the eval suite (docs/documentation/golden-eval-suite.md): adds the `pipecat` CLI.
+# Kept out of requirements.txt so the production image does not carry it.
+-r requirements.txt
+pipecat-ai[cli]==1.6.0

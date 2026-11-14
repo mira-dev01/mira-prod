@@ -1,0 +1,21 @@
+# Confirmed live 2026-11-13 (call 56947e99): the host had a stay in Indiranagar and Mira said there was none,
+# because the area word appeared only in the property NAME, which the location filter did not search. Fixed by
+# properties.locality (Task 12); this scenario keeps it fixed. (It was expected-red until then.)
+name: indiranagar_stay_is_found
+user:
+  modality: text
+judge:
+  modality: text
+  eval:
+    factory: eval.judge_llm.make_judge_llm
+
+turns:
+  - user: "Hi, I'm looking for a place in Indiranagar for next weekend, four of us."
+    expect:
+      - event: function_call
+        calls:
+          - name: recommend_properties
+      - event: llm_response
+        eval: >-
+          Offers or describes the 3BHK Garden Loft in Indiranagar (it may call it the Indiranagar loft).
+          It does not say that nothing is available in Indiranagar.

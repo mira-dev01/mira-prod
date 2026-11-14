@@ -15,7 +15,9 @@ from app.models.mixins import TimestampMixin, UUIDPkMixin
 AUDIO_INPUT_TELEMETRY_RULE = "audio_input_telemetry"
 # Per-call usage/performance summary (app/voice/call_metrics.py).
 CALL_METRICS_RULE = "call_metrics"
-INTERNAL_TELEMETRY_RULES = frozenset({AUDIO_INPUT_TELEMETRY_RULE, CALL_METRICS_RULE})
+# Per-call scorecard (app/services/call_scorecard.py): what went wrong on this call, if anything.
+CALL_SCORECARD_RULE = "call_scorecard"
+INTERNAL_TELEMETRY_RULES = frozenset({AUDIO_INPUT_TELEMETRY_RULE, CALL_METRICS_RULE, CALL_SCORECARD_RULE})
 
 
 class CallQualityEvent(UUIDPkMixin, TimestampMixin, Base):

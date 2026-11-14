@@ -250,7 +250,7 @@ async def _ping_llm_routes() -> None:
         client = llm_clients.groq_client(llm_clients.PROBE)
         for model in settings.groq_models:
             # reasoning_effort is gpt-oss-specific -- other models (e.g.
-            # llama-3.1-8b-instant) reject it with a 400, which would
+            # qwen) can reject it with a 400, which would
             # otherwise permanently mark a perfectly healthy model down.
             extra_body = {"reasoning_effort": "low"} if "gpt-oss" in model else {}
             started = time.monotonic()

@@ -191,6 +191,51 @@ export type ConversationsData = {
   };
 };
 
+export type FlaggedCallFlag = { code: string; label: string; detail: string };
+
+export type FlaggedCallRow = {
+  id: string;
+  created_at: string | null;
+  host: string | null;
+  caller_number: string | null;
+  call_type: string | null;
+  duration_s: number | null;
+  ended_by: string | null;
+  flags: FlaggedCallFlag[];
+  has_recording: boolean;
+};
+
+export type FlaggedCallsData = {
+  coverage: { calls: number; scored_calls: number; flagged_calls: number };
+  weekly_numbers: {
+    host: string;
+    scored_calls: number;
+    flagged_share: number;
+    outcome_share: number;
+    guest_hung_up_share: number;
+  }[];
+  reasons: { code: string; label: string; count: number }[];
+  calls: FlaggedCallRow[];
+  unflagged_sample: FlaggedCallRow[];
+};
+
+export type FlaggedCallDetail = {
+  id: string;
+  created_at: string | null;
+  host: string | null;
+  caller_number: string | null;
+  recording_url: string | null;
+  transcript: string | null;
+  scorecard: {
+    flagged: boolean;
+    flags: { code: string; detail: string }[];
+    ended_by: string | null;
+    longest_response_gap_s: number | null;
+    inaudible_turns: number;
+    outcome: Record<string, unknown>;
+  } | null;
+};
+
 export type PerformanceData = {
   coverage: { calls: number; calls_with_call_metrics: number };
   latency: {
@@ -531,6 +576,8 @@ export const adminApi = {
   overview: (f: AdminFilters) => request<OverviewData>(`/admin/overview${qs(f)}`),
   audio: (f: AdminFilters) => request<AudioData>(`/admin/audio${qs(f)}`),
   conversations: (f: AdminFilters) => request<ConversationsData>(`/admin/conversations${qs(f)}`),
+  flaggedCalls: (f: AdminFilters) => request<FlaggedCallsData>(`/admin/flagged-calls${qs(f)}`),
+  flaggedCallDetail: (id: string) => request<FlaggedCallDetail>(`/admin/flagged-calls/${id}`),
   performance: (f: AdminFilters) => request<PerformanceData>(`/admin/performance${qs(f)}`),
   leads: (f: AdminFilters) => request<LeadsData>(`/admin/leads${qs(f)}`),
   hosts: (f: AdminFilters) => request<HostsData>(`/admin/hosts${qs(f)}`),

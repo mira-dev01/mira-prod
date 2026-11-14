@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import { Drawer } from "@base-ui/react/drawer";
 import {
   AudioLines,
+  Flag,
   Gauge,
   LayoutDashboard,
   Menu,
@@ -34,6 +35,7 @@ const groups: { title: string; links: { href: string; label: string; icon: Lucid
     title: "Agent quality",
     links: [
       { href: "/admin/audio", label: "Voice & audio", icon: AudioLines },
+      { href: "/admin/flagged", label: "Flagged calls", icon: Flag },
       { href: "/admin/conversations", label: "Conversations", icon: MessagesSquare },
       { href: "/admin/performance", label: "Speed & reliability", icon: Gauge },
       { href: "/admin/leads", label: "Leads & escalations", icon: Users },

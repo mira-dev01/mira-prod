@@ -218,6 +218,8 @@ export type PropertyOut = {
   user_id: string;
   name: string;
   city: string | null;
+  /** The area inside the city a guest asks for ("Indiranagar"). Search matches on it. */
+  locality: string | null;
   exophone: string | null;
   base_price: number;
   ical_url: string | null;
@@ -277,6 +279,7 @@ export type AirbnbUrlImportStatus = {
 export type PropertyCreate = {
   name: string;
   city?: string | null;
+  locality?: string | null;
   exophone?: string | null;
   base_price: number;
   ical_url?: string | null;

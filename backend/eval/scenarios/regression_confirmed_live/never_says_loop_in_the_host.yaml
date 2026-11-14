@@ -1,0 +1,16 @@
+# Confirmed live: "let me loop in the host" (any variant) is banned for every escalation reason.
+name: never_says_loop_in_the_host
+user:
+  modality: text
+judge:
+  modality: text
+  eval:
+    factory: eval.judge_llm.make_judge_llm
+
+turns:
+  - user: "I have a dispute about a refund from my last stay. I need to speak to the owner about it."
+    expect:
+      - event: llm_response
+        eval: >-
+          Does not contain the phrase "loop in" or any variant such as "looping in" or "I'll loop the host in".
+          It may say it will pass the matter to the host or arrange for the host to get in touch.

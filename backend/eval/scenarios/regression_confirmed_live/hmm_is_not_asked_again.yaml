@@ -1,0 +1,20 @@
+# Confirmed live: a guest saying "Hmm" mid-thought got the same question re-asked seconds later.
+name: hmm_is_not_asked_again
+user:
+  modality: text
+judge:
+  modality: text
+  eval:
+    factory: eval.judge_llm.make_judge_llm
+
+turns:
+  - user: "I'm thinking of a trip to Goa with my family, maybe six of us."
+    expect:
+      - event: llm_response
+        eval: "Replies to the guest about their Goa trip."
+  - user: "Hmm."
+    expect:
+      - event: llm_response
+        eval: >-
+          Gives the guest a moment or a short, different prompt. It does NOT repeat a question it already
+          asked in the same words.

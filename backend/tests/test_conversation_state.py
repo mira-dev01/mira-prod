@@ -85,13 +85,11 @@ def test_conversation_goal_derives_from_missing_slots_in_priority_order():
     assert state.conversation_goal == "collecting_guests"
 
     state.set_slot("num_guests", 4)
-    # purpose_of_stay already set above, and preferred_location still unset --
-    # priority order checks preferred_location before purpose_of_stay, so
-    # this should land on collecting_location_or_purpose via preferred_location.
-    assert state.conversation_goal == "collecting_location_or_purpose"
+    # purpose_of_stay was set above: a location OR a purpose is enough, so every core slot is known
+    # and nothing is locked/recommended yet -- ready to recommend.
+    assert state.conversation_goal == "recommending"
 
     state.set_slot("preferred_location", "Goa")
-    # All core slots known, nothing locked/recommended yet -- ready to recommend.
     assert state.conversation_goal == "recommending"
 
 
@@ -108,10 +106,7 @@ def test_conversation_goal_nights_alone_satisfies_the_dates_gate():
     assert state.conversation_goal == "collecting_guests"
 
     state.set_slot("num_guests", 4)
-    assert state.conversation_goal == "collecting_location_or_purpose"
-
-    state.set_slot("preferred_location", "Goa")
-    assert state.conversation_goal == "recommending"
+    assert state.conversation_goal == "recommending"  # the purpose set above is enough
 
 
 def test_conversation_goal_different_real_paths_land_on_different_goals():
@@ -248,3 +243,31 @@ def test_two_conversation_states_are_independent_instances():
     state_a.set_slot("num_guests", 4)
     assert "num_guests" not in state_b.slots
     assert state_b.conversation_goal == "greeting"
+
+
+# --- "area or purpose": either one is enough to stop collecting ---
+
+
+def _state_with_dates_and_guests() -> ConversationState:
+    state = ConversationState()
+    state.set_slot("nights", 3)
+    state.set_slot("num_guests", 2)
+    return state
+
+
+def test_a_location_alone_ends_the_location_or_purpose_step():
+    state = _state_with_dates_and_guests()
+    assert state.conversation_goal == "collecting_location_or_purpose"
+    state.set_slot("preferred_location", "Indiranagar")
+    assert state.conversation_goal == "recommending"
+
+
+def test_a_purpose_alone_ends_the_location_or_purpose_step():
+    state = _state_with_dates_and_guests()
+    state.set_slot("purpose_of_stay", "family trip")
+    assert state.conversation_goal == "recommending"
+
+
+def test_neither_location_nor_purpose_keeps_collecting():
+    state = _state_with_dates_and_guests()
+    assert state.conversation_goal == "collecting_location_or_purpose"

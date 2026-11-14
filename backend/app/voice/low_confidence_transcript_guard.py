@@ -1,157 +1,253 @@
-"""Catches a transcript Sarvam itself wasn't confident about and asks the
-guest to repeat, instead of letting the LLM silently treat a garbled
-transcript as ground truth.
+"""Decides what to do with a transcript Sarvam was unsure about, without ever
+putting words in the guest's mouth.
 
-Confirmed live: a guest's location got dropped entirely by STT ("के लिए लगा
-के हिसाब से" instead of whatever was actually said, e.g. "Delhi ke hisaab
-se...") on a hi-IN utterance Sarvam itself only tagged with
-language_probability=0.843. The transcript was non-blank and well-formed
-enough to pass SilenceWatchdogProcessor's blank-only filter and the turn-stop
-strategy's wait_for_transcript gate, so it reached the LLM looking like a
-genuine, complete guest answer. recommend_properties then received
-preferred_location=None -- a CORRECT extraction from what the LLM was given,
-not a bug in the tool or its filters. The actual failure was upstream: no
-processor between stt and the LLM context ever inspected whether Sarvam
-itself was unsure about the utterance.
+`language_probability` is Sarvam's confidence in which LANGUAGE it heard, not
+how accurate the transcript is. A short place name ("Koramangala", "Indira
+Nagar") belongs clearly to neither Hindi nor English, so it scores low even
+when it is transcribed perfectly. The earlier version of this guard replaced
+every transcript under the threshold with an English sentence recorded as the
+guest's turn; on a live call it replaced four correct transcripts, the model
+believed the guest kept saying "sorry, say that again", and asked the same
+question four times.
 
-language_probability is Sarvam's confidence in which LANGUAGE it detected
-(hi-IN vs. en-IN vs. ...), not a direct transcript-accuracy score -- see
-config.py's sarvam_vad_* comment block, which explicitly calls this out and
-declines to use it as a noise-rejection signal for exactly that reason. This
-processor uses it anyway as a proxy, since it's the only confidence-adjacent
-field Sarvam's codemix STT response exposes at all (confirmed directly
-against the `sarvamai` SDK's `SpeechToTextTranscriptionData` schema --
-`transcript`/`timestamps`/`diarized_transcript`/`language_code`/
-`language_probability`/`metrics{audio_duration,processing_latency}` is the
-complete field list; nothing else in that payload is a usable accuracy
-signal), and "ask the guest to repeat" costs an extra conversational turn on
-a false positive but no correctness risk, unlike using the same threshold as
-a hard noise-reject would. Deliberately narrower than that VAD tuning: this
-only ever asks for clarification, never drops/ignores audio.
+Now one pure function, `classify`, is the single copy of the rule (the audio
+telemetry observer calls it too, so the two cannot drift):
 
-CRITICAL RECALIBRATION (2026-09-22): the original 0.85 threshold made this
-guard fire on essentially every genuine Hindi/Hinglish utterance, not just
-garbled ones -- confirmed as a critical live bug (constant "could you say
-that again?" on ordinary Hinglish speech, MIRA's primary real-world use
-case, not an edge case). The root issue: `language_probability` measures
-confidence in *which single language* was heard, and a genuinely
-code-mixed Hinglish sentence is, by construction, ambiguous between hi-IN
-and en-IN -- a CORRECTLY transcribed Hinglish utterance routinely scores
-well below 0.85 for the same reason a coin flip isn't "90% heads," not
-because anything was misheard. The single confirmed-bad case that
-originally grounded 0.85 (language_probability=0.843, see module docstring
-above) was itself uncomfortably close to that old bar, which in hindsight
-was the first sign 0.85 was measuring the wrong thing (near-certain
-language-mix ambiguity, not transcript accuracy). Lowered to 0.4 -- a
-genuinely low-confidence signal (closer to "Sarvam has no real read on this
-at all"), not merely "this sentence blends two languages." Explicit,
-accepted tradeoff: this may no longer catch a transcript that scores
-similarly to the original 0.843 case; given the asymmetry between that (a
-single rare confirmed incident) and firing on most Hindi/Hinglish calls (an
-ongoing, critical failure of the core product for its core market), erring
-toward not interrupting the conversation is the right side to be wrong on
-until real production language_probability distributions (already logged
-below, on every transcript) can properly calibrate this.
+  pass          -- use the transcript as it is.
+  pass_flagged  -- keep the real text, but tell the model (state_prompt_sync) to
+                   confirm any place, number or date back to the guest.
+  inaudible     -- the text is not Hindi or English at all; it becomes the marker
+                   `[inaudible]`, which the system prompt tells the model to answer by
+                   asking the guest to repeat. Never a sentence in the guest's mouth.
 
-Sits right after stt, before silence_watchdog, language_sync, and the user
-aggregator -- so a substituted clarification line never reaches
-ConversationStyle's language-family tracking, LanguageSyncProcessor's TTS
-language switch, or the LLM context as if it were the guest's real words, and
-so silence_watchdog's repetition-shadow/strike-counter logic sees the
-clarification exchange as an ordinary completed turn (a real TranscriptionFrame
-still flows downstream, just with substituted text), not as silence.
-
-Deterministic substitution only -- no LLM call, matching CLAUDE.md's
-"Validators must not introduce hidden LLM regeneration" invariant. The
-low-confidence TranscriptionFrame's text is replaced in place with a fixed
-clarification request before it's forwarded; nothing re-invokes the LLM to
-"fix" or reinterpret the garbled transcript.
+Deterministic only, no LLM call (CLAUDE.md: validators must not regenerate).
 """
+
+import unicodedata
+from collections import Counter
+from dataclasses import dataclass
+from typing import Literal
 
 from loguru import logger
 
 from pipecat.frames.frames import Frame, TranscriptionFrame
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
-# Recalibrated 2026-09-22 (see module docstring's "CRITICAL RECALIBRATION"
-# section) -- the original 0.85 fired on nearly every genuine Hindi/Hinglish
-# utterance, a critical bug for MIRA's primary real-world use case. Still not
-# validated against a corpus of real call transcripts with known-correct
-# ground truth -- there is no existing baseline in this repo to derive a
-# precise number from (same caveat sarvam_vad_* in config.py documents for
-# itself) -- but 0.4 is deliberately far below the single confirmed-bad case
-# (language_probability=0.843) this module was originally built around,
-# trading away that edge case in favor of not breaking ordinary Hinglish
-# conversation. Revisit against real production language_probability
-# distributions once logged in volume (this processor logs every value
-# observed, see below) -- this is still a starting point, just a much safer
-# one than 0.85 turned out to be.
+from app.services.geo.text import normalize, skeleton, strip_filler
+from app.voice.conversation_state import ConversationState
+
+# Below this, a transcript that none of the exceptions in `classify` cover is flagged.
+# Still not calibrated against real calls; every decision is logged at info (without
+# guest text) so it can be.
 DEFAULT_LANGUAGE_PROBABILITY_THRESHOLD = 0.4
 
-DEFAULT_CLARIFICATION_TEXT = "Sorry, I didn't quite catch that -- could you say that again?"
+# What replaces the text of a transcript in a script Mira does not speak. Plain
+# ASCII with no letters of any language, so it cannot count as a Hindi or English turn.
+INAUDIBLE_MARKER = "[inaudible]"
+
+Decision = Literal["pass", "pass_flagged", "inaudible"]
+
+# An utterance this short has too little text for a language-ID score to mean anything.
+_SHORT_UTTERANCE_MAX_TOKENS = 3
+_SUPPORTED_SCRIPTS = {"LATIN", "DEVANAGARI"}
+_MAX_ENTITY_WINDOW = 6
+# Speech-to-text may split one name into more words than the stored spelling has
+# ("Indira Nagar" for "Indiranagar"), so windows run this much wider than the names.
+_WINDOW_SLACK_TOKENS = 2
+_MIN_SKELETON_LEN = 5
+
+_YES_NO_WORDS = {
+    "yes", "yeah", "yep", "no", "nope", "ok", "okay", "sure", "right", "correct", "fine",
+    "haan", "han", "ha", "ji", "nahi", "nahin", "na", "theek", "thik", "accha", "achha",
+    "हाँ", "हां", "हा", "जी", "नहीं", "नही", "ना", "ठीक", "अच्छा",
+}
+_NUMBER_WORDS = {
+    "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+    "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen",
+    "nineteen", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety",
+    "hundred", "thousand", "lakh", "lac", "double", "triple",
+    "ek", "do", "teen", "char", "chaar", "paanch", "panch", "chhe", "chhah", "che", "saat",
+    "aath", "nau", "das", "gyarah", "barah", "terah", "chaudah", "pandrah", "solah", "satrah",
+    "atharah", "unnees", "bees", "tees", "chalis", "pachas", "saath", "sattar", "assi", "nabbe",
+    "sau", "hazaar", "hazar",
+    "एक", "दो", "तीन", "चार", "पाँच", "पांच", "छह", "छः", "सात", "आठ", "नौ", "दस", "ग्यारह",
+    "बारह", "तेरह", "चौदह", "पंद्रह", "सोलह", "सत्रह", "अठारह", "उन्नीस", "बीस", "तीस", "चालीस",
+    "पचास", "साठ", "सत्तर", "अस्सी", "नब्बे", "सौ", "हज़ार", "हजार", "लाख", "डबल", "ट्रिपल",
+}
+_PUNCT = ".,!?;:।\"'()"
+
+
+@dataclass(frozen=True)
+class KnownEntities:
+    """Names the host's guests really say (cities, property names, localities). A
+    transcript that contains one is trusted whatever its language score is."""
+
+    compact: frozenset[str] = frozenset()
+    skeletons: frozenset[str] = frozenset()
+    max_tokens: int = 1
+
+    @classmethod
+    def from_names(cls, names) -> "KnownEntities":
+        compact: set[str] = set()
+        skeletons: set[str] = set()
+        max_tokens = 1
+        for name in names:
+            normalized = strip_filler(normalize(name))
+            key = normalized.replace(" ", "")
+            if not key:
+                continue  # e.g. a Devanagari-only name: normalize() folds it to nothing
+            compact.add(key)
+            max_tokens = max(max_tokens, min(len(normalized.split()), _MAX_ENTITY_WINDOW))
+            sk = skeleton(normalized)
+            if len(sk) >= _MIN_SKELETON_LEN:
+                skeletons.add(sk)
+        return cls(frozenset(compact), frozenset(skeletons), max_tokens)
+
+    def matches(self, text: str) -> bool:
+        if not self.compact:
+            return False
+        tokens = strip_filler(normalize(text)).split()
+        for size in range(1, min(self.max_tokens + _WINDOW_SLACK_TOKENS, len(tokens)) + 1):
+            for start in range(len(tokens) - size + 1):
+                window = tokens[start : start + size]
+                if "".join(window) in self.compact:
+                    return True
+                sk = skeleton(" ".join(window))
+                if len(sk) >= _MIN_SKELETON_LEN and sk in self.skeletons:
+                    return True
+        return False
+
+
+@dataclass(frozen=True)
+class Classification:
+    decision: Decision
+    reason: str
+    token_count: int
+    script: str
+    language_code: str | None
+    probability: float | None
+
+
+def _dominant_script(text: str) -> str:
+    counts: dict[str, int] = {}
+    for ch in text:
+        if ch.isalpha():
+            script = unicodedata.name(ch, "UNKNOWN").split(" ", 1)[0]
+            counts[script] = counts.get(script, 0) + 1
+    return max(counts, key=counts.get) if counts else "NONE"
+
+
+def _is_numeric_or_yes_no(tokens: list[str]) -> bool:
+    """Every token is a digit string, a number word or a yes/no word: a phone number,
+    a guest count, "haan ji". Wrong ones are costly, and they score low for the same
+    reason a place name does."""
+    if not tokens:
+        return False
+    for raw in tokens:
+        token = raw.strip(_PUNCT).lower()
+        if not token:
+            continue
+        if any(ch.isdigit() for ch in token) or token in _NUMBER_WORDS or token in _YES_NO_WORDS:
+            continue
+        return False
+    return True
+
+
+def classify_transcript(
+    text: str,
+    probability: float | None,
+    language_code: str | None,
+    known_entities: KnownEntities | None = None,
+    threshold: float = DEFAULT_LANGUAGE_PROBABILITY_THRESHOLD,
+) -> Classification:
+    """The rule, with the reason it fired (for the log). `language_code` is carried
+    for the log line only: the decision never keys on it, because Sarvam labelled
+    the correctly transcribed English "Koramangala" as pa-IN."""
+    tokens = text.split()
+    script = _dominant_script(text)
+
+    def result(decision: Decision, reason: str) -> Classification:
+        return Classification(decision, reason, len(tokens), script, language_code, probability)
+
+    if known_entities is not None and known_entities.matches(text):
+        return result("pass", "known_entity")
+    if len(tokens) <= _SHORT_UTTERANCE_MAX_TOKENS:
+        return result("pass", "short_utterance")
+    if _is_numeric_or_yes_no(tokens):
+        return result("pass", "numeric_or_yes_no")
+    if script != "NONE" and script not in _SUPPORTED_SCRIPTS:
+        return result("inaudible", "unsupported_script")
+    if probability is not None and probability < threshold:
+        return result("pass_flagged", "low_language_probability")
+    return result("pass", "confident" if probability is not None else "no_score")
+
+
+def classify(
+    text: str,
+    probability: float | None,
+    language_code: str | None,
+    known_entities: KnownEntities | None = None,
+    threshold: float = DEFAULT_LANGUAGE_PROBABILITY_THRESHOLD,
+) -> Decision:
+    return classify_transcript(text, probability, language_code, known_entities, threshold).decision
 
 
 class LowConfidenceTranscriptGuardProcessor(FrameProcessor):
-    """Substitutes a clarification request for any transcript Sarvam itself
-    flagged as low language-detection confidence, before it reaches the LLM.
-    """
+    """Applies `classify` to every transcript, right after stt and before
+    silence_watchdog/language_sync/the user aggregator."""
 
     def __init__(
         self,
         *,
         threshold: float = DEFAULT_LANGUAGE_PROBABILITY_THRESHOLD,
-        clarification_text: str = DEFAULT_CLARIFICATION_TEXT,
+        known_entities: KnownEntities | None = None,
+        conversation_state: ConversationState | None = None,
     ):
         super().__init__()
         self._threshold = threshold
-        self._clarification_text = clarification_text
+        self._known_entities = known_entities
+        self._conversation_state = conversation_state
+        # How many transcripts took each decision this call (pass / pass_flagged / inaudible), kept for the
+        # per-call scorecard (app/services/call_scorecard.py). Counts only; never the guest's words.
+        self.decision_counts: Counter[str] = Counter()
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
 
         if isinstance(frame, TranscriptionFrame) and frame.text and frame.text.strip():
-            probability = self._extract_language_probability(frame)
-            if probability is not None:
-                # Phase-equivalent observability discipline to silence_watchdog.py:
-                # log the score itself (not guest content) on every transcript so
-                # the threshold above can eventually be validated against real
-                # production data.
-                logger.debug(
-                    "stt_language_probability_observed language_probability={} transcript_chars={}",
-                    probability,
-                    len(frame.text.strip()),
-                )
-                if probability < self._threshold:
-                    logger.info(
-                        "low_confidence_transcript_guard_triggered language_probability={} threshold={}",
-                        probability,
-                        self._threshold,
-                    )
-                    # Deterministic substitution, not a second LLM call -- the
-                    # guest's actual (possibly-wrong) words never reach the LLM
-                    # context; the clarification request is what gets recorded
-                    # as this turn's transcript instead.
-                    frame.text = self._clarification_text
+            probability, language_code = self._extract_signals(frame)
+            c = classify_transcript(frame.text.strip(), probability, language_code, self._known_entities, self._threshold)
+            self.decision_counts[c.decision] += 1
+            # Never the guest's words: the score and shape are what the threshold is tuned from.
+            logger.info(
+                "low_confidence_guard_decision decision={} reason={} language={} probability={} tokens={} script={}",
+                c.decision,
+                c.reason,
+                c.language_code,
+                c.probability,
+                c.token_count,
+                c.script,
+            )
+            if self._conversation_state is not None:
+                # Always reflects the latest guest transcript, so it is a one-turn hint by construction.
+                self._conversation_state.last_transcript_low_confidence = c.decision == "pass_flagged"
+            if c.decision == "inaudible":
+                frame.text = INAUDIBLE_MARKER
 
         await self.push_frame(frame, direction)
 
-    def _extract_language_probability(self, frame: TranscriptionFrame) -> float | None:
-        """Pulls language_probability out of the raw Sarvam response attached
-        to frame.result (pipecat.services.sarvam.stt._handle_message sets
-        this to message.dict() -- see SpeechToTextTranscriptionData's own
-        schema in the sarvamai SDK). Returns None if unavailable (e.g. a
-        fixed, non-"unknown" language_code was configured, wrong STT
-        provider, or the field is genuinely absent) -- this processor is a
-        pure no-op in that case, same fail-open discipline the rest of the
-        pipeline's optional signals use.
-        """
+    @staticmethod
+    def _extract_signals(frame: TranscriptionFrame) -> tuple[float | None, str | None]:
+        """language_probability / language_code from the raw Sarvam response pipecat
+        attaches to frame.result. (None, None) when absent (a fixed language_code,
+        another STT provider): the guard then falls back to the text-only rules."""
         result = frame.result
-        if not isinstance(result, dict):
-            return None
-        data = result.get("data")
+        data = result.get("data") if isinstance(result, dict) else None
         if not isinstance(data, dict):
-            return None
+            return None, None
         probability = data.get("language_probability")
-        if isinstance(probability, (int, float)):
-            return float(probability)
-        return None
+        language_code = data.get("language_code")
+        return (
+            float(probability) if isinstance(probability, (int, float)) else None,
+            language_code if isinstance(language_code, str) else None,
+        )

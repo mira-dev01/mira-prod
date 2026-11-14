@@ -299,6 +299,13 @@ def _negotiation_hint(state: ConversationState) -> str:
     )
 
 
+_LOW_CONFIDENCE_HINT = (
+    "The guest's last words came through with low transcription confidence. If they carry a place, a number "
+    "or a date, confirm it back in one short sentence (what you heard, then \"right?\") before you act on "
+    "it; otherwise carry on normally. Do not say you could not hear them."
+)
+
+
 def build_state_block_content(state: ConversationState, quality: "ConversationQuality | None" = None) -> str:
     """Returns "" when there's nothing worth surfacing yet (no slots known,
     still at the default greeting goal, no language detected yet) -- this
@@ -308,6 +315,8 @@ def build_state_block_content(state: ConversationState, quality: "ConversationQu
     _language_hint's own docstring."""
     slot_summary = _format_slots(state)
     goal_hint = _closing_hint(state) or _GOAL_HINTS.get(state.conversation_goal, "")
+    if state.area_not_served and state.conversation_goal in ("collecting_location_or_purpose", "recommending"):
+        goal_hint = ""  # the area line below is the instruction; "still need the area" would contradict it
     language_hint = _language_hint(state, quality)
     negotiation_hint = _negotiation_hint(state)
 
@@ -318,6 +327,8 @@ def build_state_block_content(state: ConversationState, quality: "ConversationQu
         and not state.quoted_price
         and not negotiation_hint
         and not state.waived_fields
+        and not state.last_transcript_low_confidence
+        and not state.area_not_served
     ):
         return ""
 
@@ -332,6 +343,12 @@ def build_state_block_content(state: ConversationState, quality: "ConversationQu
         lines.append(
             f"The guest did not give {waived} after being asked twice. Do not ask for it again; carry on and "
             "the host will follow up for it."
+        )
+    if state.area_not_served:
+        lines.append(
+            f"The guest asked about {state.area_not_served}, but nothing is on file there. Do not ask them for "
+            "an area again, and do not treat it as collected: say so plainly and offer one of the areas "
+            "recommend_properties listed."
         )
     if state.recommendations_shown:
         names = ", ".join(o["name"] for o in state.recommendations_shown)
@@ -376,6 +393,8 @@ def build_state_block_content(state: ConversationState, quality: "ConversationQu
         )
     if goal_hint:
         lines.append(f"Current objective: {goal_hint}")
+    if state.last_transcript_low_confidence:
+        lines.append(_LOW_CONFIDENCE_HINT)
     if language_hint:
         lines.append(language_hint)
 

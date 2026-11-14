@@ -8,7 +8,8 @@ wrapped so a bug here can only lose telemetry, never break a live call
 Why it exists: three failure modes show up in live call logs -- background
 audio promoted to speech, real speech mis-transcribed, and the turn
 detector reacting to bad audio -- and every threshold that touches them
-(_VAD_PARAMS, config.py's sarvam_vad_*, the 0.4 language_probability cutoff)
+(_VAD_PARAMS, config.py's sarvam_vad_*, the 0.4 language_probability cutoff in
+low_confidence_transcript_guard)
 is explicitly marked "unvalidated" in its own comment because there was no
 real-call data to tune against. This module collects exactly that data, plus
 a SHADOW verdict for each candidate Phase 1B/3 rule ("what would this rule
@@ -69,7 +70,7 @@ from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 from app.models.call_quality_event import AUDIO_INPUT_TELEMETRY_RULE
 from app.voice.conversation_quality import ConversationQuality, ValidationResult
-from app.voice.low_confidence_transcript_guard import DEFAULT_LANGUAGE_PROBABILITY_THRESHOLD
+from app.voice.low_confidence_transcript_guard import KnownEntities, classify
 
 TELEMETRY_VERSION = 1
 
@@ -261,9 +262,12 @@ class BotSpeechTap(FrameProcessor):
 class AudioInputObserver(FrameProcessor):
     """Passthrough right after `stt`. See module docstring."""
 
-    def __init__(self, context: AudioInputContext, quality: ConversationQuality):
+    def __init__(
+        self, context: AudioInputContext, quality: ConversationQuality, known_entities: KnownEntities | None = None
+    ):
         super().__init__()
         self._context = context
+        self._known_entities = known_entities
         self._quality = quality
         # NOT self._clock -- FrameProcessor sets its own _clock (a pipecat
         # SystemClock) when the pipeline starts, which silently replaced it.
@@ -434,7 +438,8 @@ class AudioInputObserver(FrameProcessor):
         relative_db = segment_p90 - baseline if (segment_p90 is not None and baseline is not None) else None
 
         bot_overlap = self._context.bot_speaking or self._context.bot_spoke_during(segment_start, now)
-        guard_would_trigger = probability is not None and probability < DEFAULT_LANGUAGE_PROBABILITY_THRESHOLD
+        # The same rule the guard itself applies: it would flag or blank this transcript.
+        guard_would_trigger = classify(text, probability, data.get("language_code"), self._known_entities) != "pass"
         token_class = _token_class(tokens) if word_count <= 2 else None
 
         echo_score = 0.0

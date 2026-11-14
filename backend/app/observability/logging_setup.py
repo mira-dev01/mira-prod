@@ -131,11 +131,12 @@ def configure_logging() -> None:
 
     loguru_logger.remove()
     loguru_logger.configure(patcher=_patch_name)
+    level = settings.effective_log_level
     if settings.log_as_json:
-        loguru_logger.add(_json_sink, level="DEBUG")
+        loguru_logger.add(_json_sink, level=level)
     else:
-        loguru_logger.add(sys.stderr, level="DEBUG")
-    loguru_logger.add(_PropagateToStdlib(), level="DEBUG", format="{message}")
+        loguru_logger.add(sys.stderr, level=level)
+    loguru_logger.add(_PropagateToStdlib(), level=level, format="{message}")
 
     root = logging.getLogger()
     root.handlers = [_InterceptHandler()]

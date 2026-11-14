@@ -1,0 +1,17 @@
+# Confirmed live (see the "Confirmed live" notes in the system prompt): asking "May I have your name?" must
+# end the turn; Mira must never go on to answer it herself ("My name is Raj. Thanks, Raj.").
+name: name_request_is_not_answered_for_the_guest
+user:
+  modality: text
+judge:
+  modality: text
+  eval:
+    factory: eval.judge_llm.make_judge_llm
+
+turns:
+  - user: "Hi, I want to book a villa in Goa."
+    expect:
+      - event: llm_response
+        eval: >-
+          Does NOT contain a made-up guest name, and does not answer a question on the guest's behalf
+          (nothing like "My name is ..." or "Thanks, <name>" when the guest never gave a name).

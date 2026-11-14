@@ -1,0 +1,17 @@
+# `pipecat eval suite eval/manifest.yaml` (run from backend/, with PYTHONPATH=. so the judge
+# factory `eval.judge_llm` imports). Spawns scripts/run_eval_bot.py once per scenario on its
+# own port against the eval database (DATABASE_URL, default local mira_eval).
+concurrency: 2
+runs_dir: ../eval-runs
+scenarios_dir: scenarios
+spawn: "{python} {bot} -t eval --port {port}"
+suite:
+  - bot: ../scripts/run_eval_bot.py
+    scenarios:
+      - scenarios/regression_confirmed_live/area_not_on_file_names_only_real_places.yaml
+      - scenarios/regression_confirmed_live/hmm_is_not_asked_again.yaml
+      - scenarios/regression_confirmed_live/inaudible_marker_asks_to_repeat.yaml
+      - scenarios/regression_confirmed_live/indiranagar_stay_is_found.yaml
+      - scenarios/regression_confirmed_live/koramangala_answer_triggers_search.yaml
+      - scenarios/regression_confirmed_live/name_request_is_not_answered_for_the_guest.yaml
+      - scenarios/regression_confirmed_live/never_says_loop_in_the_host.yaml

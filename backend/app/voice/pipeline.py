@@ -22,7 +22,7 @@ import aiohttp
 from fastapi import WebSocket
 from openai import APIConnectionError, APIStatusError, RateLimitError
 from pipecat.audio.vad.vad_analyzer import VADParams
-from pipecat.frames.frames import EndFrame, ErrorFrame, TTSSpeakFrame
+from pipecat.frames.frames import EndFrame, ErrorFrame, LLMConfigureOutputFrame, TTSSpeakFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.worker import PipelineParams, PipelineWorker
 from pipecat.processors.aggregators.llm_context import LLMContext
@@ -48,6 +48,7 @@ from app.config import settings
 from app.observability import health
 from app.database import AsyncSessionLocal
 from app.integrations import exotel_client
+from app.models.call_quality_event import CALL_SCORECARD_RULE, CallQualityEvent
 from app.models.call_session import CallSession
 from app.models.property import Property
 from app.models.user import User
@@ -66,6 +67,7 @@ from app.services import (
     spacez_stay_requests,
     call_classification_service,
     call_coordinator,
+    call_scorecard,
     call_service,
     call_summary_email,
     call_summary_service,
@@ -90,11 +92,12 @@ from app.voice.conversation_quality import ConversationQuality
 from app.voice.conversation_state import ConversationState
 from app.voice.conversation_style import ConversationStyleProcessor
 from app.voice.end_call_reliability_guard import EndCallReliabilityGuardProcessor
+from app.voice.eval_mode import EvalPassthrough
 from app.voice.escalation_phrase_guard import EscalationPhraseGuardProcessor
 from app.voice.exotel_serializer import DiagnosticExotelFrameSerializer
 from app.voice.handoff_signal import register_call, unregister_call, wait_for_handoff_request
 from app.voice.language_sync import DEFAULT_TTS_LANGUAGE, LanguageSyncProcessor
-from app.voice.low_confidence_transcript_guard import LowConfidenceTranscriptGuardProcessor
+from app.voice.low_confidence_transcript_guard import KnownEntities, LowConfidenceTranscriptGuardProcessor
 from app.voice.kb_grounding_guard import (
     KnowledgeGroundingGuardProcessor,
     build_portfolio_text,
@@ -671,7 +674,7 @@ def _build_llm():
 
     model = _pick_groq_model()
     # reasoning_effort/reasoning_format are gpt-oss-specific -- other models
-    # in the fallback chain (e.g. llama-3.1-8b-instant) reject them outright
+    # in the fallback chain (e.g. qwen/qwen3.8-27b) reject them outright
     # with a 400, which would break the exact call this fallback exists to
     # save. reasoning_format="hidden" is required, not cosmetic: without it,
     # Groq's gpt-oss models default to embedding their raw chain-of-thought
@@ -1043,6 +1046,7 @@ async def _run_pipeline(
     voice_gender: str = "female",
     call_lease_token: str | None = None,
     host_handoff_phrase: str = _HOST_HANDOFF_PHRASE,
+    eval_mode: bool = False,
 ) -> None:
     # NOTE: we deliberately do NOT create a Lead row up front. Doing so gave
     # every connection attempt its own empty lead, and a browser/ICE
@@ -1093,6 +1097,7 @@ async def _run_pipeline(
             host_handoff_phrase=host_handoff_phrase,
             failed_services=failed_services,
             release_call_lease=lease_guard.release,
+            eval_mode=eval_mode,
         )
     except asyncio.CancelledError:
         # Not a system failure -- normal shutdown path (e.g. worker restart,
@@ -1413,6 +1418,62 @@ async def _persist_call_telemetry(
 
 
 
+async def _record_scorecard(
+    db,
+    call_session_id: uuid.UUID | None,
+    call_metrics: CallMetricsCollector,
+    transcript: str | None,
+    guard_decisions: dict[str, int] | None,
+) -> None:
+    """Score the finished call (app/services/call_scorecard.py) and store it as a `call_scorecard` row.
+    Runs as the LAST post-call step, after leads have been back-filled or removed, so "what the call led
+    to" is what is really left. Never raises: a scoring problem must not break call teardown."""
+    if call_session_id is None:
+        return
+    try:
+        outcome = await call_scorecard.load_outcome(db, call_session_id)
+        card = call_scorecard.build_scorecard(
+            transcript=transcript, metrics_summary=call_metrics.summary, guard_decisions=guard_decisions, outcome=outcome
+        )
+        db.add(
+            CallQualityEvent(
+                call_session_id=call_session_id,
+                rule=CALL_SCORECARD_RULE,
+                severity="WARNING" if card["flagged"] else "INFO",
+                confidence=1.0,
+                turn_index=int((call_metrics.summary or {}).get("user_turns") or 0),
+                processing_time_ms=0.0,
+                metadata_json={"scorecard": card},
+            )
+        )
+        await db.commit()
+        if card["flagged"]:
+            logger.warning(
+                "call_flagged call_session_id=%s reasons=%s", call_session_id, [f["code"] for f in card["flags"]]
+            )
+    except Exception:
+        await db.rollback()
+        logger.exception("call_scorecard_failed call_session_id=%s", call_session_id)
+
+
+async def _load_known_entities(host_user_id: uuid.UUID, property_id: uuid.UUID | None) -> KnownEntities:
+    """The place and property names guests say on this call, so the low-confidence guard
+    trusts a transcript that contains one (a short name scores low on language ID
+    however well it was heard). Fails open: with no names the guard still applies its
+    text-only rules."""
+    try:
+        async with AsyncSessionLocal() as db:
+            query = select(Property.city, Property.locality, Property.name, Property.display_name, Property.spoken_name)
+            query = query.where(Property.id == property_id) if property_id is not None else query.where(
+                Property.user_id == host_user_id
+            )
+            rows = (await db.execute(query)).all()
+        return KnownEntities.from_names(name for row in rows for name in row if name)
+    except Exception:
+        logger.exception("low_confidence_guard: could not load known place names -- continuing without them")
+        return KnownEntities()
+
+
 async def _build_kb_grounding_guard(
     *,
     host_user_id: uuid.UUID,
@@ -1494,7 +1555,11 @@ async def _run_pipeline_inner(
     host_handoff_phrase: str = _HOST_HANDOFF_PHRASE,
     failed_services: set[str] | None = None,
     release_call_lease=None,
+    eval_mode: bool = False,
 ) -> None:
+    # `eval_mode` is only ever True from scripts/run_eval_bot.py (the pipecat eval
+    # harness): STT/TTS become pass-throughs and the post-call steps are skipped.
+    # See app/voice/eval_mode.py.
     # `release_call_lease` is _CallLeaseGuard.release (async, idempotent,
     # never raises); None for calls that hold no lease (browser tests).
     async def _release_lease(reason: str) -> None:
@@ -1510,7 +1575,7 @@ async def _run_pipeline_inner(
     # can count Sarvam's server-side VAD events into the same per-call
     # context the observer/tap share.
     audio_input_context = AudioInputContext() if settings.audio_input_telemetry_enabled else None
-    stt = _ReconnectingSarvamSTTService(
+    stt = EvalPassthrough(name="EvalSTT") if eval_mode else _ReconnectingSarvamSTTService(
         audio_input_context=audio_input_context,
         api_key=settings.sarvam_api_key,
         mode="codemix",  # transcribe Hindi/English/Hinglish as spoken, no translation
@@ -1550,8 +1615,11 @@ async def _run_pipeline_inner(
     # one narrow pending_style_correction bridge. See
     # app/voice/conversation_quality.py for the full architecture boundary.
     conversation_quality = ConversationQuality()
+    known_entities = await _load_known_entities(host_user_id, property_id)
     audio_input_observer = (
-        AudioInputObserver(audio_input_context, conversation_quality) if audio_input_context is not None else None
+        AudioInputObserver(audio_input_context, conversation_quality, known_entities)
+        if audio_input_context is not None
+        else None
     )
     bot_speech_tap = BotSpeechTap(audio_input_context) if audio_input_context is not None else None
     # Per-call usage (LLM tokens, TTS characters) + performance (tool calls,
@@ -1562,6 +1630,14 @@ async def _run_pipeline_inner(
         openrouter_model=settings.openrouter_model,
         tts_model=settings.sarvam_tts_model,
     )
+    # Judges each transcript's language-confidence score without ever rewriting the
+    # guest's words: known place/property names and short answers pass, a transcript
+    # in a script Mira does not speak becomes the marker "[inaudible]", and a
+    # low-scoring longer one is kept and flagged so the model confirms it back. See
+    # app/voice/low_confidence_transcript_guard.py.
+    low_confidence_transcript_guard = LowConfidenceTranscriptGuardProcessor(
+        known_entities=known_entities, conversation_state=conversation_state
+    )
     # Phase 3.1: passes conversation_state so the guest's detected spoken
     # language (the same signal that already drives the TTS switch) is also
     # fed back into state for the prompt layer to read -- see
@@ -1569,21 +1645,6 @@ async def _run_pipeline_inner(
     # Conversation Style Engine below -- this still owns the live TTS switch
     # and ConversationState.current_spoken_language/explicit_language_preference
     # exactly as before.
-    # Catches a transcript Sarvam itself was unsure about (low
-    # language_probability on the raw response attached to the
-    # TranscriptionFrame) and substitutes a clarification request before it
-    # reaches language_sync/the LLM -- confirmed live: a guest's city name
-    # was dropped entirely by STT on a hi-IN utterance Sarvam itself only
-    # tagged with language_probability=0.843, and nothing previously
-    # inspected that signal, so the garbled transcript reached the LLM as if
-    # it were a genuine complete answer. See
-    # app/voice/low_confidence_transcript_guard.py for the full reasoning,
-    # including why language_probability is an imprecise but usable proxy
-    # here despite config.py's sarvam_vad_* comment declining to use the same
-    # field as a noise-rejection signal (a different concern -- that guards
-    # against non-speech audio being transcribed at all, this guards against
-    # genuine speech being transcribed wrong).
-    low_confidence_transcript_guard = LowConfidenceTranscriptGuardProcessor()
     language_sync = LanguageSyncProcessor(conversation_state)
     # Conversation Style Engine: computes ConversationState.conversation_style
     # from a rolling, hysteresis-smoothed window of the guest's own turns --
@@ -1707,7 +1768,7 @@ async def _run_pipeline_inner(
     response_shape_guard = ResponseShapeValidatorProcessor(conversation_quality)
 
     async with aiohttp.ClientSession() as http_session:
-        tts = SarvamTTSService(
+        tts = EvalPassthrough(name="EvalTTS") if eval_mode else SarvamTTSService(
             api_key=settings.sarvam_api_key,
             aiohttp_session=http_session,
             settings=SarvamTTSService.Settings(
@@ -1878,7 +1939,7 @@ async def _run_pipeline_inner(
         # Phase 1A telemetry processors (observation only -- forward every
         # frame unchanged). The observer sits directly after stt so it sees
         # Sarvam's raw transcript before low_confidence_transcript_guard can
-        # substitute it, and so an interruption's direction identifies who
+        # replace it with the [inaudible] marker, and so an interruption's direction identifies who
         # broadcast it (downstream = stt itself, upstream = the user
         # aggregator's turn controller). The tap sits after tts because the
         # text Mira actually speaks only ever flows downstream from there.
@@ -1937,6 +1998,11 @@ async def _run_pipeline_inner(
 
         @worker.event_handler("on_pipeline_finished")
         async def _on_finished(worker, frame):
+            if eval_mode:
+                # An eval call is not a lead or a guest: no hang-up, summary, e-mail
+                # or memory update. Only the lease bookkeeping stays.
+                await _release_lease("pipeline_finished")
+                return
             # Closing our end of the Voicebot Applet's WebSocket stream only
             # stops the audio stream -- it does NOT hang up the underlying
             # PSTN call on Exotel's side. Confirmed live: after end_call
@@ -2274,6 +2340,15 @@ async def _run_pipeline_inner(
                         and classification.call_type not in _keep_lead_outcomes
                     ):
                         await lead_service.delete_for_unqualified_call(finalize_db, call_session_id)
+                async with steps.step("call_scorecard", finalize_db):
+                    await _record_scorecard(
+                        finalize_db,
+                        call_session_id,
+                        call_metrics,
+                        transcript,
+                        dict(low_confidence_transcript_guard.decision_counts),
+                    )
+
                 steps.log_summary()
 
             # Guest Memory (memory-architecture-plan.md section 1) -- fire
@@ -2333,6 +2408,10 @@ async def _run_pipeline_inner(
             if greeting_sent:
                 return
             greeting_sent = True
+            if eval_mode:
+                # No TTS under eval: make the LLM's text go straight to the harness. (The local EvalTransport
+                # also asks for this from the connection's query string; the deployed route has no such hook.)
+                await worker.queue_frame(LLMConfigureOutputFrame(skip_tts=True))
             try:
                 # append_to_context=False: first_message is already seeded into
                 # context.messages above (as an assistant turn, so the LLM knows
@@ -3057,6 +3136,19 @@ async def run_browser_voice_pipeline(connection: SmallWebRTCConnection, property
 async def run_browser_lead_pipeline(connection: SmallWebRTCConnection, user: User) -> None:
     """Same as run_browser_voice_pipeline, but for testing the Lead Agent
     flow across a host's full portfolio instead of one property."""
+    transport = SmallWebRTCTransport(
+        webrtc_connection=connection,
+        params=TransportParams(
+            audio_in_enabled=True,
+            audio_out_enabled=True,
+        ),
+    )
+    await run_lead_pipeline_on_transport(transport, user)
+
+
+async def run_lead_pipeline_on_transport(transport: BaseTransport, user: User, *, eval_mode: bool = False) -> None:
+    """The Lead Agent call for `user`'s whole portfolio on any transport: the browser
+    test above, and the eval harness (scripts/run_eval_bot.py, eval_mode=True)."""
     async with AsyncSessionLocal() as db:
         properties = list((await db.scalars(select(Property).where(Property.user_id == user.id))).all())
         guest = await call_service.get_or_create_guest_profile(
@@ -3081,14 +3173,6 @@ async def run_browser_lead_pipeline(connection: SmallWebRTCConnection, user: Use
         call_session_id = session.id
         guest_profile_id = guest.id if guest else None
 
-    transport = SmallWebRTCTransport(
-        webrtc_connection=connection,
-        params=TransportParams(
-            audio_in_enabled=True,
-            audio_out_enabled=True,
-        ),
-    )
-
     await _run_pipeline(
         transport,
         None,
@@ -3098,4 +3182,26 @@ async def run_browser_lead_pipeline(connection: SmallWebRTCConnection, user: Use
         first_message,
         guest_profile_id=guest_profile_id,
         voice_gender=user.agent_voice_gender,
+        eval_mode=eval_mode,
     )
+
+
+async def run_eval_voice_pipeline(websocket: WebSocket) -> None:
+    """The Lead Agent for the seeded eval host, driven by the pipecat eval harness over RTVI on an already
+    accepted websocket (the deployed counterpart of scripts/run_eval_bot.py). The route in app/api/v1/voice.py
+    only calls this after app.voice.eval_mode.eval_route_authorized."""
+    from pipecat.evals.serializer import RTVIEvalSerializer
+
+    from eval.seed import ensure_eval_host
+
+    host = await ensure_eval_host()
+    transport = FastAPIWebsocketTransport(
+        websocket=websocket,
+        params=FastAPIWebsocketParams(
+            audio_in_enabled=True,
+            audio_out_enabled=True,
+            add_wav_header=False,
+            serializer=RTVIEvalSerializer(),
+        ),
+    )
+    await run_lead_pipeline_on_transport(transport, host, eval_mode=True)

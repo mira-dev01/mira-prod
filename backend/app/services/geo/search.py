@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.property import Property
 from app.services.geo.distance import haversine_km
 from app.services.geo.gazetteer import NEAR_RADIUS_KM, ResolvedLocation, resolve_location
+from app.services.geo.text import normalize
 
 # Second ring, used only when nothing is within NEAR_RADIUS_KM: still worth
 # offering ("closest we have is about 90 km away") but flagged as farther.
@@ -67,15 +68,49 @@ async def match_properties(db: AsyncSession, host_user_id: uuid.UUID, phrase: st
     return GeoMatch(location, set(far), far, farther=bool(far))
 
 
-async def list_areas(db: AsyncSession, host_user_id: uuid.UUID) -> list[str]:
-    """States the host has properties in, most properties first -- what to
-    offer a guest when their area has nothing."""
+async def list_areas(db: AsyncSession, host_user_id: uuid.UUID) -> list[tuple[str, int]]:
+    """The host's cities with how many properties each has, most first -- what to offer a
+    guest whose area has nothing. City, not state: every property has a city, while state
+    is only filled once a property has a map point."""
     rows = (
         await db.execute(
-            select(Property.state, func.count())
-            .where(Property.user_id == host_user_id, Property.state.is_not(None))
-            .group_by(Property.state)
-            .order_by(func.count().desc(), Property.state)
+            select(Property.city, func.count())
+            .where(Property.user_id == host_user_id, Property.city.is_not(None))
+            .group_by(Property.city)
         )
     ).all()
-    return [state for state, _ in rows]
+    merged: dict[str, tuple[str, int]] = {}  # "Bengaluru" and "bengaluru " are one city
+    # The spelling shown is the most common one (then alphabetical), never whichever row the database
+    # happened to return first: the same call must always name a city the same way.
+    for city, count in sorted(rows, key=lambda row: (-row[1], row[0] or "")):
+        name = (city or "").strip()
+        key = normalize(name)
+        if key:
+            shown, total = merged.get(key, (name, 0))
+            merged[key] = (shown, total + count)
+    return sorted(merged.values(), key=lambda area: (-area[1], area[0]))
+
+
+async def list_localities(db: AsyncSession, host_user_id: uuid.UUID) -> dict[str, list[tuple[str, int]]]:
+    """The host's areas inside each city: {normalized city: [(locality, property count), ...]}, most
+    properties first then alphabetical, so the same host always produces the same text. A city whose
+    properties have no locality set has no entry (the caller falls back to the city alone)."""
+    rows = (
+        await db.execute(
+            select(Property.city, Property.locality, Property.locality_key, func.count())
+            .where(Property.user_id == host_user_id, Property.city.is_not(None), Property.locality_key.is_not(None))
+            .group_by(Property.city, Property.locality, Property.locality_key)
+        )
+    ).all()
+    merged: dict[str, dict[str, tuple[str, int]]] = {}
+    # Spelling shown for a locality: its most common one, then alphabetical.
+    for city, locality, key, count in sorted(rows, key=lambda r: (-r[3], r[1] or "")):
+        city_key = normalize(city)
+        if not city_key or not key:
+            continue
+        shown, total = merged.setdefault(city_key, {}).get(key, (locality, 0))
+        merged[city_key][key] = (shown, total + count)
+    return {
+        city_key: sorted(by_key.values(), key=lambda a: (-a[1], a[0].lower()))
+        for city_key, by_key in merged.items()
+    }

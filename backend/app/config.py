@@ -137,15 +137,16 @@ class Settings(BaseSettings):
     # model app/main.py's periodic health check has marked down (e.g. from a
     # 429 rate limit on gpt-oss-120b -- account is on a paid Groq plan as of
     # 2026-07-07, not free tier, but per-model limits still apply under
-    # bursty call load). All three IDs
-    # confirmed live via client.models.list() against this account -- Groq
-    # renames/deprecates model ids periodically (see the groq_model comment
-    # above re: llama-3.3-70b-versatile), so re-check before editing this
-    # list. llama-3.1-8b-instant and gpt-oss-20b are on separate rate-limit
-    # pools from gpt-oss-120b, so a burst that exhausts one doesn't take down
-    # the others; both also support function calling, required for our tools
+    # bursty call load). Every ID was confirmed live on 2026-11-13 via
+    # client.models.list() against this account AND with a real tool call --
+    # Groq renames/deprecates model ids periodically (see the groq_model
+    # comment above re: llama-3.3-70b-versatile), so re-check before editing
+    # this list. gpt-oss-20b and qwen3.8-27b are on separate rate-limit pools
+    # from gpt-oss-120b, so a burst that exhausts one doesn't take down the
+    # others. Each must support function calling, required for our tools
     # (app/voice/tools.py) -- don't add a model here without confirming that.
-    groq_models: list[str] = ["openai/gpt-oss-120b", "llama-3.1-8b-instant", "openai/gpt-oss-20b"]
+    # Only gpt-oss gets reasoning_effort/reasoning_format (see pipeline.py).
+    groq_models: list[str] = ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.8-27b"]
     anthropic_api_key: str | None = None
     anthropic_model: str = "claude-sonnet-4-6"
     # OpenRouter (https://openrouter.ai) -- one account/balance, swap models
@@ -434,6 +435,11 @@ class Settings(BaseSettings):
     exotel_api_token: str | None = None
     exotel_subdomain: str = "api.exotel.com"
     exotel_webhook_token: str = "change-me"
+    # The deployed eval websocket (app/api/v1/voice.py `/voice/eval/ws/{token}`, docs/documentation/golden-eval-suite.md).
+    # Empty = the route is off, which is the default and the only correct value in production. Set a long random
+    # value (>= 24 characters) only on a non-production deployment, and the route still refuses a database whose
+    # name does not say eval/test unless EVAL_ALLOW_ANY_DATABASE=1 (app/voice/eval_mode.py).
+    eval_route_token: str = ""
     exotel_gateway_ip: str | None = None
     exotel_gateway_port: int = 5070
 
@@ -538,6 +544,19 @@ class Settings(BaseSettings):
     # "auto" log format = one JSON object per line (Railway parses these into
     # searchable attributes) everywhere except local development/tests.
     log_format: Literal["auto", "json", "text"] = "auto"
+    # Minimum level every log sink records. "auto" = INFO in production, DEBUG
+    # everywhere else. At DEBUG pipecat logs the whole prompt on every turn (~80 KB
+    # with the guest's name and booking), which production must not store. Set
+    # LOG_LEVEL=DEBUG on a deployed test environment that runs as production.
+    log_level: Literal["auto", "DEBUG", "INFO", "WARNING", "ERROR"] = "auto"
+
+    @field_validator("log_level", mode="before")
+    @classmethod
+    def _upper_log_level(cls, value):
+        if not isinstance(value, str):
+            return value
+        value = value.strip()
+        return "auto" if value.lower() == "auto" else value.upper()
     # Who gets the urgent/resolved/daily-digest emails (via Resend, same
     # sender as every other email).
     alert_emails: str = "abhayatrivedi2005@gmail.com,shagunverma.2004@gmail.com"
@@ -563,6 +582,12 @@ class Settings(BaseSettings):
         if self.health_alerts_enabled is not None:
             return self.health_alerts_enabled
         return self.is_production
+
+    @property
+    def effective_log_level(self) -> str:
+        if self.log_level != "auto":
+            return self.log_level
+        return "INFO" if self.is_production else "DEBUG"
 
     @property
     def log_as_json(self) -> bool:

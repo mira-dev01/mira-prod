@@ -54,6 +54,7 @@ class LandmarkItem(BaseModel):
 class PropertyCreate(BaseModel):
     name: str
     city: str | None = None
+    locality: str | None = Field(default=None, max_length=120)
     exophone: str | None = None
     twilio_number: str | None = None
     base_price: float = Field(ge=0)
@@ -111,6 +112,7 @@ class PropertyUpdate(BaseModel):
     brand: str | None = Field(default=None, max_length=80)
     bedroom_count: int | None = Field(default=None, ge=0)
     city: str | None = None
+    locality: str | None = Field(default=None, max_length=120)
     exophone: str | None = None
     twilio_number: str | None = None
     base_price: float | None = None
@@ -260,6 +262,7 @@ class PropertyOut(BaseModel):
     brand: str | None
     bedroom_count: int | None
     city: str | None
+    locality: str | None
     exophone: str | None
     twilio_number: str | None
     base_price: float

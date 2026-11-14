@@ -1,7 +1,12 @@
 export type TranscriptTurn = {
   role: "guest" | "mira";
   text: string;
+  // True for a guest turn the speech-to-text could not make out. The voice pipeline records it as the
+  // marker "[inaudible]" (backend/app/voice/low_confidence_transcript_guard.py); it is not a quote.
+  unclear?: boolean;
 };
+
+const INAUDIBLE_MARKER = "[inaudible]";
 
 // The voice pipeline writes transcripts as "role: content" lines joined by
 // "\n" (backend/app/voice/pipeline.py's on_pipeline_finished handler), with
@@ -32,7 +37,7 @@ export function parseTranscript(transcript: string): TranscriptTurn[] | null {
     }
     const role = match[1] === "user" ? "guest" : "mira";
     const text = line.slice(match[0].length).trim();
-    if (text) turns.push({ role, text });
+    if (text) turns.push(role === "guest" && text === INAUDIBLE_MARKER ? { role, text, unclear: true } : { role, text });
   }
   return turns.length > 0 ? turns : null;
 }

@@ -75,21 +75,19 @@ responsibility boundaries:
 
 - **STT/TTS** (Sarvam) — transcription and speech synthesis only.
 - **Input-side guard**: `LowConfidenceTranscriptGuardProcessor`
-  (`app/voice/low_confidence_transcript_guard.py`, added 2026-09-21, recalibrated 2026-09-22) sits
-  right after STT, before anything else sees the transcript. Confirmed live: a guest's city name
-  was dropped entirely by STT on an utterance Sarvam itself only tagged `language_probability=0.843`
-  — well-formed enough to pass every downstream filter and reach the LLM as if it were a genuine
-  complete answer. Uses that same `language_probability` (a language-detection confidence, not a
-  transcript-accuracy score — the only confidence-adjacent field Sarvam's codemix STT response
-  exposes at all) as a threshold below which the guest's transcript text is deterministically
-  replaced with a fixed clarification request ("Sorry, I didn't quite catch that -- could you say
-  that again?") before it reaches the LLM. No second LLM call. **Threshold was `0.85` at launch,
-  which turned out to be a critical bug**: a genuinely code-mixed Hinglish sentence is ambiguous
-  between hi-IN/en-IN by construction, so correctly-transcribed Hinglish routinely scored below
-  0.85, firing on ordinary conversation, not just garbled speech. Recalibrated to `0.4` the same
-  day, deliberately trading away the original 0.843 edge case to stop breaking Hindi/Hinglish
-  calls — still an unvalidated starting point pending real production `language_probability`
-  distributions (logged on every transcript for exactly this purpose).
+  (`app/voice/low_confidence_transcript_guard.py`) sits right after STT, before anything else sees the
+  transcript. It never rewrites the guest's words. One pure function, `classify`, decides per transcript
+  (the audio observer calls the same function): a known place/property name, a short answer (3 tokens or
+  fewer) or a number/yes-no passes at any score; a transcript in a script that is neither Devanagari nor
+  Latin becomes the marker `[inaudible]` (the prompt tells the model to ask the guest to repeat, and
+  `language_sync`, `conversation_style` and the turn-stop strategy ignore the marker); a longer transcript
+  under the `0.4` `language_probability` threshold keeps its real text and sets
+  `ConversationState.last_transcript_low_confidence`, which `state_prompt_sync` turns into a one-turn hint
+  to confirm any place/number/date back. `language_probability` measures which LANGUAGE was heard, not
+  accuracy, so a short place name scores low even when transcribed perfectly: an earlier version replaced
+  such transcripts with an English apology as the guest's turn (2026-11-13 test call: four correct
+  transcripts replaced, the same question asked four times). Every decision is logged at info
+  (`low_confidence_guard_decision`, no guest text) so the threshold can be tuned. No LLM call.
 - **LLM** (Groq primary, multi-model fallback chain; Anthropic/OpenRouter as configured) — intent,
   reasoning, and the actual conversational response text. See §7.
 - **Tools** (`app/voice/tools.py` → `app/services/tool_handlers.py`) — the only way the LLM causes

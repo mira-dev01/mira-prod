@@ -225,11 +225,30 @@ async def test_no_location_data_means_no_geo_match(db_session, test_user, gazett
     assert await geo_search.match_properties(db_session, test_user.id, "Himachal") is None
 
 
-async def test_list_areas_orders_by_property_count(db_session, test_user, gazetteer):
-    await _property(db_session, test_user, "A", PANGAN, state="Himachal Pradesh", exophone="+918011100001")
-    await _property(db_session, test_user, "B", JARI_HP, state="Himachal Pradesh", exophone="+918011100002")
-    await _property(db_session, test_user, "C", NAINITAL, state="Uttarakhand", exophone="+918011100003")
-    assert await geo_search.list_areas(db_session, test_user.id) == ["Himachal Pradesh", "Uttarakhand"]
+async def test_list_areas_orders_cities_by_property_count(db_session, test_user, gazetteer):
+    await _property(db_session, test_user, "A", PANGAN, state="Himachal Pradesh", city="Pangan", exophone="+918011100001")
+    await _property(db_session, test_user, "B", JARI_HP, state="Himachal Pradesh", city="Jari", exophone="+918011100002")
+    await _property(db_session, test_user, "C", JARI_HP, state="Himachal Pradesh", city="jari ", exophone="+918011100004")
+    await _property(db_session, test_user, "D", NAINITAL, state="Uttarakhand", city="Nainital", exophone="+918011100003")
+    # "Jari" and "jari " are one city; the blank city (no usable name) is not offered at all.
+    await _property(db_session, test_user, "E", None, city="", exophone="+918011100005")
+    assert await geo_search.list_areas(db_session, test_user.id) == [("Jari", 2), ("Nainital", 1), ("Pangan", 1)]
+
+
+async def test_list_areas_names_a_merged_city_by_its_most_common_spelling(db_session, test_user):
+    await _property(db_session, test_user, "A", None, city="bengaluru", exophone="+918011100001")
+    await _property(db_session, test_user, "B", None, city="Bengaluru", exophone="+918011100002")
+    await _property(db_session, test_user, "C", None, city="Bengaluru", exophone="+918011100003")
+    await _property(db_session, test_user, "D", None, city="BENGALURU ", exophone="+918011100004")
+    assert await geo_search.list_areas(db_session, test_user.id) == [("Bengaluru", 4)]
+
+
+async def test_list_areas_works_for_properties_with_no_state_or_point(db_session, test_user):
+    """The Spacez villas: a city and nothing else. The old query selected `state`, which was empty."""
+    await _property(db_session, test_user, "A", None, city="Bengaluru", exophone="+918011100001")
+    await _property(db_session, test_user, "B", None, city="Bengaluru", exophone="+918011100002")
+    await _property(db_session, test_user, "C", None, city="Mumbai", exophone="+918011100003")
+    assert await geo_search.list_areas(db_session, test_user.id) == [("Bengaluru", 2), ("Mumbai", 1)]
 
 
 # ---------------------------------------------------------------- recommend_properties end to end
@@ -264,16 +283,18 @@ async def test_place_query_orders_nearest_first_and_states_distance(db_session, 
 
 
 async def test_missing_area_offers_real_alternatives_instead_of_handing_off(db_session, test_user, gazetteer):
-    await _property(db_session, test_user, "Hunzuru Villa", PANGAN, state="Himachal Pradesh", exophone="+918011100001")
-    await _property(db_session, test_user, "Woodhouse", NAINITAL, state="Uttarakhand", exophone="+918011100002")
+    await _property(db_session, test_user, "Hunzuru Villa", PANGAN, state="Himachal Pradesh", city="Pangan",
+                    exophone="+918011100001")
+    await _property(db_session, test_user, "Woodhouse", NAINITAL, state="Uttarakhand", city="Nainital",
+                    exophone="+918011100002")
     args = RecommendPropertiesArgs(preferred_location="Goa")
     result = await orchestrator.recommend_properties(db_session, args, test_user.id)
     assert result.not_found
     assert result.missing_location == "Goa"
-    assert result.available_areas == ["Himachal Pradesh", "Uttarakhand"]
+    assert result.available_areas == ["Nainital (1)", "Pangan (1)"]
     text = render_recommendation_text(result)
     assert "We don't have a property in or near Goa" in text
-    assert "Himachal Pradesh" in text and "do NOT hand the guest to the host" in text
+    assert "Nainital (1), Pangan (1)" in text and "do NOT hand the guest to the host" in text
 
 
 async def test_description_that_merely_mentions_the_area_does_not_pull_in_a_distant_property(
@@ -370,3 +391,163 @@ async def test_import_hook_leaves_an_existing_point_alone(db_session, test_user,
     prop = await _property(db_session, test_user, "Hunzuru", KASOL, city="Pangan")
     assert await ensure_property_location(db_session, prop) is False
     assert float(prop.latitude) == pytest.approx(KASOL[0], abs=1e-5)
+
+
+async def test_list_localities_groups_by_city_most_properties_first(db_session, test_user):
+    from app.services.property.locality import set_locality
+
+    for index, (name, city, locality) in enumerate(
+        [("A", "Bengaluru", "Koramangala"), ("B", "Bengaluru", "Koramangala"), ("C", "Bengaluru", "Indiranagar"),
+         ("D", "bengaluru ", "Indira Nagar"), ("F", "Bengaluru", "Indiranagar"), ("E", "Goa", None)]
+    ):
+        prop = Property(user_id=test_user.id, name=name, city=city, base_price=1, max_guests=2, exophone=f"+91801114000{index}")
+        set_locality(prop, locality)
+        db_session.add(prop)
+    await db_session.commit()
+
+    found = await geo_search.list_localities(db_session, test_user.id)
+
+    # "Bengaluru" and "bengaluru " are one city, "Indira Nagar" and "Indiranagar" one area; Goa has none set.
+    assert found == {"bengaluru": [("Indiranagar", 3), ("Koramangala", 2)]}
+
+
+# --- a property's point from its locality (Task 13) ---
+
+BENGALURU = (12.9716, 77.5946)
+INDIRANAGAR = (12.9740, 77.6400)
+KORAMANGALA_BLR = (12.9320, 77.6230)
+KORAMANGALA_FAR = (12.8710, 77.1600)  # a different village of the same name, ~47 km from Bengaluru's centre
+KORAMANGALA_TWIN = (12.9330, 77.6240)
+KORAMANGALA_OUTSKIRTS = (13.2930, 77.7520)  # the real third one: ~39 km out, still inside the 40 km radius
+
+
+@pytest_asyncio.fixture
+async def bengaluru(db_session):
+    db_session.add(AdminRegion(code="IN.19", level=1, name="Karnataka"))
+    await db_session.flush()
+    db_session.add_all(
+        [
+            _place(101, "Bengaluru", BENGALURU, admin1="IN.19", admin2=None, population=8495492),
+            _place(102, "IndiraNagar", INDIRANAGAR, admin1="IN.19", admin2=None),
+            _place(103, "Koramangala", KORAMANGALA_BLR, admin1="IN.19", admin2=None),
+            _place(104, "Koramangala", KORAMANGALA_FAR, admin1="IN.19", admin2=None),
+        ]
+    )
+    await db_session.commit()
+
+
+def _located_property(user, locality, city="Bengaluru", **extra):
+    from app.services.property.locality import set_locality
+
+    prop = Property(user_id=user.id, name=f"Villa in {locality}", city=city, base_price=1, max_guests=2, **extra)
+    set_locality(prop, locality)
+    return prop
+
+
+async def test_a_locality_puts_the_property_at_that_neighbourhood(db_session, test_user, bengaluru):
+    prop = _located_property(test_user, "Indira Nagar")
+    db_session.add(prop)
+    await db_session.flush()
+
+    assert await property_location.guess_point_from_locality(db_session, prop) is True
+
+    assert (float(prop.latitude), float(prop.longitude)) == pytest.approx(INDIRANAGAR, abs=1e-4)
+    assert prop.location_source == "gazetteer"
+    assert prop.state == "Karnataka"
+
+
+async def test_a_name_shared_with_a_far_village_picks_the_one_inside_the_city(db_session, test_user, bengaluru):
+    prop = _located_property(test_user, "Koramangala")
+    db_session.add(prop)
+    await db_session.flush()
+
+    assert await property_location.guess_point_from_locality(db_session, prop) is True
+
+    assert (float(prop.latitude), float(prop.longitude)) == pytest.approx(KORAMANGALA_BLR, abs=1e-4)
+
+
+async def test_two_places_of_that_name_inside_the_city_is_ambiguous_so_no_point(db_session, test_user, bengaluru):
+    db_session.add(_place(105, "Koramangala", KORAMANGALA_TWIN, admin1="IN.19", admin2=None))
+    prop = _located_property(test_user, "Koramangala")
+    db_session.add(prop)
+    await db_session.flush()
+
+    assert await property_location.guess_point_from_locality(db_session, prop) is False
+    assert prop.latitude is None
+
+
+@pytest.mark.parametrize("locality", ["Whitefield", None])
+async def test_an_unknown_or_missing_locality_sets_nothing(db_session, test_user, bengaluru, locality):
+    prop = _located_property(test_user, locality) if locality else Property(
+        user_id=test_user.id, name="No area", city="Bengaluru", base_price=1, max_guests=2
+    )
+    db_session.add(prop)
+    await db_session.flush()
+
+    assert await property_location.guess_point_from_locality(db_session, prop) is False
+    assert prop.latitude is None
+
+
+async def test_a_city_the_gazetteer_lacks_sets_nothing(db_session, test_user, bengaluru):
+    prop = _located_property(test_user, "Indiranagar", city="Atlantis")
+    db_session.add(prop)
+    await db_session.flush()
+
+    assert await property_location.guess_point_from_locality(db_session, prop) is False
+
+
+async def test_a_point_the_host_set_is_never_replaced(db_session, test_user, bengaluru):
+    prop = _located_property(test_user, "Indiranagar", latitude=12.5, longitude=77.5, location_source="host_pin")
+    db_session.add(prop)
+    await db_session.flush()
+
+    assert await property_location.guess_point_from_locality(db_session, prop) is False
+    assert float(prop.latitude) == 12.5
+
+
+async def test_distance_search_now_separates_two_neighbourhoods_in_one_city(db_session, test_user, bengaluru):
+    for index, locality in enumerate(("Indiranagar", "Koramangala")):
+        prop = _located_property(test_user, locality, exophone=f"+91801115000{index}")
+        db_session.add(prop)
+        await db_session.flush()
+        await property_location.guess_point_from_locality(db_session, prop)
+    await db_session.commit()
+
+    match = await geo_search.match_properties(db_session, test_user.id, "Indiranagar")
+
+    distances = sorted(match.distances_km.values())
+    assert distances[0] < 1.0  # the Indiranagar villa is at Indiranagar
+    assert 3.0 < distances[1] < 8.0  # the Koramangala villa is ~5 km away, not "also at the city centre"
+
+
+async def test_the_nearest_namesake_wins_when_it_is_clearly_nearer_than_the_next(db_session, test_user, bengaluru):
+    db_session.add(_place(106, "Koramangala", KORAMANGALA_OUTSKIRTS, admin1="IN.19", admin2=None))
+    prop = _located_property(test_user, "Koramangala")
+    db_session.add(prop)
+    await db_session.flush()
+
+    assert await property_location.guess_point_from_locality(db_session, prop) is True
+
+    assert (float(prop.latitude), float(prop.longitude)) == pytest.approx(KORAMANGALA_BLR, abs=1e-4)
+
+
+async def test_a_city_search_on_located_properties_is_not_ranked_or_labelled_by_distance_from_the_city_centre(
+    db_session, test_user, bengaluru
+):
+    """Found replaying on the real located Spacez data: "Bangalore" came back as "about 12 km from Bangalore ...
+    we have no property in Bangalore itself", nearest-to-centre first. Every property here is in Bangalore."""
+    specs = (("Centre Pricey", INDIRANAGAR, 9000), ("Far Cheap", (13.079, 77.607), 2000), ("Mid", KORAMANGALA_BLR, 5000))
+    for index, (name, point, price) in enumerate(specs):
+        prop = Property(user_id=test_user.id, name=name, city="Bengaluru", base_price=price, max_guests=4, exophone=f"+91801116000{index}")
+        db_session.add(prop)
+        await db_session.flush()
+        await property_location.set_property_point(db_session, prop, point[0], point[1], "gazetteer")
+    await db_session.commit()
+
+    result = await orchestrator.recommend_properties(
+        db_session, RecommendPropertiesArgs(preferred_location="Bangalore"), test_user.id
+    )
+    text = render_recommendation_text(result)
+
+    assert [o.spoken_name for o in result.options] == ["Far Cheap", "Mid", "Centre Pricey"]  # cheapest first, as without points
+    assert " km " not in text and "itself" not in text

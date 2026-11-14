@@ -137,23 +137,29 @@ export default function CallDetailPage() {
               <p className="text-sm text-muted-foreground">No transcript available.</p>
             ) : turns ? (
               <div className="space-y-3">
-                {turns.map((turn, i) => (
-                  <div key={i} className={cn("flex", turn.role === "mira" ? "justify-end" : "justify-start")}>
-                    <div
-                      className={cn(
-                        "max-w-[80%] whitespace-pre-wrap px-3 py-2 text-sm leading-relaxed",
-                        turn.role === "mira"
-                          ? "border border-border bg-muted text-foreground"
-                          : "border border-(--status-orange) bg-[color-mix(in_srgb,var(--status-orange)_14%,transparent)] text-foreground"
-                      )}
-                    >
-                      <p className="mb-0.5 text-xs font-semibold opacity-80">
-                        {turn.role === "mira" ? "Mira" : isTest ? "Browser test" : call.guest_name ?? "Guest"}
-                      </p>
-                      {turn.text}
+                {turns.map((turn, i) =>
+                  turn.unclear ? (
+                    <p key={i} className="text-xs italic text-muted-foreground">
+                      (unclear audio)
+                    </p>
+                  ) : (
+                    <div key={i} className={cn("flex", turn.role === "mira" ? "justify-end" : "justify-start")}>
+                      <div
+                        className={cn(
+                          "max-w-[80%] whitespace-pre-wrap px-3 py-2 text-sm leading-relaxed",
+                          turn.role === "mira"
+                            ? "border border-border bg-muted text-foreground"
+                            : "border border-(--status-orange) bg-[color-mix(in_srgb,var(--status-orange)_14%,transparent)] text-foreground"
+                        )}
+                      >
+                        <p className="mb-0.5 text-xs font-semibold opacity-80">
+                          {turn.role === "mira" ? "Mira" : isTest ? "Browser test" : call.guest_name ?? "Guest"}
+                        </p>
+                        {turn.text}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                )}
               </div>
             ) : (
               <pre className="whitespace-pre-wrap text-sm text-muted-foreground">{call.transcript}</pre>

@@ -50,6 +50,13 @@ export function PropertyFormFields({
         <FieldRow label="City" htmlFor="city">
           <Input id="city" value={form.city ?? ""} onChange={(e) => onChange({ ...form, city: e.target.value })} />
         </FieldRow>
+        <FieldRow
+          label="Locality"
+          htmlFor="locality"
+          hint="The area guests ask for, in English letters (for example Indiranagar, Koramangala). Mira searches on this."
+        >
+          <Input id="locality" value={form.locality ?? ""} onChange={(e) => onChange({ ...form, locality: e.target.value })} />
+        </FieldRow>
         <FieldRow label="ExoPhone" htmlFor="exophone" hint="The number guests dial for this property.">
           <Input
             id="exophone"

@@ -27,6 +27,7 @@ finalize() returns:
 
 from __future__ import annotations
 
+import json
 import time
 from collections import Counter, defaultdict
 from collections.abc import Callable
@@ -36,6 +37,8 @@ from loguru import logger
 
 from pipecat.frames.frames import (
     BotStartedSpeakingFrame,
+    CancelFrame,
+    EndFrame,
     ErrorFrame,
     Frame,
     FunctionCallInProgressFrame,
@@ -91,6 +94,17 @@ def _percentile(values: list[float], pct: float) -> float | None:
     return ordered[min(len(ordered) - 1, max(0, int(round((pct / 100.0) * (len(ordered) - 1)))))]
 
 
+def _result_status(result) -> str:
+    """The "status" of a tool result envelope (app/voice/tool_contract.py), however it arrived: a dict, or the
+    JSON text of one. "" when there is none."""
+    if isinstance(result, str):
+        try:
+            result = json.loads(result)
+        except ValueError:
+            return ""
+    return str(result.get("status", "")).lower() if isinstance(result, dict) else ""
+
+
 def _is_error_result(result) -> bool:
     if isinstance(result, dict):
         status = str(result.get("status", "")).lower()
@@ -125,12 +139,19 @@ class CallMetricsCollector(FrameProcessor):
         self._ttfb: dict[str, list[float]] = defaultdict(list)
         self._tool_calls: Counter = Counter()
         self._tool_errors: Counter = Counter()
+        self._tool_no_results: Counter = Counter()
         self._tool_durations: dict[str, list[float]] = defaultdict(list)
         self._tool_started: dict[str, tuple[str, float]] = {}
         self._tool_seen_results: set[str] = set()
         self._response_latencies: list[float] = []
         self._user_turns = 0
         self._user_stopped_at: float | None = None
+        self._last_bot_started_at: float | None = None
+        # When the pipeline's terminal frame went past: the moment the call ended. finalize() runs seconds
+        # later (after the classification and summary LLM calls), so it must not use its own clock for this.
+        self._ended_at: float | None = None
+        # The summary written by finalize(), kept for the per-call scorecard (app/services/call_scorecard.py).
+        self.summary: dict | None = None
         self._errors = 0
         self._processing_seconds = 0.0
 
@@ -162,15 +183,21 @@ class CallMetricsCollector(FrameProcessor):
                 self._tool_durations[name].append(self._monotonic() - started[1])
             if _is_error_result(frame.result):
                 self._tool_errors[name] += 1
+            elif _result_status(frame.result) == "no_results":
+                self._tool_no_results[name] += 1
         elif isinstance(frame, UserStoppedSpeakingFrame):
             self._user_turns += 1
             self._user_stopped_at = self._monotonic()
         elif isinstance(frame, BotStartedSpeakingFrame):
+            self._last_bot_started_at = self._monotonic()
             if self._user_stopped_at is not None:
                 latency = self._monotonic() - self._user_stopped_at
                 if 0 <= latency <= MAX_RESPONSE_LATENCY_SECONDS and len(self._response_latencies) < MAX_SAMPLES:
                     self._response_latencies.append(latency)
                 self._user_stopped_at = None
+        elif isinstance(frame, (EndFrame, CancelFrame)):
+            if self._ended_at is None:
+                self._ended_at = self._monotonic()
         elif isinstance(frame, ErrorFrame):
             self._errors += 1
 
@@ -240,6 +267,14 @@ class CallMetricsCollector(FrameProcessor):
                 ],
                 "tool_calls": dict(self._tool_calls),
                 "tool_errors": dict(self._tool_errors),
+                "tool_no_results": dict(self._tool_no_results),
+                # How long before the call ended Mira last started speaking: a guest who hangs up seconds
+                # after Mira began talking left without being helped (call_scorecard's quick_hangup).
+                "seconds_from_last_bot_start_to_end": (
+                    round((self._ended_at if self._ended_at is not None else self._monotonic()) - self._last_bot_started_at, 2)
+                    if self._last_bot_started_at is not None
+                    else None
+                ),
                 "tool_durations_s": {k: [round(v, 3) for v in vs] for k, vs in self._tool_durations.items()},
                 "response_latency_s": [round(v, 3) for v in self._response_latencies],
                 "response_latency_p50_s": _percentile(self._response_latencies, 50),
@@ -249,6 +284,7 @@ class CallMetricsCollector(FrameProcessor):
                 "engaged_pricing_tools": bool(ENGAGEMENT_TOOLS & set(self._tool_calls)),
                 "collector_overhead_ms": round(self._processing_seconds * 1000.0, 1),
             }
+            self.summary = summary
             record = ValidationResult(
                 rule=CALL_METRICS_RULE,
                 severity="INFO",

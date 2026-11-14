@@ -1,0 +1,21 @@
+# Confirmed live 2026-11-13 (call 56947e99): a guest asked for an area the host does not
+# have and Mira named "Juhu" as a Bengaluru area. After a miss she may only name places
+# from the tool result.
+name: area_not_on_file_names_only_real_places
+user:
+  modality: text
+judge:
+  modality: text
+  eval:
+    factory: eval.judge_llm.make_judge_llm
+turns:
+  - user: "Hi, do you have a place in Juhu for next weekend? There will be four of us."
+    expect:
+      - event: function_call
+        calls:
+          - name: recommend_properties
+      - event: llm_response
+        eval: >-
+          Says the host has no property in Juhu. If it names any places the host does have, they are only
+          among: Bengaluru, Goa (and the areas Indiranagar, Koramangala, Whitefield, HSR Layout, Assagao,
+          Saligao). It never says Juhu is an area of Bengaluru or Goa, and never names any other area.

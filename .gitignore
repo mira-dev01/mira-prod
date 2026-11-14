@@ -23,3 +23,5 @@ venv312/
 .impeccable/review/
 .impeccable/hook.cache.json
 .impeccable/questions/
+backend/eval-runs/
+backend/*.eval.log

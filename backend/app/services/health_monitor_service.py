@@ -669,6 +669,29 @@ def snapshot() -> dict:
 # --------------------------------------------------------------------------
 
 
+async def _flagged_calls_summary(now: datetime) -> dict | None:
+    """Call quality for the digest: how many calls the scorecards flagged in the last 24 hours and the
+    most common reason (app/services/call_scorecard.py). None when it cannot be read: the digest then
+    goes out without that section rather than not at all."""
+    try:
+        from app.services import admin_monitor_service
+
+        async with AsyncSessionLocal() as db:
+            data = await admin_monitor_service.flagged_calls(
+                db, admin_monitor_service.Scope(since=now - timedelta(hours=24), until=now)
+            )
+        top = data["reasons"][0] if data["reasons"] else None
+        return {
+            "flagged": data["coverage"]["flagged_calls"],
+            "scored": data["coverage"]["scored_calls"],
+            "top_reason": top["label"] if top else None,
+            "top_count": top["count"] if top else 0,
+        }
+    except Exception:
+        logger.exception("health_digest_flagged_calls_failed")
+        return None
+
+
 async def send_daily_digest(*, force: bool = False) -> dict:
     """force=True sends even where alerts are off (the admin 'send now'
     button). Never raises."""
@@ -722,6 +745,9 @@ async def send_daily_digest(*, force: bool = False) -> dict:
         low_credits = [c["label"] for c in credits if c["level"] in ("low", "critical")]
         if low_credits:
             headline += f" · low credits: {', '.join(low_credits)}"
+        flagged = await _flagged_calls_summary(now)
+        if flagged and flagged["flagged"]:
+            headline += f" · {flagged['flagged']} flagged call{'s' if flagged['flagged'] != 1 else ''}"
         date_label = _fmt_time(now).split(",")[0]
         subject = f"Mira daily health [{settings.environment}] · {date_label} · {headline}"
         html = email_templates.build_health_digest_email_html(
@@ -731,8 +757,15 @@ async def send_daily_digest(*, force: bool = False) -> dict:
             credits=credits,
             admin_url=admin_url(),
             date_label=date_label,
+            flagged=flagged,
         )
         text_lines = [subject, ""]
+        if flagged:
+            text_lines += [
+                f"Call quality · {flagged['flagged']} flagged of {flagged['scored']} scored calls"
+                + (f" · top reason: {flagged['top_reason']} ({flagged['top_count']})" if flagged["top_reason"] else ""),
+                "",
+            ]
         text_lines += [f"Credits · {c['label']}: {c['remaining']}" for c in credits]
         text_lines += [""] + [f"Incident · {i['label']} ({i['severity']}) {i['opened_at']} · {i['duration']}" for i in incidents]
         text_lines += [""] + [f"{s['label']}: {s['state']} · {s['availability']}" for s in services]

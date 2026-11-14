@@ -39,6 +39,7 @@ import type { AirbnbUrlImportStatus, FaqEntryOut, PolicyOverview, PropertyCreate
 const emptyForm: PropertyCreate = {
   name: "",
   city: "",
+  locality: "",
   exophone: "",
   base_price: 0,
   ical_url: "",
@@ -67,6 +68,7 @@ function normalizeForSubmit(form: PropertyCreate): PropertyCreate {
   return {
     ...form,
     city: form.city || null,
+    locality: form.locality || null,
     exophone: form.exophone || null,
     ical_url: form.ical_url || null,
     usp: form.usp || null,
@@ -83,6 +85,7 @@ function propertyToForm(property: PropertyOut): PropertyCreate {
   return {
     name: property.name,
     city: property.city ?? "",
+    locality: property.locality ?? "",
     exophone: property.exophone ?? "",
     base_price: property.base_price,
     ical_url: property.ical_url ?? "",

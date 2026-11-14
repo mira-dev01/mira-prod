@@ -218,6 +218,13 @@ GOLDEN_RULES = f"""Golden rules:
   with no guess, estimate, "usually", "around" or "I think". Then, if you have not yet escalated on this
   call, say the escalation phrasing below and call escalate_to_host (urgency "medium", the guest's
   question as the reason); if you already have, say only the line above -- never a second escalation phrase.
+- PLACE NAMES: never name an area, neighbourhood or city that is not in the Locations section or in a tool
+  result -- not as an example, and not from your own knowledge of a place. The one exception is a place the
+  guest just named themselves. If they ask about one that is not listed, say we do not have it.
+- UNCLEAR AUDIO: a guest message that is exactly [inaudible] is a marker that the audio was unclear -- it
+  is not something the guest said. Ask them to say it again, in one short sentence in your own words, in the
+  guest's language and script (Conversation Style block). Never quote the marker, never treat it as an
+  answer, and never repeat your previous question in the same words.
 - Speak only your own single turn, then stop and wait -- never generate, speak, or assume the guest's
   reply for them, even when their answer seems obvious or you're confident what they'll say. Confirmed
   live: after asking "May I have your name?", the reply spoken aloud continued on its own with "My name
@@ -1352,6 +1359,21 @@ def _location_blurb(properties: list[Property]) -> str:
     return ""
 
 
+def _city_areas(city_properties: list[Property]) -> str:
+    """"Indiranagar (1), Koramangala (3)": the areas inside one city, with how many properties each has.
+    Alphabetical, so the text never changes between calls. Properties without a locality are simply not
+    counted here -- the city line above already counts them."""
+    counts: dict[str, list[str]] = {}
+    for property_ in city_properties:
+        if property_.locality and property_.locality_key:
+            counts.setdefault(property_.locality_key, []).append(property_.locality)
+    areas = []
+    for names in counts.values():
+        shown = sorted(names, key=lambda n: (-names.count(n), n))[0]  # the most common spelling, then alphabetical
+        areas.append((shown, len(names)))
+    return ", ".join(f"{name} ({count})" for name, count in sorted(areas, key=lambda a: a[0].lower()))
+
+
 def _locations_section(properties: list[Property]) -> str:
     """Per-city summary built from data already loaded for the prompt (no extra
     query, no tool call). Lets the model name real locations -- with a one-line
@@ -1383,6 +1405,9 @@ def _locations_section(properties: list[Property]) -> str:
         if facets:
             line += f" [{facets}]"
         lines.append(line)
+        areas = _city_areas(city_properties)
+        if areas:
+            lines.append(f"  {city} areas: {areas}")
 
     if len(by_city) == 1:
         rule = (
@@ -1393,7 +1418,12 @@ def _locations_section(properties: list[Property]) -> str:
         rule = (
             "If the guest hasn't said where they want to stay, do NOT escalate and do NOT call a tool "
             "first: name two or three of these locations, each with its short feel from this list, and "
-            "ask which appeals to them. Only use locations listed here -- never invent one."
+            "ask which appeals to them."
+        )
+    if any(p.locality for p in properties):
+        rule += (
+            " The areas listed under a city are the only areas inside it that we have a property in: "
+            "never name another area, even one you know exists in that city."
         )
     rule += (
         " Whenever you offer the guest a choice -- a type of stay, a feature, a kind of place -- "
@@ -1579,10 +1609,13 @@ def build_lead_system_prompt(
         # or search_faq first, same as it already does for anything else it
         # doesn't have verified info on.
         lines = []
-        for property_ in properties:
+        # Sorted so the same host always produces the same prompt text: the database returns rows in no
+        # promised order, and a reordered listing would break the provider's prompt cache for nothing.
+        for property_ in sorted(properties, key=lambda p: ((p.city or "").lower(), (p.display_name or p.name).lower(), str(p.id))):
+            place = f"{property_.locality}, " if property_.locality else ""
             lines.append(
                 f"- {property_.display_name or property_.name} (property_id: {property_.id}) -- "
-                f"{property_.city or 'unknown city'}, ₹{float(property_.base_price):,.0f}/night, "
+                f"{place}{property_.city or 'unknown city'}, ₹{float(property_.base_price):,.0f}/night, "
                 f"sleeps {property_.max_guests}"
                 + (" (entire place; also rentable by the room)" if stay_scope.offers_rooms(property_) else "")
             )

@@ -1,6 +1,6 @@
 # Golden test eval suite
 
-Status: **design only, nothing built yet**. This doc exists to answer two questions: what
+Status: **built (2026-11-14), not yet run against a real model**: the eval entrypoint (`scripts/run_eval_bot.py`), the seeded host, the Groq judge, 7 regression scenarios, the `pipecat eval suite` manifest, the gated deployed route (`/api/v1/voice/eval/ws/{token}`) and a report-only GitHub Actions job (`.github/workflows/eval.yml`). What is missing is an LLM key that can carry the ~19k-token Lead Agent prompt, so no scenario has produced a verdict from the real agent yet. This doc exists to answer two questions: what
 should the suite actually check, and how does it get *run*, mechanically, every time a
 prompt or codebase change lands.
 
@@ -62,7 +62,7 @@ MIRA's pipeline needs an **eval-mode entrypoint**, separate from the real Exotel
 
 1. A new script, e.g. `backend/scripts/run_eval_bot.py`, that builds the **same** pipeline MIRA already builds in production — same `build_system_prompt`/`build_lead_system_prompt`, same LLM service construction, same tool wrappers (`app/voice/tools.py`) — but wired through `pipecat.evals.transport.EvalTransport` (a `SingleClientWebsocketServerTransport` subclass built for exactly this) instead of the real Exotel/Twilio/WebRTC transport.
 2. Add an `RTVIProcessor`/`RTVIObserver` to that pipeline instance (eval-mode only) so `function_call`, `llm_response`, `tts_response`, and transcription events actually get emitted — this is the one-line-conceptually, real-work-in-practice piece, since nothing in `pipeline.py` speaks RTVI today.
-3. Expose it as a WebSocket route (mirrors the existing pattern in `app/api/v1/voice.py`'s browser-test entrypoint) — something like `wss://<backend>/api/v1/voice/eval/ws`, gated the same way the browser test path already is (or a separate shared-secret token, same discipline as `EXOTEL_WEBHOOK_TOKEN`/`TWILIO_VOICE_WEBHOOK_TOKEN` elsewhere in this codebase) so it's never reachable by a real caller.
+3. **Built:** `app/api/v1/voice.py` `/voice/eval/ws/{token}`, off unless `EVAL_ROUTE_TOKEN` is set (24+ characters), and refused on any database not named eval/test unless `EVAL_ALLOW_ANY_DATABASE=1`. A websocket cannot answer 404 (a refused handshake is HTTP 403); the plain HTTP path answers 404. Original note: expose it as a WebSocket route (mirrors the existing pattern in `app/api/v1/voice.py`'s browser-test entrypoint) — something like `wss://<backend>/api/v1/voice/eval/ws`, gated the same way the browser test path already is (or a separate shared-secret token, same discipline as `EXOTEL_WEBHOOK_TOKEN`/`TWILIO_VOICE_WEBHOOK_TOKEN` elsewhere in this codebase) so it's never reachable by a real caller.
 4. Decide test data: point the eval bot at a fixed seeded host/property set (the existing `seed_demo.py` demo account is the obvious choice — stable, already has 12 realistic properties across price points and locations) so scenarios don't depend on whatever real data happens to exist.
 
 Once that route exists, **"how do I run this every time" has a real, concrete answer**:
@@ -168,6 +168,6 @@ they make ideal golden cases.
 
 ## Open questions to settle before building
 
-1. **Where does the judge LLM call go** — reuse the same Groq account/model as production, or a separate cheaper/more deterministic model dedicated to judging? (Judge cost is per-scenario-run, not per-call, so it's low-volume either way.)
-2. **Seeded test data** — reuse the existing demo account (`seed_demo.py`) as-is, or a dedicated eval-only host/property set kept deliberately stable so scenario expectations never drift when the demo data changes?
-3. **CI wiring** — block merges on failure immediately, or start in report-only mode until the suite is trusted?
+1. **Where does the judge LLM call go** — *Settled: Groq `qwen/qwen3.8-27b` through `eval/judge_llm.py`, deliberately not the bot's own model.* Original question: reuse the same Groq account/model as production, or a separate cheaper/more deterministic model dedicated to judging? (Judge cost is per-scenario-run, not per-call, so it's low-volume either way.)
+2. **Seeded test data** — *Settled: a dedicated eval host (`eval/seed.py`) in a database whose name contains "eval"; the bot refuses any other.* Original question: reuse the existing demo account (`seed_demo.py`) as-is, or a dedicated eval-only host/property set kept deliberately stable so scenario expectations never drift when the demo data changes?
+3. **CI wiring** — *Settled: report-only first, blocking after two weeks without a flaky result; not wired yet.* Original question: block merges on failure immediately, or start in report-only mode until the suite is trusted?

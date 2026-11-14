@@ -1,0 +1,24 @@
+# Confirmed live 2026-11-13: a guest turn the system could not use was written as an English sentence and
+# the model asked the same question four times. Now the turn is the marker [inaudible]; Mira must ask the
+# guest to say it again, once, in her own words, and must not re-ask her previous question unchanged.
+# Text mode feeds the marker straight to the model, so this checks the prompt rule, not the guard (unit-tested).
+name: inaudible_marker_asks_to_repeat
+user:
+  modality: text
+judge:
+  modality: text
+  eval:
+    factory: eval.judge_llm.make_judge_llm
+
+turns:
+  - user: "Hello, I'd like to book a stay in Bengaluru."
+    expect:
+      - event: llm_response
+        eval: "Replies to the guest about their request. Any question it asks is a single question."
+  - user: "[inaudible]"
+    expect:
+      - event: llm_response
+        eval: >-
+          Briefly asks the guest to say that again (or says it did not catch it). It does NOT quote or mention
+          the word "inaudible" or square brackets, does NOT treat it as an answer, and does NOT simply repeat
+          its previous question word for word.

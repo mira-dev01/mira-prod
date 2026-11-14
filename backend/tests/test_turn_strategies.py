@@ -1,3 +1,4 @@
+from app.voice.low_confidence_transcript_guard import INAUDIBLE_MARKER
 from app.voice.turn_strategies import HybridCompletenessUserTurnStopStrategy, _is_incomplete
 
 
@@ -56,3 +57,8 @@ def test_strategy_instantiates_with_custom_timeouts():
     assert strategy._base_timeout == 1.0
     assert strategy._extension_timeout == 0.5
     assert strategy._max_wait == 3.0
+
+
+def test_inaudible_marker_is_a_complete_turn_not_a_reason_to_wait_longer():
+    assert _is_incomplete(INAUDIBLE_MARKER) is False
+    assert _is_incomplete("Kasauli") is True  # a real one-word answer still waits, as before

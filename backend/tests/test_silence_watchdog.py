@@ -1,7 +1,11 @@
+import asyncio
+
 import pytest
+from loguru import logger
 from pipecat.frames.frames import (
     BotStartedSpeakingFrame,
     BotStoppedSpeakingFrame,
+    CancelFrame,
     EndFrame,
     TranscriptionFrame,
     TTSSpeakFrame,
@@ -267,6 +271,7 @@ async def test_end_call_requested_while_the_guest_is_speaking_is_not_armed():
     watchdog = SilenceWatchdogProcessor(timeout_seconds=5.0)
 
     await run_test(watchdog, frames_to_send=[UserStartedSpeakingFrame(), SleepFrame(sleep=0.05)])
+    watchdog._ended = False  # run_test's teardown marked it ended; the call under test is still live
     await watchdog.request_end_after_current_turn()
 
     assert watchdog._end_requested is False
@@ -456,6 +461,22 @@ async def test_repeated_background_completed_turns_do_not_reset_strikes_but_stil
     # that fired during the repeated-pattern gaps, and were NOT reset back
     # to 0 once the repetition threshold was reached.
     assert watchdog._prompts_sent > 0
+
+
+@pytest.mark.asyncio
+async def test_repeated_inaudible_turns_still_count_as_progress_and_reset_strikes():
+    """An [inaudible] turn is the guest talking, not a repeated background pattern: unlike the
+    identical-text case above, strikes go back to 0 however many times it happens."""
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=0.05, max_prompts=10)
+    min_matches = silence_watchdog_module._REPETITION_SHADOW_MIN_MATCHES
+
+    frames = [BotStoppedSpeakingFrame()]
+    for _ in range(min_matches + 1):
+        frames += [SleepFrame(sleep=0.06), *_completed_turn("[inaudible]")]
+
+    await run_test(watchdog, frames_to_send=frames)
+
+    assert watchdog._prompts_sent == 0
 
 
 @pytest.mark.asyncio
@@ -1380,3 +1401,69 @@ async def test_a_hold_that_is_never_released_expires_instead_of_disabling_the_wa
         ],
     )
     assert any(isinstance(f, TTSSpeakFrame) for f in down_frames)
+
+
+# --- teardown: a call that has ended must not be nudged or hung up on again ---
+
+
+async def _watchdog_activity_after(frames: list, wait: float) -> tuple[SilenceWatchdogProcessor, list[str], list]:
+    """Runs the frames through a 0.05s watchdog, then keeps the clock running for `wait` more
+    seconds and returns what it logged and the frames it pushed downstream. cleanup() is
+    neutralised so these tests prove the frame handling itself (cleanup has its own test)."""
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=0.05, max_prompts=5)
+
+    async def _no_cleanup():
+        return None
+
+    watchdog.cleanup = _no_cleanup
+    logged: list[str] = []
+    sink_id = logger.add(lambda message: logged.append(message.record["message"]), level="INFO")
+    try:
+        down_frames, _ = await run_test(watchdog, frames_to_send=frames)
+        await asyncio.sleep(wait)
+    finally:
+        logger.remove(sink_id)
+    return watchdog, logged, down_frames
+
+
+@pytest.mark.asyncio
+async def test_timer_started_before_the_call_ended_never_fires_after_it():
+    """2026-11-13: the caller hung up at 21:38:00 and the watchdog still logged a prompt at 21:38:05 and
+    "ending call" at 21:38:23. The pipeline's end (run_test sends an EndFrame) must stop the timer."""
+    watchdog, logged, _ = await _watchdog_activity_after([BotStoppedSpeakingFrame()], wait=0.25)
+
+    assert watchdog._ended is True
+    assert watchdog._timer_task is None
+    assert not [m for m in logged if m.startswith("SilenceWatchdogProcessor:")]
+
+
+@pytest.mark.asyncio
+async def test_cancel_frame_stops_the_timer():
+    watchdog, logged, down_frames = await _watchdog_activity_after(
+        [BotStoppedSpeakingFrame(), SleepFrame(sleep=0.01), CancelFrame()], wait=0.25
+    )
+
+    assert watchdog._ended is True
+    assert not [m for m in logged if m.startswith("SilenceWatchdogProcessor:")]
+    assert not any(isinstance(f, TTSSpeakFrame) for f in down_frames)
+
+
+@pytest.mark.asyncio
+async def test_a_turn_after_the_call_ended_does_not_start_a_new_timer():
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=0.05, max_prompts=5)
+    watchdog._ended = True
+
+    await watchdog._restart_timer()
+
+    assert watchdog._timer_task is None
+
+
+@pytest.mark.asyncio
+async def test_cleanup_marks_the_call_ended():
+    watchdog = SilenceWatchdogProcessor(timeout_seconds=5.0, max_prompts=5)
+    assert watchdog._ended is False
+
+    await watchdog.cleanup()
+
+    assert watchdog._ended is True
+    assert watchdog._timer_task is None

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import math
+import random
 import uuid
 from collections import Counter, defaultdict
 from dataclasses import dataclass
@@ -35,6 +36,7 @@ from app.models.admin import AdminServiceSetting
 from app.models.call_quality_event import (
     AUDIO_INPUT_TELEMETRY_RULE,
     CALL_METRICS_RULE,
+    CALL_SCORECARD_RULE,
     INTERNAL_TELEMETRY_RULES,
     CallQualityEvent,
 )
@@ -44,6 +46,7 @@ from app.models.notification import Notification
 from app.models.property import Property
 from app.models.service_usage_event import ServiceUsageEvent
 from app.models.user import User
+from app.services import call_scorecard
 from app.services.call_service import BROWSER_TEST_CALLER_NUMBER
 
 QUALIFIED_CALL_TYPES = frozenset({"BOOKING_LEAD", "GUEST_SUPPORT", "EXISTING_BOOKING", "GENERAL_QUERY"})
@@ -53,6 +56,7 @@ MISSED_CALL_TYPES = frozenset({"MISSED_AGENT_BUSY", "MISSED_SYSTEM_FAILURE"})
 # ranges; the summary-level counters always cover every call.
 AUDIO_SEGMENT_SAMPLE_CALLS = 300
 MIN_CALLS_FOR_DECISION = 30
+UNFLAGGED_SAMPLE_SIZE = 10
 RESEND_FREE_MONTHLY = 3000
 RESEND_FREE_DAILY = 100
 
@@ -485,16 +489,128 @@ def _end_label(summary: dict | None, call: dict) -> str:
         if call["call_type"] == "MISSED_SYSTEM_FAILURE":
             return "system_failure"
         return "unknown"
-    reason = summary.get("end_reason")
-    if reason == "max_call_duration_exceeded":
-        return "max_duration"
-    if reason == "host_handoff":
-        return "host_handoff"
-    if reason == "silent caller":
-        return "silent_caller"
-    if summary.get("end_frame") == "CancelFrame":
-        return "guest_hung_up"
-    return "mira_ended"
+    return call_scorecard.end_label(summary.get("end_frame"), summary.get("end_reason"))
+
+
+async def flagged_calls(db: AsyncSession, scope: Scope, limit: int = 200) -> dict:
+    """Calls whose scorecard (app/services/call_scorecard.py) raised a flag, newest first, with why.
+    `coverage` says how many calls in range were scored at all, so a thin sample is visible instead of
+    reading as "no problems"."""
+    rows = (
+        await db.execute(
+            select(
+                CallSession.id,
+                CallSession.created_at,
+                CallSession.caller_number,
+                CallSession.call_type,
+                CallSession.started_at,
+                CallSession.ended_at,
+                CallSession.recording_url,
+                CallSession.user_id,
+                CallQualityEvent.severity,
+                CallQualityEvent.metadata_json["scorecard"],
+            )
+            .join(CallSession, CallQualityEvent.call_session_id == CallSession.id)
+            .where(*_call_filters(scope), CallQualityEvent.rule == CALL_SCORECARD_RULE)
+            .order_by(CallSession.created_at.desc())
+        )
+    ).all()
+    flagged = [r for r in rows if r[8] == "WARNING"]
+    unflagged = [r for r in rows if r[8] != "WARNING"]
+    sample = random.sample(unflagged, min(UNFLAGGED_SAMPLE_SIZE, len(unflagged)))
+    host_names = await _host_names(db, {r[7] for r in [*flagged, *sample] if r[7] is not None})
+    cards = [dict(r[9] or {}) for r in flagged]
+    reason_counts = Counter(flag["code"] for card in cards for flag in card.get("flags", []))
+    total_calls = await db.scalar(select(func.count()).select_from(CallSession).where(*_call_filters(scope))) or 0
+
+    return {
+        "coverage": {"calls": total_calls, "scored_calls": len(rows), "flagged_calls": len(flagged)},
+        "weekly_numbers": await _weekly_numbers(db, rows),
+        "reasons": [
+            {"code": code, "label": call_scorecard.REASON_LABELS.get(code, code), "count": count}
+            for code, count in sorted(reason_counts.items(), key=lambda kv: (-kv[1], kv[0]))
+        ],
+        "calls": [_call_row(r, card, host_names) for r, card in list(zip(flagged, cards))[:limit]],
+        # Ten scored calls that were NOT flagged, chosen at random: the weekly review reads these too, to
+        # find what the flags miss (docs/documentation/weekly-call-review.md).
+        "unflagged_sample": [
+            _call_row(r, dict(r[9] or {}), host_names) for r in sample
+        ],
+    }
+
+
+def _call_row(r, card: dict, host_names: dict) -> dict:
+    return {
+        "id": str(r[0]),
+        "created_at": r[1].isoformat() if r[1] else None,
+        "host": host_names.get(r[7]),
+        "caller_number": r[2],
+        "call_type": r[3],
+        "duration_s": (r[5] - r[4]).total_seconds() if r[4] and r[5] else None,
+        "ended_by": card.get("ended_by"),
+        "flags": [
+            {**flag, "label": call_scorecard.REASON_LABELS.get(flag["code"], flag["code"])}
+            for flag in card.get("flags", [])
+        ],
+        "has_recording": bool(r[6]),
+    }
+
+
+async def _weekly_numbers(db: AsyncSession, rows) -> list[dict]:
+    """The three numbers tracked per host in the weekly call review (docs/documentation/weekly-call-review.md):
+    share of calls flagged, share that ended in a lead, booking or escalation, and share where the guest hung
+    up. Over scored calls only."""
+    per_host: dict = defaultdict(lambda: {"scored": 0, "flagged": 0, "outcome": 0, "hung_up": 0})
+    for row in rows:
+        card = row[9] or {}
+        bucket = per_host[row[7]]
+        bucket["scored"] += 1
+        bucket["flagged"] += row[8] == "WARNING"
+        outcome = card.get("outcome") or {}
+        bucket["outcome"] += bool(outcome.get("lead") or outcome.get("booking") or outcome.get("escalation"))
+        bucket["hung_up"] += card.get("ended_by") == "guest_hung_up"
+    names = await _host_names(db, {uid for uid in per_host if uid is not None})
+    return [
+        {
+            "host": names.get(uid) or "(unknown host)",
+            "scored_calls": b["scored"],
+            "flagged_share": b["flagged"] / b["scored"],
+            "outcome_share": b["outcome"] / b["scored"],
+            "guest_hung_up_share": b["hung_up"] / b["scored"],
+        }
+        for uid, b in sorted(per_host.items(), key=lambda kv: -kv[1]["scored"])
+    ]
+
+
+async def flagged_call_detail(db: AsyncSession, call_id: uuid.UUID) -> dict | None:
+    """One scored call: its scorecard, transcript and recording link. None when there is no such call."""
+    session = await db.get(CallSession, call_id)
+    if session is None:
+        return None
+    row = (
+        await db.execute(
+            select(CallQualityEvent.metadata_json["scorecard"]).where(
+                CallQualityEvent.call_session_id == call_id, CallQualityEvent.rule == CALL_SCORECARD_RULE
+            )
+        )
+    ).first()
+    host = (await _host_names(db, {session.user_id})).get(session.user_id) if session.user_id else None
+    return {
+        "id": str(session.id),
+        "created_at": session.created_at.isoformat() if session.created_at else None,
+        "host": host,
+        "caller_number": session.caller_number,
+        "recording_url": session.recording_url,
+        "transcript": session.transcript,
+        "scorecard": dict(row[0]) if row and row[0] else None,
+    }
+
+
+async def _host_names(db: AsyncSession, user_ids: set) -> dict:
+    if not user_ids:
+        return {}
+    rows = (await db.execute(select(User.id, User.business_name, User.name, User.email).where(User.id.in_(user_ids)))).all()
+    return {uid: business or name or email for uid, business, name, email in rows}
 
 
 async def conversations(db: AsyncSession, scope: Scope) -> dict:
