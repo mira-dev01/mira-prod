@@ -210,3 +210,52 @@ def test_the_spacez_message_builders_fill_exactly_the_placeholders_their_templat
     for key, values in expected.items():
         assert len(values) == len(wt.TEMPLATES[key].variables), key
         assert "{{" not in wt.render(key, values), key
+
+
+# -- a template Twilio accepts but WhatsApp then refuses must not be silent ---------------------------------
+
+
+async def _photo_tickets(call_session_id):
+    from sqlalchemy import select
+
+    from app.models.ticket import Ticket
+
+    async with AsyncSessionLocal() as db:
+        return list((await db.scalars(select(Ticket).where(Ticket.call_session_id == call_session_id))).all())
+
+
+async def _send_photos_with_status(test_user, test_property, test_call_session, monkeypatch, status, error_code=None):
+    from app.integrations import twilio_client
+
+    await _with_photos(test_property)
+    monkeypatch.setattr(settings, "twilio_enabled", True)
+    monkeypatch.setattr(wt, "PHOTOS_SID", "HXphotos")
+
+    async def fetch(sid, timeout=10.0):
+        return status, error_code
+
+    monkeypatch.setattr(twilio_client, "fetch_message_status", fetch)
+    async with AsyncSessionLocal() as db:
+        await tool_handlers.handle_send_photos(
+            db, SendPhotosArgs(property_id=str(test_property.id), guest_phone="+919876543210", guest_name="Asha"),
+            test_call_session.id, test_user.id,
+        )
+    await _settle()
+    return await _photo_tickets(test_call_session.id)
+
+
+async def test_photos_that_whatsapp_refuses_after_twilio_accepts_them_open_a_ticket(
+    test_user, test_property, test_call_session, monkeypatch
+):
+    tickets = await _send_photos_with_status(test_user, test_property, test_call_session, monkeypatch, "undelivered", 63016)
+    assert [t.kind for t in tickets] == ["photos"]
+
+
+async def test_photos_that_were_delivered_leave_no_ticket(test_user, test_property, test_call_session, monkeypatch):
+    tickets = await _send_photos_with_status(test_user, test_property, test_call_session, monkeypatch, "delivered")
+    assert tickets == []
+
+
+async def test_photos_still_on_their_way_are_not_a_failure(test_user, test_property, test_call_session, monkeypatch):
+    tickets = await _send_photos_with_status(test_user, test_property, test_call_session, monkeypatch, "sent")
+    assert tickets == []

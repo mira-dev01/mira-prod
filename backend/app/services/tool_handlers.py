@@ -5,6 +5,7 @@ tool result and is what it will speak to the guest, so results are phrased
 for that, not as raw JSON.
 """
 
+import asyncio
 import logging
 import uuid
 from datetime import date, timedelta
@@ -1241,6 +1242,31 @@ async def handle_dispatch_technician(
     )
 
 
+# Seconds after sending at which a template message's delivery is checked. WhatsApp refuses a message to
+# someone it may not reach (an unapproved template, a guest outside the 24-hour window) a few seconds AFTER
+# Twilio has accepted it, so "accepted" says nothing about "delivered".
+_DELIVERY_CHECK_DELAYS = (4.0, 10.0, 20.0)
+
+
+async def _whatsapp_was_delivered(sid: str) -> bool:
+    """False only when WhatsApp reported the message failed, undelivered or cancelled. A message still on its
+    way (phone off, slow network) counts as fine, so the host is never asked to resend something that will
+    arrive. A status lookup that itself fails is not evidence either way and is retried."""
+    for delay in _DELIVERY_CHECK_DELAYS:
+        await asyncio.sleep(delay)
+        try:
+            status, error_code = await twilio_client.fetch_message_status(sid)
+        except Exception:
+            logger.warning("could not check delivery of WhatsApp message %s", sid)
+            continue
+        if status in ("delivered", "read"):
+            return True
+        if status in ("failed", "undelivered", "canceled"):
+            logger.warning("WhatsApp message %s was not delivered: status=%s error=%s", sid, status, error_code)
+            return False
+    return True
+
+
 async def _send_whatsapp_or_open_ticket(
     to_phone: str, body: str, *, template: tuple[str, list] | None = None, **ticket
 ) -> None:
@@ -1251,10 +1277,13 @@ async def _send_whatsapp_or_open_ticket(
 
     `template` = (key, values) sends the approved WhatsApp template of that name (whatsapp_templates.py,
     which also says where its SID is set) with `body` as the free-text fallback; a guest who has not messaged
-    the business in the last 24 hours can only be reached that way."""
+    the business in the last 24 hours can only be reached that way. A template message is also followed up:
+    Twilio accepting it is not the guest receiving it (an unapproved template, or a guest outside the window,
+    fails afterwards), so its delivery is checked and the same ticket opens if WhatsApp refused it."""
     try:
         if template is not None and whatsapp_templates.TEMPLATES[template[0]].sid:
-            accepted = bool(await whatsapp_templates.send(to_phone, template[0], template[1], fallback_text=body))
+            sid = await whatsapp_templates.send(to_phone, template[0], template[1], fallback_text=body)
+            accepted = bool(sid) and await _whatsapp_was_delivered(sid)
         else:  # no template set up for this message yet: free text, exactly as before templates existed
             accepted = await twilio_client.send_whatsapp_best_effort(to_phone, body)
         if accepted is False:

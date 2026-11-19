@@ -82,6 +82,14 @@ async def _override_get_current_user(request: Request, db=Depends(get_db)) -> Us
 
 
 @pytest.fixture(autouse=True)
+def _no_wait_for_whatsapp_delivery(monkeypatch):
+    """The delivery check after a template send waits seconds for WhatsApp to refuse a message; tests don't."""
+    from app.services import tool_handlers
+
+    monkeypatch.setattr(tool_handlers, "_DELIVERY_CHECK_DELAYS", (0.0,))
+
+
+@pytest.fixture(autouse=True)
 def _blank_whatsapp_template_sids(monkeypatch):
     """Same idea as the settings rebuild above: the real Twilio Content SIDs are pasted into
     app/services/whatsapp_templates.py, and a test must not depend on which ones are. Every test starts
