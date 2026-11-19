@@ -5,6 +5,7 @@ export type AirbnbHostStatus =
   | "superhost"
   | "guest_favorite"
   | "professional_host"
+  | "not_on_airbnb"
   | "prefer_not_to_say";
 
 // Maps to a specific Sarvam bulbul:v3 speaker name server-side
@@ -189,18 +190,14 @@ export type HostOnboarding = {
   business_phone: string;
   airbnb_host_status?: AirbnbHostStatus | null;
   property_count_estimate?: number | null;
-  airbnb_url: string;
-  ical_url?: string | null;
   agent_first_message?: string | null;
   // New Step 0 of onboarding -- see UseCaseKey above. Omitted/[] when the
   // host skips the picker.
   interests?: UseCaseKey[];
 };
 
-export type HostOnboardingResponse = {
-  snapshot_id: string | null;
-  import_error: string | null;
-};
+// Onboarding saves the profile only; properties are added later (Properties page, or a CRM sync).
+export type HostOnboardingResponse = Record<string, never>;
 
 export type FAQItem = { question: string; answer: string };
 

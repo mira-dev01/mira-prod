@@ -12,7 +12,7 @@ Sign-up and sign-in are Clerk's (the old `/auth/register`, `/auth/register-host`
 | `PATCH /auth/me` | Update profile fields (agent customization, notification email, discount policy text, etc.) | required |
 | `POST /auth/me/photo` · `POST /auth/me/banner` | Upload the host's profile photo / banner image (10 MB cap, image types only) | required |
 | `GET /auth/me/call-hours-status` | The account's live call-routing decision right now (Mira vs. host), from the same resolver the Exotel call-routing webhook uses | required |
-| `POST /auth/onboarding` | Post-signup onboarding: fills the business/Airbnb-import fields Clerk's form doesn't collect and starts the first Airbnb scrape (returns a `snapshot_id` to poll via `GET /properties/import-airbnb-urls/{snapshot_id}`). 409 if the business number is already registered | required |
+| `POST /auth/onboarding` | Post-signup onboarding: saves the business profile fields Clerk's form doesn't collect (name, business number, host type, intro, interests). Collects no property and starts no import: properties come from Properties (import / add by hand) or a future CRM sync. 409 if the business number is already registered | required |
 | `POST /auth/register-host/transcribe-intro` | Transcribes the host's recorded voice-agent intro (onboarding step) to text via Sarvam batch STT. **Authenticated** (it used to be open to anyone), audio ≤ 8 MB, `audio/*` (or `video/webm`/`video/mp4`) only, rate-limited to 12 clips/min per user (`app/utils/rate_limit.py`) | required |
 
 ## `properties.py` — `/properties`

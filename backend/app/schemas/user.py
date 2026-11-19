@@ -35,6 +35,7 @@ AirbnbHostStatus = Literal[
     "superhost",
     "guest_favorite",
     "professional_host",
+    "not_on_airbnb",
     "prefer_not_to_say",
 ]
 
@@ -72,11 +73,13 @@ def _drop_unknown_interests(value: list[str] | None) -> list[str]:
 
 
 class HostOnboarding(BaseModel):
-    """Business/Airbnb-import data collected on the post-signup onboarding
-    page, once a host already has a Clerk-authenticated account (see
-    POST /auth/onboarding). Clerk itself owns identity (email/password) --
-    this schema only carries the fields Clerk's sign-up form knows nothing
-    about."""
+    """Business profile collected on the post-signup onboarding page, once a
+    host already has a Clerk-authenticated account (see POST /auth/onboarding).
+    Clerk itself owns identity (email/password) -- this schema only carries
+    the fields Clerk's sign-up form knows nothing about. Properties are NOT
+    collected here: a host may have one or a hundred, on Airbnb or their own
+    site, and they arrive from Properties (import / manual) or a future CRM
+    sync. Older clients that still send airbnb_url / ical_url are ignored."""
 
     name: str
     phone: str | None = None
@@ -84,8 +87,6 @@ class HostOnboarding(BaseModel):
     business_phone: str = Field(min_length=1, max_length=32)
     airbnb_host_status: AirbnbHostStatus | None = None
     property_count_estimate: int | None = Field(default=None, ge=1)
-    airbnb_url: str = Field(min_length=1)
-    ical_url: str | None = None
     agent_first_message: str | None = None
     # Onboarding Step 0 -- see VALID_INTEREST_KEYS above. Optional and
     # defaults to empty: skipping the picker must still submit cleanly.
@@ -287,10 +288,5 @@ class CallHoursStatus(BaseModel):
 
 
 class HostOnboardingResponse(BaseModel):
-    """The Bright Data snapshot_id for the first property's scrape, still
-    running when this is returned -- POST /auth/onboarding doesn't block on
-    it. The frontend polls GET /properties/import-airbnb-urls/{snapshot_id}
-    exactly as the existing "Import from Airbnb" dialog does."""
-
-    snapshot_id: str | None = None
-    import_error: str | None = None
+    """POST /auth/onboarding saves the profile and nothing else -- no property
+    is imported (see HostOnboarding), so there is nothing to return."""

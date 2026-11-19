@@ -99,8 +99,6 @@ def _onboarding_payload(**overrides):
         "business_phone": "+9180011122233",
         "airbnb_host_status": "superhost",
         "property_count_estimate": 5,
-        "airbnb_url": "https://www.airbnb.co.in/rooms/12345678",
-        "ical_url": "https://www.airbnb.com/calendar/ical/12345678.ics?s=abc",
     }
     payload.update(overrides)
     return payload
@@ -111,24 +109,9 @@ async def test_onboarding_requires_auth(client):
     assert resp.status_code == 401
 
 
-async def test_onboarding_updates_profile_when_scrape_trigger_fails(client, auth_headers, monkeypatch):
-    from app.integrations import bright_data_client
-    from app.integrations.bright_data_client import BrightDataError
-
-    async def failing_trigger_scrape(urls, timeout=15.0):
-        raise BrightDataError("BRIGHT_DATA_API_KEY is not configured")
-
-    monkeypatch.setattr(bright_data_client, "trigger_scrape", failing_trigger_scrape)
-
-    # Onboarding must still succeed even when the scrape trigger fails --
-    # see onboard_host in app/api/v1/auth.py: the profile update is
-    # committed before the scrape is attempted, and a BrightDataError only
-    # surfaces as import_error.
+async def test_onboarding_saves_the_profile(client, auth_headers):
     resp = await client.post("/api/v1/auth/onboarding", json=_onboarding_payload(), headers=auth_headers)
     assert resp.status_code == 200
-    body = resp.json()
-    assert body["snapshot_id"] is None
-    assert body["import_error"] is not None
 
     me_resp = await client.get("/api/v1/auth/me", headers=auth_headers)
     assert me_resp.status_code == 200
@@ -140,27 +123,35 @@ async def test_onboarding_updates_profile_when_scrape_trigger_fails(client, auth
     assert me["timezone"] == "Asia/Kolkata"
 
 
-async def test_onboarding_triggers_scrape_when_configured(client, auth_headers, monkeypatch):
+async def test_onboarding_never_scrapes_a_listing(client, auth_headers, monkeypatch):
+    """No property is collected during onboarding: a host may have one or a hundred, on Airbnb or on their
+    own site. Even an older client that still sends a listing URL must not start a scrape."""
     from app.integrations import bright_data_client
 
-    async def fake_trigger_scrape(urls, timeout=15.0):
-        assert urls == ["https://www.airbnb.co.in/rooms/99999999"]
-        return "snap_123"
+    async def must_not_be_called(*a, **k):
+        raise AssertionError("onboarding must not trigger a scrape")
 
-    monkeypatch.setattr(bright_data_client, "trigger_scrape", fake_trigger_scrape)
-
+    monkeypatch.setattr(bright_data_client, "trigger_scrape", must_not_be_called)
     resp = await client.post(
         "/api/v1/auth/onboarding",
         json=_onboarding_payload(
-            business_phone="+9180099911122",
-            airbnb_url="https://www.airbnb.co.in/rooms/99999999",
+            business_phone="+9180099911122", airbnb_url="https://www.airbnb.co.in/rooms/99999999"
         ),
         headers=auth_headers,
     )
     assert resp.status_code == 200
-    body = resp.json()
-    assert body["snapshot_id"] == "snap_123"
-    assert body["import_error"] is None
+    assert resp.json() == {}
+
+
+async def test_a_host_not_on_airbnb_can_say_so(client, auth_headers):
+    resp = await client.post(
+        "/api/v1/auth/onboarding",
+        json=_onboarding_payload(airbnb_host_status="not_on_airbnb", business_phone="+9180055566677"),
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    me = (await client.get("/api/v1/auth/me", headers=auth_headers)).json()
+    assert me["airbnb_host_status"] == "not_on_airbnb"
 
 
 async def test_onboarding_rejects_duplicate_business_phone(client, auth_headers, db_session):
@@ -178,13 +169,6 @@ async def test_onboarding_rejects_duplicate_business_phone(client, auth_headers,
         headers=auth_headers,
     )
     assert resp.status_code == 409
-
-
-async def test_onboarding_requires_airbnb_url(client, auth_headers):
-    payload = _onboarding_payload()
-    del payload["airbnb_url"]
-    resp = await client.post("/api/v1/auth/onboarding", json=payload, headers=auth_headers)
-    assert resp.status_code == 422
 
 
 async def test_onboarding_without_interests_defaults_to_empty_list(client, auth_headers):

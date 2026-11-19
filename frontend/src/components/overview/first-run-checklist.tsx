@@ -24,7 +24,7 @@ function ChecklistRow({ index, label, href }: { index: number; label: string; hr
  * other widget's own soft empty state ("--", "nothing pending", "you're
  * all caught up") rendered at once, which is five empty cards, not a
  * simpler page. This replaces that grid with a short, personalized
- * checklist instead -- "add a property" always first, then one line per
+ * checklist instead -- "add your properties" always first, then one line per
  * use-case interest picked in onboarding Step 0 (frontend/src/lib/
  * use-cases.ts), so day one points at what this specific host said they
  * came here for.
@@ -36,11 +36,11 @@ export function FirstRunChecklist({ name, interests }: { name: string | null | u
     <CellCard className="md:col-span-8 lg:col-span-6">
       <CardHeader>
         <h2 className="text-xl leading-7 font-bold tracking-tight">Welcome to Mira{name ? `, ${name}` : ""}</h2>
-        <p className="text-[13px] text-muted-foreground">Let&apos;s get your first property answering calls.</p>
+        <p className="text-[13px] text-muted-foreground">Let&apos;s get your properties answering calls.</p>
       </CardHeader>
       <CardContent>
         <ul>
-          <ChecklistRow index={1} label="Add your first property" href="/dashboard/properties" />
+          <ChecklistRow index={1} label="Add your properties" href="/dashboard/properties" />
           {selected.map((useCase, i) => (
             <ChecklistRow
               key={useCase.key}

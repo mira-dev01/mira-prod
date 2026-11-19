@@ -6,8 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
 from app.database import get_db
-from app.integrations import bright_data_client, cloudinary_client
-from app.integrations.bright_data_client import BrightDataError
+from app.integrations import cloudinary_client
 from app.models.user import User
 from app.schemas.user import CallHoursStatus, HostOnboarding, HostOnboardingResponse, UserOut, UserUpdate
 from app.services import call_ownership, faq_service
@@ -46,19 +45,14 @@ async def onboard_host(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> HostOnboardingResponse:
-    """Fills in the business/Airbnb-import fields Clerk's own sign-up form
-    doesn't collect, called from the post-signup onboarding page once
-    get_current_user has already resolved a real (Clerk-authenticated)
-    User row. Also kicks off an Airbnb scrape for the one required
-    property -- this never blocks on that scrape (Bright Data's job can
-    take a while); the frontend gets a snapshot_id back and polls
-    GET /properties/import-airbnb-urls/{snapshot_id}, same as the existing
-    "Import from Airbnb" dialog on the Properties page.
+    """Fills in the business fields Clerk's own sign-up form doesn't collect,
+    called from the post-signup onboarding page once get_current_user has
+    already resolved a real (Clerk-authenticated) User row.
 
-    Note the created property won't carry payload.ical_url yet -- that
-    field only exists on Property, not User, and isn't known until the
-    scrape resolves. The frontend is responsible for PATCHing it onto the
-    created property once the poll returns a result.
+    No property is collected or imported here. A host can have one property
+    or a hundred, on Airbnb or on their own website, so the wizard doesn't
+    ask for a listing; properties come from Properties (import or add by
+    hand) and, later, from a CRM sync.
     """
     if payload.business_phone != current_user.lead_exophone:
         existing_exophone = await db.scalar(select(User).where(User.lead_exophone == payload.business_phone))
@@ -75,17 +69,7 @@ async def onboard_host(
     current_user.interests = payload.interests
     await db.commit()
 
-    snapshot_id: str | None = None
-    import_error: str | None = None
-    try:
-        snapshot_id = await bright_data_client.trigger_scrape([payload.airbnb_url])
-    except BrightDataError as exc:
-        # Profile update already committed above -- a scrape failure (e.g.
-        # BRIGHT_DATA_API_KEY unset) shouldn't undo it. Host can add the
-        # property manually afterward.
-        import_error = str(exc)
-
-    return HostOnboardingResponse(snapshot_id=snapshot_id, import_error=import_error)
+    return HostOnboardingResponse()
 
 
 @router.get("/me", response_model=UserOut)

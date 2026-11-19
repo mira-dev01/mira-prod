@@ -21,10 +21,11 @@ const HOST_STATUS_OPTIONS: { value: AirbnbHostStatus; label: string }[] = [
   { value: "superhost", label: "Superhost" },
   { value: "guest_favorite", label: "Guest Favorite" },
   { value: "professional_host", label: "Professional host" },
+  { value: "not_on_airbnb", label: "Not on Airbnb" },
   { value: "prefer_not_to_say", label: "Prefer not to say" },
 ];
 
-const STEPS = ["What matters to you", "Your details", "Hosting profile", "Voice agent intro", "First property"] as const;
+const STEPS = ["What matters to you", "Your details", "Hosting profile", "Voice agent intro"] as const;
 
 // The wizard keeps everything in memory until the last step submits it, so a reload, a dropped connection or a
 // sign-in bounce used to send the host back to step one with every field empty. The in-progress answers are kept
@@ -39,8 +40,6 @@ type OnboardingDraft = {
   hostStatus: AirbnbHostStatus | "";
   propertyCount: string;
   firstMessage: string;
-  airbnbUrl: string;
-  icalUrl: string;
 };
 
 const draftKeyFor = (userId: string) => `mira:onboarding-draft:${userId}`;
@@ -138,8 +137,6 @@ export default function OnboardingPage() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
-  const [airbnbUrl, setAirbnbUrl] = useState(draft.airbnbUrl ?? "");
-  const [icalUrl, setIcalUrl] = useState(draft.icalUrl ?? "");
 
   // Step 0 -- dashboard/onboarding personalization (see
   // frontend/src/lib/use-cases.ts). Multi-select, nothing exclusive;
@@ -155,14 +152,14 @@ export default function OnboardingPage() {
   useEffect(() => {
     if (!user?.id || draftDoneRef.current) return;
     const next: OnboardingDraft = {
-      step, interests, name, phone, businessName, businessPhone, hostStatus, propertyCount, firstMessage, airbnbUrl, icalUrl,
+      step, interests, name, phone, businessName, businessPhone, hostStatus, propertyCount, firstMessage,
     };
     try {
       window.localStorage.setItem(draftKeyFor(user.id), JSON.stringify(next));
     } catch {
       // storage full or blocked: the wizard still works, it just won't resume
     }
-  }, [user?.id, step, interests, name, phone, businessName, businessPhone, hostStatus, propertyCount, firstMessage, airbnbUrl, icalUrl]);
+  }, [user?.id, step, interests, name, phone, businessName, businessPhone, hostStatus, propertyCount, firstMessage]);
 
   function goNext(e: React.FormEvent) {
     e.preventDefault();
@@ -212,7 +209,7 @@ export default function OnboardingPage() {
     e.preventDefault();
     setSubmitting(true);
     try {
-      const { import_error } = await api.auth.onboard({
+      await api.auth.onboard({
         name,
         phone: phone || undefined,
         business_name: businessName || undefined,
@@ -220,8 +217,6 @@ export default function OnboardingPage() {
         airbnb_host_status: hostStatus || undefined,
         property_count_estimate: propertyCount ? Number(propertyCount) : undefined,
         agent_first_message: firstMessage || undefined,
-        airbnb_url: airbnbUrl,
-        ical_url: icalUrl || undefined,
         interests,
       });
       // Saved: the draft has done its job (and must not be written back by the effect above).
@@ -229,16 +224,6 @@ export default function OnboardingPage() {
       clearDraft(user?.id);
       await refreshUser();
       setOnboardingState(await api.onboarding.complete());
-      // No live progress banner for this import: PendingImportBanner now
-      // watches GET /onboarding's server-persisted first_property record
-      // (app/services/onboarding_service.py), a separate system from this
-      // page's one-shot POST /auth/onboarding + Bright Data snapshot_id.
-      // The import still runs in the background exactly as before -- the
-      // property just appears on /dashboard/properties once it resolves,
-      // with no in-app progress indicator in the meantime.
-      if (import_error) {
-        toast.error(`Couldn't import your property: ${import_error}. Add it from Properties.`);
-      }
       router.push("/dashboard");
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Could not save onboarding details");
@@ -334,7 +319,9 @@ export default function OnboardingPage() {
               <SubField label="Airbnb host status (optional)" htmlFor="ob-host-status">
                 <Select value={hostStatus} onValueChange={(v) => setHostStatus((v as AirbnbHostStatus) || "")}>
                   <SelectTrigger id="ob-host-status" className="w-full">
-                    <SelectValue placeholder="Select your host status" />
+                    <SelectValue placeholder="Select your host status">
+                      {HOST_STATUS_OPTIONS.find((opt) => opt.value === hostStatus)?.label}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {HOST_STATUS_OPTIONS.map((opt) => (
@@ -364,7 +351,7 @@ export default function OnboardingPage() {
           )}
 
           {step === 3 && (
-            <form onSubmit={goNext} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-4">
               <SubField label="Your voice agent's intro" htmlFor="ob-first-message">
                 <Textarea
                   id="ob-first-message"
@@ -403,31 +390,7 @@ export default function OnboardingPage() {
 
               {nav(
                 goBack,
-                <Button type="submit" variant="cta" className="min-w-0 flex-1" disabled={transcribing}>
-                  Continue
-                </Button>
-              )}
-            </form>
-          )}
-
-          {step === 4 && (
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <SubField label="Airbnb listing URL" htmlFor="ob-airbnb-url">
-                <Input
-                  id="ob-airbnb-url"
-                  required
-                  placeholder="https://www.airbnb.co.in/rooms/12345678"
-                  value={airbnbUrl}
-                  onChange={(e) => setAirbnbUrl(e.target.value)}
-                />
-                <Hint>We import this property automatically. Add the rest later from Properties.</Hint>
-              </SubField>
-              <SubField label="iCal link (optional)" htmlFor="ob-ical-url">
-                <Input id="ob-ical-url" value={icalUrl} onChange={(e) => setIcalUrl(e.target.value)} />
-              </SubField>
-              {nav(
-                goBack,
-                <Button type="submit" variant="cta" className="min-w-0 flex-1" disabled={submitting}>
+                <Button type="submit" variant="cta" className="min-w-0 flex-1" disabled={transcribing || submitting}>
                   Finish setup
                 </Button>
               )}
