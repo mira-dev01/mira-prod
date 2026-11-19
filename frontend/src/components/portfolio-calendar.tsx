@@ -8,7 +8,7 @@ import { BookingDetailsPanel } from "@/components/calendar/booking-details-panel
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Cell, Hint, Sheet, SubField, Toolbar } from "@/components/ui/sheet";
+import { Cell, CellTitle, Sheet, SubField, Toolbar } from "@/components/ui/sheet";
 import { useAsync } from "@/hooks/use-async";
 import { api } from "@/lib/api";
 import { cn, matchesSearch } from "@/lib/utils";
@@ -22,6 +22,9 @@ import {
 } from "@/lib/calendar-search";
 import { bookingSourceColor, bookingsOnNight, daysInMonth, scopeMarkFor, toISODate } from "@/lib/calendar-grid";
 import type { BookingOut, PropertyOut } from "@/lib/types";
+
+const ROW_LIMIT = 20;
+const FREE_SHOWN = 24;
 
 /**
  * Every property's month at once: properties as rows, days as columns. This is the Calendar tab of the
@@ -59,6 +62,9 @@ export function PortfolioCalendar({ onOpenProperty }: { onOpenProperty?: (proper
   const [finderGuests, setFinderGuests] = useState("");
   const [finder, setFinder] = useState<FinderResult | null>(null);
   const [finderError, setFinderError] = useState<string | null>(null);
+  const [showAllFree, setShowAllFree] = useState(false);
+  // 100 rows are unreadable, so the grid opens on the first few and the rest are a click (or a search) away.
+  const [showAllRows, setShowAllRows] = useState(false);
 
   const year = cursor.getFullYear();
   const month = cursor.getMonth();
@@ -112,6 +118,25 @@ export function PortfolioCalendar({ onOpenProperty }: { onOpenProperty?: (proper
     return sortProperties(matching, sortOrder);
   }, [properties, search, guestMatches, sortOrder]);
   const propertyName = (id: string) => properties?.find((p) => p.id === id)?.name ?? "A property";
+
+  // How many properties have a guest or a block on each night of the month: the whole portfolio in one row.
+  const occupancy = useMemo(() => {
+    const perDay: Set<string>[] = Array.from({ length: numDays }, () => new Set());
+    const mm = String(month + 1).padStart(2, "0");
+    const monthStart = `${year}-${mm}-01`;
+    const monthEnd = toISODate(new Date(year, month + 1, 1));
+    for (const b of bookings ?? []) {
+      if (b.status !== "confirmed" || b.check_in >= monthEnd || b.check_out <= monthStart) continue;
+      for (let d = 1; d <= numDays; d++) {
+        const iso = `${year}-${mm}-${String(d).padStart(2, "0")}`;
+        if (iso >= b.check_in && iso < b.check_out) perDay[d - 1].add(b.property_id);
+      }
+    }
+    return perDay.map((set) => set.size);
+  }, [bookings, year, month, numDays]);
+
+  const searching = search.trim() !== "";
+  const rowsToShow = searching || showAllRows ? visibleProperties : visibleProperties.slice(0, ROW_LIMIT);
 
   function runFinder(e: React.FormEvent) {
     e.preventDefault();
@@ -221,6 +246,146 @@ export function PortfolioCalendar({ onOpenProperty }: { onOpenProperty?: (proper
           </div>
         </Toolbar>
 
+        <Toolbar className="gap-3">
+          <div className="relative min-w-0 flex-1 sm:max-w-sm">
+            <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              className="pl-8"
+              placeholder="Search a property, city or guest"
+              aria-label="Search the calendar"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            {search && (
+              <button
+                type="button"
+                aria-label="Clear search"
+                onClick={() => setSearch("")}
+                className="absolute top-1/2 right-2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="size-4" />
+              </button>
+            )}
+          </div>
+          <Select value={sortOrder} onValueChange={(v) => v && setSortOrder(v as SortOrder)}>
+            <SelectTrigger className="w-40" aria-label="Sort properties">
+              <SelectValue>{(value: string) => (value === "az" ? "A to Z" : value === "za" ? "Z to A" : "Default order")}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="default">Default order</SelectItem>
+              <SelectItem value="az">A to Z</SelectItem>
+              <SelectItem value="za">Z to A</SelectItem>
+            </SelectContent>
+          </Select>
+        </Toolbar>
+
+        <Cell className="gap-3">
+          <CellTitle>Find free dates</CellTitle>
+          <form onSubmit={runFinder} className="flex flex-wrap items-end gap-3">
+            <SubField label="Check-in" htmlFor="finder-from">
+              <Input id="finder-from" type="date" value={finderFrom} onChange={(e) => setFinderFrom(e.target.value)} />
+            </SubField>
+            <SubField label="Check-out" htmlFor="finder-to">
+              <Input id="finder-to" type="date" value={finderTo} onChange={(e) => setFinderTo(e.target.value)} />
+            </SubField>
+            <SubField label="Guests" htmlFor="finder-guests">
+              <Input
+                id="finder-guests"
+                type="number"
+                min={1}
+                className="w-24"
+                placeholder="Any"
+                value={finderGuests}
+                onChange={(e) => setFinderGuests(e.target.value)}
+              />
+            </SubField>
+            <Button type="submit">Find</Button>
+            {(finder || finderError) && (
+              <Button type="button" variant="ghost" onClick={clearFinder}>
+                Clear
+              </Button>
+            )}
+          </form>
+          {finderError && (
+            <p role="alert" className="text-sm text-destructive">
+              {finderError}
+            </p>
+          )}
+          {finder && (
+            <div className="space-y-3">
+              <p className="text-sm">
+                <span className="font-semibold tabular-nums">{finder.free.length}</span> of{" "}
+                {finder.free.length + finder.busy.length} free for {finder.nights} {finder.nights === 1 ? "night" : "nights"}
+                {finder.guests ? `, ${finder.guests} guests` : ""}
+              </p>
+              {finder.free.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {(showAllFree ? finder.free : finder.free.slice(0, FREE_SHOWN)).map((property) => (
+                    <button
+                      key={property.id}
+                      type="button"
+                      onClick={() => onOpenProperty?.(property)}
+                      title={`Open ${property.name}'s calendar`}
+                      className="max-w-full truncate border border-foreground bg-card/70 px-2.5 py-1 text-left text-[13px] transition-colors hover:bg-accent"
+                    >
+                      {property.name}
+                      <span className="ml-1.5 text-muted-foreground">sleeps {property.max_guests}</span>
+                    </button>
+                  ))}
+                  {finder.free.length > FREE_SHOWN && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllFree((v) => !v)}
+                      className="px-1 py-1 text-[13px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                    >
+                      {showAllFree ? "Show fewer" : `Show all ${finder.free.length}`}
+                    </button>
+                  )}
+                </div>
+              )}
+              {finder.busy.length > 0 && (
+                <details className="text-[13px]">
+                  <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                    {finder.busy.length} not free
+                  </summary>
+                  <ul className="mt-2 max-h-56 space-y-1 overflow-y-auto">
+                    {finder.busy.map(({ property, reason }) => (
+                      <li key={property.id} className="flex flex-wrap justify-between gap-x-3">
+                        <span className="min-w-0 truncate">{property.name}</span>
+                        <span className="text-muted-foreground">{reason}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+            </div>
+          )}
+        </Cell>
+
+        {guestMatches.length > 0 && (
+          <Cell className="gap-2">
+            <CellTitle>Guest bookings</CellTitle>
+            <ul className="max-h-48 overflow-y-auto">
+              {guestMatches.slice(0, 20).map((b) => (
+                <li key={b.id} className="border-b border-border last:border-b-0">
+                  <button
+                    type="button"
+                    onClick={() => jumpTo(b.check_in, b.id)}
+                    className="flex w-full flex-wrap justify-between gap-x-3 py-2 text-left text-[13px] hover:bg-accent"
+                  >
+                    <span className="min-w-0 truncate">
+                      <span className="font-semibold">{b.guest_name ?? "Guest"}</span> · {propertyName(b.property_id)}
+                    </span>
+                    <span className="text-muted-foreground tabular-nums">
+                      {b.check_in} → {b.check_out}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </Cell>
+        )}
+
         {loading ? (
           <Cell>
             <Skeleton className="h-96 w-full" />
@@ -244,9 +409,9 @@ export function PortfolioCalendar({ onOpenProperty }: { onOpenProperty?: (proper
                   stays pinned. */}
               <table className="w-full min-w-[960px] border-collapse text-sm" style={{ tableLayout: "fixed" }}>
                 <colgroup>
-                  <col style={{ width: "200px" }} />
+                  <col style={{ width: "240px" }} />
                   {days.map((day) => (
-                    <col key={day} style={{ width: `calc((100% - 200px) / ${numDays})` }} />
+                    <col key={day} style={{ width: `calc((100% - 240px) / ${numDays})` }} />
                   ))}
                 </colgroup>
                 <thead>
@@ -274,7 +439,27 @@ export function PortfolioCalendar({ onOpenProperty }: { onOpenProperty?: (proper
                   </tr>
                 </thead>
                 <tbody>
-                  {properties.map((property: PropertyOut) => (
+                  <tr>
+                    <td className="sticky left-0 z-10 border-b border-foreground bg-card p-3 text-[13px] font-semibold">
+                      All properties
+                      <span className="block text-[11px] font-normal text-muted-foreground">booked each night</span>
+                    </td>
+                    {days.map((day, i) => {
+                      const count = occupancy[i];
+                      const share = properties.length ? count / properties.length : 0;
+                      return (
+                        <td
+                          key={day}
+                          title={`${count} of ${properties.length} properties booked`}
+                          style={count ? { background: `color-mix(in srgb, var(--foreground) ${Math.round(8 + share * 40)}%, transparent)` } : undefined}
+                          className="h-9 border-b border-l border-b-foreground border-l-border text-center text-xs tabular-nums"
+                        >
+                          {count || ""}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                  {rowsToShow.map((property: PropertyOut) => (
                     <tr key={property.id}>
                       <td className="sticky left-0 z-10 truncate border-b border-border bg-card p-0 text-[13px] font-semibold">
                         {onOpenProperty ? (
@@ -282,9 +467,12 @@ export function PortfolioCalendar({ onOpenProperty }: { onOpenProperty?: (proper
                             type="button"
                             onClick={() => onOpenProperty(property)}
                             title={`Open ${property.name}'s calendar`}
-                            className="block w-full truncate p-3 text-left underline-offset-4 hover:underline"
+                            className="block w-full p-3 text-left underline-offset-4 hover:underline"
                           >
-                            {property.name}
+                            <span className="block truncate">{property.name}</span>
+                            {property.city && (
+                              <span className="block truncate text-[11px] font-normal text-muted-foreground no-underline">{property.city}</span>
+                            )}
                           </button>
                         ) : (
                           <span className="block truncate p-3">{property.name}</span>
@@ -359,6 +547,19 @@ export function PortfolioCalendar({ onOpenProperty }: { onOpenProperty?: (proper
                 </tbody>
               </table>
             </div>
+            {!searching && visibleProperties.length > ROW_LIMIT && (
+              <div className="flex items-center justify-between gap-3 border-t border-border px-4 py-2 text-[13px] text-muted-foreground">
+                <span>
+                  {showAllRows ? `All ${visibleProperties.length} properties` : `Showing ${ROW_LIMIT} of ${visibleProperties.length} properties`}
+                </span>
+                <Button variant="ghost" size="sm" onClick={() => setShowAllRows((v) => !v)}>
+                  {showAllRows ? "Show fewer" : `Show all ${visibleProperties.length}`}
+                </Button>
+              </div>
+            )}
+            {searching && rowsToShow.length === 0 && (
+              <p className="px-4 py-3 text-sm text-muted-foreground">No property matches.</p>
+            )}
           </Cell>
         )}
       </Sheet>

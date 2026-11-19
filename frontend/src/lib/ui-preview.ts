@@ -323,6 +323,33 @@ const bookingsFixture = [
   booking("b5", 2, 1, 5, { guest_name: "Sana Khan" }),
   booking("b6", 2, 12, 16, { stay_scope: "rooms", rooms_booked: 2, guest_name: "Meera Iyer" }),
 ];
+
+// `?props=many` on the Properties page: 100 properties with a spread of bookings, to design the Calendar tab at
+// scale (the grid and the finder are unreadable at that size if they are only tuned on three rows).
+function manyProperties() {
+  const cities = ["Goa", "Manali", "Jaipur", "Udaipur", "Coorg", "Kasol", "Hyderabad", "Mumbai"];
+  return Array.from({ length: 100 }, (_, i) => ({
+    ...properties[0],
+    id: `big-${i}`,
+    name: `${["Casa", "Villa", "Nest", "Haven", "Retreat"][i % 5]} ${String.fromCharCode(65 + (i % 26))}${Math.floor(i / 26) + 1} ${["Spacez Luxury", "Garden Stay", "Pool Villa", "Penthouse"][i % 4]}`,
+    city: cities[i % cities.length],
+    max_guests: 4 + (i % 9),
+    photos: [], exophone: i % 3 ? `+9180400${String(i).padStart(5, "0")}` : null,
+  }));
+}
+function manyBookings() {
+  const out: ReturnType<typeof booking>[] = [];
+  for (let i = 0; i < 100; i++) {
+    const stays = i % 4; // 0-3 stays a month
+    for (let k = 0; k < stays; k++) {
+      const from = 1 + ((i * 7 + k * 9) % 24);
+      out.push(booking(`bb-${i}-${k}`, i, from, from + 2 + ((i + k) % 4), { property_id: `big-${i}`, platform: (i + k) % 3 ? "airbnb" : "manual", guest_name: (i + k) % 3 ? `Guest ${i}-${k}` : null }));
+    }
+  }
+  return out;
+}
+
+
 const reconciliationFixture = {
   booking: bookingsFixture[2], property_name: properties[1].name,
   conversation: { lead_id: "l1", call_session_id: "c1", guest_name: "Rohan Gupta", guest_phone: "+919811100003", lead_temperature: "warm", conversation_at: ago(30), summary: "Asked for the cottage 9 to 12 November and was quoted ₹13,500 a night." },
@@ -506,6 +533,10 @@ export async function previewResponse<T>(path: string, options: RequestInit): Pr
   if (method === "POST" && /^\/pricing\/quote/.test(clean))
     return { nights: 4, base_total: 120000, discount_percent: 5, discount_amount: 6000, total: 114000, per_night_avg: 28500 } as T;
   if (method !== "GET") return {} as T; // saves are accepted and ignored in preview
+  if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("props") === "many") {
+    if (/^\/properties$/.test(clean)) return manyProperties() as T;
+    if (/^\/bookings$/.test(clean)) return manyBookings() as T;
+  }
   if (typeof window !== "undefined" && /^\/policies$/.test(clean) && new URLSearchParams(window.location.search).get("policies") === "many") {
     return manyPolicies() as T;
   }
