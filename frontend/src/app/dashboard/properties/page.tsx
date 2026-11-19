@@ -30,6 +30,8 @@ import { PropertyRoomRentalTab } from "@/components/property-room-rental-tab";
 import { PropertyPhotoCarousel } from "@/components/property-photo-carousel";
 import { PropertyPhotosManager } from "@/components/property-photos-manager";
 import { PropertyReadinessLine } from "@/components/property-readiness";
+import { PortfolioCalendar } from "@/components/portfolio-calendar";
+import { PropertyCalendarPanel } from "@/components/calendar/property-calendar-panel";
 import { propertyReadiness } from "@/lib/property-readiness";
 import { TalkToMiraDialog } from "@/components/talk-to-mira-dialog";
 import { useAsync } from "@/hooks/use-async";
@@ -119,10 +121,12 @@ function propertyToForm(property: PropertyOut): PropertyCreate {
 function PropertiesList({
   policies,
   onOpenPolicies,
+  onOpenCalendar,
   onPoliciesChanged,
 }: {
   policies: PolicyOverview | null;
   onOpenPolicies: () => void;
+  onOpenCalendar: (property: PropertyOut) => void;
   /** Re-reads the policies: a new property can have policies waiting for it, and the pane settles them. */
   onPoliciesChanged: () => void;
 }) {
@@ -565,6 +569,9 @@ function PropertiesList({
                 <Button size="sm" className="min-w-0 flex-1" onClick={() => handleSetDiscount(property.id)}>
                   Set Discount
                 </Button>
+                <Button variant="outline" size="sm" className="shrink-0" onClick={() => onOpenCalendar(property)}>
+                  Calendar
+                </Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger
                     render={
@@ -685,7 +692,7 @@ function PropertiesList({
   );
 }
 
-const TABS = ["properties", "policies"] as const;
+const TABS = ["properties", "calendar", "policies"] as const;
 type PropertiesTab = (typeof TABS)[number];
 
 function PropertiesPageTabs() {
@@ -696,6 +703,8 @@ function PropertiesPageTabs() {
   const tab: PropertiesTab = TABS.includes(requested as PropertiesTab) ? (requested as PropertiesTab) : "properties";
   // One fetch for the whole page so the tab can say how many policies are waiting for review.
   const policies = useAsync(() => api.policies.overview(), []);
+  // One property's own calendar: opened from a card's Calendar button or a property name in the Calendar tab.
+  const [calendarProperty, setCalendarProperty] = useState<PropertyOut | null>(null);
   // Drafts to review, plus held-back policies that name a place the host has no property for yet.
   const toReview = (policies.data?.drafts.length ?? 0) + (policies.data?.unmapped_policy_ids.length ?? 0);
 
@@ -710,6 +719,7 @@ function PropertiesPageTabs() {
       <Tabs value={tab} onValueChange={handleTabChange}>
         <TabsList>
           <TabsTrigger value="properties">Properties</TabsTrigger>
+          <TabsTrigger value="calendar">Calendar</TabsTrigger>
           <TabsTrigger value="policies">
             Policies
             {toReview > 0 && (
@@ -721,13 +731,18 @@ function PropertiesPageTabs() {
           <PropertiesList
             policies={policies.data}
             onOpenPolicies={() => handleTabChange("policies")}
+            onOpenCalendar={setCalendarProperty}
             onPoliciesChanged={policies.refetch}
           />
+        </TabsContent>
+        <TabsContent value="calendar" className="pt-4">
+          <PortfolioCalendar onOpenProperty={setCalendarProperty} />
         </TabsContent>
         <TabsContent value="policies" className="pt-4">
           <PoliciesTab overview={policies.data} loading={policies.loading} onChanged={policies.refetch} />
         </TabsContent>
       </Tabs>
+      <PropertyCalendarPanel property={calendarProperty} onOpenChange={(open) => !open && setCalendarProperty(null)} />
     </div>
   );
 }

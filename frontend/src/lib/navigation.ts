@@ -2,7 +2,6 @@ import { createElement } from "react";
 import {
   BrainCircuit,
   Building2,
-  Calendar,
   ChartColumn,
   Circle,
   HelpCircle,
@@ -26,7 +25,6 @@ export const NAV_ICONS: Record<string, LucideIcon> = {
   analytics: ChartColumn,
   properties: Building2,
   ai_training: BrainCircuit,
-  calendar: Calendar,
   calls: Phone,
   live_requests: Users,
   guests: UserRound,
@@ -51,7 +49,6 @@ export const FALLBACK_NAV: NavItem[] = [
   fallback("analytics", "Analytics", "/dashboard/analytics", "movable"),
   fallback("properties", "Properties", "/dashboard/properties", "movable", false),
   fallback("ai_training", "Agent", "/dashboard/agent", "movable"),
-  fallback("calendar", "Calendar", "/dashboard/calendar", "movable"),
   fallback("calls", "Calls", "/dashboard/calls", "movable"),
   fallback("live_requests", "Leads", "/dashboard/leads", "movable"),
   fallback("guests", "Guests", "/dashboard/guests", "movable"),

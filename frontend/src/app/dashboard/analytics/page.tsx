@@ -219,7 +219,7 @@ export default function AnalyticsPage() {
         }}
       >
         <Link
-          href="/dashboard/calendar"
+          href="/dashboard/properties?tab=calendar"
           className="block text-[13px] font-semibold text-foreground underline underline-offset-4 hover:no-underline"
         >
           Open the Calendar

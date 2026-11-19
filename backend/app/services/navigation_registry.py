@@ -70,13 +70,6 @@ NAV_DESTINATIONS: tuple[NavDestination, ...] = (
         "/dashboard/agent",
         ("guest_support_agent", "negotiation", "knowledge_faq"),
     ),
-    NavDestination(
-        "calendar",
-        "Calendar",
-        "/dashboard/calendar",
-        ("calendar_sync", "booking_reconciliation"),
-        independent=True,
-    ),
     NavDestination("calls", "Calls", "/dashboard/calls", ("guest_support_agent", "lead_agent", "analytics_reporting")),
     # "Leads" also holds the Missed calls tab (busy-call recoveries), so it
     # owns what the separate Opportunities page used to.

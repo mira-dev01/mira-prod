@@ -49,7 +49,7 @@ export const USE_CASES: UseCase[] = [
     label: "Calendar & booking management",
     description: "Keeping availability accurate and bookings reconciled across properties.",
     icon: Calendar,
-    navHref: "/dashboard/calendar",
+    navHref: "/dashboard/properties?tab=calendar",
   },
   {
     key: "guest_relationships",
@@ -77,5 +77,5 @@ export function hrefsForInterests(interests: readonly string[]): string[] {
   const selected = new Set(interests);
   // Several use cases can point at the same page (Leads covers both inbound
   // leads and WhatsApp follow-ups), and a link must only be promoted once.
-  return [...new Set(USE_CASES.filter((useCase) => selected.has(useCase.key)).map((useCase) => useCase.navHref))];
+  return [...new Set(USE_CASES.filter((useCase) => selected.has(useCase.key)).map((useCase) => useCase.navHref.split("?")[0]))];
 }

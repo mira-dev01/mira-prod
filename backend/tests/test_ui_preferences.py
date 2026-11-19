@@ -180,7 +180,7 @@ async def test_navigation_is_per_account(client, auth_headers, db_session):
 
 
 async def test_hiding_a_page_never_changes_capabilities(client, auth_headers, db_session, test_user):
-    await client.put(NAV, json={"order": MOVABLE, "hidden": ["faq", "guests", "calendar"], "expected_revision": 0}, headers=auth_headers)
+    await client.put(NAV, json={"order": MOVABLE, "hidden": ["faq", "guests"], "expected_revision": 0}, headers=auth_headers)
     rows = (await db_session.scalars(select(HostCapability).where(HostCapability.user_id == test_user.id))).all()
     assert rows == []
     caps = {c["id"]: c for c in (await client.get("/api/v1/capabilities", headers=auth_headers)).json()["capabilities"]}

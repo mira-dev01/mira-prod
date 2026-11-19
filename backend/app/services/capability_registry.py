@@ -334,7 +334,7 @@ CAPABILITIES: tuple[Capability, ...] = (
         requirements=(
             Requirement("ical_linked", "An iCal link on at least one property", True, "Add an iCal link", "/dashboard/properties"),
         ),
-        routes=("/dashboard/calendar", "/dashboard/properties"),
+        routes=("/dashboard/properties",),
         voice_tools=("check_calendar",),
         live_requirement="ical_linked",
         live_block_reason=(
@@ -492,7 +492,7 @@ CAPABILITIES: tuple[Capability, ...] = (
         on_effect="New bookings from calendar sync or manual entry are queued for attribution review.",
         off_effect="",
         soft_dependencies=("calendar_sync",),
-        routes=("/dashboard/calendar", "/dashboard/analytics"),
+        routes=("/dashboard/properties", "/dashboard/analytics"),
     ),
 )
 
