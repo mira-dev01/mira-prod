@@ -46,7 +46,7 @@ SPACEZ_STAY_REQUEST_DECLINED_SID = "HX7ef197fc70d7bddf8debf66f2b3457cd" # early 
 SPACEZ_STAY_FEE_RECEIVED_SID = "HXad5f915415854a0e3bd220d23a737ee2"     # early check-in / late check-out fee received
 
 # --- ALL HOSTS: photos and property lists ----------------------------------------------------------
-PHOTOS_SID = "HX3609a3fad76886c626e83f24b9f98428"                       # photos of ONE property (a link to its gallery page)
+PHOTOS_SID = "HXd24159ea2cae50b655508e061d39b3b3"                       # photos of ONE property (a link to its gallery page)
 SHORTLIST_SID = "HXdb9a01d8c2065aa36e5d19fc9cfbe510"                    # the list of every property recommended on the call + one link with their photos
 
 # --- ALL HOSTS: busy line + host alerts ------------------------------------------------------------
