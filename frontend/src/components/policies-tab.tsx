@@ -1,18 +1,19 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Check, Pencil, Plus, Trash2, Upload } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Pencil, Plus, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Cell, Hint, Sheet, Toolbar } from "@/components/ui/sheet";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { ALL_PROPERTIES, PropertyScopePicker, type PropertyScope } from "@/components/property-scope-picker";
 import { api, ApiError } from "@/lib/api";
-import { cn } from "@/lib/utils";
-import type { PolicyOut, PolicyOverview } from "@/lib/types";
+import { cn, matchesSearch } from "@/lib/utils";
+import type { PolicyOut, PolicyOverview, PolicyProperty } from "@/lib/types";
 
 const ACCEPT = ".pdf,.docx,.xlsx,.csv,.txt,.md,.png,.jpg,.jpeg,.webp";
 const OTHER = "other";
@@ -109,9 +110,12 @@ function LiveEntry({
   unused,
   waitingOn,
   onChanged,
+  hideTopic = false,
 }: {
   policy: PolicyOut;
   topics: Topics;
+  /** The topic is already the heading above this entry, so show only who it applies to. */
+  hideTopic?: boolean;
   unused: boolean;
   /** Names of the properties this policy is waiting to be approved for. */
   waitingOn: string[];
@@ -203,7 +207,7 @@ function LiveEntry({
     <li className={cn("flex items-start gap-3 py-4", LINE)}>
       <div className="min-w-0 flex-1 space-y-0.5">
         <p className="text-xs text-muted-foreground">
-          {topicLabel(topics, policy.topic, policy.title)} · {scope}
+          {hideTopic ? scope : `${topicLabel(topics, policy.topic, policy.title)} · ${scope}`}
         </p>
         <p className="text-sm">{policy.text}</p>
         {unused && waitingOn.length > 0 && (
@@ -457,6 +461,201 @@ function AddPolicyForm({
   );
 }
 
+const OVERRIDES_SHOWN = 8;
+
+/** Pick one property to see exactly what Mira tells guests about it. Searchable: a host may have a hundred. */
+function PropertyFilter({
+  properties,
+  value,
+  onChange,
+}: {
+  properties: PolicyProperty[];
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const selected = properties.find((p) => p.id === value);
+  const options = properties.filter((p) => matchesSearch(query, [p.name, p.city]));
+
+  function choose(id: string) {
+    onChange(id);
+    setOpen(false);
+    setQuery("");
+  }
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        render={
+          <Button type="button" variant="outline" className="w-64 justify-between font-normal" aria-label="Show policies for">
+            <span className="truncate">{selected ? selected.name : "All properties"}</span>
+            <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+          </Button>
+        }
+      />
+      <PopoverContent align="start" className="w-72 p-2">
+        <Input autoFocus placeholder="Find a property" value={query} onChange={(e) => setQuery(e.target.value)} />
+        <div className="mt-2 max-h-64 overflow-y-auto">
+          <button
+            type="button"
+            onClick={() => choose("")}
+            className={cn("block w-full rounded-md px-1.5 py-1 text-left text-sm font-medium hover:bg-muted", !value && "bg-muted")}
+          >
+            All properties
+          </button>
+          {options.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => choose(p.id)}
+              className={cn("block w-full truncate rounded-md px-1.5 py-1 text-left text-sm hover:bg-muted", p.id === value && "bg-muted")}
+            >
+              {p.name}
+            </button>
+          ))}
+          {options.length === 0 && <p className="px-1.5 py-2 text-sm text-muted-foreground">No property matches.</p>}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/**
+ * Approved policies, organised for a host with many properties. One block per topic: the policy for all
+ * properties first, and the properties that differ folded underneath (a host with 100 villas used to get a
+ * flat list of hundreds). Search finds text, topics and property names; "show for" narrows the page to the
+ * one policy per topic that a single property actually follows.
+ */
+function ApprovedPolicies({
+  overview,
+  followed,
+  onChanged,
+}: {
+  overview: PolicyOverview;
+  followed: Set<string>;
+  onChanged: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [propertyId, setPropertyId] = useState("");
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [showAll, setShowAll] = useState<Set<string>>(new Set());
+  const property = overview.properties.find((p) => p.id === propertyId) ?? null;
+  const searching = query.trim() !== "";
+
+  function toggle(set: Set<string>, setter: (next: Set<string>) => void, key: string) {
+    const next = new Set(set);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    setter(next);
+  }
+
+  const matches = (policy: PolicyOut) =>
+    matchesSearch(query, [policy.text, policy.title, topicLabel(overview.topics, policy.topic, policy.title), policy.property_name]);
+
+  const blocks = overview.rows
+    .map((row) => {
+      if (property) {
+        return { row, shown: row.items.filter((i) => property.policy_ids.includes(i.id) && matches(i)), overrides: [], totalOverrides: 0 };
+      }
+      const everyone = row.items.find((i) => !i.property_id);
+      const overrides = row.items.filter((i) => i.property_id && matches(i));
+      return {
+        row,
+        shown: everyone && matches(everyone) ? [everyone] : [],
+        overrides,
+        totalOverrides: row.items.filter((i) => i.property_id).length,
+      };
+    })
+    .filter((block) => block.shown.length > 0 || block.overrides.length > 0);
+
+  const entry = (policy: PolicyOut) => (
+    <LiveEntry
+      key={policy.id}
+      policy={policy}
+      topics={overview.topics}
+      hideTopic={policy.topic !== OTHER}
+      unused={
+        !policy.property_id &&
+        overview.properties.length > 0 &&
+        !followed.has(policy.id) &&
+        policy.review_notes.some((note) => note.includes("isn't one of your properties"))
+      }
+      waitingOn={overview.properties.filter((p) => p.pending_policy_ids.includes(policy.id)).map((p) => p.name)}
+      onChanged={onChanged}
+    />
+  );
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2 pt-1">
+        <Input
+          className="w-64"
+          placeholder="Search policies"
+          aria-label="Search policies"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        {overview.properties.length > 1 && (
+          <PropertyFilter properties={overview.properties} value={propertyId} onChange={setPropertyId} />
+        )}
+        {property && (
+          <Hint>
+            What Mira tells guests about {property.name}: its own version where it has one, otherwise the policy for all
+            properties.
+          </Hint>
+        )}
+      </div>
+
+      {blocks.length === 0 ? (
+        <p className="py-3 text-sm text-muted-foreground">No policies match.</p>
+      ) : (
+        blocks.map(({ row, shown, overrides, totalOverrides }) => {
+          const open = searching || expanded.has(row.topic);
+          const visible = open && (searching || showAll.has(row.topic)) ? overrides : overrides.slice(0, OVERRIDES_SHOWN);
+          return (
+            <section key={row.topic} className="border-b border-border pt-3 last:border-b-0">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-xs font-bold tracking-[0.1em] uppercase">{row.label}</h3>
+                {!property && totalOverrides > 0 && (
+                  <button
+                    type="button"
+                    aria-expanded={open}
+                    onClick={() => toggle(expanded, setExpanded, row.topic)}
+                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    {open ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+                    {totalOverrides} {totalOverrides === 1 ? "property differs" : "properties differ"}
+                  </button>
+                )}
+              </div>
+              {shown.length > 0 ? (
+                <ul>{shown.map(entry)}</ul>
+              ) : (
+                !property && <p className="pt-1 text-xs text-muted-foreground">No policy for all properties.</p>
+              )}
+              {open && overrides.length > 0 && (
+                <div className="mb-2 ml-3 border-l border-border pl-3">
+                  <ul>{visible.map(entry)}</ul>
+                  {!searching && overrides.length > OVERRIDES_SHOWN && (
+                    <button
+                      type="button"
+                      onClick={() => toggle(showAll, setShowAll, row.topic)}
+                      className="py-2 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                    >
+                      {showAll.has(row.topic) ? "Show fewer" : `Show all ${overrides.length}`}
+                    </button>
+                  )}
+                </div>
+              )}
+            </section>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
 export function PoliciesTab({
   overview,
   loading,
@@ -608,23 +807,7 @@ export function PoliciesTab({
                 No approved policies yet. Add one, or upload a document and approve what Mira finds.
               </p>
             ) : (
-              <ul>
-                {live.map((policy) => (
-                  <LiveEntry
-                    key={policy.id}
-                    policy={policy}
-                    topics={overview.topics}
-                    unused={
-                      !policy.property_id &&
-                      overview.properties.length > 0 &&
-                      !followed.has(policy.id) &&
-                      policy.review_notes.some((note) => note.includes("isn't one of your properties"))
-                    }
-                    waitingOn={overview.properties.filter((p) => p.pending_policy_ids.includes(policy.id)).map((p) => p.name)}
-                    onChanged={onChanged}
-                  />
-                ))}
-              </ul>
+              <ApprovedPolicies overview={overview} followed={followed} onChanged={onChanged} />
             )}
           </Cell>
         </>

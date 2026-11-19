@@ -255,6 +255,38 @@ const policies = {
   topics: [{ key: "pets", label: "Pets", hint: "" }, { key: "parties", label: "Parties & events", hint: "" }, { key: "cancellation", label: "Cancellation", hint: "" }],
 };
 
+// `?policies=many` on the Properties page: a host with 45 properties, most with their own booking limits, to
+// design the Policies tab at scale.
+function manyPolicies() {
+  const props = Array.from({ length: 45 }, (_, i) => ({ id: `many-${i}`, name: `Villa ${String.fromCharCode(65 + (i % 26))}${i >= 26 ? "2" : ""} ${["Spacez", "Luxury", "Garden", "Pool"][i % 4]}`, city: "Goa" }));
+  const item = (id: string, topic: string, text: string, prop?: { id: string; name: string }) => ({
+    id, topic, title: "", text, status: "active", property_id: prop?.id ?? null, property_name: prop?.name ?? null,
+    source_document_id: null, source_filename: null, source_excerpt: null, review_notes: [], created_at: ago(900), updated_at: ago(900),
+  });
+  const checkIn = item("m-ci", "check_in_out", "Check-in is from 1 PM and check-out is by 11 AM. Early check-in or late check-out is a flat Rs 1,000.");
+  const cancel = item("m-ca", "cancellation", "Cancellation is free until 1 PM the day before check-in. After that there is no refund.");
+  const payment = item("m-pa", "payment", "Guests can pay online, by UPI, bank transfer or cash. On most bookings they can pay half now.");
+  const limitsAll = item("m-bl", "booking_limits", "Adults can book up to the villa's maximum guests and never more than 20.");
+  const limits = props.map((pr, i) => item(`m-bl-${i}`, "booking_limits", `The base number of guests is ${6 + (i % 4)} and the maximum is ${8 + (i % 6)} at ${pr.name}. Adults can book up to that maximum.`, pr));
+  const pets = item("m-pe", "pets", "Small pets are welcome with prior notice.");
+  const petsOnly = props.slice(0, 10).map((pr, i) => item(`m-pe-${i}`, "pets", `Pets are not allowed at ${pr.name}.`, pr));
+  const rows = [
+    { topic: "check_in_out", label: "Check-in & check-out", hint: "", state: "everyone", override_count: 0, items: [checkIn] },
+    { topic: "cancellation", label: "Cancellation & refunds", hint: "", state: "everyone", override_count: 0, items: [cancel] },
+    { topic: "payment", label: "Payment", hint: "", state: "everyone", override_count: 0, items: [payment] },
+    { topic: "booking_limits", label: "Booking limits", hint: "", state: "some_differ", override_count: limits.length, items: [limitsAll, ...limits] },
+    { topic: "pets", label: "Pets", hint: "", state: "some_differ", override_count: petsOnly.length, items: [pets, ...petsOnly] },
+  ];
+  return {
+    rows, drafts: [], documents: [], unmapped_policy_ids: [],
+    topics: rows.map((r) => ({ key: r.topic, label: r.label, hint: "" })),
+    properties: props.map((pr, i) => ({
+      id: pr.id, name: pr.name, city: pr.city, labels: [], pending_policy_ids: [],
+      policy_ids: ["m-ci", "m-ca", "m-pa", `m-bl-${i}`, i < 10 ? `m-pe-${i}` : "m-pe"],
+    })),
+  };
+}
+
 const callDetail = {
   ...calls[0],
   transcript: "assistant: Namaste, this is Mira from HushStays. How can I help?\nuser: Hi, we are five people and want a villa near Manali from 15 to 20 November.\nassistant: Hunzuru Wabi Sabi sleeps ten and is free those dates. It is ₹30,000 a night.\nuser: Can someone call me back about the rate?",
@@ -474,6 +506,9 @@ export async function previewResponse<T>(path: string, options: RequestInit): Pr
   if (method === "POST" && /^\/pricing\/quote/.test(clean))
     return { nights: 4, base_total: 120000, discount_percent: 5, discount_amount: 6000, total: 114000, per_night_avg: 28500 } as T;
   if (method !== "GET") return {} as T; // saves are accepted and ignored in preview
+  if (typeof window !== "undefined" && /^\/policies$/.test(clean) && new URLSearchParams(window.location.search).get("policies") === "many") {
+    return manyPolicies() as T;
+  }
   // `?me=503` (or 409 / 403 / 401) makes the profile fetch fail, to design the account-problem screen.
   if (typeof window !== "undefined" && /^\/auth\/me$/.test(clean)) {
     const failWith = Number(new URLSearchParams(window.location.search).get("me"));
