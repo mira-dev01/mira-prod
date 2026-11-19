@@ -243,7 +243,6 @@ The WhatsApp "Take Call" link a host taps when a guest is calling. HTML pages, n
 | Method & path | Purpose | Auth |
 |---|---|---|
 | `GET /onboarding` · `PUT /onboarding` | Read / save the host's onboarding progress | required |
-| `POST /onboarding/first-property` | Start (or re-attach to) the server-side import of the host's first Airbnb listing; the server finishes it even if the browser leaves — poll `GET /onboarding` | required |
 | `POST /onboarding/complete` | Mark onboarding done | required |
 
 ## `preferences.py` — `/preferences`

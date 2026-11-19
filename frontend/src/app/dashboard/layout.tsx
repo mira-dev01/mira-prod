@@ -9,7 +9,6 @@ import { BookingActivityProvider } from "@/lib/booking-activity-context";
 import { NavigationProvider } from "@/lib/navigation-context";
 import { SidebarNav } from "@/components/sidebar-nav";
 import { DateRangeProvider } from "@/components/date-range-context";
-import { PendingImportBanner } from "@/components/pending-import-banner";
 import { AccountProblemScreen } from "@/components/account-problem";
 
 function FullScreenLoading() {
@@ -88,7 +87,6 @@ function OnboardingGate({ children }: { children: React.ReactNode }) {
       <div className="fixed inset-0 flex overflow-hidden">
         <SidebarNav />
         <main className="min-h-0 flex-1 overflow-y-auto p-4 pt-[calc(3.5rem+1rem)] md:p-6 md:pt-6">
-          <PendingImportBanner />
           {children}
         </main>
       </div>

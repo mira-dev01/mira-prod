@@ -1188,25 +1188,12 @@ export type CapabilityUpdate = {
 // ── Onboarding (backend app/schemas/onboarding.py) ───────────────────
 export type OnboardingStep = "profile" | "capabilities" | "setup" | "review";
 
-export type FirstPropertyImport = {
-  airbnb_url: string;
-  ical_url: string | null;
-  live_pricing: boolean;
-  status: "importing" | "completed" | "failed";
-  property_id: string | null;
-  property_name: string | null;
-  error: string | null;
-  requested_at: string | null;
-  finished_at: string | null;
-};
-
 export type OnboardingState = {
   status: "not_started" | "in_progress" | "completed";
   source: "onboarding" | "legacy" | null;
   current_step: string;
   completed_steps: OnboardingStep[];
   selected_capabilities: string[];
-  first_property: FirstPropertyImport | null;
   completed_at: string | null;
   selection_notes: string[];
 };

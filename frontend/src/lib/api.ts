@@ -222,8 +222,6 @@ export const api = {
     get: () => request<OnboardingState>("/onboarding"),
     save: (data: OnboardingProgressUpdate) =>
       request<OnboardingState>("/onboarding", { method: "PUT", body: JSON.stringify(data) }),
-    startFirstPropertyImport: (data: { airbnb_url: string; ical_url?: string | null; live_pricing?: boolean }) =>
-      request<OnboardingState>("/onboarding/first-property", { method: "POST", body: JSON.stringify(data) }),
     complete: () => request<OnboardingState>("/onboarding/complete", { method: "POST" }),
   },
   // Dashboard layout (backend app/api/v1/preferences.py) -- the signed-in

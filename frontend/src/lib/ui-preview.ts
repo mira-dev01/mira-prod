@@ -162,7 +162,7 @@ const overviewWidgets = {
 
 const onboarding = {
   status: "completed", source: "legacy", current_step: "review", completed_steps: [],
-  selected_capabilities: [], first_property: null, completed_at: "2026-10-01T00:00:00Z", selection_notes: [],
+  selected_capabilities: [], completed_at: "2026-10-01T00:00:00Z", selection_notes: [],
 };
 
 const notificationSettings = {

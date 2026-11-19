@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.dependencies import get_current_user
 from app.database import get_db
 from app.models.user import User
-from app.schemas.onboarding import FirstPropertyImportRequest, OnboardingOut, OnboardingProgressUpdate
+from app.schemas.onboarding import OnboardingOut, OnboardingProgressUpdate
 from app.services import onboarding_service
 
 # Business-profile fields aren't duplicated here -- the wizard saves them
@@ -27,21 +27,6 @@ async def save_onboarding_progress(
 ) -> OnboardingOut:
     try:
         return await onboarding_service.save_progress(db, current_user, payload)
-    except onboarding_service.OnboardingError as exc:
-        raise HTTPException(exc.status_code, exc.message)
-
-
-@router.post("/first-property", response_model=OnboardingOut)
-async def start_first_property_import(
-    payload: FirstPropertyImportRequest,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> OnboardingOut:
-    """Starts (or, for the same URL, re-attaches to) the server-side import
-    of the host's first Airbnb listing. The server finishes it even if the
-    browser goes away; poll GET /onboarding for its status."""
-    try:
-        return await onboarding_service.start_first_property_import(db, current_user, payload)
     except onboarding_service.OnboardingError as exc:
         raise HTTPException(exc.status_code, exc.message)
 
