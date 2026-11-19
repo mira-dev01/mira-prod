@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { RightPanel, RightPanelFooterButton } from "@/components/ui/right-panel";
+import { startDashboardTour } from "@/lib/dashboard-tour";
 import { Cell, CellTitle, FieldRow, Hint, Sheet, WideCell } from "@/components/ui/sheet";
 import { UseCasePicker } from "@/components/use-case-picker";
 import { api, ApiError } from "@/lib/api";
@@ -153,7 +154,7 @@ export default function ProfilePage() {
 
   const displayName = user.business_name || user.name || user.email;
   const settingCell =
-    "col-span-12 flex min-w-0 flex-col gap-2 border-r border-b border-foreground bg-card/70 p-5 text-left transition-colors hover:bg-accent md:col-span-4";
+    "col-span-12 flex min-w-0 flex-col gap-2 border-r border-b border-foreground bg-card/70 p-5 text-left transition-colors hover:bg-accent md:col-span-6 lg:col-span-3";
 
   return (
     <div className="space-y-6">
@@ -255,6 +256,11 @@ export default function ProfilePage() {
           <span className="font-heading text-xl font-semibold">
             {user.interests.length > 0 ? `${user.interests.length} selected` : "Not set"}
           </span>
+        </button>
+
+        <button type="button" onClick={startDashboardTour} className={settingCell}>
+          <CellTitle>Dashboard tour</CellTitle>
+          <span className="font-heading text-xl font-semibold">Replay</span>
         </button>
       </Sheet>
 

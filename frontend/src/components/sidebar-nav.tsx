@@ -76,6 +76,7 @@ function NavLinks({ onNavigate, onTalkToMira }: { onNavigate?: () => void; onTal
       <Link
         key={link.href}
         href={link.href}
+        data-tour={link.href}
         onClick={onNavigate}
         className={cn(
           "flex items-center gap-2 overflow-hidden rounded-lg py-2 text-sm transition-colors duration-150 hover:bg-accent hover:text-accent-foreground",

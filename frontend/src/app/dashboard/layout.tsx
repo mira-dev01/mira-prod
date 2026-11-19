@@ -10,6 +10,7 @@ import { NavigationProvider } from "@/lib/navigation-context";
 import { SidebarNav } from "@/components/sidebar-nav";
 import { DateRangeProvider } from "@/components/date-range-context";
 import { AccountProblemScreen } from "@/components/account-problem";
+import { DashboardTour } from "@/components/dashboard-tour";
 
 function FullScreenLoading() {
   return <div className="fixed inset-0 flex items-center justify-center text-sm text-muted-foreground">Loading…</div>;
@@ -90,6 +91,7 @@ function OnboardingGate({ children }: { children: React.ReactNode }) {
           {children}
         </main>
       </div>
+      <DashboardTour />
     </DateRangeProvider>
     </NavigationProvider>
     </BookingActivityProvider>

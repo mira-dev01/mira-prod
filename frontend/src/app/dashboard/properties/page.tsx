@@ -29,6 +29,8 @@ import { PropertyPendingPolicies, pendingCount } from "@/components/property-pen
 import { PropertyRoomRentalTab } from "@/components/property-room-rental-tab";
 import { PropertyPhotoCarousel } from "@/components/property-photo-carousel";
 import { PropertyPhotosManager } from "@/components/property-photos-manager";
+import { PropertyReadinessLine } from "@/components/property-readiness";
+import { propertyReadiness } from "@/lib/property-readiness";
 import { TalkToMiraDialog } from "@/components/talk-to-mira-dialog";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError, API_BASE_URL, getToken } from "@/lib/api";
@@ -127,6 +129,15 @@ function PropertiesList({
   const { isInternalOrg, user } = useAuth();
   const perPropertyTransfer = user?.notification_preferences.transfer_number_mode === "per_property";
   const { data: properties, loading, refetch } = useAsync(() => api.properties.list(), []);
+  // FAQ answers saved per property: the cards show what Mira still doesn't know (see property-readiness.ts).
+  const { data: faqEntries, refetch: refetchFaqCounts } = useAsync(() => api.faq.list(), []);
+  const faqCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const entry of faqEntries ?? []) {
+      if (entry.property_id) counts[entry.property_id] = (counts[entry.property_id] ?? 0) + 1;
+    }
+    return counts;
+  }, [faqEntries]);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<PropertyCreate>(emptyForm);
   const [submitting, setSubmitting] = useState(false);
@@ -182,12 +193,14 @@ function PropertiesList({
     e.preventDefault();
     setSubmitting(true);
     try {
-      await api.properties.create(normalizeForSubmit(form));
-      toast.success("Property added");
+      const created = await api.properties.create(normalizeForSubmit(form));
+      toast.success("Property added. Add photos and an FAQ so Mira can answer guests.");
       setOpen(false);
       setForm(emptyForm);
       refetch();
       onPoliciesChanged();
+      // The create form has no photos or FAQ; open the new property so they are the next thing.
+      openEdit(created);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Failed to create property");
     } finally {
@@ -216,6 +229,7 @@ function PropertiesList({
       toast.success("Property updated");
       setEditing(null);
       refetch();
+      refetchFaqCounts();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Failed to update property");
     } finally {
@@ -524,6 +538,7 @@ function PropertiesList({
                 <p className="text-sm font-medium">
                   ₹{property.base_price.toLocaleString("en-IN")} / night · {property.max_guests} guests
                 </p>
+                <PropertyReadinessLine readiness={propertyReadiness(property, faqCounts[property.id] ?? 0)} />
                 <PolicyLabelChips overview={policies} propertyId={property.id} />
                 {pendingCount(policies, property.id) > 0 && (
                   <div>
@@ -582,7 +597,11 @@ function PropertiesList({
 
       <RightPanel
         open={!!editing}
-        onOpenChange={(isOpen) => !isOpen && setEditing(null)}
+        onOpenChange={(isOpen) => {
+          if (isOpen) return;
+          setEditing(null);
+          refetchFaqCounts(); // FAQ answers are saved from inside this panel
+        }}
         title={`Edit ${editing?.name ?? ""}`}
         size="xl"
         footer={
