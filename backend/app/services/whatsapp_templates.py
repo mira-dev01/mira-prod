@@ -47,7 +47,7 @@ SPACEZ_STAY_FEE_RECEIVED_SID = "HXad5f915415854a0e3bd220d23a737ee2"     # early 
 
 # --- ALL HOSTS: photos and property lists ----------------------------------------------------------
 PHOTOS_SID = "HXd24159ea2cae50b655508e061d39b3b3"                       # photos of ONE property (a link to its gallery page)
-SHORTLIST_SID = "HXdb9a01d8c2065aa36e5d19fc9cfbe510"                    # the list of every property recommended on the call + one link with their photos
+SHORTLIST_SID = "HXf5d4166bdda8c729751698d00314e93f"                    # the list of every property recommended on the call + one link with their photos
 
 # --- ALL HOSTS: busy line + host alerts ------------------------------------------------------------
 # These four are not in TEMPLATES below: their bodies live in scripts/create_*_template.py (two have a
