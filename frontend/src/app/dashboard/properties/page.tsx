@@ -449,7 +449,7 @@ function PropertiesList({
           >
             <form id="create-property-form" onSubmit={handleCreate} className="space-y-4">
               <Sheet>
-                <PropertyFormFields form={form} onChange={setForm} />
+                <PropertyFormFields form={form} onChange={setForm} smartPricing="hidden" />
               </Sheet>
               <Hint>Photos and FAQ can be added once the property is created.</Hint>
             </form>
@@ -621,7 +621,11 @@ function PropertiesList({
                     />
                   </PropertyFormSection>
                 )}
-                <PropertyFormFields form={editForm} onChange={setEditForm} />
+                <PropertyFormFields
+                  form={editForm}
+                  onChange={setEditForm}
+                  smartPricing={editing?.airbnb_listing_id ? "ready" : "needs-listing"}
+                />
                 {editing && (
                   <PropertyPendingPolicies
                     overview={policies}

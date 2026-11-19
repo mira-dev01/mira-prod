@@ -14,12 +14,15 @@ export function ToggleField({
   hint,
   checked,
   onChange,
+  disabled = false,
 }: {
   id: string;
   label: string;
   hint?: string;
   checked: boolean;
   onChange: (next: boolean) => void;
+  /** Can't be switched (a hint says why). */
+  disabled?: boolean;
 }) {
   return (
     <div
@@ -34,7 +37,7 @@ export function ToggleField({
         // <label for> click already toggles the input directly -- skip
         // this fallback in both of those cases so a click that already
         // worked never gets double-toggled back to its original state.
-        if (e.defaultPrevented || (e.target as HTMLElement).closest("label")) return;
+        if (disabled || e.defaultPrevented || (e.target as HTMLElement).closest("label")) return;
         onChange(!checked);
       }}
     >
@@ -44,7 +47,7 @@ export function ToggleField({
         </Label>
         {hint && <Hint>{hint}</Hint>}
       </div>
-      <Switch id={id} className="shrink-0" checked={checked} onCheckedChange={onChange} />
+      <Switch id={id} className="shrink-0" checked={checked} onCheckedChange={onChange} disabled={disabled} />
     </div>
   );
 }

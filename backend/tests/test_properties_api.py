@@ -1,3 +1,6 @@
+import pytest
+
+
 async def test_create_two_properties_with_blank_exophone(client, auth_headers):
     """Regression test: exophone is unique in the DB, so a blank "" used to
     collide between properties instead of being treated as "not set"."""
@@ -528,3 +531,97 @@ async def test_update_property_switch_from_scheduled_back_to_mira_preserves_sche
     # comment) -- confirms that documented, intentional strictness still
     # holds, even though the values are still sitting on the row.
     assert back_to_scheduled.status_code == 422
+
+
+# ---- ExoPhone / Twilio number: unique across hosts, so say so ------------------------------------
+
+
+async def test_a_number_already_on_another_property_is_a_409_with_a_readable_message(client, auth_headers):
+    payload = {"name": "P1", "base_price": 1000, "max_guests": 2, "exophone": "+918044440001"}
+    assert (await client.post("/api/v1/properties", json=payload, headers=auth_headers)).status_code == 201
+
+    clash = await client.post("/api/v1/properties", json={**payload, "name": "P2"}, headers=auth_headers)
+    assert clash.status_code == 409
+    assert clash.json()["detail"] == "That ExoPhone is already assigned to another property."
+
+
+async def test_editing_to_a_taken_number_is_a_409_but_keeping_your_own_is_fine(client, auth_headers, test_property):
+    other = await client.post(
+        "/api/v1/properties",
+        json={"name": "Other", "base_price": 1000, "max_guests": 2, "exophone": "+918044440002"},
+        headers=auth_headers,
+    )
+    assert other.status_code == 201
+
+    taken = await client.patch(
+        f"/api/v1/properties/{test_property.id}", json={"exophone": "+918044440002"}, headers=auth_headers
+    )
+    assert taken.status_code == 409
+
+    # Saving the form again with the number this property already owns must not trip the check.
+    mine = other.json()["id"]
+    again = await client.patch(f"/api/v1/properties/{mine}", json={"exophone": "+918044440002", "name": "Renamed"}, headers=auth_headers)
+    assert again.status_code == 200
+
+
+@pytest.mark.parametrize("bad", ["not a number", "123", "+91 80 4444 abcd", "1" * 20])
+async def test_a_value_that_is_not_a_phone_number_is_refused(client, auth_headers, bad):
+    resp = await client.post(
+        "/api/v1/properties", json={"name": "P", "base_price": 1000, "max_guests": 2, "exophone": bad}, headers=auth_headers
+    )
+    assert resp.status_code == 422
+
+
+async def test_a_number_is_stored_as_typed_apart_from_surrounding_whitespace(client, auth_headers):
+    resp = await client.post(
+        "/api/v1/properties",
+        json={"name": "P", "base_price": 1000, "max_guests": 2, "exophone": "  08044440003 "},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 201
+    assert resp.json()["exophone"] == "08044440003"
+
+
+# ---- Smart pricing needs a linked Airbnb listing; room rental names what's missing ----------------
+
+
+async def test_smart_pricing_cannot_be_turned_on_without_a_linked_listing(client, auth_headers, test_property):
+    resp = await client.patch(
+        f"/api/v1/properties/{test_property.id}", json={"exact_airbnb_pricing": True}, headers=auth_headers
+    )
+    assert resp.status_code == 422
+    assert "Airbnb listing" in resp.json()["detail"]
+
+
+async def test_smart_pricing_can_be_turned_on_with_a_linked_listing(client, auth_headers, test_property, db_session):
+    test_property.airbnb_listing_id = "12345678"
+    await db_session.commit()
+    resp = await client.patch(
+        f"/api/v1/properties/{test_property.id}", json={"exact_airbnb_pricing": True}, headers=auth_headers
+    )
+    assert resp.status_code == 200
+    assert resp.json()["exact_airbnb_pricing"] is True
+
+
+async def test_an_existing_smart_pricing_property_can_still_be_edited(client, auth_headers, test_property, db_session):
+    """Already on without a listing (set before this rule): saving the form again must not be blocked."""
+    test_property.exact_airbnb_pricing = True
+    await db_session.commit()
+    resp = await client.patch(
+        f"/api/v1/properties/{test_property.id}",
+        json={"exact_airbnb_pricing": True, "name": "Renamed"},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+
+
+async def test_room_rental_error_names_what_is_missing(client, auth_headers, test_property):
+    resp = await client.patch(
+        f"/api/v1/properties/{test_property.id}",
+        json={"room_rental_enabled": True, "room_base_price": 1500},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 422
+    detail = resp.json()["detail"]
+    assert "how many rooms can be rented" in detail and "the guests per room" in detail
+    assert "price per room" not in detail

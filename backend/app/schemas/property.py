@@ -51,6 +51,23 @@ class LandmarkItem(BaseModel):
     mode: Literal["walk", "drive"] | None = None
 
 
+_PHONE_SHAPE = re.compile(r"^\+?[\d\s\-()]+$")
+
+
+def _clean_phone_number(value: str | None) -> str | None:
+    """exophone/twilio_number are unique in the DB, so "not set" must be None, never "" (an empty string is a
+    real value there and would collide across properties). A value that isn't a phone number at all is refused
+    with a message the form can show. Only whitespace is trimmed -- calls are matched against the stored string
+    exactly as the telephony provider sends it, so the number is otherwise stored as typed."""
+    value = (value or "").strip()
+    if not value:
+        return None
+    digits = re.sub(r"\D", "", value)
+    if not _PHONE_SHAPE.match(value) or not 8 <= len(digits) <= 15:
+        raise ValueError("Enter the number as digits only, for example +918044444444.")
+    return value
+
+
 class PropertyCreate(BaseModel):
     name: str
     city: str | None = None
@@ -88,10 +105,7 @@ class PropertyCreate(BaseModel):
     @field_validator("exophone", "twilio_number")
     @classmethod
     def _blank_exophone_is_none(cls, value: str | None) -> str | None:
-        # exophone/twilio_number are both unique in the DB -- an empty
-        # string is a real value there (and would collide across
-        # properties), so treat "not set" as None rather than "".
-        return value or None
+        return _clean_phone_number(value)
 
     @field_validator("ical_url")
     @classmethod
@@ -148,7 +162,7 @@ class PropertyUpdate(BaseModel):
     @field_validator("exophone", "twilio_number")
     @classmethod
     def _blank_exophone_is_none(cls, value: str | None) -> str | None:
-        return value or None
+        return _clean_phone_number(value)
 
     @field_validator("ical_url")
     @classmethod

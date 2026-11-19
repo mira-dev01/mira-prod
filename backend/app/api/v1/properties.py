@@ -5,6 +5,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.common import get_owned_property
@@ -142,17 +143,52 @@ def _check_room_rental_complete(values: dict) -> None:
     """Turning on renting by the room needs what a room is made of: a price,
     how many rooms, and how many guests each sleeps. A half-filled tab would
     leave the agent unable to price or offer a room, so it is refused up front
-    rather than silently doing nothing."""
+    rather than silently doing nothing -- naming what is missing."""
     if not values.get("room_rental_enabled"):
         return
-    if not (
-        (values.get("room_base_price") or 0) > 0
-        and (values.get("rentable_room_count") or 0) > 0
-        and (values.get("room_max_guests") or 0) > 0
-    ):
+    missing = [
+        label
+        for field, label in (
+            ("room_base_price", "the price per room"),
+            ("rentable_room_count", "how many rooms can be rented"),
+            ("room_max_guests", "the guests per room"),
+        )
+        if not (values.get(field) or 0) > 0
+    ]
+    if missing:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
-            "To rent by the room, set the price per room, how many rooms can be rented, and the guests per room.",
+            f"To rent by the room, also set {', '.join(missing[:-1]) + ' and ' + missing[-1] if len(missing) > 1 else missing[0]}.",
+        )
+
+
+_NUMBER_FIELDS = (("exophone", "ExoPhone"), ("twilio_number", "Twilio number"))
+
+
+async def _ensure_numbers_free(db: AsyncSession, values: dict, *, exclude_id: uuid.UUID | None = None) -> None:
+    """exophone and twilio_number are unique across every host (a call is routed to the one property that owns
+    the dialed number). Say so before the database does: a clash used to be an unhandled constraint error, so
+    the host got a bare "Internal Server Error" and no hint which number was the problem. The message doesn't
+    reveal whose property holds it."""
+    for field, label in _NUMBER_FIELDS:
+        number = values.get(field)
+        if not number:
+            continue
+        query = select(Property.id).where(getattr(Property, field) == number)
+        if exclude_id is not None:
+            query = query.where(Property.id != exclude_id)
+        if await db.scalar(query.limit(1)) is not None:
+            raise HTTPException(status.HTTP_409_CONFLICT, f"That {label} is already assigned to another property.")
+
+
+async def _commit_or_number_conflict(db: AsyncSession) -> None:
+    """Backstop for the race the pre-check can't close: two saves claiming the same number at once."""
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "That number was just assigned to another property. Try a different one."
         )
 
 
@@ -406,6 +442,7 @@ async def create_property(
 ) -> Property:
     _check_room_rental_complete(payload.model_dump())
     _check_weekend_rate_complete(payload.model_dump())
+    await _ensure_numbers_free(db, payload.model_dump())
     property_ = Property(
         user_id=current_user.id,
         **payload.model_dump(exclude={"faq", "locality"}),
@@ -414,7 +451,7 @@ async def create_property(
     )
     _apply_locality(property_, payload.locality)
     db.add(property_)
-    await db.commit()
+    await _commit_or_number_conflict(db)
     await db.refresh(property_)
     await _resync_facts(db, property_)
     _resync_policy_scopes(current_user.id)
@@ -474,6 +511,15 @@ async def update_property(
         _check_weekend_rate_complete(
             {f: updates.get(f, getattr(property_, f)) for f in ("weekend_rate_enabled", "weekend_price")}
         )
+    changed_numbers = {f: updates[f] for f, _ in _NUMBER_FIELDS if updates.get(f) and updates[f] != getattr(property_, f)}
+    await _ensure_numbers_free(db, changed_numbers, exclude_id=property_.id)
+    # Smart pricing quotes the live rate of a linked Airbnb listing; with none it silently falls back to the
+    # base price on every call. Only refuse TURNING IT ON, so editing an existing property is never blocked.
+    if updates.get("exact_airbnb_pricing") and not property_.exact_airbnb_pricing and not property_.airbnb_listing_id:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Smart pricing needs a linked Airbnb listing. Import this property from Airbnb first.",
+        )
     if "faq" in updates and updates["faq"] is not None:
         updates["faq"] = [item if isinstance(item, dict) else item.model_dump() for item in payload.faq]
     if "amenities" in updates:
@@ -487,7 +533,7 @@ async def update_property(
         _apply_locality(property_, updates.pop("locality"))
     for field, value in updates.items():
         setattr(property_, field, value)
-    await db.commit()
+    await _commit_or_number_conflict(db)
     await db.refresh(property_)
     if _KB_FIELDS & updates.keys() or (property_.pricing_terms and _SPACEZ_KB_FIELDS & updates.keys()):
         await _resync_facts(db, property_)

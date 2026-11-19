@@ -20,9 +20,13 @@ type PropertyFormValue = PropertyCreate;
 export function PropertyFormFields({
   form,
   onChange,
+  smartPricing = "ready",
 }: {
   form: PropertyFormValue;
   onChange: (next: PropertyFormValue) => void;
+  /** hidden: not offered (a new property has no listing to price from). needs-listing: shown, but it can't be
+   * turned on until the property is linked to an Airbnb listing. */
+  smartPricing?: "hidden" | "needs-listing" | "ready";
 }) {
   const amenitiesText = (form.amenities ?? []).join(", ");
   const seasonalNotes = form.seasonal_notes ?? [];
@@ -107,17 +111,26 @@ export function PropertyFormFields({
               />
             </SubField>
           )}
-          <CapabilityNotice
-            capabilityId="live_airbnb_pricing"
-            whenUnavailable="Live Airbnb prices aren't connected for your workspace yet, so Mira quotes the base price above even with Smart pricing on."
-          />
-          <ToggleField
-            id="exact_airbnb_pricing"
-            label="Smart pricing"
-            hint="Quote the live Airbnb rate for the guest's dates instead. Needs a linked Airbnb listing."
-            checked={form.exact_airbnb_pricing ?? false}
-            onChange={(checked) => onChange({ ...form, exact_airbnb_pricing: checked })}
-          />
+          {smartPricing !== "hidden" && (
+            <>
+              <CapabilityNotice
+                capabilityId="live_airbnb_pricing"
+                whenUnavailable="Live Airbnb prices aren't connected for your workspace yet, so Mira quotes the base price above even with Smart pricing on."
+              />
+              <ToggleField
+                id="exact_airbnb_pricing"
+                label="Smart pricing"
+                hint={
+                  smartPricing === "needs-listing" && !form.exact_airbnb_pricing
+                    ? "Import this property from Airbnb to turn this on."
+                    : "Quote the live Airbnb rate for the guest's dates instead."
+                }
+                checked={form.exact_airbnb_pricing ?? false}
+                onChange={(checked) => onChange({ ...form, exact_airbnb_pricing: checked })}
+                disabled={smartPricing === "needs-listing" && !form.exact_airbnb_pricing}
+              />
+            </>
+          )}
         </FieldRow>
         <FieldRow label="Guests and nights">
           <div className="grid gap-4 sm:grid-cols-2">
