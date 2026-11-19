@@ -10,20 +10,24 @@ import { NavigationProvider } from "@/lib/navigation-context";
 import { SidebarNav } from "@/components/sidebar-nav";
 import { DateRangeProvider } from "@/components/date-range-context";
 import { PendingImportBanner } from "@/components/pending-import-banner";
+import { AccountProblemScreen } from "@/components/account-problem";
 
 function FullScreenLoading() {
   return <div className="fixed inset-0 flex items-center justify-center text-sm text-muted-foreground">Loading…</div>;
 }
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, loading, isSignedIn, profileProblem, retryProfile, logout } = useAuth();
   const router = useRouter();
 
+  // Sign-in is only for someone Clerk says is signed out. A signed-in host whose profile failed to load is
+  // shown why instead: the sign-in page would send them straight back here and loop.
   useEffect(() => {
-    if (!loading && !user) router.replace("/login");
-  }, [loading, user, router]);
+    if (!loading && !isSignedIn) router.replace("/login");
+  }, [loading, isSignedIn, router]);
 
-  if (loading || !user) return <FullScreenLoading />;
+  if (loading || !isSignedIn) return <FullScreenLoading />;
+  if (!user) return <AccountProblemScreen problem={profileProblem} onRetry={retryProfile} onSignOut={logout} />;
 
   return (
     <OnboardingProvider>

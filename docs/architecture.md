@@ -59,7 +59,7 @@ mira-prod/
 - **LLM clients**: background LLM calls (post-call classification/summary, document parsing, health pings, embeddings) use shared per-provider clients with explicit time limits from `app/integrations/llm_clients.py`, closed at shutdown. The live voice LLM has its own client in `app/voice/pipeline.py`.
 
 - **Migrations**: Alembic, `backend/alembic/versions/`. Run `alembic upgrade head`. See [database.md](database.md) for the current head revision and history.
-- **Auth**: JWT (HS256 by default, `JWT_SECRET_KEY`/`JWT_ALGORITHM`/`JWT_EXPIRE_MINUTES`). `app/auth/dependencies.get_current_user` is the FastAPI dependency every protected route uses — decodes the bearer token (`app/auth/security.decode_access_token`), loads the `User` row, and 401s if the token is invalid/expired or the user isn't `status == "active"`. Login/register live in `app/api/v1/auth.py`.
+- **Auth**: Clerk session tokens. `app/auth/dependencies.get_current_user` is the FastAPI dependency every protected route uses — verifies the bearer token against Clerk's JWKS, then links it to a `User` row (`_resolve_local_user`). Each way that can fail has its own status so the dashboard can say what happened instead of bouncing the host to sign-in: **401** invalid/expired token (sign in again), **503** Clerk's Backend API unreachable (retryable), **409** the email already belongs to a different sign-in, **403** no verified email or `status != "active"` (suspended). The dashboard (`lib/auth-context.tsx`, `components/account-problem.tsx`) retries a 503 quietly, then shows the reason with Try again / Sign out; it only redirects to `/login` when Clerk itself says signed out. Admin login is separate (`app/api/v1/admin_auth.py`).
 
 ## Frontend
 

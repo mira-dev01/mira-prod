@@ -9,6 +9,7 @@ import json
 import time
 import uuid
 
+import httpx
 import jwt
 import pytest
 import respx
@@ -149,9 +150,62 @@ async def test_user_already_bound_to_another_clerk_identity_is_never_relinked(db
         return email
 
     monkeypatch.setattr(deps, "fetch_user_email", _email)
-    assert await deps._resolve_local_user(db_session, "user_attacker") is None
+    with pytest.raises(deps.AccountProblem) as problem:
+        await deps._resolve_local_user(db_session, "user_attacker")
+    assert problem.value.status_code == 409  # a conflict the host is told about, not a "sign in again"
     await db_session.refresh(owner)
     assert owner.clerk_user_id == "user_owner"
+
+
+async def test_clerk_being_unreachable_is_a_retryable_503_not_a_401(db_session, monkeypatch):
+    async def _down(_):
+        raise httpx.ConnectTimeout("clerk is slow")
+
+    monkeypatch.setattr(deps, "fetch_user_email", _down)
+    with pytest.raises(deps.AccountProblem) as problem:
+        await deps._resolve_local_user(db_session, "user_unknown")
+    assert problem.value.status_code == 503
+
+    async def _broken(_):
+        raise deps.ClerkError("fetch user failed (500)")
+
+    monkeypatch.setattr(deps, "fetch_user_email", _broken)
+    with pytest.raises(deps.AccountProblem) as problem:
+        await deps._resolve_local_user(db_session, "user_unknown")
+    assert problem.value.status_code == 503
+
+
+async def test_a_clerk_user_without_a_verified_email_is_told_so(db_session, monkeypatch):
+    async def _none(_):
+        return None
+
+    monkeypatch.setattr(deps, "fetch_user_email", _none)
+    with pytest.raises(deps.AccountProblem) as problem:
+        await deps._resolve_local_user(db_session, "user_unverified")
+    assert problem.value.status_code == 403 and "verified" in problem.value.message
+
+
+async def test_get_current_user_reports_each_failure_with_its_own_status(db_session, monkeypatch):
+    from fastapi import HTTPException
+    from fastapi.security import HTTPAuthorizationCredentials
+
+    monkeypatch.setattr(deps, "_verify_session_token", lambda _t: {"sub": "user_status_check"})
+    creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials="t")
+
+    async def _down(_):
+        raise httpx.ConnectTimeout("slow")
+
+    monkeypatch.setattr(deps, "fetch_user_email", _down)
+    with pytest.raises(HTTPException) as err:
+        await deps.get_current_user(creds, db_session)
+    assert err.value.status_code == 503
+
+    suspended = User(email=f"susp-{uuid.uuid4().hex[:8]}@example.com", clerk_user_id="user_status_check", status="suspended")
+    db_session.add(suspended)
+    await db_session.commit()
+    with pytest.raises(HTTPException) as err:
+        await deps.get_current_user(creds, db_session)
+    assert err.value.status_code == 403 and "deactivated" in err.value.detail
 
 
 @respx.mock

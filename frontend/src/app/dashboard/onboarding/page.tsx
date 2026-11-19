@@ -26,6 +26,45 @@ const HOST_STATUS_OPTIONS: { value: AirbnbHostStatus; label: string }[] = [
 
 const STEPS = ["What matters to you", "Your details", "Hosting profile", "Voice agent intro", "First property"] as const;
 
+// The wizard keeps everything in memory until the last step submits it, so a reload, a dropped connection or a
+// sign-in bounce used to send the host back to step one with every field empty. The in-progress answers are kept
+// in this browser (per account) and cleared once the profile is saved. Nothing secret is stored here.
+type OnboardingDraft = {
+  step: number;
+  interests: UseCaseKey[];
+  name: string;
+  phone: string;
+  businessName: string;
+  businessPhone: string;
+  hostStatus: AirbnbHostStatus | "";
+  propertyCount: string;
+  firstMessage: string;
+  airbnbUrl: string;
+  icalUrl: string;
+};
+
+const draftKeyFor = (userId: string) => `mira:onboarding-draft:${userId}`;
+
+function readDraft(userId: string | undefined): Partial<OnboardingDraft> {
+  if (!userId || typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(draftKeyFor(userId));
+    const parsed: unknown = raw ? JSON.parse(raw) : null;
+    return parsed && typeof parsed === "object" ? (parsed as Partial<OnboardingDraft>) : {};
+  } catch {
+    return {}; // storage blocked or the draft is corrupt: start fresh
+  }
+}
+
+function clearDraft(userId: string | undefined) {
+  if (!userId || typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(draftKeyFor(userId));
+  } catch {
+    // nothing to clear if storage is unavailable
+  }
+}
+
 // Post-signup onboarding: collects the business/Airbnb-import fields Clerk's
 // own sign-up form doesn't know about (see app/api/v1/auth.py onboard_host).
 // Only reachable once Clerk auth has already succeeded -- identity (email,
@@ -39,7 +78,11 @@ export default function OnboardingPage() {
   // gate still sees an unfinished host and sends them straight back to step one.
   const { state: onboardingState, loading: onboardingLoading, setState: setOnboardingState } = useOnboarding();
   const [submitting, setSubmitting] = useState(false);
-  const [step, setStep] = useState(0);
+  // Answers saved by an earlier, interrupted visit (see OnboardingDraft above).
+  const [draft] = useState(() => readDraft(user?.id));
+  const [step, setStep] = useState(() =>
+    Number.isInteger(draft.step) ? Math.min(Math.max(draft.step as number, 0), STEPS.length - 1) : 0
+  );
   // Set if finishing an already-saved profile failed: show the form rather than
   // bounce between here and the dashboard gate.
   const [finishFailed, setFinishFailed] = useState(false);
@@ -56,6 +99,7 @@ export default function OnboardingPage() {
   const alreadySetUp = !submitting && !finishFailed && (onboardingState?.status === "completed" || (onboardingState !== null && hasProfile));
   const checkFailed = !onboardingLoading && onboardingState === null;
   const finishingRef = useRef(false);
+  const draftDoneRef = useRef(false); // set once the profile is saved: the draft is then cleared and not rewritten
 
   useEffect(() => {
     if (checkFailed) {
@@ -64,6 +108,8 @@ export default function OnboardingPage() {
     }
     if (!alreadySetUp || finishingRef.current) return;
     finishingRef.current = true;
+    draftDoneRef.current = true;
+    clearDraft(user?.id);
     (async () => {
       try {
         // A profile saved without the completion record: finish it, so the
@@ -75,35 +121,48 @@ export default function OnboardingPage() {
         setFinishFailed(true);
       }
     })();
-  }, [alreadySetUp, checkFailed, onboardingState?.status, router, setOnboardingState]);
+  }, [alreadySetUp, checkFailed, onboardingState?.status, router, setOnboardingState, user?.id]);
 
-  const [name, setName] = useState("");
-  const [businessName, setBusinessName] = useState("");
-  const [phone, setPhone] = useState("");
+  const [name, setName] = useState(draft.name ?? "");
+  const [businessName, setBusinessName] = useState(draft.businessName ?? "");
+  const [phone, setPhone] = useState(draft.phone ?? "");
 
-  const [businessPhone, setBusinessPhone] = useState("");
-  const [hostStatus, setHostStatus] = useState<AirbnbHostStatus | "">("");
-  const [propertyCount, setPropertyCount] = useState("");
+  const [businessPhone, setBusinessPhone] = useState(draft.businessPhone ?? "");
+  const [hostStatus, setHostStatus] = useState<AirbnbHostStatus | "">(draft.hostStatus ?? "");
+  const [propertyCount, setPropertyCount] = useState(draft.propertyCount ?? "");
 
-  const [firstMessage, setFirstMessage] = useState("");
+  const [firstMessage, setFirstMessage] = useState(draft.firstMessage ?? "");
   const [isRecording, setIsRecording] = useState(false);
   const [recordedUrl, setRecordedUrl] = useState<string | null>(null);
   const [transcribing, setTranscribing] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
-  const [airbnbUrl, setAirbnbUrl] = useState("");
-  const [icalUrl, setIcalUrl] = useState("");
+  const [airbnbUrl, setAirbnbUrl] = useState(draft.airbnbUrl ?? "");
+  const [icalUrl, setIcalUrl] = useState(draft.icalUrl ?? "");
 
   // Step 0 -- dashboard/onboarding personalization (see
   // frontend/src/lib/use-cases.ts). Multi-select, nothing exclusive;
   // skipping leaves this []. Purely a UI-emphasis signal downstream
   // (sidebar-nav.tsx, dashboard/page.tsx) -- never gates a feature.
-  const [interests, setInterests] = useState<UseCaseKey[]>([]);
+  const [interests, setInterests] = useState<UseCaseKey[]>(Array.isArray(draft.interests) ? draft.interests : []);
 
   function toggleInterest(key: UseCaseKey) {
     setInterests((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
   }
+
+  // Keep the draft current on every change. Stops once the profile is saved so it can't be written back.
+  useEffect(() => {
+    if (!user?.id || draftDoneRef.current) return;
+    const next: OnboardingDraft = {
+      step, interests, name, phone, businessName, businessPhone, hostStatus, propertyCount, firstMessage, airbnbUrl, icalUrl,
+    };
+    try {
+      window.localStorage.setItem(draftKeyFor(user.id), JSON.stringify(next));
+    } catch {
+      // storage full or blocked: the wizard still works, it just won't resume
+    }
+  }, [user?.id, step, interests, name, phone, businessName, businessPhone, hostStatus, propertyCount, firstMessage, airbnbUrl, icalUrl]);
 
   function goNext(e: React.FormEvent) {
     e.preventDefault();
@@ -165,6 +224,9 @@ export default function OnboardingPage() {
         ical_url: icalUrl || undefined,
         interests,
       });
+      // Saved: the draft has done its job (and must not be written back by the effect above).
+      draftDoneRef.current = true;
+      clearDraft(user?.id);
       await refreshUser();
       setOnboardingState(await api.onboarding.complete());
       // No live progress banner for this import: PendingImportBanner now

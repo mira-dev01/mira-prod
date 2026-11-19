@@ -3,6 +3,7 @@ import base64
 import logging
 from functools import lru_cache
 
+import httpx
 import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -17,6 +18,38 @@ from app.models.user import User
 logger = logging.getLogger(__name__)
 
 bearer_scheme = HTTPBearer(auto_error=False)
+
+
+class AccountProblem(Exception):
+    """A signed-in Clerk identity that cannot be turned into a usable host account, and WHY.
+
+    The dashboard has to tell these apart: a 401 means "sign in again", but a signed-in person bounced to the
+    sign-in page when Clerk's Backend API merely timed out (or whose account is suspended, or whose email
+    belongs to another sign-in) is sent round a loop with no explanation. `message` is shown to the host as is.
+    """
+
+    def __init__(self, status_code: int, message: str):
+        super().__init__(message)
+        self.status_code = status_code
+        self.message = message
+
+
+IDENTITY_UNAVAILABLE = AccountProblem(
+    status.HTTP_503_SERVICE_UNAVAILABLE,
+    "We couldn't confirm your account just now. Please try again in a moment.",
+)
+EMAIL_NOT_VERIFIED = AccountProblem(
+    status.HTTP_403_FORBIDDEN,
+    "Your sign-in has no verified email address. Verify your email, then try again.",
+)
+ACCOUNT_CONFLICT = AccountProblem(
+    status.HTTP_409_CONFLICT,
+    "This email is already linked to a different sign-in. Sign in the way you did before, or contact support.",
+)
+ACCOUNT_INACTIVE = AccountProblem(
+    status.HTTP_403_FORBIDDEN,
+    "This account has been deactivated. Contact support to get it restored.",
+)
 
 
 def _is_internal_org(environment: str, clerk_dev_org_id: str | None, active_org_id: str | None) -> bool:
@@ -111,7 +144,7 @@ def _verify_session_token(token: str) -> dict:
     return payload
 
 
-async def _resolve_local_user(db: AsyncSession, clerk_user_id: str) -> User | None:
+async def _resolve_local_user(db: AsyncSession, clerk_user_id: str) -> User:
     """Links a Clerk identity to a local User row, in order:
     1. Already linked (clerk_user_id matches) -- the common case, no Clerk
        API call.
@@ -123,6 +156,9 @@ async def _resolve_local_user(db: AsyncSession, clerk_user_id: str) -> User | No
     Step 2/3 both require the user's email, which Clerk's default session
     token doesn't carry -- fetched once via the Backend API, never again
     once clerk_user_id is stored.
+
+    Raises AccountProblem (never returns None) so the caller can say what went wrong: Clerk unreachable
+    (retryable, 503), no verified email (403), or the email already belongs to another sign-in (409).
     """
     user = await db.scalar(select(User).where(User.clerk_user_id == clerk_user_id))
     if user is not None:
@@ -130,11 +166,12 @@ async def _resolve_local_user(db: AsyncSession, clerk_user_id: str) -> User | No
 
     try:
         email = await fetch_user_email(clerk_user_id)
-    except ClerkError:
+    except (ClerkError, httpx.HTTPError):
+        # A timeout or a Clerk outage says nothing about the person; it must not read as "not signed in".
         logger.exception("Failed to fetch Clerk user email for %s", clerk_user_id)
-        return None
+        raise IDENTITY_UNAVAILABLE
     if email is None:
-        return None
+        raise EMAIL_NOT_VERIFIED
 
     existing = await db.scalar(select(User).where(User.email == email))
     if existing is not None:
@@ -147,7 +184,7 @@ async def _resolve_local_user(db: AsyncSession, clerk_user_id: str) -> User | No
             logger.warning(
                 "Refusing to relink user %s already bound to a different Clerk identity", existing.id
             )
-            return None
+            raise ACCOUNT_CONFLICT
         existing.clerk_user_id = clerk_user_id
         await db.commit()
         await db.refresh(existing)
@@ -178,9 +215,12 @@ async def get_current_user(
     if not clerk_user_id:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid token")
 
-    user = await _resolve_local_user(db, clerk_user_id)
-    if user is None or user.status != "active":
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found or inactive")
+    try:
+        user = await _resolve_local_user(db, clerk_user_id)
+    except AccountProblem as problem:
+        raise HTTPException(problem.status_code, problem.message)
+    if user.status != "active":
+        raise HTTPException(ACCOUNT_INACTIVE.status_code, ACCOUNT_INACTIVE.message)
 
     # Attached for handlers that need it (currently just the "Talk to Mira"
     # gate, surfaced via GET /auth/me) -- compared directly against the

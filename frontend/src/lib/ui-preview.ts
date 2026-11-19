@@ -474,6 +474,17 @@ export async function previewResponse<T>(path: string, options: RequestInit): Pr
   if (method === "POST" && /^\/pricing\/quote/.test(clean))
     return { nights: 4, base_total: 120000, discount_percent: 5, discount_amount: 6000, total: 114000, per_night_avg: 28500 } as T;
   if (method !== "GET") return {} as T; // saves are accepted and ignored in preview
+  // `?me=503` (or 409 / 403 / 401) makes the profile fetch fail, to design the account-problem screen.
+  if (typeof window !== "undefined" && /^\/auth\/me$/.test(clean)) {
+    const failWith = Number(new URLSearchParams(window.location.search).get("me"));
+    if (failWith >= 400) {
+      const messages: Record<number, string> = {
+        403: "This account has been deactivated. Contact support to get it restored.",
+        409: "This email is already linked to a different sign-in. Sign in the way you did before, or contact support.",
+      };
+      throw new ApiError(failWith, messages[failWith] ?? "preview failure");
+    }
+  }
   // On the onboarding route, show a brand-new host so the wizard renders.
   if (typeof window !== "undefined" && window.location.pathname.startsWith("/dashboard/onboarding")) {
     if (/^\/onboarding/.test(clean)) return { ...onboarding, status: "in_progress", current_step: "profile", completed_at: null } as T;

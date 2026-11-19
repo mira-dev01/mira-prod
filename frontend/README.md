@@ -34,6 +34,7 @@ origins are the Vercel URLs, so the real signed-in dashboard can only be used on
 
 ```bash
 NEXT_PUBLIC_UI_PREVIEW=1 npm run dev -- -p 3100   # or the `frontend-preview` entry in ../.claude/launch.json
+                                                  # add ?me=503 (or 409 / 403 / 401) to /dashboard to see the account-problem screen
 ```
 
 Opens `/dashboard/...` as a signed-in "HushStays" host with **invented sample data** — no backend, no

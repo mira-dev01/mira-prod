@@ -3,12 +3,26 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth as useClerkAuth, useClerk, useOrganization, useOrganizationList } from "@clerk/nextjs";
-import { api, setTokenGetter } from "@/lib/api";
+import { ApiError, api, setTokenGetter } from "@/lib/api";
 import type { UserOut } from "@/lib/types";
+
+/** Why a signed-in person has no usable profile, so the dashboard can say so instead of bouncing them to
+ * the sign-in page (which sends a signed-in person straight back: the "login loop"). */
+export type ProfileProblem = {
+  // unavailable: couldn't reach the server (retry). unauthorized: the server didn't accept the session (retry,
+  // then sign out). conflict / forbidden: the account itself is the problem (retrying won't help).
+  kind: "unavailable" | "unauthorized" | "conflict" | "forbidden";
+  message: string;
+};
 
 type AuthContextValue = {
   user: UserOut | null;
   loading: boolean;
+  /** Clerk says there is a session. Only when this is false does the dashboard send you to sign in. */
+  isSignedIn: boolean;
+  /** Set when signed in but the profile could not be loaded (and `user` is null). */
+  profileProblem: ProfileProblem | null;
+  retryProfile: () => void;
   isInternalOrg: boolean;
   logout: () => void;
   refreshUser: () => Promise<void>;
@@ -21,6 +35,27 @@ type AuthContextValue = {
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+
+// A server or network hiccup is retried quietly before the host sees anything: 0.8s, 2s, 4s.
+const PROFILE_RETRY_DELAYS_MS = [800, 2000, 4000];
+
+function isTransient(err: unknown): boolean {
+  if (!(err instanceof ApiError)) return true; // fetch itself failed: offline, DNS, CORS on a dead gateway
+  return err.status === 408 || err.status === 429 || err.status >= 500;
+}
+
+function describeProblem(err: unknown): ProfileProblem {
+  if (err instanceof ApiError) {
+    if (err.status === 409) return { kind: "conflict", message: err.message };
+    if (err.status === 403) return { kind: "forbidden", message: err.message };
+    if (err.status === 401) {
+      return { kind: "unauthorized", message: "We couldn't verify your sign-in. Try again, or sign out and back in." };
+    }
+  }
+  return { kind: "unavailable", message: "We couldn't load your account. Check your connection and try again." };
+}
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const clerkAuth = useClerkAuth();
@@ -38,6 +73,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   });
   const [user, setUser] = useState<UserOut | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
+  const [profileProblem, setProfileProblem] = useState<ProfileProblem | null>(null);
+  const [retryNonce, setRetryNonce] = useState(0);
   const router = useRouter();
   const autoActivatedRef = useRef(false);
   // Guards against out-of-order /auth/me responses: the mount/org-change
@@ -80,21 +117,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!isSignedIn) {
       latestRequestRef.current += 1;
       setUser(null);
+      setProfileProblem(null);
       setProfileLoading(false);
       return;
     }
     const requestId = ++latestRequestRef.current;
+    let cancelled = false; // this effect run was replaced (deps changed) or the provider unmounted
     setProfileLoading(true);
-    api.auth
-      .me()
-      .then((fetched) => applyLatestUser(requestId, fetched))
-      .catch(() => applyLatestUser(requestId, null))
-      .finally(() => setProfileLoading(false));
+    setProfileProblem(null);
+    (async () => {
+      // Only a failure of the *account* (or of the server) lands here as a problem the host is shown. It is
+      // never turned into "signed out": that is Clerk's call (isSignedIn), and acting on anything else sent a
+      // signed-in host to the sign-in page, which sent them straight back.
+      for (let attempt = 0; ; attempt++) {
+        try {
+          const fetched = await api.auth.me();
+          applyLatestUser(requestId, fetched);
+          return;
+        } catch (err) {
+          // One retry for a 401 too: the first token after a tab wakes can be stale.
+          const retryable = isTransient(err) || (err instanceof ApiError && err.status === 401 && attempt === 0);
+          if (retryable && attempt < PROFILE_RETRY_DELAYS_MS.length) {
+            await sleep(PROFILE_RETRY_DELAYS_MS[attempt]);
+            if (cancelled || requestId !== latestRequestRef.current) return; // superseded while waiting
+            continue;
+          }
+          if (requestId === latestRequestRef.current) {
+            setUser(null);
+            setProfileProblem(describeProblem(err));
+          }
+          return;
+        }
+      }
+    })().finally(() => {
+      if (!cancelled) setProfileLoading(false);
+    });
     // organization?.id is a dependency, not just isLoaded/isSignedIn --
     // setActive() above swaps the session token (it now carries an org_id
     // claim), so /auth/me has to be re-fetched for is_internal_org to
     // reflect the newly-active org instead of the stale pre-activation one.
-  }, [isLoaded, isSignedIn, organization?.id]);
+    // retryNonce is the "Try again" button on the account-problem screen.
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoaded, isSignedIn, organization?.id, retryNonce]);
+
+  const retryProfile = useCallback(() => setRetryNonce((n) => n + 1), []);
 
   const logout = useCallback(() => {
     signOut(() => router.push("/login"));
@@ -119,6 +187,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       value={{
         user,
         loading: !isLoaded || (isSignedIn && profileLoading),
+        isSignedIn,
+        profileProblem,
+        retryProfile,
         isInternalOrg: user?.is_internal_org ?? false,
         logout,
         refreshUser,
