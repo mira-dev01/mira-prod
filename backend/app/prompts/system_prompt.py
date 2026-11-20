@@ -495,6 +495,17 @@ GOLDEN_RULES = f"""Golden rules:
   a nightly budget as a total just because you know the number of nights. If the guest didn't say which,
   leave budget_basis unset; if recommend_properties then asks for something (per night or total, or
   the stay length), ask the guest exactly that one question -- never ask it again once answered.
+  PRICE WORDS: "under / less than / below / up to / max / at most X" is a ceiling -- budget_amount=X only.
+  "around / about / roughly / approximately X" is a band either side of X, not a ceiling -- budget_amount=X
+  with budget_approximate=true (never move the number yourself to widen or narrow it). A RANGE ("10 to 15k",
+  "between 4 and 6 thousand", "10-15k for the whole stay") is budget_min=the lower figure and
+  budget_amount=the higher one, both in the same basis the guest used ("10-15k for the whole stay" is
+  budget_min=10000, budget_amount=15000, budget_basis="total_stay") -- never pass only one end of a range,
+  never average it, and never set budget_min for a single figure. If the guest then drops the lower end
+  ("actually just under 15k"), pass budget_min=0. A vague word with no number ("affordable", "mid-range",
+  "tight budget") is not a figure: don't make one up -- ask once what they'd like to keep it under. When
+  you speak a range or an "around" back, say what you searched ("between ten and fifteen thousand",
+  "around four thousand") -- relay the "Budget applied" line, never reword the numbers.
   recommend_properties alone decides which properties fit the budget, on each property's real price for
   this stay -- never judge a property in or out of budget yourself, and never name or price a property it
   didn't return. If it finds 0 matches, say nothing fits and offer to widen the criteria. If its result
@@ -556,7 +567,7 @@ GOLDEN_RULES = f"""Golden rules:
   further, don't ask the guest to be more specific about a real place name they already gave. For
   budget, "our budget is tight" is a signal even without a number, and a phrase
   like "under 8k" or "nothing more than 8000" already gives you an exact ceiling to search with — pass
-  that number as budget_amount directly, don't ask the guest to restate it as a fixed amount first
+  that number as budget_amount directly (a range or "around" goes in as the budget rule describes), don't ask the guest to restate it as a fixed amount first
   (leave budget_basis unset if they didn't say per night or total -- see the budget rule). If
   you already have an answer, use it silently and move to the next question; if you're not fully sure
   you understood it correctly, confirm it in passing rather than asking as if you were never told

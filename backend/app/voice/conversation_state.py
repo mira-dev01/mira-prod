@@ -24,6 +24,8 @@ is the same discipline app/services/guest_memory_service.py already uses
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
+from app.services.property.budget import canonical_budget_band
+
 if TYPE_CHECKING:
     from pipecat.transcriptions.language import Language
 
@@ -446,6 +448,49 @@ class ConversationState:
         if changed:
             self.touch_attention(f"slot:{key}")
         self._recompute_goal(after_tool="set_slot")
+
+    # Price range / "around": two slots carry the budget. "budget" is always
+    # THE figure (the ceiling for "under X", the upper end of a range, the
+    # centre of an "around"); "budget_min" exists ONLY while the guest's
+    # budget is a real range, and "budget_approximate" only for "around X".
+    # Everything else (a plain "under 8k") never has either, exactly as before.
+    def resolve_budget_band(
+        self, amount: float | None, min_amount: float | None, approximate: bool
+    ) -> tuple[float | None, float | None, bool]:
+        """(max, min, approximate) this call should search with.
+
+        A figure the call states for itself wins. A call that omits the
+        budget, or just restates the SAME figure without the range words,
+        keeps the stored range -- a refinement ("anything with a pool?") must
+        not silently turn "10-15k" into "up to 15k". A genuinely different
+        figure with no min is a new plain budget: the old range is dropped.
+        budget_min <= 0 is the explicit "the guest dropped the lower bound"."""
+        stored = self.slots.get("budget")
+        effective = amount if amount is not None else stored
+        same_figure = amount is None or amount == stored
+        if min_amount is not None:
+            low = min_amount if min_amount > 0 else None
+        else:
+            low = self.slots.get("budget_min") if same_figure else None
+        around = approximate or (bool(self.slots.get("budget_approximate")) if same_figure else False)
+        if min_amount is not None and min_amount <= 0:
+            around = approximate
+        return canonical_budget_band(effective, low, around)
+
+    def store_budget_band(self, amount: float | None, min_amount: float | None, approximate: bool) -> None:
+        """Write a (max, min, approximate) band from resolve_budget_band. The
+        range slots are removed -- not left stale -- when the band has none."""
+        if amount is None:
+            return
+        self.set_slot("budget", amount)
+        if min_amount is not None:
+            self.set_slot("budget_min", min_amount)
+        else:
+            self.slots.pop("budget_min", None)
+        if approximate:
+            self.set_slot("budget_approximate", True)
+        else:
+            self.slots.pop("budget_approximate", None)
 
     def record_recommendations(self, options: list[dict[str, Any]]) -> None:
         self.recommendations_shown = options

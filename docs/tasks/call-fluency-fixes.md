@@ -576,3 +576,160 @@ Task 13 branch: the gazetteer is loaded, so only the property coordinates are mi
 
 Also noticed: `backend/.env` sets `ENVIRONMENT=production` while pointing at the dev database, so any local
 script that imports `app.config` fails the production secrets check unless `ENVIRONMENT` is overridden.
+
+---
+
+## Phase 5 — Promises, memory across calls, and one voice per reply
+
+Source: test calls `2757c7a8…` and `7ac6671b…` (2026-11-14, Railway `dev`). Mira said "I've sent the photos"
+when nothing was sent, said "I've let the host know" before any escalation ran, forgot the agreed ₹15,010 on
+the call back and quoted ₹15,800, tried to send a payment link before telling the guest the price, and spoke
+four canned lines in one reply.
+
+### Task 17 — Carry the open enquiry into the next call
+
+Today the only memory is one prose line ("Last time: …", `_guest_memory_section` in
+`app/prompts/system_prompt.py` line ~1011) plus the rule "never bring up previous calls yourself". The
+working state (property, dates, guests, quoted and negotiated price, what was promised) lives in
+`ConversationState`, which is per call and discarded.
+
+- [ ] At call end, store an **open enquiry** for the guest and host: property, check-in, check-out, guests,
+  last quoted total, whether it was negotiated and by which rule, when it was quoted, and what was sent or
+  promised (photos, payment link) with its outcome.
+- [ ] Give it an expiry. **Decision needed from Abhaya:** how long a negotiated price is honoured (suggest
+  48 hours).
+- [ ] On the next call from the same number, if the enquiry has not expired: seed `ConversationState.slots`
+  from it, and add a prompt section: "Open enquiry from {when}: {property}, {dates}, {guests}, agreed
+  ₹{total}. Confirm these in one sentence; do not re-ask them."
+- [ ] Before any payment step on the new call, re-run `check_calendar`. A negotiated price is honoured only
+  through `negotiate_rate` recognising the stored decision, never by the model repeating a number.
+- [ ] Reword the rule: Mira may refer to the open enquiry when the guest does; she still does not bring up
+  past stays.
+
+**Remove:** nothing yet. If the open enquiry makes the "Last time:" line redundant for callers with one,
+drop that line for them rather than sending both.
+
+**Verify before moving on:**
+1. Test: end a call with a negotiated quote, start a new state for the same guest: slots and the agreed
+   total are present.
+2. Test: an expired enquiry seeds nothing and the prompt section is absent.
+3. Eval scenario: guest says "I already finalised this with you" → Mira confirms the stored details in one
+   sentence and does not ask for dates or guest count.
+4. Dev: repeat the two-call test. The second call quotes ₹15,010, not ₹15,800.
+
+### Task 18 — "I've let the host know" always has an escalation behind it
+
+The phrase is `DEFAULT_ESCALATION_PHRASE` (`app/prompts/system_prompt.py` line ~50). The prompt asks the
+model to say it only with `escalate_to_host`. On both calls the model said it with no tool call.
+
+- [ ] New check after the LLM, modelled on `EndCallReliabilityGuardProcessor` (which arms the hangup when the
+  closing line is spoken without `end_call`): if the reply contains the escalation phrase, or the host's
+  custom one, and no `escalate_to_host` succeeded in this turn, raise the escalation in code. Reason = the
+  last failed tool and its error; urgency medium.
+- [ ] One escalation per cause per call. A second identical claim adds a note to the same ticket.
+- [ ] `send_payment_link` failure opens a ticket in the handler itself, as `send_photos` already does on its
+  fallback path.
+- [ ] Record the delivery status of every WhatsApp message (Twilio status callback). When the host's
+  escalation WhatsApp is not delivered, the email is the channel of record.
+- [ ] Call-summary email: add a "Needs your action" block at the top listing every open ticket, failed tool
+  and undelivered message from the call.
+
+**Remove:** nothing.
+
+**Verify before moving on:**
+1. Test: a reply with the phrase and no tool call → exactly one escalation notification and one ticket exist.
+2. Test: the phrase twice in one call for the same cause → still one ticket.
+3. Test: `send_payment_link` raising a business error → a ticket exists with the error text.
+4. Dev call with payments broken on purpose: the summary email shows "Needs your action" with the payment
+   link failure.
+5. Disable Twilio on dev, trigger an escalation: the email still arrives and names the failed WhatsApp.
+
+### Task 19 — At most one canned line per reply
+
+Three places can each put a fixed sentence into the same reply: the model (escalation phrase),
+`kb_grounding_guard` (swaps a sentence for `KB_MISS_LINE`), and `escalation_phrase_guard` (replaces the
+reply after `escalate_to_host`). At 18:28:27 all three fired.
+
+- [ ] `kb_grounding_guard`: when it blocks a sentence in a reply that still has another complete sentence,
+  drop the blocked sentence and add nothing. Use `KB_MISS_LINE` only when the whole reply would be empty.
+- [ ] `kb_grounding_guard`: do not judge sentences about what Mira or the host will do next ("they'll send it
+  shortly"). It checks facts about the property. Both blocks on these calls were "vague time" hits on
+  follow-up promises.
+- [ ] One final step before TTS owns canned lines: at most one per reply, priority escalation, then closing,
+  then KB miss; never a line already spoken in the previous two Mira turns.
+- [ ] The run-on at 18:27:56 ("…correct?Okay, let me check…"): two responses were joined while two tool calls
+  overlapped. Do not start a second tool-driven response until the first has been spoken or cancelled.
+
+**Remove:** the per-guard code that appends its own fixed sentence, once the final step owns them. Check
+each guard with `grep` for the constants it no longer uses.
+
+**Verify before moving on:**
+1. Test: a reply with one blocked sentence and one good sentence → output is the good sentence only.
+2. Test: a reply where the escalation phrase and a KB block both apply → one canned line, the escalation.
+3. Eval scenario replaying 18:28:25 ("Use this number and send me the payment link" after a failed link) →
+   one sentence, no "I don't have that detail on file".
+4. `grep -rn "KB_MISS_LINE" app/voice` → only the final step and the guard's empty-reply case.
+
+### Task 20 — Price is told and agreed before any payment link
+
+`handle_send_payment_link` (`app/services/tool_handlers.py` line ~926) checks that a quote exists. On the
+call back, the first attempt was refused, `get_pricing` then recorded a quote, and the retry passed the gate
+without the guest hearing the price.
+
+- [ ] Track the quote through three states in `ConversationState`: recorded, spoken (the amount appeared in
+  text sent to TTS), agreed (a guest turn after it was spoken, with no objection).
+- [ ] `send_payment_link` requires `agreed`. Otherwise it returns: "Tell the guest the total ₹{total} for
+  {dates} and ask them to confirm. Do not call this again until they have."
+- [ ] A new quote or a negotiation resets the state to recorded.
+- [ ] With Task 17, an agreed price from the open enquiry counts as agreed once the guest confirms it on the
+  new call.
+
+**Remove:** the existing "quote exists" condition, replaced by the state check.
+
+**Verify before moving on:**
+1. Test: quote recorded but not spoken → refused with the instruction above.
+2. Test: spoken, then guest says "okay that works" → allowed.
+3. Test: spoken, then `negotiate_rate` returns a new total → refused until the new total is spoken and agreed.
+4. Eval scenario: guest asks for the payment link first → Mira states the price and asks, and
+   `send_payment_link` is called only after the guest agrees.
+
+### Task 21 — Scorecard flags for failed actions and false claims
+
+`app/services/call_scorecard.py` flagged both calls only for `slow_response`. `tool_error` did not fire for
+`send_payment_link` returning `business_error`.
+
+- [ ] `tool_failed`: any tool call with `success=False`, including `business_error`. Detail = tool and
+  message. Exclude `needs_clarification` and `invalid_tool_arguments` that were retried successfully.
+- [ ] `message_not_sent`: a send tool (`send_photos`, `send_whatsapp`, `send_payment_link`,
+  `send_property_list`) that took its host-fallback path, or a WhatsApp whose delivery status is failed or
+  undelivered.
+- [ ] `unbacked_claim`: Mira said something was sent, or that the host was told, with no successful matching
+  tool call at or before that turn. Deterministic: claim phrases against the call's tool log.
+- [ ] `promise_open`: the call ended with a promise and no ticket (after Task 18 this should be zero; the
+  flag proves it).
+- [ ] Add the four codes to `REASON_LABELS`, the Flagged calls list and the daily digest.
+
+**Remove:** the old `tool_error` rule, replaced by `tool_failed`.
+
+**Verify before moving on:**
+1. `python -m scripts.rescore_call 2757c7a8-2aa1-4e8f-a02e-554f13b1e5f8` → flags include `tool_failed`
+   (payment link), `message_not_sent` (photos, twice) and `unbacked_claim` ("I've sent the photos").
+2. `python -m scripts.rescore_call 7ac6671b-58b4-4ddf-b2c8-423bba5d3619` → `tool_failed` and
+   `unbacked_claim` ("I've let the host know" at 18:28:02); no `message_not_sent` for photos.
+3. A clean call gets none of the four.
+4. `grep -rn '"tool_error"' app/ tests/` → nothing.
+
+### Task 22 — Environment: payment keys on `dev` (config, no code)
+
+`PAYMENT_ENCRYPTION_KEY` on `dev` currently holds a Razorpay key id (`rzp_test_…`). It must be a Fernet key;
+`app/utils/secrets.py` uses it to encrypt the Razorpay secret each host saves in the dashboard.
+
+- [ ] Generate one: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
+  and set it as `PAYMENT_ENCRYPTION_KEY`.
+- [ ] In the host dashboard for SPACEZ DEV, enter the Razorpay test key id and secret again. The copy saved
+  earlier was encrypted with a different key and cannot be read.
+
+**Verify before moving on:**
+1. A test call that reaches the payment step: `send_payment_link` returns success and the link arrives on
+   WhatsApp.
+2. Railway search `encryption key` returns nothing for that call.

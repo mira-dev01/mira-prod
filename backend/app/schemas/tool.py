@@ -225,6 +225,13 @@ class RecommendPropertiesArgs(BaseModel):
     budget_amount: float | None = None
     budget_basis: BudgetBasis = "unspecified"
     budget_currency: str = "INR"
+    # Price RANGE / "around": budget_amount stays THE figure (the upper end of
+    # a range, the centre of an "around"); budget_min is only ever set when
+    # the guest gave a real range ("10 to 15k" -> amount=15000, min=10000) and
+    # budget_approximate only for "around/about/roughly X". Both default to
+    # "not a range / not approximate" -- a plain "under 8k" is unchanged.
+    budget_min: float | None = None
+    budget_approximate: bool = False
     # Stay length, used to convert a total-stay budget to a nightly ceiling
     # (and vice versa for logging/rendering). Confirmed live 2026-09-25: the
     # LLM passed nights= to recommend_properties when it wasn't part of the
@@ -278,7 +285,13 @@ class RecommendPropertiesArgs(BaseModel):
 
     def budget_constraint(self, assume_per_night: bool = False) -> BudgetConstraint | None:
         return normalize_budget(
-            self.budget_amount, self.budget_basis, self.nights, self.budget_currency, assume_per_night=assume_per_night
+            self.budget_amount,
+            self.budget_basis,
+            self.nights,
+            self.budget_currency,
+            assume_per_night=assume_per_night,
+            min_amount=self.budget_min,
+            approximate=self.budget_approximate,
         )
 
 

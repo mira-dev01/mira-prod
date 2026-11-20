@@ -533,6 +533,7 @@ async def test_update_property_switch_from_scheduled_back_to_mira_preserves_sche
     assert back_to_scheduled.status_code == 422
 
 
+<<<<<<< Updated upstream
 # ---- ExoPhone / Twilio number: unique across hosts, so say so ------------------------------------
 
 
@@ -625,3 +626,74 @@ async def test_room_rental_error_names_what_is_missing(client, auth_headers, tes
     detail = resp.json()["detail"]
     assert "how many rooms can be rented" in detail and "the guests per room" in detail
     assert "price per room" not in detail
+=======
+# --- one link for every property of a host (GET /properties/gallery/host/{host_id}) ---
+
+
+async def _add_properties(db, user, specs):
+    from app.models.property import Property
+
+    for name, city, photos in specs:
+        db.add(Property(user_id=user.id, name=name, city=city, base_price=1000, max_guests=2, photos=photos))
+    await db.commit()
+
+
+async def test_host_gallery_lists_every_property_with_photos_grouped_by_city_then_name(client, db_session, test_user):
+    await _add_properties(
+        db_session, test_user,
+        [("Zed Villa", "Goa", ["https://res.cloudinary.com/x/z.jpg"]), ("Alpha Loft", "Bengaluru", ["a1", "a2"]),
+         ("Beta Loft", "Bengaluru", ["b1"]), ("No Photos Yet", "Bengaluru", [])],
+    )
+
+    resp = await client.get(f"/api/v1/properties/gallery/host/{test_user.id}")  # no auth header: it is a public page
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert [(p["city"], p["name"]) for p in body] == [("Bengaluru", "Alpha Loft"), ("Bengaluru", "Beta Loft"), ("Goa", "Zed Villa")]
+    assert body[0]["photos"] == ["a1", "a2"]
+    assert set(body[0]) == {"id", "name", "city", "photos"}  # nothing a listing page would not already show
+
+
+async def test_host_gallery_never_includes_another_hosts_properties(client, db_session, test_user):
+    from app.models.user import User
+
+    other = User(email="another-host@example.com", name="Other")
+    db_session.add(other)
+    await db_session.flush()
+    await _add_properties(db_session, test_user, [("Mine", "Goa", ["m1"])])
+    await _add_properties(db_session, other, [("Theirs", "Goa", ["t1"])])
+
+    names = [p["name"] for p in (await client.get(f"/api/v1/properties/gallery/host/{test_user.id}")).json()]
+
+    assert names == ["Mine"]
+
+
+async def test_host_gallery_can_be_narrowed_to_one_city_ignoring_case_and_spacing(client, db_session, test_user):
+    await _add_properties(db_session, test_user, [("A", "Bengaluru", ["a"]), ("B", "Goa", ["b"]), ("C", " bengaluru ", ["c"])])
+
+    names = [p["name"] for p in (await client.get(f"/api/v1/properties/gallery/host/{test_user.id}?city=BENGALURU")).json()]
+
+    assert names == ["A", "C"]
+
+
+async def test_host_gallery_for_an_unknown_host_or_a_bad_id(client):
+    import uuid
+
+    assert (await client.get(f"/api/v1/properties/gallery/host/{uuid.uuid4()}")).json() == []
+    assert (await client.get("/api/v1/properties/gallery/host/not-a-uuid")).status_code == 422
+
+
+async def test_the_host_gallery_route_does_not_swallow_the_single_property_gallery(client, db_session, test_user):
+    await _add_properties(db_session, test_user, [("One", "Goa", ["p1"])])
+    from sqlalchemy import select
+
+    from app.models.property import Property
+
+    prop = (await db_session.scalars(select(Property).where(Property.name == "One"))).one()
+
+    single = await client.get(f"/api/v1/properties/{prop.id}/gallery")
+    listed = await client.get("/api/v1/properties/gallery?ids=" + str(prop.id))
+
+    assert single.status_code == 200 and single.json()["name"] == "One"
+    assert listed.status_code == 200 and [p["name"] for p in listed.json()] == ["One"]
+>>>>>>> Stashed changes

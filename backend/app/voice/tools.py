@@ -67,7 +67,12 @@ from app.schemas.tool import (
 )
 from app.services import agent_config_service, custom_fields, lead_service, spacez_stay_requests, tool_handlers
 from app.services.amenity_taxonomy import canonicalize_amenities, canonicalize_amenity
-from app.services.property.budget import coerce_budget_basis, infer_budget_basis, mentions_amount
+from app.services.property.budget import (
+    canonical_budget_band,
+    coerce_budget_basis,
+    infer_budget_basis,
+    mentions_amount,
+)
 from app.services.property.retrieval import location_match
 from app.services.property.pitch_formatter import (
     RECOMMENDATION_FAILED_TEXT,
@@ -1166,7 +1171,13 @@ def build_voice_tools(
             property_recommendation_guard.record_tool_result("recommend_properties", recommendation_failed_result())
 
     @tool(
-        aliases={"budget": "budget_amount"},
+        aliases={
+            "budget": "budget_amount",
+            "budget_max": "budget_amount",
+            "max_budget": "budget_amount",
+            "min_budget": "budget_min",
+            "budget_approx": "budget_approximate",
+        },
         internal_error_text=RECOMMENDATION_FAILED_TEXT,
         on_internal_error=_arm_recommendation_failure,
     )
@@ -1175,6 +1186,8 @@ def build_voice_tools(
         budget_amount: float | None = None,
         budget_basis: str | None = None,
         budget_currency: str | None = None,
+        budget_min: float | None = None,
+        budget_approximate: bool = False,
         nights: int | None = None,
         num_guests: int | None = None,
         preferred_location: str | None = None,
@@ -1209,6 +1222,19 @@ def build_voice_tools(
                 of nights.
             budget_currency: Only if the guest named a currency other than
                 rupees (e.g. "USD") -- never convert it yourself.
+            budget_min: ONLY when the guest gave a price RANGE ("10 to 15k",
+                "between 4 and 6 thousand a night", "10-15k for the whole
+                stay"): the LOWER figure here and the HIGHER figure in
+                budget_amount, both in the same basis. Leave unset for every
+                single figure ("under 10k", "around 4k", "4k a night"), never
+                invent a lower bound the guest didn't say. Pass 0 only if the
+                guest drops an earlier lower bound ("actually, just under 15k").
+            budget_approximate: True ONLY when the guest says "around", "about",
+                "roughly", "approximately" or "aaspaas" with ONE figure ("around
+                4k"): the search then covers a band either side of it instead
+                of treating it as a hard ceiling. budget_amount stays the
+                figure they said (4000). False for "under", "less than", "max",
+                "at most", a plain amount, or a range.
             nights: Number of nights the guest wants to stay, if known.
             num_guests: Number of guests, if known.
             preferred_location: Preferred city/area, if known. Write the place name in
@@ -1315,7 +1341,12 @@ def build_voice_tools(
         # call's own explicit argument always wins if the model did supply one
         # -- this only fills a gap, never overrides a real value just given.
         effective_num_guests = num_guests if num_guests is not None else state.slots.get("num_guests")
-        effective_budget = budget_amount if budget_amount is not None else state.slots.get("budget")
+        # Price range / "around": budget_min is only ever set for a real range, and a
+        # call that omits the budget (or restates the same figure) keeps the stored
+        # range -- see ConversationState.resolve_budget_band.
+        effective_budget, effective_budget_min, effective_approximate = state.resolve_budget_band(
+            budget_amount, budget_min, budget_approximate
+        )
         # Explicit budget semantics (app/services/property/budget.py): the
         # basis the model passed wins; if it left it unset, the guest's own
         # recent words (deterministic phrase match), then the basis already
@@ -1383,6 +1414,9 @@ def build_voice_tools(
             derived_budget = state.resolve_cheaper_budget()
             if derived_budget is not None:
                 effective_budget, effective_basis, budget_is_derived = derived_budget, "per_night", True
+                # A derived "cheaper" ceiling is a single plain figure: any range/around
+                # from before no longer applies to it.
+                effective_budget_min, effective_approximate = None, False
         if larger_than_shown and effective_num_guests is None:
             effective_num_guests = state.resolve_larger_num_guests()
             num_guests_is_derived = effective_num_guests is not None
@@ -1457,6 +1491,8 @@ def build_voice_tools(
                 budget_amount=effective_budget,
                 budget_basis=effective_basis,
                 budget_currency=budget_currency or "INR",
+                budget_min=effective_budget_min,
+                budget_approximate=effective_approximate,
                 nights=budget_nights,
                 num_guests=effective_num_guests,
                 preferred_location=effective_location,
@@ -1492,7 +1528,7 @@ def build_voice_tools(
         if hosting_gathering:
             state.set_slot("hosting_gathering", True)
         if not budget_is_derived and effective_budget is not None:
-            state.set_slot("budget", effective_budget)
+            state.store_budget_band(effective_budget, effective_budget_min, effective_approximate)
             # Only stored alongside a real amount -- "how much per night?"
             # with no budget given must not pin a basis a later, different
             # amount would silently inherit.
@@ -1543,7 +1579,15 @@ def build_voice_tools(
             outcome = ToolOutcome.no_results(rendered_result)
         await params.result_callback(outcome)
 
-    @tool(aliases={"budget": "budget_amount"})
+    @tool(
+        aliases={
+            "budget": "budget_amount",
+            "budget_max": "budget_amount",
+            "max_budget": "budget_amount",
+            "min_budget": "budget_min",
+            "budget_approx": "budget_approximate",
+        }
+    )
     async def update_lead(
         params: FunctionCallParams,
         guest_name: str | None = None,
@@ -1558,6 +1602,8 @@ def build_voice_tools(
         purpose_of_stay: str | None = None,
         budget_amount: float | None = None,
         budget_basis: str | None = None,
+        budget_min: float | None = None,
+        budget_approximate: bool = False,
         preferred_location: str | None = None,
         lead_temperature: LeadTemperature | None = None,
         properties_discussed: list[str] | None = None,
@@ -1612,6 +1658,11 @@ def build_voice_tools(
                 name and meaning as recommend_properties' budget_amount).
             budget_basis: "per_night" or "total_stay", exactly as for
                 recommend_properties -- leave unset if the guest didn't say.
+            budget_min: Only for a price RANGE ("10 to 15k"): the lower figure,
+                with the higher one in budget_amount -- same meaning as
+                recommend_properties' budget_min. Leave unset otherwise.
+            budget_approximate: True only for "around/about/roughly X" with one
+                figure -- same meaning as recommend_properties' budget_approximate.
             preferred_location: Preferred city/area, if known. Write the place name in
                 English letters ("Indiranagar", never Devanagari): the search matches on Latin spelling.
             lead_temperature: One of very_hot, hot, warm, cold. very_hot only when the guest
@@ -1668,7 +1719,13 @@ def build_voice_tools(
                     window_end=window_end,
                     num_guests=num_guests,
                     purpose_of_stay=purpose_of_stay,
-                    budget=budget_amount,
+                    # The lead keeps THE figure (the ceiling / upper end), never an
+                    # inverted range's lower one.
+                    budget=(
+                        canonical_budget_band(budget_amount, budget_min)[0] or budget_amount
+                        if budget_amount is not None and budget_min
+                        else budget_amount
+                    ),
                     preferred_location=preferred_location,
                     lead_temperature=lead_temperature,
                     properties_discussed=properties_discussed,
@@ -1710,7 +1767,8 @@ def build_voice_tools(
                     )
                     state.set_slot("window_end", args.window_end.isoformat() if args.window_end else None)
                 state.set_slot("num_guests", args.num_guests)
-                state.set_slot("budget", args.budget)
+                if args.budget is not None:
+                    state.store_budget_band(*state.resolve_budget_band(args.budget, budget_min, budget_approximate))
                 # Call-local only (no Lead column), same as nights -- read
                 # back by recommend_properties' wrapper.
                 if coerce_budget_basis(budget_basis) != "unspecified":

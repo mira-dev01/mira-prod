@@ -241,23 +241,47 @@ def _rupees(amount: float) -> str:
     return f"₹{amount:,.0f}"
 
 
+def _amount_phrase(budget: BudgetConstraint) -> str:
+    """The figure(s) as the guest said them: "₹7,000", "₹10,000 to ₹15,000",
+    "around ₹4,000"."""
+    if budget.is_range:
+        return f"{_rupees(budget.min_amount)} to {_rupees(budget.amount)}"
+    if budget.approximate:
+        return f"around {_rupees(budget.amount)}"
+    return _rupees(budget.amount)
+
+
 def _budget_phrase(budget: BudgetConstraint) -> str:
     """The applied budget in the guest's own basis, with the other basis
     pre-computed alongside it -- the model relays these numbers, it never
     derives one from the other itself."""
     if budget.basis == "total_stay":
         nightly = _rupees(budget.max_nightly_rate)
-        return f"{_rupees(budget.amount)} total for {budget.nights} nights (about {nightly} a night)"
-    phrase = f"{_rupees(budget.amount)} per night"
-    if budget.max_total_rate is not None and budget.nights and budget.nights > 1:
-        phrase += f" ({_rupees(budget.max_total_rate)} for {budget.nights} nights)"
-    if budget.basis_assumed:
-        phrase += " -- assumed per night since the guest didn't say; don't ask about it again"
+        if budget.min_nightly_rate is not None:
+            nightly = f"{_rupees(budget.min_nightly_rate)} to {nightly}"
+        phrase = f"{_amount_phrase(budget)} total for {budget.nights} nights (about {nightly} a night)"
+    else:
+        phrase = f"{_amount_phrase(budget)} per night"
+        if budget.max_total_rate is not None and budget.nights and budget.nights > 1:
+            if budget.floor is not None:
+                total = f"{_rupees(budget.floor * budget.nights)} to {_rupees(budget.max_total_rate)}"
+            else:
+                total = _rupees(budget.max_total_rate)
+            phrase += f" ({total} for {budget.nights} nights)"
+        if budget.basis_assumed:
+            phrase += " -- assumed per night since the guest didn't say; don't ask about it again"
+    if budget.approximate:
+        # "Around" is a band, not a ceiling: say what was actually applied so
+        # the agent never describes a ₹4,500 pick as "over their 4k".
+        phrase += (
+            f" -- 'around' was applied as roughly {_rupees(budget.floor)} to {_rupees(budget.ceiling)} "
+            f"({_rupees(budget.amount)} is the centre, not a hard ceiling)"
+        )
     return phrase
 
 
 def _clarification_text(budget: BudgetConstraint) -> str:
-    amount = _rupees(budget.amount)
+    amount = _amount_phrase(budget)
     if budget.clarification == "budget_basis":
         question = f"is that {amount} per night, or {amount} for the entire stay?"
     elif budget.clarification == "stay_length" and budget.basis == "total_stay":
@@ -275,13 +299,26 @@ def _clarification_text(budget: BudgetConstraint) -> str:
 def _format_near_budget_line(card: PropertyCard, budget: BudgetConstraint) -> str:
     sp = card.stay_price
     total = sp.total if sp is not None else None
-    over = _rupees(budget.over_budget_by(card.applicable_nightly_rate, total))
+    below = budget.position(card.applicable_nightly_rate, total) == "below"
+    gap = _rupees(
+        budget.under_budget_by(card.applicable_nightly_rate, total)
+        if below
+        else budget.over_budget_by(card.applicable_nightly_rate, total)
+    )
+    direction = "under" if below else "over"
     if budget.basis == "total_stay" and total is not None:
-        price = f"{_rupees(total)} for {sp.nights} nights, {over} over their total budget"
+        price = f"{_rupees(total)} for {sp.nights} nights, {gap} {direction} their total budget"
     else:
-        price = f"{_rupees(card.applicable_nightly_rate)} a night, {over} a night over their budget"
+        price = f"{_rupees(card.applicable_nightly_rate)} a night, {gap} a night {direction} their budget"
+    if below:
+        label = (
+            "Slightly BELOW the guest's budget range (cheaper than the range they asked for -- only mention as an "
+            "alternative, never as inside their range)"
+        )
+    else:
+        label = "Slightly ABOVE the guest's budget (only mention as a stretch option, never as within budget)"
     return (
-        f"Slightly ABOVE the guest's budget (only mention as a stretch option, never as within budget): "
+        f"{label}: "
         f"{card.spoken_name} in {card.city or 'unlisted city'} at {price}, sleeps {card.max_guests}. "
         f"(property_id: {card.property_id})"
     )
@@ -384,7 +421,7 @@ def render_recommendation_text(result: RecommendationResult) -> str:
             return _NOT_FOUND_TEXT
         if near_lines:
             lines = [
-                "Nothing is within the guest's budget -- say that first, then offer these as stretch options.",
+                "Nothing is within the guest's budget -- say that first, then offer these as the closest alternatives.",
                 *near_lines,
                 *lines,
             ]

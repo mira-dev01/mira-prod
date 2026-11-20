@@ -163,7 +163,14 @@ def _format_slots(state: ConversationState) -> str:
                 if state.budget_basis_clarification_asked
                 else " (per night vs total not stated -- only ask if recommend_properties asks)",
             )
-            value = f"~₹{value:,.0f}{basis}"
+            low = state.slots.get("budget_min")
+            if low:
+                # A range: both ends, so the agent never reduces "10-15k" to "15k".
+                value = f"₹{low:,.0f} to ₹{value:,.0f}{basis} (a range -- keep both ends)"
+            elif state.slots.get("budget_approximate"):
+                value = f"around ₹{value:,.0f}{basis}"
+            else:
+                value = f"~₹{value:,.0f}{basis}"
         text = f"{label}: {value}"
         salience = state.attention.get(f"slot:{key}")
         if salience is not None and salience.count >= 2:

@@ -34,6 +34,17 @@ NEAR_BUDGET_STRETCH = 1.15
 # pitched. Beyond this it stops being a stretch the guest might say yes to.
 UPSELL_MAX_OVER_BUDGET = 1.5
 
+# "Around 4k" / "about 4k" / "roughly 4k" is a band, not a ceiling: the guest
+# is not asking for "4,000 or less" (a ₹2,500 place is not what they mean) and
+# not for "anything up to 5,000" either. +/-15% matches NEAR_BUDGET_STRETCH so
+# there is one tolerance in the product, not two.
+AROUND_TOLERANCE = 0.15
+
+# A property just under a stated range's lower bound ("10-15k", it costs 9.2k)
+# is the mirror of NEAR_BUDGET_STRETCH: never a match, but a fair labelled
+# alternative when nothing is inside the range.
+NEAR_RANGE_FLOOR_STRETCH = 0.85
+
 _BASIS_ALIASES: dict[str, BudgetBasis] = {
     "per night": "per_night",
     "pernight": "per_night",
@@ -58,13 +69,53 @@ def coerce_budget_basis(value: str | None) -> BudgetBasis:
     return _BASIS_ALIASES.get(value.strip().lower().replace("-", " ").replace("_", " "), "unspecified")
 
 
+def canonical_budget_band(
+    amount: float | None,
+    min_amount: float | None = None,
+    approximate: bool = False,
+) -> tuple[float | None, float | None, bool]:
+    """The guest's stated figures -> (max, min, approximate), cleaned up once
+    so every caller (tool wrapper, slots, filter) agrees on what was meant.
+
+    - max (`amount`) is the single figure for "under 10k" / "around 4k" and the
+      UPPER figure of a range ("10-15k" -> 15000); `min` is only ever set for a
+      real range, and is None otherwise.
+    - A range given the wrong way round ("15 to 10k") is swapped; a "range"
+      whose two ends are equal is just a single budget.
+    - "around" only makes sense for one figure: an explicit range already says
+      exactly what the guest will accept, so approximate is dropped for it.
+    - A min with no max is not a budget at all (nothing to compare it to), and
+      is dropped rather than guessed at."""
+    if amount is None or amount <= 0:
+        return None, None, False
+    amount = float(amount)
+    low = float(min_amount) if min_amount is not None and min_amount > 0 else None
+    if low is not None and low > amount:
+        amount, low = low, amount
+    if low is not None and low == amount:
+        low = None
+    return amount, low, bool(approximate) and low is None
+
+
+def _band(amount: float, min_amount: float | None, approximate: bool) -> tuple[float, float | None]:
+    """(ceiling, floor) in the guest's own basis."""
+    if approximate:
+        return round(amount * (1 + AROUND_TOLERANCE), 2), round(amount * (1 - AROUND_TOLERANCE), 2)
+    return amount, min_amount
+
+
 @dataclass(frozen=True)
 class BudgetConstraint:
+    # `amount` is the figure as the guest said it: the ceiling for "under X",
+    # the centre for "around X", the UPPER end for a range. The real bounds
+    # the filter applies are ceiling / floor below (in the guest's own basis).
     amount: float
     basis: BudgetBasis
     nights: int | None
     currency: str = SUPPORTED_CURRENCY
     # None whenever the constraint can't be applied yet (see clarification).
+    # Both are the CEILING (including the "around" tolerance), expressed per
+    # night and for the whole stay.
     max_nightly_rate: float | None = None
     max_total_rate: float | None = None
     clarification: ClarificationNeeded | None = None
@@ -72,43 +123,94 @@ class BudgetConstraint:
     # clarification was already asked, and per night was assumed (the
     # common reading) rather than asking again.
     basis_assumed: bool = False
+    # Lower end of an explicit range ("10-15k"), in the guest's own basis;
+    # None for every non-range budget -- the existing single-ceiling behaviour.
+    min_amount: float | None = None
+    # "Around X": a +/-AROUND_TOLERANCE band centred on `amount`.
+    approximate: bool = False
+    min_nightly_rate: float | None = None
 
     @property
     def is_applicable(self) -> bool:
         return self.clarification is None and self.max_nightly_rate is not None
 
-    def fits(self, per_night: float, total: float | None = None) -> bool:
-        """Strictly within budget, on the applicable price. total_stay
-        compares the stay total directly (never a divided-down nightly
-        ceiling, so ₹14,000/3 nights can't lose a paisa to rounding);
-        per_night compares the effective nightly rate. A property with no
-        usable price (<= 0) never fits -- its fit is unknown."""
-        if not self.is_applicable or per_night <= 0:
-            return False
+    @property
+    def is_range(self) -> bool:
+        return self.min_amount is not None
+
+    @property
+    def ceiling(self) -> float:
+        """Highest acceptable figure in the guest's own basis."""
+        return _band(self.amount, self.min_amount, self.approximate)[0]
+
+    @property
+    def floor(self) -> float | None:
+        """Lowest acceptable figure in the guest's own basis (None = no lower bound)."""
+        return _band(self.amount, self.min_amount, self.approximate)[1]
+
+    def _scaled(self, per_night: float, total: float | None) -> tuple[float, float | None, float]:
+        """(value, floor, ceiling) on one scale: the stay total when the guest
+        gave a total budget (compared directly, never via a divided-down
+        nightly figure, so ₹14,000/3 nights can't lose a paisa to rounding),
+        otherwise the effective nightly rate."""
         if self.basis == "total_stay" and total is not None:
-            return total <= self.amount
-        return per_night <= self.max_nightly_rate
+            return total, self.floor, self.ceiling
+        return per_night, self.min_nightly_rate, self.max_nightly_rate
+
+    def position(self, per_night: float, total: float | None = None) -> Literal["within", "above", "below", "unknown"]:
+        """Where this price sits against the guest's budget, on the applicable
+        price. A property with no usable price (<= 0) is "unknown" -- its fit
+        is unknown, so it never counts as within."""
+        if not self.is_applicable or per_night <= 0:
+            return "unknown"
+        value, low, high = self._scaled(per_night, total)
+        if value > high:
+            return "above"
+        if low is not None and value < low:
+            return "below"
+        return "within"
+
+    def fits(self, per_night: float, total: float | None = None) -> bool:
+        """Within budget on the applicable price: at or under the ceiling and,
+        for a range / "around", at or over the floor."""
+        return self.position(per_night, total) == "within"
 
     def over_but_within(self, factor: float, per_night: float, total: float | None = None) -> bool:
-        """Over budget, but by no more than `factor` x the budget (in the
-        guest's own basis)."""
-        if not self.is_applicable or per_night <= 0 or self.fits(per_night, total):
+        """Over the ceiling, but by no more than `factor` x the ceiling (in the
+        guest's own basis). A price under a range's floor is never "over"."""
+        if self.position(per_night, total) != "above":
             return False
-        if self.basis == "total_stay" and total is not None:
-            return total <= self.amount * factor
-        return per_night <= self.max_nightly_rate * factor
+        value, _, high = self._scaled(per_night, total)
+        return value <= high * factor
 
     def within_stretch(self, per_night: float, total: float | None = None) -> bool:
         """Over budget but within NEAR_BUDGET_STRETCH of it -- eligible
         only as a clearly-labelled near-budget alternative."""
         return self.over_but_within(NEAR_BUDGET_STRETCH, per_night, total)
 
+    def just_below_range(self, per_night: float, total: float | None = None) -> bool:
+        """Under a range's / "around" band's floor, but not by much -- eligible
+        only as a clearly-labelled alternative, never as a match. Always False
+        for a plain "under X" budget (no floor: cheaper is simply a fit)."""
+        if self.position(per_night, total) != "below":
+            return False
+        value, low, _ = self._scaled(per_night, total)
+        return low is not None and value >= low * NEAR_RANGE_FLOOR_STRETCH
+
     def over_budget_by(self, per_night: float, total: float | None = None) -> float:
-        """How far over, in the guest's own basis (per night, or for the
-        whole stay) -- for labelling a near-budget alternative honestly."""
-        if self.basis == "total_stay" and total is not None:
-            return max(0.0, total - self.amount)
-        return max(0.0, per_night - (self.max_nightly_rate or 0.0))
+        """How far over the ceiling, in the guest's own basis (per night, or
+        for the whole stay) -- for labelling a near-budget alternative honestly."""
+        if per_night <= 0 or not self.is_applicable:
+            return 0.0
+        value, _, high = self._scaled(per_night, total)
+        return max(0.0, value - high)
+
+    def under_budget_by(self, per_night: float, total: float | None = None) -> float:
+        """How far under the floor, in the guest's own basis."""
+        if per_night <= 0 or not self.is_applicable:
+            return 0.0
+        value, low, _ = self._scaled(per_night, total)
+        return max(0.0, low - value) if low is not None else 0.0
 
 
 def normalize_budget(
@@ -117,24 +219,37 @@ def normalize_budget(
     nights: int | None,
     currency: str | None = SUPPORTED_CURRENCY,
     assume_per_night: bool = False,
+    min_amount: float | None = None,
+    approximate: bool = False,
 ) -> BudgetConstraint | None:
     """amount + basis + stay length -> the canonical ceilings. None means no
     budget was given at all (no filter). assume_per_night: the basis
     question was already asked once this call and still isn't answered --
-    take the common per-night reading instead of asking again. Never infers total_stay just
-    because nights is known, and never infers per_night just because the
+    take the common per-night reading instead of asking again. Never infers total_stay
+    just because nights is known, and never infers per_night just because the
     number "looks nightly" -- an unspecified basis is only resolvable when
-    the two readings coincide (a 1-night stay)."""
-    if amount is None or amount <= 0:
+    the two readings coincide (a 1-night stay).
+
+    min_amount: the LOWER end when the guest gave a range ("10 to 15k" ->
+    amount=15000, min_amount=10000), in the same basis as `amount`.
+    approximate: "around/about X" -- a +/-AROUND_TOLERANCE band around
+    `amount`. Both leave a plain single budget exactly as it was."""
+    amount, min_amount, approximate = canonical_budget_band(amount, min_amount, approximate)
+    if amount is None:
         return None
     resolved_basis = coerce_budget_basis(basis)
     resolved_nights = nights if nights is not None and nights > 0 else None
     resolved_currency = (currency or SUPPORTED_CURRENCY).strip().upper()
-    amount = float(amount)
 
-    def _constraint(**kwargs) -> BudgetConstraint:
+    def _constraint(basis_: BudgetBasis = resolved_basis, **kwargs) -> BudgetConstraint:
         return BudgetConstraint(
-            amount=amount, basis=resolved_basis, nights=resolved_nights, currency=resolved_currency, **kwargs
+            amount=amount,
+            basis=basis_,
+            nights=resolved_nights,
+            currency=resolved_currency,
+            min_amount=min_amount,
+            approximate=approximate,
+            **kwargs,
         )
 
     if resolved_currency != SUPPORTED_CURRENCY:
@@ -143,10 +258,14 @@ def normalize_budget(
         # exists to prevent.
         return _constraint(clarification="currency")
 
+    # The guest's figures as a ceiling / floor, before they are split into
+    # nightly and total.
+    ceiling, floor = _band(amount, min_amount, approximate)
+
     if resolved_basis == "unspecified":
         if resolved_nights == 1:
             # Per night and total are the same number for a 1-night stay.
-            return _constraint(max_nightly_rate=amount, max_total_rate=amount)
+            return _constraint(max_nightly_rate=ceiling, max_total_rate=ceiling, min_nightly_rate=floor)
         if resolved_nights is None:
             # Ask the stay length first, not the basis: the flow needs it
             # anyway, and once known it may make the basis question moot
@@ -154,26 +273,29 @@ def normalize_budget(
             return _constraint(clarification="stay_length")
         if not assume_per_night:
             return _constraint(clarification="budget_basis")
-        return BudgetConstraint(
-            amount=amount,
-            basis="per_night",
-            nights=resolved_nights,
-            currency=resolved_currency,
-            max_nightly_rate=amount,
-            max_total_rate=amount * resolved_nights,
+        return _constraint(
+            "per_night",
+            max_nightly_rate=ceiling,
+            max_total_rate=ceiling * resolved_nights,
+            min_nightly_rate=floor,
             basis_assumed=True,
         )
 
     if resolved_basis == "per_night":
         return _constraint(
-            max_nightly_rate=amount,
-            max_total_rate=amount * resolved_nights if resolved_nights else None,
+            max_nightly_rate=ceiling,
+            max_total_rate=ceiling * resolved_nights if resolved_nights else None,
+            min_nightly_rate=floor,
         )
 
     # total_stay
     if resolved_nights is None:
         return _constraint(clarification="stay_length")
-    return _constraint(max_nightly_rate=amount / resolved_nights, max_total_rate=amount)
+    return _constraint(
+        max_nightly_rate=ceiling / resolved_nights,
+        max_total_rate=ceiling,
+        min_nightly_rate=floor / resolved_nights if floor is not None else None,
+    )
 
 
 # --- Deterministic basis backstop from the guest's own words -------------

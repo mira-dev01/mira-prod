@@ -234,7 +234,11 @@ async def recommend_properties(
             return sp.per_night, sp.total
 
         if not args.cheaper_than_shown:
-            near_budget = [p for p in merged if budget.within_stretch(*_price(p))]
+            # Just over the ceiling, or (range / "around" only) just under
+            # the floor -- labelled alternatives, never matches.
+            near_budget = [
+                p for p in merged if budget.within_stretch(*_price(p)) or budget.just_below_range(*_price(p))
+            ]
         over_budget = [p for p in merged if not budget.fits(*_price(p))]
         merged = [p for p in merged if budget.fits(*_price(p))]
 
@@ -585,12 +589,15 @@ def _log_decision(
     didn't it offer X" is answerable from logs alone. Search criteria and
     counts only -- no guest name/phone."""
     logger.info(
-        "recommend_properties_decision call_session_id=%s budget_amount=%s budget_basis=%s basis_assumed=%s "
+        "recommend_properties_decision call_session_id=%s budget_amount=%s budget_min=%s budget_approximate=%s "
+        "budget_basis=%s basis_assumed=%s "
         "budget_currency=%s nights=%s max_nightly_rate=%s max_total_rate=%s budget_clarification=%s location=%s "
         "num_guests=%s amenities=%s candidate_count=%d pricing_evaluated_count=%d estimate_count=%d "
         "eligible_count=%s matched_count=%d near_budget_count=%d offer_count=%d upsell_count=%d",
         call_session_id,
         budget.amount if budget else None,
+        budget.min_amount if budget else None,
+        budget.approximate if budget else None,
         budget.basis if budget else None,
         budget.basis_assumed if budget else None,
         budget.currency if budget else None,

@@ -4,8 +4,12 @@ import re
 import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+<<<<<<< Updated upstream
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
+=======
+from sqlalchemy import func, select
+>>>>>>> Stashed changes
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.common import get_owned_property
@@ -475,6 +479,29 @@ async def get_properties_gallery(ids: str = Query("", max_length=600), db: Async
         return []
     found = {p.id: p for p in (await db.scalars(select(Property).where(Property.id.in_(wanted)))).all()}
     return [found[i] for i in wanted if i in found]
+
+
+# Most properties one host-wide gallery page will list (a portfolio, not a stream).
+_HOST_GALLERY_MAX = 200
+
+
+@router.get("/gallery/host/{host_id}", response_model=list[PropertyGalleryOut])
+async def get_host_gallery(
+    host_id: uuid.UUID,
+    city: str | None = Query(None, max_length=120),
+    db: AsyncSession = Depends(get_db),
+) -> list[Property]:
+    """No-auth public endpoint behind the guest-facing page that shows EVERY property of one host with its photos
+    (frontend /p/host/{host_id}), so a single link can be sent to a guest. Same minimal PropertyGalleryOut as the
+    other galleries: nothing a listing page would not already show. Ordered by city then name; a property with no
+    photos is left out; `city` narrows it to one city (case-insensitive, whole name). Declared before
+    /{property_id} so "gallery" is not read as an id."""
+    stmt = select(Property).where(Property.user_id == host_id)
+    if city and city.strip():
+        stmt = stmt.where(func.lower(func.trim(Property.city)) == city.strip().lower())
+    city_key = func.lower(func.trim(Property.city))  # "Bengaluru" and " bengaluru " are one city, so one group
+    rows = (await db.scalars(stmt.order_by(city_key, func.lower(Property.name), Property.id))).all()
+    return [p for p in rows if p.photos][:_HOST_GALLERY_MAX]
 
 
 @router.get("/{property_id}", response_model=PropertyOut)
