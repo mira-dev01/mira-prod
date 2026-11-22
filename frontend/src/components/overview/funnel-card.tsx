@@ -46,8 +46,10 @@ export function FunnelCard({
               {infoButton}
             </h2>
           </div>
-          {loading || !stages ? (
+          {loading ? (
             <Skeleton className="h-40 w-full" />
+          ) : !stages ? (
+            <p className="text-sm text-muted-foreground">Funnel unavailable right now.</p>
           ) : stages.every((s) => s.value === 0) ? (
             <p className="text-sm text-muted-foreground">No conversations in this period.</p>
           ) : (

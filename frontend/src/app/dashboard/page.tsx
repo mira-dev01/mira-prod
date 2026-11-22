@@ -98,20 +98,20 @@ export default function OverviewPage() {
           <Sheet>
             <FunnelCard
               stages={overview?.funnel}
-              info={overview?.info.booking_funnel}
+              info={overview?.info?.booking_funnel}
               loading={overviewLoading && !overview}
               className="md:col-span-5"
             />
             <LeadsCard
               leads={leads ?? []}
-              info={overview?.info.leads}
+              info={overview?.info?.leads}
               loading={leadsLoading}
               onOpenLead={setEditingLead}
               className="md:col-span-7"
             />
             <RecentCallsCard
               calls={calls ?? []}
-              info={overview?.info.recent_calls}
+              info={overview?.info?.recent_calls}
               loading={callsLoading}
               className="md:col-span-7"
             />
@@ -124,7 +124,7 @@ export default function OverviewPage() {
             ) : (
               <NeedsAttentionCard data={overview} loading={overviewLoading && !overview} onChanged={refetchOverview} />
             )}
-            <UnansweredQuestionsCard inSheet limit={4} linkToFaqPage info={overview?.info.unanswered_questions} />
+            <UnansweredQuestionsCard inSheet limit={4} linkToFaqPage info={overview?.info?.unanswered_questions} />
           </Sheet>
         </>
       )}

@@ -11,6 +11,7 @@ agent's behaviour. tests/test_agent_change_tracker.py fails if a new model with 
 is neither listed here nor in IGNORED_MODELS, so the choice is made on purpose.
 """
 
+import logging
 import uuid
 from datetime import datetime, timezone
 
@@ -68,6 +69,8 @@ IGNORED_MODELS = frozenset(
     }
 )
 
+logger = logging.getLogger(__name__)
+
 
 def _changed_columns(obj: object, watched: frozenset[str]) -> bool:
     state = attributes.instance_state(obj)
@@ -100,6 +103,14 @@ def _owner_ids(session: Session, objs: list[object]) -> set[uuid.UUID]:
 
 
 def _mark_agent_customized(session: Session, flush_context: object, instances: object) -> None:
+    # Bookkeeping must never be able to fail a host's save.
+    try:
+        _stamp_owners(session)
+    except Exception:
+        logger.exception("agent change tracking failed")
+
+
+def _stamp_owners(session: Session) -> None:
     touched: list[object] = []
     touched += [o for o in session.new if _touches_agent(o, deleted=False, new=True)]
     touched += [o for o in session.dirty if session.is_modified(o) and _touches_agent(o, deleted=False, new=False)]

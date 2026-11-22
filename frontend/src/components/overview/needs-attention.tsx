@@ -150,7 +150,7 @@ export function NeedsAttentionCard({
           <Link href="/dashboard/leads?tab=tickets" className="hover:underline">
             Needs your attention
           </Link>
-          <InfoButton info={data.info.needs_attention} />
+          <InfoButton info={data.info?.needs_attention} />
         </CellTitle>
         <Badge variant="outline">{total} open</Badge>
       </CardHeader>
