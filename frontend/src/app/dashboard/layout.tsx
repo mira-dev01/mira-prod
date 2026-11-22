@@ -11,6 +11,7 @@ import { SidebarNav } from "@/components/sidebar-nav";
 import { DateRangeProvider } from "@/components/date-range-context";
 import { AccountProblemScreen } from "@/components/account-problem";
 import { DashboardTour } from "@/components/dashboard-tour";
+import { TestAgentPin } from "@/components/test-agent-pin";
 
 function FullScreenLoading() {
   return <div className="fixed inset-0 flex items-center justify-center text-sm text-muted-foreground">Loading…</div>;
@@ -92,6 +93,7 @@ function OnboardingGate({ children }: { children: React.ReactNode }) {
         </main>
       </div>
       <DashboardTour />
+      <TestAgentPin />
     </DateRangeProvider>
     </NavigationProvider>
     </BookingActivityProvider>

@@ -98,7 +98,7 @@ export function PropertyCalendarPanel({
         {property && (
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-1 border border-foreground p-0.5">
+              <div className="flex items-center gap-1 rounded-lg border border-input p-0.5">
                 <Button variant="ghost" size="sm" aria-label="Previous month" onClick={() => setCursor(new Date(year, month - 1, 1))}>
                   ←
                 </Button>
@@ -130,12 +130,12 @@ export function PropertyCalendarPanel({
             {loading && !bookings ? (
               <Skeleton className="h-80 w-full" />
             ) : (
-              <div className="border-t border-l border-foreground">
+              <div className="border-t border-l border-border">
                 <div className="grid grid-cols-7">
                   {WEEKDAYS.map((d, i) => (
                     <div
                       key={i}
-                      className="border-r border-b border-foreground bg-card/70 p-1.5 text-center text-xs font-bold tracking-[0.1em] text-muted-foreground uppercase"
+                      className="border-r border-b border-border bg-card p-1.5 text-center text-xs font-bold tracking-[0.1em] text-muted-foreground uppercase"
                     >
                       {d}
                     </div>

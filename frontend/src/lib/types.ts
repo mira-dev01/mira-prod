@@ -1124,6 +1124,32 @@ export type OverviewData = {
     attribution_confirmations: number;
     high_intent_unconverted: { count: number; potential_value: number | null; valued_count: number };
   };
+  /** All six booking-funnel stages. Stages 1-2 count conversations, 3-6 unique guests. */
+  funnel: FunnelStage[];
+  /** Leads created in the period (follows the date range). */
+  leads: { total: number; open: number; hot: number };
+  /** Open tickets right now (ignores the date range). */
+  actions: { open: number; escalations: number };
+  /** Share of finished conversations that left nothing open; `value` is null with no conversations. */
+  resolution: {
+    value: number | null;
+    resolved: number;
+    total: number;
+    resolved_clean: number;
+    resolved_after_follow_up: number;
+    unresolved: number;
+  };
+  /** Hover text for every card: what it means, how it is calculated, where it comes from. Keyed by metric id. */
+  info: Record<string, OverviewMetricInfo>;
+};
+
+export type OverviewMetricInfo = {
+  label: string;
+  definition: string;
+  formula: string;
+  source: string;
+  /** "period" follows the header date range; "now" is current state. */
+  window: "period" | "now";
 };
 
 // ── Capabilities (backend app/services/capability_registry.py) ─────────
@@ -1322,4 +1348,11 @@ export type AnalyticsEntryInput = {
   hidden?: boolean;
   title?: string | null;
   subtitle?: string | null;
+};
+
+/** GET /agent-config/test-status: has the host changed their agent since their last browser test call? */
+export type AgentTestStatus = {
+  needs_test: boolean;
+  changed_at: string | null;
+  last_tested_at: string | null;
 };

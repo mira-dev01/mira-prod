@@ -23,10 +23,13 @@ from app.models.lead import Lead
 from app.models.notification import Notification
 from app.models.price_event import PriceEvent
 from app.models.property import Property
+from app.models.ticket import Ticket
+from app.models.unanswered_question import UnansweredQuestion
 from app.models.user import User
 from app.schemas.call_classification import QUALIFIED_CALL_TYPES
 from app.services.call_ownership import CallOwner, InvalidCallOwnershipConfigError, resolve_effective_call_owner
 from app.services.call_service import BROWSER_TEST_CALLER_NUMBER
+from app.services import overview_metric_info
 from app.services.lead_temperature import HOT_OR_ABOVE, WARM_OR_ABOVE
 from app.services.recovery_service import NOTIFICATION_CHANNEL_BUSY_RECOVERY
 from app.services.whatsapp_reply_service import NOTIFICATION_CHANNEL_BUSY_RECOVERY_REPLY
@@ -1019,9 +1022,130 @@ async def high_intent_unconverted(db: AsyncSession, scope: AnalyticsScope) -> di
     }
 
 
+# Lead.status values that still need work from the host (booked/closed are done).
+_OPEN_LEAD_STATUSES = ("open", "contacted")
+
+
+async def lead_summary(db: AsyncSession, scope: AnalyticsScope) -> dict:
+    """Overview "Leads": leads created in the period, how many are still open,
+    how many are hot. A lead created by a browser test call is left out unless
+    the test toggle is on, like every other conversation-derived number."""
+    filters = [Lead.user_id == scope.host.id, Lead.created_at >= scope.since, Lead.created_at < scope.until]
+    if not scope.include_test_calls:
+        filters.append(
+            Lead.id.not_in(
+                select(CallSession.lead_id).where(
+                    CallSession.user_id == scope.host.id,
+                    CallSession.caller_number == BROWSER_TEST_CALLER_NUMBER,
+                    CallSession.lead_id.is_not(None),
+                )
+            )
+        )
+    rows = (await db.execute(select(Lead.status, Lead.lead_temperature).where(*filters))).all()
+    return {
+        "total": len(rows),
+        "open": sum(1 for status, _ in rows if status in _OPEN_LEAD_STATUSES),
+        "hot": sum(1 for _, temperature in rows if temperature in HOT_OR_ABOVE),
+    }
+
+
+async def open_actions(db: AsyncSession, scope: AnalyticsScope) -> dict:
+    """Overview "Open actions": tickets the host still has to act on. Current
+    state -- the date range does not change it. Tickets raised by a browser
+    test call are left out unless the test toggle is on."""
+    filters = [Ticket.user_id == scope.host.id, Ticket.status == "open"]
+    if not scope.include_test_calls:
+        filters.append(
+            or_(
+                Ticket.call_session_id.is_(None),
+                Ticket.call_session_id.not_in(
+                    select(CallSession.id).where(CallSession.caller_number == BROWSER_TEST_CALLER_NUMBER)
+                ),
+            )
+        )
+    kinds = list((await db.scalars(select(Ticket.kind).where(*filters))).all())
+    return {"open": len(kinds), "escalations": sum(1 for kind in kinds if kind == "escalation")}
+
+
+async def resolution_rate(db: AsyncSession, scope: AnalyticsScope, conversations: _Conversations) -> dict:
+    """Overview "Resolution rate": finished conversations that left nothing open.
+
+    A conversation is *unresolved* while any of these is outstanding:
+      - a ticket it raised is still open;
+      - a question Mira couldn't answer on it is still pending;
+      - it was escalated and no ticket for it has been closed yet.
+    Everything else is resolved -- including conversations that did raise a
+    ticket, a question or an escalation which the host has since completed
+    (`resolved_after_follow_up`), so closing work on the Overview moves the number.
+    A ticket counts as closed when it is done or dismissed. Conversations still
+    in progress are not counted. Same conversation set and test-call rule as the
+    booking funnel's first stage.
+    """
+    finished = [c for c in conversations.calls if c.status != "in_progress"]
+    empty = {
+        "value": None,
+        "resolved": 0,
+        "total": 0,
+        "resolved_clean": 0,
+        "resolved_after_follow_up": 0,
+        "unresolved": 0,
+    }
+    if not finished:
+        return empty
+    ids = [c.id for c in finished]
+
+    ticket_rows = (
+        await db.execute(
+            select(Ticket.call_session_id, Ticket.status).where(
+                Ticket.user_id == scope.host.id, Ticket.call_session_id.in_(ids)
+            )
+        )
+    ).all()
+    question_rows = (
+        await db.execute(
+            select(UnansweredQuestion.call_session_id, UnansweredQuestion.status).where(
+                UnansweredQuestion.user_id == scope.host.id, UnansweredQuestion.call_session_id.in_(ids)
+            )
+        )
+    ).all()
+
+    had_follow_up: set[uuid.UUID] = set()
+    still_open: set[uuid.UUID] = set()
+    closed_ticket_calls: set[uuid.UUID] = set()
+    for call_id, status in ticket_rows:
+        had_follow_up.add(call_id)
+        if status == "open":
+            still_open.add(call_id)
+        else:
+            closed_ticket_calls.add(call_id)
+    for call_id, status in question_rows:
+        had_follow_up.add(call_id)
+        if status == "pending":
+            still_open.add(call_id)
+    for call in finished:
+        if call.id in conversations.escalated_call_ids:
+            had_follow_up.add(call.id)
+            if call.id not in closed_ticket_calls:
+                still_open.add(call.id)
+
+    total = len(finished)
+    unresolved = len(still_open)
+    after_follow_up = len(had_follow_up - still_open)
+    resolved = total - unresolved
+    return {
+        "value": _ratio(resolved, total, 3),
+        "resolved": resolved,
+        "total": total,
+        "resolved_clean": resolved - after_follow_up,
+        "resolved_after_follow_up": after_follow_up,
+        "unresolved": unresolved,
+    }
+
+
 async def overview(db: AsyncSession, scope: AnalyticsScope) -> dict:
     conversations = await _load_conversations(db, scope, all_properties=True)
-    stages = {s["key"]: s["value"] for s in booking_funnel(conversations)["stages"]}
+    funnel = booking_funnel(conversations)["stages"]
+    stages = {s["key"]: s["value"] for s in funnel}
     portfolio = await portfolio_performance(db, scope)
     activity = await call_activity(
         db, scope.host.id, scope.property_ids, scope.since, scope.until, include_test_calls=scope.include_test_calls
@@ -1054,6 +1178,13 @@ async def overview(db: AsyncSession, scope: AnalyticsScope) -> dict:
         },
         "mira_attributed_bookings": await _attributed_bookings(db, scope),
         "activity": activity,
+        # All six funnel stages (stage 1-2 count conversations, 3-6 unique guests).
+        "funnel": funnel,
+        "leads": await lead_summary(db, scope),
+        "actions": await open_actions(db, scope),
+        "resolution": await resolution_rate(db, scope, conversations),
+        # What every card above means, how it is calculated and where it comes from.
+        "info": overview_metric_info.as_payload(),
         "attention": {
             "price_confirmations": confirmation["price_missing"],
             "attribution_confirmations": confirmation["attribution_pending"],

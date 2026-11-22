@@ -146,7 +146,7 @@ export function AnalyticsCustomizer({
         </div>
 
         {conflict && (
-          <p className="border border-foreground px-3 py-2 text-[13px] text-muted-foreground">
+          <p className="rounded-lg border border-border px-3 py-2 text-[13px] text-muted-foreground">
             This layout was changed in another tab or device.{" "}
             <button type="button" className="font-medium text-foreground underline underline-offset-2 hover:no-underline" onClick={onReload}>
               Load the latest version
@@ -156,7 +156,7 @@ export function AnalyticsCustomizer({
 
         <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
           <div className="space-y-2">
-            <h3 className="text-xs font-bold tracking-[0.1em] text-muted-foreground uppercase">On your page</h3>
+            <h3 className="text-xs font-bold tracking-[0.1em] text-heading uppercase">On your page</h3>
             <ReorderableList
               items={draft.shown}
               onReorder={(shown) => onDraftChange({ ...draft, shown })}
@@ -220,7 +220,7 @@ export function AnalyticsCustomizer({
           </div>
 
           <div className="space-y-2">
-            <h3 className="text-xs font-bold tracking-[0.1em] text-muted-foreground uppercase">Add metrics</h3>
+            <h3 className="text-xs font-bold tracking-[0.1em] text-heading uppercase">Add metrics</h3>
             {draft.hidden.length === 0 ? (
               <p className="text-xs text-muted-foreground">Every available metric is on your page.</p>
             ) : (

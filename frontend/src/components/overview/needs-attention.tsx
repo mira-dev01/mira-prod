@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { CircleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,7 +11,10 @@ import { Cell, CellCard, CellTitle } from "@/components/ui/sheet";
 import { RightPanelFooterButton } from "@/components/ui/right-panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BookingReconciliationPanel } from "@/components/booking-reconciliation";
+import { useAsync } from "@/hooks/use-async";
 import { api } from "@/lib/api";
+import { InfoButton } from "@/components/overview/info-card";
+import { KIND_LABEL } from "@/components/tickets-tab";
 import { formatINR } from "@/lib/format";
 import type { BookingReconciliation, OverviewData } from "@/lib/types";
 
@@ -48,6 +52,8 @@ export function NeedsAttentionCard({
   loading: boolean;
   onChanged: () => void;
 }) {
+  // Open tickets are current state, like the rest of this card.
+  const { data: tickets } = useAsync(() => api.tickets.list("open"), []);
   const [reviewKind, setReviewKind] = useState<ReviewKind | null>(null);
   const [queue, setQueue] = useState<BookingReconciliation[]>([]);
   const [currentId, setCurrentId] = useState<string | null>(null);
@@ -93,7 +99,8 @@ export function NeedsAttentionCard({
   }
 
   const { price_confirmations, attribution_confirmations, high_intent_unconverted: hot } = data.attention;
-  const total = price_confirmations + attribution_confirmations + hot.count;
+  const openTickets = tickets ?? [];
+  const total = price_confirmations + attribution_confirmations + hot.count + openTickets.length;
   const valueNote =
     hot.potential_value === null
       ? undefined
@@ -139,7 +146,12 @@ export function NeedsAttentionCard({
   return (
     <CellCard>
       <CardHeader className="flex flex-row items-center justify-between gap-2">
-        <CellTitle>Needs your attention</CellTitle>
+        <CellTitle icon={CircleAlert}>
+          <Link href="/dashboard/leads?tab=tickets" className="hover:underline">
+            Needs your attention
+          </Link>
+          <InfoButton info={data.info.needs_attention} />
+        </CellTitle>
         <Badge variant="outline">{total} open</Badge>
       </CardHeader>
       <CardContent>
@@ -180,6 +192,18 @@ export function NeedsAttentionCard({
               }
             />
           )}
+          {openTickets.slice(0, 3).map((t) => (
+            <AttentionRow
+              key={t.id}
+              title={t.summary}
+              description={`${KIND_LABEL[t.kind] ?? t.kind}${t.guest_name ? ` · ${t.guest_name}` : ""}`}
+              action={
+                <Button size="sm" variant="outline" render={<Link href="/dashboard/leads?tab=tickets" />}>
+                  Open
+                </Button>
+              }
+            />
+          ))}
         </ul>
       </CardContent>
       {reviewPanel}

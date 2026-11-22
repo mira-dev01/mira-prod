@@ -1,12 +1,12 @@
+import type { LucideIcon } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
 /**
- * The dashboard layout system ("Visible Grid"): a Sheet is a 12-column grid
- * with a faint construction line on every column (globals.css .field-grid);
- * a Cell is one ruled block that spans whole columns, so every edge lands on
- * a line. Cells in a row share borders and stretch to the same height --
- * nothing floats, nothing is a different size by accident.
+ * The dashboard layout system: a Sheet is a 12-column grid; a Cell is one
+ * soft white card (hairline border, rounded corners) that spans whole
+ * columns. Cells in a row stretch to the same height -- nothing floats,
+ * nothing is a different size by accident.
  *
  *   <Sheet>
  *     <Cell className="md:col-span-4">…</Cell>   // a third of the row
@@ -15,19 +15,19 @@ import { cn } from "@/lib/utils";
  *     </WideCell>
  *   </Sheet>
  *
- * Ink rules (border-foreground) separate blocks; soft rules (border-border)
- * separate rows inside a block.
+ * Cards are separated by the grid gap; soft rules (border-border) separate
+ * rows inside a card.
  */
 
 export function Sheet({ className, ...props }: React.ComponentProps<"div">) {
-  return <div className={cn("field-grid grid grid-cols-12 border-t border-l border-foreground", className)} {...props} />;
+  return <div className={cn("grid grid-cols-12 gap-4", className)} {...props} />;
 }
 
 /** One block. Defaults to full width; narrow it with md:/lg: col-span-* classes. */
 export function Cell({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
-      className={cn("col-span-12 flex min-w-0 flex-col gap-3 border-r border-b border-foreground bg-card/70 p-5", className)}
+      className={cn("col-span-12 flex min-w-0 flex-col gap-3 rounded-xl border border-border bg-card p-5", className)}
       {...props}
     />
   );
@@ -51,7 +51,7 @@ export function Toolbar({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       className={cn(
-        "col-span-12 flex flex-wrap items-center gap-x-4 gap-y-3 border-r border-b border-foreground bg-card/70 px-5 py-3",
+        "col-span-12 flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl border border-border bg-card px-5 py-3",
         className
       )}
       {...props}
@@ -64,15 +64,31 @@ export function Toolbar({ className, ...props }: React.ComponentProps<"div">) {
 export function WideCell({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
-      className={cn("col-span-12 grid grid-cols-subgrid border-r border-b border-foreground bg-card/70", className)}
+      className={cn("col-span-12 grid grid-cols-subgrid overflow-hidden rounded-xl border border-border bg-card", className)}
       {...props}
     />
   );
 }
 
-/** A block's name: small, bold, tracked caps. Carries the section; never competes with values. */
-export function CellTitle({ className, ...props }: React.ComponentProps<"h2">) {
-  return <h2 className={cn("text-xs leading-5 font-bold tracking-[0.1em] text-heading uppercase", className)} {...props} />;
+/** A block's name: sentence case, brick, optional icon. Carries the section; never competes with values. */
+export function CellTitle({
+  className,
+  icon: Icon,
+  children,
+  ...props
+}: React.ComponentProps<"h2"> & {
+  /** A small brick icon before the title. */
+  icon?: LucideIcon;
+}) {
+  return (
+    <h2
+      className={cn("flex items-center gap-2 font-heading text-[15px] leading-5 font-semibold text-heading", className)}
+      {...props}
+    >
+      {Icon && <Icon aria-hidden className="size-4 shrink-0 text-primary" />}
+      {children}
+    </h2>
+  );
 }
 
 /** The one-line plain-language purpose of a block. */

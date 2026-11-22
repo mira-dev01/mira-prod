@@ -33,9 +33,8 @@ import { PropertyReadinessLine } from "@/components/property-readiness";
 import { PortfolioCalendar } from "@/components/portfolio-calendar";
 import { PropertyCalendarPanel } from "@/components/calendar/property-calendar-panel";
 import { propertyReadiness } from "@/lib/property-readiness";
-import { TalkToMiraDialog } from "@/components/talk-to-mira-dialog";
 import { useAsync } from "@/hooks/use-async";
-import { api, ApiError, API_BASE_URL, getToken } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { matchesSearch } from "@/lib/utils";
 import type { AirbnbUrlImportStatus, FaqEntryOut, PolicyOverview, PropertyCreate, PropertyOut } from "@/lib/types";
@@ -130,7 +129,7 @@ function PropertiesList({
   /** Re-reads the policies: a new property can have policies waiting for it, and the pane settles them. */
   onPoliciesChanged: () => void;
 }) {
-  const { isInternalOrg, user } = useAuth();
+  const { user } = useAuth();
   const perPropertyTransfer = user?.notification_preferences.transfer_number_mode === "per_property";
   const { data: properties, loading, refetch } = useAsync(() => api.properties.list(), []);
   // FAQ answers saved per property: the cards show what Mira still doesn't know (see property-readiness.ts).
@@ -148,7 +147,6 @@ function PropertiesList({
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
-  const [talkOpen, setTalkOpen] = useState(false);
   const [phoneBannerDismissed, setPhoneBannerDismissed] = useState(false);
   const [search, setSearch] = useState("");
 
@@ -249,17 +247,6 @@ function PropertiesList({
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Failed to remove property");
     }
-  }
-
-  async function handleTestInBrowser(id: string) {
-    const token = await getToken();
-    if (!token) {
-      toast.error("Not logged in");
-      return;
-    }
-    const backendOrigin = API_BASE_URL.replace(/\/api\/v1\/?$/, "");
-    const url = `${backendOrigin}/api/v1/voice/test?property_id=${id}&token=${encodeURIComponent(token)}`;
-    window.open(url, "_blank");
   }
 
   function handleSetDiscount(id: string) {
@@ -443,14 +430,6 @@ function PropertiesList({
               </div>
             )}
           </RightPanel>
-          {isInternalOrg && (
-            <>
-              <Button variant="secondary" onClick={() => setTalkOpen(true)}>
-                Test full portfolio in browser
-              </Button>
-              <TalkToMiraDialog open={talkOpen} onOpenChange={setTalkOpen} />
-            </>
-          )}
           <Button variant="cta" onClick={() => setOpen(true)}>
             Add property
           </Button>
@@ -478,7 +457,7 @@ function PropertiesList({
       {/* Only about the call intake number -- the one number guests dial to
           reach Mira. Gone as soon as one is saved (Exotel or Twilio). */}
       {user && !user.lead_exophone && !user.twilio_lead_number && !phoneBannerDismissed && (
-        <div className="flex items-center justify-between gap-3 border border-foreground bg-card/70 px-4 py-3 text-sm">
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3 text-sm">
           <p>
             Your call intake number isn&apos;t set — guests can&apos;t reach Mira until it is. Set it in{" "}
             <Link href="/dashboard/settings" className="font-medium underline underline-offset-2">
@@ -535,7 +514,7 @@ function PropertiesList({
               <PropertyPhotoCarousel photos={property.photos} name={property.name} />
               <div className="flex flex-1 flex-col gap-2 border-t border-border p-5">
                 <div className="flex items-start justify-between gap-3">
-                  <h2 className="min-w-0 text-[15px] leading-5 font-bold">{property.name}</h2>
+                  <h2 className="min-w-0 text-[15px] leading-5 font-bold text-heading">{property.name}</h2>
                   {property.exophone && <StatusChip status="Voice agent live" tone="live" />}
                 </div>
                 <p className="text-[13px] text-muted-foreground">{property.city ?? "No city set"}</p>
@@ -581,9 +560,6 @@ function PropertiesList({
                     }
                   />
                   <DropdownMenuContent align="end">
-                    {isInternalOrg && (
-                      <DropdownMenuItem onClick={() => handleTestInBrowser(property.id)}>Test</DropdownMenuItem>
-                    )}
                     <DropdownMenuItem onClick={() => openEdit(property)}>Edit</DropdownMenuItem>
                     <DropdownMenuItem
                       disabled={!property.ical_url || syncingId === property.id}

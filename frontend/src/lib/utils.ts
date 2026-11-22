@@ -51,6 +51,13 @@ export function isBrowserTestIdentity(value: string | null | undefined): boolean
 // for anything that isn't a real phone number (browser-test identity,
 // empty, or no digits at all) so callers can just conditionally render on
 // the result instead of re-checking isBrowserTestIdentity themselves.
+/** `tel:` link for a guest's number; null for a missing or browser-test number. */
+export function telLink(phone: string | null | undefined): string | null {
+  if (!phone || isBrowserTestIdentity(phone)) return null
+  const dialable = phone.replace(/[^\d+]/g, "")
+  return dialable ? `tel:${dialable}` : null
+}
+
 export function whatsappLink(phone: string | null | undefined): string | null {
   if (!phone || isBrowserTestIdentity(phone)) return null
   let digits = phone.replace(/\D/g, "")

@@ -7,7 +7,6 @@ import { usePathname } from "next/navigation";
 import { Drawer } from "@base-ui/react/drawer";
 import {
   Home,
-  AudioLines,
   Building2,
   BrainCircuit,
   ChartColumn,
@@ -27,7 +26,6 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { RailBrand, RailLabel, RailSection, RailSidebar, useRail } from "@/components/rail-sidebar";
 import { ActivityBadge } from "@/components/activity-badge";
-import { TalkToMiraDialog } from "@/components/talk-to-mira-dialog";
 import { useAuth } from "@/lib/auth-context";
 import { useBookingActivity } from "@/lib/booking-activity-context";
 import { hrefsForInterests } from "@/lib/use-cases";
@@ -54,9 +52,9 @@ const links: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 
-function NavLinks({ onNavigate, onTalkToMira }: { onNavigate?: () => void; onTalkToMira: () => void }) {
+function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
-  const { user, logout, isInternalOrg } = useAuth();
+  const { user, logout } = useAuth();
   // In the desktop rail every row is padded so its icon's centre lands on the
   // rail's centre line (see rail-sidebar.tsx); the mobile drawer keeps its
   // original paddings and always-visible labels.
@@ -113,22 +111,6 @@ function NavLinks({ onNavigate, onTalkToMira }: { onNavigate?: () => void; onTal
   return (
     <>
       <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden">
-        {isInternalOrg && (
-          <button
-            type="button"
-            onClick={() => {
-              onTalkToMira();
-              onNavigate?.();
-            }}
-            className={cn(
-              "flex items-center gap-2 overflow-hidden rounded-lg py-2 text-left text-sm font-medium text-accent-foreground transition-colors duration-150 hover:bg-accent",
-              rail ? "px-4" : "px-3"
-            )}
-          >
-            <AudioLines className="size-4 shrink-0 text-(--accent-warm)" />
-            <RailLabel>Talk to Mira</RailLabel>
-          </button>
-        )}
         {focusLinks.length === 0 ? (
           <>
             <RailSection>Main</RailSection>
@@ -177,7 +159,6 @@ function NavLinks({ onNavigate, onTalkToMira }: { onNavigate?: () => void; onTal
 
 export function SidebarNav() {
   const [open, setOpen] = useState(false);
-  const [talkOpen, setTalkOpen] = useState(false);
   const pathname = usePathname();
 
   // Belt-and-suspenders close on route change -- NavLinks' onNavigate
@@ -200,7 +181,7 @@ export function SidebarNav() {
           scroll out of view. ── */}
       <RailSidebar expandedWidthClass="w-56">
         <RailBrand subtitle="Host dashboard" />
-        <NavLinks onTalkToMira={() => setTalkOpen(true)} />
+        <NavLinks />
       </RailSidebar>
 
       {/* ── Mobile top bar + slide-in drawer, built on @base-ui/react's
@@ -240,13 +221,12 @@ export function SidebarNav() {
                   <X className="size-4" />
                 </Drawer.Close>
               </div>
-              <NavLinks onNavigate={() => setOpen(false)} onTalkToMira={() => setTalkOpen(true)} />
+              <NavLinks onNavigate={() => setOpen(false)} />
             </Drawer.Popup>
           </Drawer.Viewport>
         </Drawer.Portal>
       </Drawer.Root>
 
-      <TalkToMiraDialog open={talkOpen} onOpenChange={setTalkOpen} />
     </>
   );
 }

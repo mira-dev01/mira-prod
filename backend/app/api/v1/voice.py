@@ -30,19 +30,15 @@ default) for step 1's generated wss:// URL to actually be reachable.
 
 import json
 import logging
-import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, WebSocket, status
 from fastapi.responses import HTMLResponse, Response
 from pipecat.runner.utils import parse_telephony_websocket
 from pipecat.transports.smallwebrtc.connection import IceServer, SmallWebRTCConnection
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.common import get_owned_property
 from app.auth.dependencies import get_current_user
 from app.config import settings
-from app.database import get_db
 from app.integrations.exotel_client import verify_webhook_token
 from app.integrations.twilio_voice import (
     build_connect_stream_twiml,
@@ -54,7 +50,6 @@ from app.services import faq_service
 from app.voice.eval_mode import eval_route_authorized
 from app.voice.pipeline import (
     run_browser_lead_pipeline,
-    run_browser_voice_pipeline,
     run_eval_voice_pipeline,
     run_voice_pipeline,
     run_voice_pipeline_twilio,
@@ -196,7 +191,6 @@ async def twilio_voice_ws(websocket: WebSocket, token: str) -> None:
 class BrowserOfferRequest(BaseModel):
     sdp: str
     type: str
-    property_id: uuid.UUID | None = None
 
 
 class BrowserOfferResponse(BaseModel):
@@ -208,25 +202,20 @@ class BrowserOfferResponse(BaseModel):
 async def browser_test_offer(
     payload: BrowserOfferRequest,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
 ) -> BrowserOfferResponse:
     """WebRTC signaling endpoint for the in-dashboard browser test client.
 
     Accepts an SDP offer, returns the SDP answer, and kicks off the same
     voice pipeline a real call would use, running in the background for the
-    lifetime of the WebRTC connection. A property_id tests Guest Support for
-    that property; omitting it tests the Lead Agent across the host's full
-    portfolio.
+    lifetime of the WebRTC connection. It always tests the Lead Agent across the
+    signed-in host's own portfolio -- every lookup is keyed to current_user, so a host
+    can only ever reach their own properties, knowledge base and agent settings.
     """
     connection = SmallWebRTCConnection(ice_servers=_ice_servers())
     await connection.initialize(sdp=payload.sdp, type=payload.type)
     answer = connection.get_answer()
 
-    if payload.property_id is not None:
-        property_ = await get_owned_property(db, payload.property_id, current_user)
-        background.spawn(run_browser_voice_pipeline(connection, property_))
-    else:
-        background.spawn(run_browser_lead_pipeline(connection, current_user))
+    background.spawn(run_browser_lead_pipeline(connection, current_user))
 
     return BrowserOfferResponse(sdp=answer["sdp"], type=answer["type"])
 
@@ -235,22 +224,17 @@ def _js_string_literal(value: str) -> str:
     """A JSON string literal that is safe to drop inside an inline <script>:
     json.dumps handles quotes/backslashes/newlines, and the extra escapes
     stop "</script>" or an HTML comment opener from ending the script block.
-    Without this, a crafted ?token= or ?property_id= value broke out of the
+    Without this, a crafted ?token= value broke out of the
     JS string and ran attacker script on the backend's origin (reflected
     XSS)."""
     return json.dumps(value).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
 
 
 @router.get("/test", response_class=HTMLResponse)
-async def browser_test_page(token: str, property_id: str = "") -> HTMLResponse:
+async def browser_test_page(token: str) -> HTMLResponse:
     """Minimal mic-in/speaker-out WebRTC test page. Opened from the
-    dashboard with the host's JWT and, optionally, a property id (omit to
-    test the Lead Agent across the host's full portfolio instead)."""
-    if property_id:
-        try:
-            property_id = str(uuid.UUID(property_id))
-        except ValueError:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid property_id")
+    dashboard with the host's JWT; tests the Lead Agent across that host's
+    own portfolio."""
 
     # Reuses _ice_servers() (not a separate hand-rolled list) so this page's
     # ICE config can never drift out of sync with what the /test/offer
@@ -263,11 +247,10 @@ async def browser_test_page(token: str, property_id: str = "") -> HTMLResponse:
     # Order matters: the caller-controlled token is substituted LAST, so a
     # token that itself contains a placeholder string ("__ICE_SERVERS__")
     # can never be re-expanded into server-side JSON that breaks out of its
-    # string literal. property_id is a validated UUID by this point.
+    # string literal.
     html = (
         _TEST_PAGE_TEMPLATE
         .replace("__ICE_SERVERS__", json.dumps(ice_servers).replace("<", "\\u003c"))
-        .replace("__PROPERTY_ID__", _js_string_literal(property_id))
         .replace("__TOKEN__", _js_string_literal(token))
     )
     # The URL carries the session token (the page needs it to call
@@ -404,13 +387,10 @@ _TEST_PAGE_TEMPLATE = """<!DOCTYPE html>
   <audio id="remoteAudio" autoplay></audio>
 
   <script>
-    const propertyId = __PROPERTY_ID__;
     const token = __TOKEN__;
-    if (!propertyId) {
-      document.getElementById("modeChip").textContent = "MIRA \\u00b7 Lead Agent test";
-      document.getElementById("hint").textContent =
-        "Testing the Lead Agent across your full portfolio. Allow microphone access, then start speaking.";
-    }
+    document.getElementById("modeChip").textContent = "MIRA \\u00b7 Lead Agent test";
+    document.getElementById("hint").textContent =
+      "Testing your agent across your full portfolio. Allow microphone access, then start speaking.";
 
     const captionEl = document.getElementById("caption");
     const hintEl = document.getElementById("hint");
@@ -541,7 +521,7 @@ _TEST_PAGE_TEMPLATE = """<!DOCTYPE html>
           "Content-Type": "application/json",
           Authorization: "Bearer " + token,
         },
-        body: JSON.stringify({ sdp: pc.localDescription.sdp, type: pc.localDescription.type, property_id: propertyId || null }),
+        body: JSON.stringify({ sdp: pc.localDescription.sdp, type: pc.localDescription.type }),
       });
 
       if (!res.ok) {

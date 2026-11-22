@@ -12,7 +12,7 @@ const buttonVariants = cva(
         // The one main action of a view. Brick is the attention colour, so use it for a single button at a time.
         cta: "bg-primary text-primary-foreground hover:bg-[color-mix(in_oklch,var(--primary),black_14%)]",
         outline:
-          "border-foreground bg-background text-foreground hover:bg-accent aria-expanded:bg-accent",
+          "border-input bg-background text-foreground hover:bg-accent aria-expanded:bg-accent",
         secondary:
           "border-border bg-secondary text-secondary-foreground hover:bg-accent aria-expanded:bg-accent",
         ghost:

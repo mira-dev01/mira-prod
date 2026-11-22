@@ -37,7 +37,7 @@ export default async function PropertyListPage({
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b border-foreground px-4 py-4 md:px-8">
+      <header className="border-b border-border px-4 py-4 md:px-8">
         <MiraLogo className="h-8 text-foreground" />
       </header>
 
@@ -51,7 +51,7 @@ export default async function PropertyListPage({
           <section key={property.id} className="mt-10">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <div>
-                <h2 className="text-xl font-medium text-foreground">{property.name}</h2>
+                <h2 className="text-xl font-medium text-heading">{property.name}</h2>
                 {property.city && <p className="text-sm text-muted-foreground">{property.city}</p>}
               </div>
               {property.photos.length > PREVIEW_PHOTOS && (

@@ -32,7 +32,7 @@ export default async function PropertyPhotosPage({
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b border-foreground px-4 py-4 md:px-8">
+      <header className="border-b border-border px-4 py-4 md:px-8">
         <MiraLogo className="h-8 text-foreground" />
       </header>
 

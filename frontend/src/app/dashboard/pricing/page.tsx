@@ -197,7 +197,7 @@ function PricingPageContent() {
                   value={quote.discount_percent ? `${quote.discount_percent}% (-₹${quote.discount_amount.toLocaleString("en-IN")})` : "—"}
                 />
               </div>
-              <div className="mt-auto flex items-baseline justify-between gap-3 border-t border-foreground pt-4">
+              <div className="mt-auto flex items-baseline justify-between gap-3 border-t border-border pt-4">
                 <span className="text-xs font-bold tracking-[0.1em] uppercase">Total</span>
                 <span className="font-heading text-3xl leading-9 font-semibold tracking-tight text-primary tabular-nums">
                   ₹{quote.total.toLocaleString("en-IN")}

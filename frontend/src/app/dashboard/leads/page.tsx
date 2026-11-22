@@ -486,7 +486,7 @@ function BookingRequestsTabContent() {
                 </SelectContent>
               </Select>
             )}
-            <div className="flex items-center gap-1 border border-foreground p-0.5">
+            <div className="flex items-center gap-1 rounded-lg border border-input p-0.5">
               <Button
                 variant={view === "table" ? "default" : "ghost"}
                 size="icon-sm"

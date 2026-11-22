@@ -380,8 +380,9 @@ async def test_test_page_token_cannot_reinject_server_placeholders(client):
     assert 'const token = "__ICE_SERVERS__;alert(1)//";' in body
 
 
-async def test_test_page_rejects_non_uuid_property_id(client):
+async def test_test_page_is_portfolio_only(client):
+    """The per-property test was removed: a leftover ?property_id= is ignored, never echoed into the page."""
     res = await client.get("/api/v1/voice/test", params={"token": "t", "property_id": '";alert(1)//'})
-    assert res.status_code == 400
-    ok = await client.get("/api/v1/voice/test", params={"token": "t", "property_id": str(uuid.uuid4())})
-    assert ok.status_code == 200
+    assert res.status_code == 200
+    assert "alert(1)" not in res.text
+    assert "propertyId" not in res.text

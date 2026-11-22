@@ -122,7 +122,7 @@ export function DashboardTour() {
         aria-modal="true"
         aria-labelledby="tour-title"
         tabIndex={-1}
-        className="absolute w-[min(22rem,calc(100vw-2rem))] border border-foreground bg-card p-5 outline-none"
+        className="absolute w-[min(22rem,calc(100vw-2rem))] rounded-xl border border-border bg-card p-5 shadow-lg outline-none"
         style={cardStyle}
       >
         <div className="mb-4 flex gap-1" role="progressbar" aria-valuemin={1} aria-valuemax={TOUR_STEPS.length} aria-valuenow={step + 1}>

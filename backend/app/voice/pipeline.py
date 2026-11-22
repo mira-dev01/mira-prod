@@ -3,7 +3,7 @@
 Two entry points share the same pipeline-building logic (`_run_pipeline`):
 - run_voice_pipeline: real Exotel calls, over a WebSocket carrying Exotel's
   raw-PCM media protocol (see app/api/v1/voice.py).
-- run_browser_voice_pipeline: the in-dashboard "test in browser" feature,
+- run_browser_lead_pipeline: the in-dashboard "Test your agent" feature,
   over WebRTC, for testing without a real phone call.
 
 Both feed into Sarvam STT -> app/voice/language_sync.py (mirrors the guest's
@@ -3077,59 +3077,6 @@ async def run_voice_pipeline_twilio(websocket: WebSocket, call_data: CallData) -
         voice_gender=voice_gender,
         call_lease_token=lease.token if lease is not None else None,
         host_handoff_phrase=host_handoff_phrase,
-    )
-
-
-async def run_browser_voice_pipeline(connection: SmallWebRTCConnection, property_: Property) -> None:
-    """Same pipeline as a real call, but over WebRTC from the dashboard's
-    "test in browser" page instead of an Exotel phone call. There's no real
-    caller phone number, so we use a fixed placeholder identity
-    (BROWSER_TEST_CALLER_NUMBER) for both the guest profile and the call
-    session, instead of leaving them unset -- the frontend renders that
-    value as a "Browser test" label rather than hiding the row entirely."""
-    async with AsyncSessionLocal() as db:
-        host = await db.get(User, property_.user_id)
-        guest = await call_service.get_or_create_guest_profile(
-            db, call_service.BROWSER_TEST_CALLER_NUMBER, property_.user_id, name="Browser test guest"
-        )
-        session = await call_service.get_or_create_call_session(
-            db,
-            exotel_call_id=None,
-            property_id=property_.id,
-            guest_profile_id=guest.id if guest else None,
-            caller_number=call_service.BROWSER_TEST_CALLER_NUMBER,
-            user_id=property_.user_id,
-        )
-        verified_faq_entries = await faq_service.list_verified_property_faq(db, property_.id)
-        system_prompt = build_system_prompt(
-            property_, None, host, verified_faq_entries=verified_faq_entries,
-            payments_enabled=await payment_service.payments_enabled_for(host),
-        )
-        first_message = first_message_for(property_, None, host)
-        property_id = property_.id
-        host_user_id = property_.user_id
-        call_session_id = session.id
-        guest_profile_id = guest.id if guest else None
-
-    transport = SmallWebRTCTransport(
-        webrtc_connection=connection,
-        params=TransportParams(
-            audio_in_enabled=True,
-            audio_out_enabled=True,
-        ),
-    )
-
-    await _run_pipeline(
-        transport,
-        property_id,
-        call_session_id,
-        host_user_id,
-        system_prompt,
-        first_message,
-        property_name=property_.spoken_name or property_.display_name or property_.name,
-        guest_profile_id=guest_profile_id,
-        voice_gender=host.agent_voice_gender,
-        host_handoff_phrase=resolve_host_handoff_phrase(host),
     )
 
 

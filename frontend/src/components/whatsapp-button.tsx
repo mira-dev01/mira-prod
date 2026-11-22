@@ -1,7 +1,7 @@
 "use client";
 
-import { MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { WhatsAppIcon } from "@/components/icons/whatsapp-icon";
 import { whatsappLink } from "@/lib/utils";
 
 /**
@@ -45,7 +45,7 @@ export function WhatsAppButton({
         />
       }
     >
-      <MessageCircle />
+      <WhatsAppIcon className="text-whatsapp" />
       {!iconOnly && "WhatsApp"}
     </Button>
   );

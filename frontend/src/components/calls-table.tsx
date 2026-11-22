@@ -89,7 +89,7 @@ const urgencyDotClass: Record<string, string> = {
   low: "bg-(--priority-low)",
 };
 
-function formatDuration(minutes: number | null): string {
+export function formatDuration(minutes: number | null): string {
   if (minutes === null) return "—";
   const whole = Math.floor(minutes);
   const seconds = Math.round((minutes - whole) * 60);

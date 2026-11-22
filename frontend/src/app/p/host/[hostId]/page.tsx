@@ -56,7 +56,7 @@ export default async function HostGalleryPage({
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b border-foreground px-4 py-4 md:px-8">
+      <header className="border-b border-border px-4 py-4 md:px-8">
         <MiraLogo className="h-8 text-foreground" />
       </header>
 
@@ -87,12 +87,12 @@ export default async function HostGalleryPage({
 
         {groups.map((group) => (
           <div key={group.city} className="mt-12">
-            <h2 className="border-b border-foreground pb-2 text-2xl font-medium text-foreground">{group.city}</h2>
+            <h2 className="border-b border-border pb-2 text-2xl font-medium text-heading">{group.city}</h2>
 
             {group.properties.map((property) => (
               <section key={property.id} id={property.id} className="mt-8 scroll-mt-6">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <h3 className="text-xl font-medium text-foreground">{property.name}</h3>
+                  <h3 className="text-xl font-medium text-heading">{property.name}</h3>
                   {property.photos.length > PREVIEW_PHOTOS && (
                     <Link
                       href={`/p/${property.id}/photos`}

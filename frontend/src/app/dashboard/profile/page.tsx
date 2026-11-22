@@ -154,7 +154,7 @@ export default function ProfilePage() {
 
   const displayName = user.business_name || user.name || user.email;
   const settingCell =
-    "col-span-12 flex min-w-0 flex-col gap-2 border-r border-b border-foreground bg-card/70 p-5 text-left transition-colors hover:bg-accent md:col-span-6 lg:col-span-3";
+    "col-span-12 flex min-w-0 flex-col gap-2 rounded-xl border border-border bg-card p-5 text-left transition-colors hover:bg-accent md:col-span-6 lg:col-span-3";
 
   return (
     <div className="space-y-6">
@@ -177,7 +177,7 @@ export default function ProfilePage() {
               aria-label="Change background"
               disabled={uploadingBanner}
               onClick={() => bannerInputRef.current?.click()}
-              className="absolute top-3 right-3 flex size-9 items-center justify-center border border-foreground bg-card text-foreground transition-colors hover:bg-accent"
+              className="absolute top-3 right-3 flex size-9 items-center justify-center rounded-lg border border-input bg-card text-foreground transition-colors hover:bg-accent"
             >
               {uploadingBanner ? (
                 <span className="size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />

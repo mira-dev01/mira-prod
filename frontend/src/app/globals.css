@@ -8,6 +8,7 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-heading: var(--heading);
+  --color-whatsapp: var(--whatsapp);
   --font-sans: var(--font-red-hat-text);
   --font-mono: ui-monospace, "DM Mono", "SFMono-Regular", Menlo, monospace;
   --font-display: var(--font-red-hat-display);
@@ -19,7 +20,6 @@
   --color-status-progress: var(--status-progress);
   --color-status-purple: var(--status-purple);
   --color-status-orange: var(--status-orange);
-  --color-grid-line: var(--grid-line);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -63,12 +63,11 @@
   --shadow-xl: var(--shadow-xl);
 }
 
-/* Mira Design System -- parchment/cream + terracotta palette (kept at the
-   user's request) under the "Visible Grid" layout and type: Red Hat Text
-   for body/UI, Red Hat Display for headings and key numbers, flat ruled blocks and a faint 12-column
-   construction grid (--grid-line, .field-grid) behind every Sheet
-   (components/ui/sheet.tsx). The dashboard is always-light; the .dark
-   block below is unused legacy.
+/* Mira Design System -- warm off-white + terracotta palette, type: Red Hat Text
+   for body/UI, Red Hat Display for headings and key numbers. Soft rounded
+   white cards with hairline borders on a warm off-white page; blocks are laid
+   out on a 12-column grid (components/ui/sheet.tsx). The dashboard is
+   always-light; the .dark block below is unused legacy.
 
    Spacing: Tailwind's --spacing base unit here is 0.25rem (4px), so every
    *even* spacing utility (p-2, gap-4, p-6, px-8, ...) already lands on an
@@ -77,26 +76,27 @@
    (padding, gaps, margins between sections). Odd steps (p-2.5, p-3, gap-5,
    gap-7...) are reserved for optical corrections only. */
 :root {
-  --background: #f3ede2;
+  --background: #fbf8f5;
   --foreground: #2a2420;
-  /* Headings: a deep terracotta-brown (~8:1 on cream) so titles read apart
-     from the ink body text without spending the brick accent. */
-  --heading: #7a2f1c;
-  --card: #fbf7ef;
+  /* Headings: brick/terracotta (~5.9:1 on cream) so titles read apart from
+     the ink body text. One token for every page title, block title and
+     standalone heading -- never a literal colour on a heading. */
+  --heading: #a63d28;
+  --card: #ffffff;
   --card-foreground: #2a2420;
-  --popover: #fbf7ef;
+  --popover: #ffffff;
   --popover-foreground: #2a2420;
   --primary: #b8452f;
   --primary-foreground: #ffffff;
-  --secondary: #fbf7ef;
+  --secondary: #f6f0ea;
   --secondary-foreground: #2a2420;
-  --muted: #ece3d4;
-  --muted-foreground: #6f6252;
-  --accent: #ece3d4;
+  --muted: #f3ece6;
+  --muted-foreground: #756b63;
+  --accent: #f3ece6;
   --accent-foreground: #2a2420;
   --destructive: #b8452f;
-  --border: #e3d9c8;
-  /* A deeper taupe than --border so form fields keep a 3:1 edge on the cream. */
+  --border: #ece5de;
+  /* A deeper taupe than --border so form fields keep a 3:1 edge on white. */
   --input: #968a76;
   /* Focus rings use the terracotta (3:1+ on cream); amber was ~2:1. */
   --ring: #b8452f;
@@ -105,19 +105,15 @@
   --chart-3: #c17a42;
   --chart-4: #5f7a99;
   --chart-5: #8d6f96;
-  --radius: 0.25rem;
-  --sidebar: #fbf7ef;
+  --radius: 0.75rem;
+  --sidebar: #fbf8f5;
   --sidebar-foreground: #2a2420;
   --sidebar-primary: #b8452f;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #ece3d4;
+  --sidebar-accent: #f3ece6;
   --sidebar-accent-foreground: #2a2420;
-  --sidebar-border: #2a2420;
+  --sidebar-border: #ece5de;
   --sidebar-ring: #b8452f;
-
-  /* The construction grid: decorative hairlines only (never carries
-     meaning), so intentionally very low contrast. */
-  --grid-line: #e6dcc8;
 
   /* Status + intent-category colors, for badges/accents across calls,
      leads, and notifications. */
@@ -129,7 +125,18 @@
      for setup actions, where --status-pending alone is too faint. */
   --status-pending-strong: #8a6512;
   --status-progress: #5f7a99;
+  /* Same blue, dark enough to read as text on white (~5.6:1). */
+  --status-progress-strong: #4a6585;
   --status-progress-bg: rgba(95, 122, 153, 0.12);
+  /* WhatsApp brand green, dark enough for a 3:1 icon on white. */
+  --whatsapp: #1c8f45;
+  /* Booking funnel: six steps from deep terracotta to pale peach, then green for a converted booking. */
+  --funnel-1: #a8441c;
+  --funnel-2: #be6a38;
+  --funnel-3: #d98e50;
+  --funnel-4: #e8ae72;
+  --funnel-5: #f0c9a0;
+  --funnel-6: #3f8a52;
   --status-purple: #8d6f96;
   --status-purple-bg: rgba(141, 111, 150, 0.12);
   --status-orange: #c17a42;
@@ -309,21 +316,5 @@
   }
   .surface-hover:hover {
     background-color: var(--accent);
-  }
-}
-
-@layer components {
-  /* The construction grid: 12 equal columns drawn as faint vertical
-     hairlines, aligned to the grid container's own padding box so every
-     block that spans whole columns lands on a line. Decorative only; off
-     on narrow screens where blocks stack and the columns collapse. */
-  .field-grid {
-    background-image: linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
-    background-size: calc(100% / 12) 100%;
-  }
-  @media (max-width: 767px) {
-    .field-grid {
-      background-image: none;
-    }
   }
 }

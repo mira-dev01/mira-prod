@@ -269,7 +269,7 @@ function AnalyticsGrid({
       {entries.map((entry) => {
         if (entry.type === "heading") {
           return (
-            <SheetHeading key={entry.id} title={entry.title ?? ""} className="border-r border-b border-foreground bg-card/70">
+            <SheetHeading key={entry.id} title={entry.title ?? ""} className="rounded-xl border border-border bg-card">
               {entry.subtitle}
             </SheetHeading>
           );

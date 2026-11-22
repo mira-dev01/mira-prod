@@ -1,6 +1,9 @@
 import uuid
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.common import get_owned_property
@@ -8,9 +11,26 @@ from app.auth.dependencies import get_current_user
 from app.database import get_db
 from app.models.user import User
 from app.schemas.agent_config import AgentConfigOut, AgentConfigUpdate, PaymentOverride
-from app.services import agent_config_service
+from app.services import agent_config_service, agent_test_status
 
 router = APIRouter(prefix="/agent-config", tags=["agent-config"])
+
+
+class AgentTestStatusOut(BaseModel):
+    needs_test: bool
+    changed_at: datetime | None
+    last_tested_at: datetime | None
+
+
+@router.get("/test-status", response_model=AgentTestStatusOut)
+async def get_agent_test_status(
+    current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+) -> AgentTestStatusOut:
+    """Whether the host changed their agent since their last browser test call."""
+    status = await agent_test_status.get_status(db, current_user)
+    return AgentTestStatusOut(
+        needs_test=status.needs_test, changed_at=status.changed_at, last_tested_at=status.last_tested_at
+    )
 
 
 @router.get("", response_model=AgentConfigOut)

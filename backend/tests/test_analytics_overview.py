@@ -282,3 +282,149 @@ async def test_reporting_days_are_ist_calendar_days(client, auth_headers, db_ses
     oct_18 = await _overview(client, auth_headers, date(2026, 10, 18), date(2026, 10, 18))
     assert oct_17["activity"]["total_calls"] == 0
     assert oct_18["activity"]["total_calls"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Overview cards added for the redesign: funnel, leads, open actions,
+# resolution rate, and the per-card info text.
+# ---------------------------------------------------------------------------
+
+
+async def test_overview_returns_all_six_funnel_stages(client, auth_headers, test_property):
+    today = today_ist()
+    body = await _overview(client, auth_headers, today, today)
+    assert [stage["key"] for stage in body["funnel"]] == [
+        "all_conversations",
+        "booking_related",
+        "qualified_leads",
+        "hot_leads",
+        "booking_intent",
+        "converted",
+    ]
+
+
+async def test_leads_summary_counts_open_and_hot_and_follows_test_toggle(
+    client, auth_headers, db_session, test_user, test_property
+):
+    hot_open = Lead(user_id=test_user.id, lead_temperature="hot", status="open", phone="+919811111111")
+    warm_booked = Lead(user_id=test_user.id, lead_temperature="warm", status="booked", phone="+919822222222")
+    test_lead = Lead(user_id=test_user.id, lead_temperature="very_hot", status="open", phone=None)
+    db_session.add_all([hot_open, warm_booked, test_lead])
+    await db_session.commit()
+    await _call(db_session, test_user, test_property, lead=test_lead, caller=BROWSER_TEST_CALLER_NUMBER)
+
+    today = today_ist()
+    real = await _overview(client, auth_headers, today, today)
+    with_tests = await _overview(client, auth_headers, today, today, include_test_calls="true")
+    assert real["leads"] == {"total": 2, "open": 1, "hot": 1}
+    assert with_tests["leads"] == {"total": 3, "open": 2, "hot": 2}
+    # Leads follow the date range: a window in the past has none.
+    past = await _overview(client, auth_headers, date(2025, 1, 1), date(2025, 1, 31))
+    assert past["leads"] == {"total": 0, "open": 0, "hot": 0}
+
+
+async def test_open_actions_are_current_state_and_belong_to_this_host_only(
+    client, auth_headers, db_session, test_user, test_property
+):
+    from app.models.ticket import Ticket
+    from app.models.user import User
+
+    other = User(email=f"other-{uuid.uuid4().hex[:8]}@example.com", clerk_user_id=f"user_{uuid.uuid4().hex[:16]}", name="Other")
+    db_session.add(other)
+    await db_session.commit()
+    db_session.add_all(
+        [
+            Ticket(user_id=test_user.id, kind="escalation", summary="Call the guest back", status="open"),
+            Ticket(user_id=test_user.id, kind="payment", summary="Payment link failed", status="open"),
+            Ticket(user_id=test_user.id, kind="photos", summary="Send photos", status="done"),
+            Ticket(user_id=other.id, kind="escalation", summary="Someone else's", status="open"),
+        ]
+    )
+    await db_session.commit()
+
+    body = await _overview(client, auth_headers, date(2025, 1, 1), date(2025, 1, 31))  # far-past window
+    assert body["actions"] == {"open": 2, "escalations": 1}
+
+
+async def test_resolution_rate_counts_completed_follow_ups_as_resolved(
+    client, auth_headers, db_session, test_user, test_property
+):
+    from app.models.notification import Notification
+    from app.models.ticket import Ticket
+    from app.models.unanswered_question import UnansweredQuestion
+
+    clean = await _call(db_session, test_user, test_property)
+    ticket_done = await _call(db_session, test_user, test_property)
+    ticket_open = await _call(db_session, test_user, test_property)
+    question_pending = await _call(db_session, test_user, test_property)
+    question_answered = await _call(db_session, test_user, test_property)
+    escalated_closed = await _call(db_session, test_user, test_property)
+    escalated_no_ticket = await _call(db_session, test_user, test_property)
+    in_progress = await _call(db_session, test_user, test_property)
+    in_progress.status = "in_progress"
+    db_session.add_all(
+        [
+            Ticket(user_id=test_user.id, call_session_id=ticket_done.id, kind="photos", summary="Send photos", status="done"),
+            Ticket(user_id=test_user.id, call_session_id=ticket_open.id, kind="promise", summary="Follow up", status="open"),
+            UnansweredQuestion(
+                user_id=test_user.id, call_session_id=question_pending.id, question="Is there a pool?",
+                normalized_question="is there a pool?", status="pending",
+            ),
+            UnansweredQuestion(
+                user_id=test_user.id, call_session_id=question_answered.id, question="Is there parking?",
+                normalized_question="is there parking?", status="answered",
+            ),
+            Ticket(user_id=test_user.id, call_session_id=escalated_closed.id, kind="escalation", summary="Escalated", status="dismissed"),
+            Notification(property_id=test_property.id, call_session_id=escalated_closed.id, channel="escalation", message="e1"),
+            Notification(property_id=test_property.id, call_session_id=escalated_no_ticket.id, channel="escalation", message="e2"),
+        ]
+    )
+    await db_session.commit()
+    assert clean.id and in_progress.id  # created above
+
+    today = today_ist()
+    body = await _overview(client, auth_headers, today, today)
+    # 7 finished conversations (the in-progress one is not counted).
+    # Unresolved: open ticket, pending question, escalation with no ticket.
+    assert body["resolution"] == {
+        "value": round(4 / 7, 3),
+        "resolved": 4,
+        "total": 7,
+        "resolved_clean": 1,  # the call with nothing attached
+        "resolved_after_follow_up": 3,  # done ticket, answered question, closed escalation
+        "unresolved": 3,
+    }
+
+
+async def test_resolution_rate_is_unavailable_without_conversations(client, auth_headers, test_property):
+    today = today_ist()
+    body = await _overview(client, auth_headers, today, today)
+    assert body["resolution"]["value"] is None and body["resolution"]["total"] == 0
+
+
+async def test_resolution_ignores_another_hosts_tickets(client, auth_headers, db_session, test_user, test_property):
+    from app.models.ticket import Ticket
+    from app.models.user import User
+
+    other = User(email=f"other-{uuid.uuid4().hex[:8]}@example.com", clerk_user_id=f"user_{uuid.uuid4().hex[:16]}", name="Other")
+    db_session.add(other)
+    await db_session.commit()
+    call = await _call(db_session, test_user, test_property)
+    # A ticket carrying this host's call id but another host's user id must not count against it.
+    db_session.add(Ticket(user_id=other.id, call_session_id=call.id, kind="promise", summary="x", status="open"))
+    await db_session.commit()
+    today = today_ist()
+    body = await _overview(client, auth_headers, today, today)
+    assert body["resolution"]["unresolved"] == 0 and body["resolution"]["resolved"] == 1
+
+
+async def test_every_overview_card_has_info_with_a_source(client, auth_headers, test_property):
+    today = today_ist()
+    body = await _overview(client, auth_headers, today, today)
+    for key in (
+        "revenue", "upcoming_revenue", "occupancy", "adr", "leads", "open_actions", "resolution_rate",
+        "booking_funnel", "recent_calls", "needs_attention", "unanswered_questions",
+    ):
+        info = body["info"][key]
+        assert info["label"] and info["definition"] and info["formula"] and info["source"], key
+        assert info["window"] in ("period", "now"), key

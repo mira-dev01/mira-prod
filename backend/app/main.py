@@ -47,7 +47,7 @@ from app.database import AsyncSessionLocal, engine, pool_stats
 from app.observability import health, http_hook, probes
 from app.observability.logging_setup import configure_logging
 from app.observability.middleware import ObservabilityMiddleware, install_db_hook
-from app.services import health_monitor_service, payment_service, policy_audit, recovery_service
+from app.services import agent_change_tracker, health_monitor_service, payment_service, policy_audit, recovery_service
 from app.services.calendar_service import sync_all_properties
 from app.services.call_service import reconcile_stuck_call_sessions
 from app.services.smart_pricing_service import refresh_live_pricing_cache, refresh_smart_pricing
@@ -405,6 +405,7 @@ app.add_middleware(
 )
 
 API_PREFIX = "/api/v1"
+agent_change_tracker.install()
 app.include_router(auth.router, prefix=API_PREFIX)
 app.include_router(properties.router, prefix=API_PREFIX)
 # Before bookings: /bookings/active must not be read as /bookings/{booking_id}.

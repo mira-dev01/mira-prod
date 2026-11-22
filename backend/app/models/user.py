@@ -129,6 +129,8 @@ class User(UUIDPkMixin, TimestampMixin, Base):
     # app/schemas/agent_config.py. None = every default. Read through
     # app/services/agent_config_service.py, never directly.
     agent_config: Mapped[dict | None] = mapped_column(JSONB)
+    # Last change to anything the agent says or does; stamped by app/services/agent_change_tracker.py.
+    agent_customized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # The host's payment setup (Settings -> Billing): their Razorpay keys (the
     # secret encrypted, see app/utils/secrets.py), the guest message wording and
     # the notify-me switch. Separate from agent_config so a read of the Agent

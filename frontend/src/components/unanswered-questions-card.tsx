@@ -18,7 +18,8 @@ import { cn } from "@/lib/utils";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError } from "@/lib/api";
 import { PropertyScopePicker, scopePayload, type PropertyScope } from "@/components/property-scope-picker";
-import type { FaqGapOut } from "@/lib/types";
+import { InfoButton } from "@/components/overview/info-card";
+import type { FaqGapOut, OverviewMetricInfo } from "@/lib/types";
 
 // Shared by two call sites:
 //  - Overview page: compact preview (limit=2), links out to the FAQ page
@@ -33,7 +34,10 @@ export function UnansweredQuestionsCard({
   collapsible,
   inSheet,
   className,
+  info,
 }: {
+  /** Overview only: hover text served by the overview API. */
+  info?: OverviewMetricInfo;
   limit?: number;
   linkToFaqPage?: boolean;
   collapsible?: boolean;
@@ -175,7 +179,16 @@ export function UnansweredQuestionsCard({
           </button>
         ) : (
           <CardHeader>
-            <Title>Questions Mira couldn&apos;t answer</Title>
+            <Title>
+              {linkToFaqPage ? (
+                <Link href="/dashboard/faq" className="hover:underline">
+                  Questions Mira couldn&apos;t answer
+                </Link>
+              ) : (
+                <>Questions Mira couldn&apos;t answer</>
+              )}
+              <InfoButton info={info} />
+            </Title>
           </CardHeader>
         )}
         {expanded && <CardContent className="min-w-0 flex-1">

@@ -75,7 +75,7 @@ function RightPanel({
               className
             )}
           >
-            <div className="flex items-start justify-between gap-3 border-b border-foreground p-4 sm:p-6">
+            <div className="flex items-start justify-between gap-3 border-b border-border p-4 sm:p-6">
               <Drawer.Title className="min-w-0 truncate text-xl leading-8 font-bold tracking-tight">
                 {title}
               </Drawer.Title>
@@ -89,7 +89,7 @@ function RightPanel({
 
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 sm:p-6">{children}</div>
 
-            {footer && <div className="flex flex-col-reverse gap-2 border-t border-foreground bg-card p-4 sm:flex-row sm:justify-end">{footer}</div>}
+            {footer && <div className="flex flex-col-reverse gap-2 border-t border-border bg-card p-4 sm:flex-row sm:justify-end">{footer}</div>}
           </Drawer.Popup>
         </Drawer.Viewport>
       </Drawer.Portal>

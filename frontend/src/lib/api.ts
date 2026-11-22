@@ -18,6 +18,7 @@ import type {
   CapabilityUpdate,
   AgentConfig,
   AgentConfigOut,
+  AgentTestStatus,
   BillingTemplateName,
   BillingView,
   PaymentRequestOut,
@@ -100,6 +101,14 @@ export class ApiError extends Error {
   }
 }
 
+/** Fired after any successful write, so the "Test your agent" pin can re-check whether the agent changed. */
+export const API_WRITE_EVENT = "mira:api-write";
+function announceWrite(method: string | undefined) {
+  if (typeof window !== "undefined" && method && method.toUpperCase() !== "GET") {
+    window.dispatchEvent(new Event(API_WRITE_EVENT));
+  }
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   // Local design preview only (NEXT_PUBLIC_UI_PREVIEW=1; see lib/ui-preview.ts).
   if (process.env.NODE_ENV !== "production" && process.env.NEXT_PUBLIC_UI_PREVIEW === "1") {
@@ -124,6 +133,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     throw new ApiError(res.status, typeof detail === "string" ? detail : JSON.stringify(detail));
   }
 
+  announceWrite(options.method);
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
@@ -162,6 +172,7 @@ async function uploadFiles<T>(path: string, files: File[], fieldName: string = "
     throw new ApiError(res.status, typeof detail === "string" ? detail : JSON.stringify(detail));
   }
 
+  announceWrite("POST");
   return (await res.json()) as T;
 }
 
@@ -496,6 +507,7 @@ export const api = {
   },
   agentConfig: {
     get: () => request<AgentConfigOut>("/agent-config"),
+    testStatus: () => request<AgentTestStatus>("/agent-config/test-status"),
     update: (data: AgentConfigUpdate) =>
       request<AgentConfigOut>("/agent-config", { method: "PUT", body: JSON.stringify(data) }),
     setPaymentOverride: (propertyId: string, data: Partial<AgentConfig["payment"]>) =>

@@ -184,7 +184,7 @@ export function PortfolioCalendar({ onOpenProperty }: { onOpenProperty?: (proper
 
       <Sheet>
         <Toolbar className="justify-between gap-y-3">
-          <div className="flex items-center gap-1 border border-foreground p-0.5">
+          <div className="flex items-center gap-1 rounded-lg border border-input p-0.5">
             <Button variant="ghost" size="sm" aria-label="Previous month" onClick={() => setCursor(new Date(year, month - 1, 1))}>
               ←
             </Button>
@@ -326,7 +326,7 @@ export function PortfolioCalendar({ onOpenProperty }: { onOpenProperty?: (proper
                       type="button"
                       onClick={() => onOpenProperty?.(property)}
                       title={`Open ${property.name}'s calendar`}
-                      className="max-w-full truncate border border-foreground bg-card/70 px-2.5 py-1 text-left text-[13px] transition-colors hover:bg-accent"
+                      className="max-w-full truncate rounded-md border border-input bg-card px-2.5 py-1 text-left text-[13px] transition-colors hover:bg-accent"
                     >
                       {property.name}
                       <span className="ml-1.5 text-muted-foreground">sleeps {property.max_guests}</span>
@@ -416,7 +416,7 @@ export function PortfolioCalendar({ onOpenProperty }: { onOpenProperty?: (proper
                 </colgroup>
                 <thead>
                   <tr>
-                    <th className="sticky top-0 left-0 z-20 border-b border-foreground bg-card p-3 text-left text-xs font-bold tracking-[0.1em] uppercase">
+                    <th className="sticky top-0 left-0 z-20 border-b border-border bg-card p-3 text-left text-xs font-bold tracking-[0.1em] uppercase">
                       Property
                     </th>
                     {days.map((day) => {
@@ -440,7 +440,7 @@ export function PortfolioCalendar({ onOpenProperty }: { onOpenProperty?: (proper
                 </thead>
                 <tbody>
                   <tr>
-                    <td className="sticky left-0 z-10 border-b border-foreground bg-card p-3 text-[13px] font-semibold">
+                    <td className="sticky left-0 z-10 border-b border-border bg-card p-3 text-[13px] font-semibold">
                       All properties
                       <span className="block text-[11px] font-normal text-muted-foreground">booked each night</span>
                     </td>

@@ -17,7 +17,7 @@ import { formatLeadTimestamp } from "@/lib/leads";
 import { isBrowserTestIdentity } from "@/lib/utils";
 import type { TicketKind, TicketOut } from "@/lib/types";
 
-const KIND_LABEL: Record<TicketKind, string> = {
+export const KIND_LABEL: Record<TicketKind, string> = {
   escalation: "Follow up",
   transfer: "Call back",
   technician: "Repair",
