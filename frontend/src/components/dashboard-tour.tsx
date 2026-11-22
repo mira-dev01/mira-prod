@@ -133,7 +133,7 @@ export function DashboardTour() {
         <p className="text-xs font-bold tracking-[0.1em] text-muted-foreground uppercase">
           {step + 1} of {TOUR_STEPS.length}
         </p>
-        <h2 id="tour-title" className="mt-1 font-heading text-lg font-bold">
+        <h2 id="tour-title" className="mt-1 font-heading text-lg font-bold text-heading">
           {current.title}
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">{current.body}</p>

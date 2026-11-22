@@ -72,7 +72,7 @@ export function WideCell({ className, ...props }: React.ComponentProps<"div">) {
 
 /** A block's name: small, bold, tracked caps. Carries the section; never competes with values. */
 export function CellTitle({ className, ...props }: React.ComponentProps<"h2">) {
-  return <h2 className={cn("text-xs leading-5 font-bold tracking-[0.1em] text-foreground uppercase", className)} {...props} />;
+  return <h2 className={cn("text-xs leading-5 font-bold tracking-[0.1em] text-heading uppercase", className)} {...props} />;
 }
 
 /** The one-line plain-language purpose of a block. */
@@ -103,7 +103,7 @@ export function SheetHeading({
   return (
     <div className={cn("col-span-12 flex items-start justify-between gap-3 border-b border-border p-5", className)}>
       <div className="flex min-w-0 flex-col gap-1">
-        <h2 className="font-heading text-xl leading-7 font-bold tracking-tight text-foreground">{title}</h2>
+        <h2 className="font-heading text-xl leading-7 font-bold tracking-tight text-heading">{title}</h2>
         {children && <Hint>{children}</Hint>}
       </div>
       {action}
@@ -169,7 +169,7 @@ export function FieldRow({
   children: React.ReactNode;
   className?: string;
 }) {
-  const nameClass = "text-[13px] leading-5 font-bold tracking-[0.1em] text-foreground uppercase";
+  const nameClass = "text-[13px] leading-5 font-bold tracking-[0.1em] text-heading uppercase";
   return (
     <div className={cn("col-span-12 grid grid-cols-subgrid border-t border-border first:border-t-0", className)}>
       <div className="col-span-12 flex flex-col gap-1 p-5 pb-0 md:col-span-3 md:pb-5">

@@ -7,6 +7,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-heading: var(--heading);
   --font-sans: var(--font-red-hat-text);
   --font-mono: ui-monospace, "DM Mono", "SFMono-Regular", Menlo, monospace;
   --font-display: var(--font-red-hat-display);
@@ -78,6 +79,9 @@
 :root {
   --background: #f3ede2;
   --foreground: #2a2420;
+  /* Headings: a deep terracotta-brown (~8:1 on cream) so titles read apart
+     from the ink body text without spending the brick accent. */
+  --heading: #7a2f1c;
   --card: #fbf7ef;
   --card-foreground: #2a2420;
   --popover: #fbf7ef;
@@ -219,6 +223,7 @@
     font-size: 1.75rem;
     letter-spacing: -0.03em;
     line-height: 1.15;
+    color: var(--heading);
   }
 
   /* Micro section labels, e.g. sidebar nav group headers. */

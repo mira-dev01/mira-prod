@@ -87,7 +87,7 @@ function SectionHeader({
 }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <h2 className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.1em] text-foreground">
+      <h2 className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.1em] text-heading">
         <span
           aria-hidden
           className="size-2 rounded-full"
@@ -616,7 +616,7 @@ function ApprovedPolicies({
           return (
             <section key={row.topic} className="border-b border-border pt-3 last:border-b-0">
               <div className="flex items-center justify-between gap-3">
-                <h3 className="text-xs font-bold tracking-[0.1em] uppercase">{row.label}</h3>
+                <h3 className="text-xs font-bold tracking-[0.1em] text-heading uppercase">{row.label}</h3>
                 {!property && totalOverrides > 0 && (
                   <button
                     type="button"

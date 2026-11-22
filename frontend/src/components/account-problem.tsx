@@ -35,7 +35,7 @@ export function AccountProblemScreen({
       <Sheet className="w-full max-w-md" role="alert">
         <Cell className="gap-4 p-6">
           <MiraLogo className="h-6 text-foreground" />
-          <h1 className="font-heading text-xl font-bold">{TITLES[kind]}</h1>
+          <h1 className="font-heading text-xl font-bold text-heading">{TITLES[kind]}</h1>
           <p className="text-sm text-muted-foreground">{message}</p>
           <div className="flex gap-2 pt-1">
             {retryable && (

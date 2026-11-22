@@ -338,7 +338,7 @@ export function AiTrainingSection() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="font-heading text-xl leading-7 font-bold tracking-tight">Discounts and negotiation</h2>
+        <h2 className="font-heading text-xl leading-7 font-bold tracking-tight text-heading">Discounts and negotiation</h2>
       </div>
       <CapabilityNotice
         capabilityId="negotiation"

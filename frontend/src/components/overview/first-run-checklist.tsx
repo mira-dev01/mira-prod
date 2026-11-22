@@ -35,7 +35,7 @@ export function FirstRunChecklist({ name, interests }: { name: string | null | u
   return (
     <CellCard className="md:col-span-8 lg:col-span-6">
       <CardHeader>
-        <h2 className="text-xl leading-7 font-bold tracking-tight">Welcome to Mira{name ? `, ${name}` : ""}</h2>
+        <h2 className="text-xl leading-7 font-bold tracking-tight text-heading">Welcome to Mira{name ? `, ${name}` : ""}</h2>
         <p className="text-[13px] text-muted-foreground">Let&apos;s get your properties answering calls.</p>
       </CardHeader>
       <CardContent>

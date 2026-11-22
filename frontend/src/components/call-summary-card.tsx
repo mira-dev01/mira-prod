@@ -16,7 +16,7 @@ const outcomeTone: Record<string, StatusTone> = {
   "Spam / Junk Call": "destructive",
 };
 
-const SECTION = "mb-2 text-[13px] font-bold tracking-[0.1em] uppercase";
+const SECTION = "mb-2 text-[13px] font-bold tracking-[0.1em] text-heading uppercase";
 
 function SummaryField({ label, value }: { label: string; value: string }) {
   return (
