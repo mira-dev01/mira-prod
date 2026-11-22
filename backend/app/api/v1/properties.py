@@ -4,12 +4,8 @@ import re
 import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
-<<<<<<< Updated upstream
-from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
-=======
 from sqlalchemy import func, select
->>>>>>> Stashed changes
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.common import get_owned_property

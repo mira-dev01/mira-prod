@@ -533,7 +533,6 @@ async def test_update_property_switch_from_scheduled_back_to_mira_preserves_sche
     assert back_to_scheduled.status_code == 422
 
 
-<<<<<<< Updated upstream
 # ---- ExoPhone / Twilio number: unique across hosts, so say so ------------------------------------
 
 
@@ -626,7 +625,8 @@ async def test_room_rental_error_names_what_is_missing(client, auth_headers, tes
     detail = resp.json()["detail"]
     assert "how many rooms can be rented" in detail and "the guests per room" in detail
     assert "price per room" not in detail
-=======
+
+
 # --- one link for every property of a host (GET /properties/gallery/host/{host_id}) ---
 
 
@@ -696,4 +696,3 @@ async def test_the_host_gallery_route_does_not_swallow_the_single_property_galle
 
     assert single.status_code == 200 and single.json()["name"] == "One"
     assert listed.status_code == 200 and [p["name"] for p in listed.json()] == ["One"]
->>>>>>> Stashed changes
