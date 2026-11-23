@@ -61,9 +61,9 @@ export function LeadsCard({
           {loading ? (
             <Skeleton className="h-40 w-full" />
           ) : rows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No open leads right now.</p>
+            <p className="flex-1 content-center text-center text-sm text-muted-foreground">No open leads right now.</p>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="flex flex-1 flex-col justify-center overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/60">
@@ -109,7 +109,7 @@ export function LeadsCard({
               </Table>
             </div>
           )}
-          <Link href="/dashboard/leads?tab=booking" className="mt-auto flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+          <Link href="/dashboard/leads?tab=booking" className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
             View all leads{open.length > rows.length ? ` (${open.length})` : ""} <ArrowRight className="size-3.5" />
           </Link>
         </>

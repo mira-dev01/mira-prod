@@ -542,6 +542,7 @@ export const api = {
       ),
     analytics: (bucket: "week" | "month" = "week") =>
       request<FaqGapAnalytics>(`/faq/gaps/analytics${buildQuery({ bucket })}`),
+    dismiss: (gapId: string) => request<void>(`/faq/gaps/${gapId}/dismiss`, { method: "POST" }),
     answer: (gapId: string, data: FaqGapAnswer) =>
       request<FaqEntryOut>(`/faq/gaps/${gapId}/answer`, { method: "POST", body: JSON.stringify(data) }),
     answerVoice: (gapId: string, audio: Blob, scope: FaqScope, question?: string) =>

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Cell, Sheet } from "@/components/ui/sheet";
@@ -18,7 +17,6 @@ import { LeadsCard } from "@/components/overview/leads-card";
 import { RecentCallsCard } from "@/components/overview/recent-calls-card";
 import { DateRangePicker } from "@/components/date-range-picker";
 import { UnansweredQuestionsCard } from "@/components/unanswered-questions-card";
-import { USE_CASES } from "@/lib/use-cases";
 import type { LeadOut } from "@/lib/types";
 
 export default function OverviewPage() {
@@ -72,21 +70,6 @@ export default function OverviewPage() {
         </Sheet>
       ) : (
         <>
-          {interests.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-bold tracking-[0.1em] text-muted-foreground uppercase">Your focus</span>
-              {USE_CASES.filter((useCase) => interests.includes(useCase.key)).map((useCase) => (
-                <Link
-                  key={useCase.key}
-                  href={useCase.navHref}
-                  className="rounded-full border border-border bg-card px-3 py-1 text-xs font-semibold text-foreground transition-colors hover:bg-accent"
-                >
-                  {useCase.label}
-                </Link>
-              ))}
-            </div>
-          )}
-
           {overviewError && !overview ? (
             <KpiRowError onRetry={refetchOverview} />
           ) : overviewLoading && !overview ? (
@@ -100,31 +83,42 @@ export default function OverviewPage() {
               stages={overview?.funnel}
               info={overview?.info?.booking_funnel}
               loading={overviewLoading && !overview}
-              className="md:col-span-5"
+              className="col-span-12 md:col-span-5 xl:col-span-4"
             />
             <LeadsCard
               leads={leads ?? []}
               info={overview?.info?.leads}
               loading={leadsLoading}
               onOpenLead={setEditingLead}
-              className="md:col-span-7"
+              className="col-span-12 md:col-span-7 xl:col-span-8"
             />
             <RecentCallsCard
               calls={calls ?? []}
               info={overview?.info?.recent_calls}
               loading={callsLoading}
-              className="md:col-span-7"
+              className="col-span-12 md:col-span-6 xl:col-span-4"
             />
             {overviewError && !overview ? (
-              <Cell className="text-sm text-muted-foreground md:col-span-5">
+              <Cell className="justify-center text-sm text-muted-foreground md:col-span-6 xl:col-span-4">
                 <span>
-                  <span className="font-semibold text-foreground">Needs your attention</span> · Couldn&apos;t load.
+                  <span className="font-semibold text-foreground">Tickets raised</span> · Couldn&apos;t load.
                 </span>
               </Cell>
             ) : (
-              <NeedsAttentionCard data={overview} loading={overviewLoading && !overview} onChanged={refetchOverview} />
+              <NeedsAttentionCard
+                data={overview}
+                loading={overviewLoading && !overview}
+                onChanged={refetchOverview}
+                className="md:col-span-6 xl:col-span-4"
+              />
             )}
-            <UnansweredQuestionsCard inSheet limit={4} linkToFaqPage info={overview?.info?.unanswered_questions} />
+            <UnansweredQuestionsCard
+              inSheet
+              limit={4}
+              linkToFaqPage
+              info={overview?.info?.unanswered_questions}
+              className="md:col-span-12 xl:col-span-4"
+            />
           </Sheet>
         </>
       )}

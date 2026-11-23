@@ -26,6 +26,7 @@ export const KIND_LABEL: Record<TicketKind, string> = {
   promise: "Promise",
   missed_call: "Call back",
   payment: "Payment",
+  request: "Guest request", // availability / price / payment-link asks Mira could not settle on the call
   stay_request: "Early / late", // Spacez only: early check-in / late check-out awaiting the team's yes or no
 };
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarDays, ChartPie, CircleAlert, CircleCheck, TrendingUp, Users, Wallet, type LucideIcon } from "lucide-react";
+import { CalendarDays, ChartPie, CircleAlert, CircleCheck, HandCoins, TrendingUp, Users, Wallet, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { InfoCard } from "@/components/overview/info-card";
@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 import type { Completeness, OverviewData } from "@/lib/types";
 
 /**
- * Overview's seven headline numbers. Renders what GET /analytics/overview returns and
+ * Overview's eight headline numbers. Renders what GET /analytics/overview returns and
  * computes nothing itself -- every definition lives in backend analytics_service.py and
  * the hover text comes from the same response (`data.info`). "No data" is never shown as
  * a zero: a null value renders as a quiet "—" with a note.
@@ -26,10 +26,22 @@ type Tile = {
   tone: "brick" | "green";
 };
 
+// Revenue counts only the nights that fall inside the selected dates, so "none" means no stays
+// in this period -- not that nothing was booked (see Booked value and Upcoming revenue).
+const NO_STAYS = "No stays in this period";
+
 function pricedNote(c: Completeness, emptyNote: string): string {
   if (c.bookings_total === 0) return emptyNote;
   if (c.bookings_priced === 0) return "No prices yet";
   if (c.is_complete) return `${c.bookings_priced} booking${c.bookings_priced === 1 ? "" : "s"}`;
+  return `${c.bookings_priced} of ${c.bookings_total} priced`;
+}
+
+// Booked value is what was sold in the period, whatever dates the guests stay.
+function bookedNote(c: Completeness): string {
+  if (c.bookings_total === 0) return "None made in this period";
+  if (c.bookings_priced === 0) return "No prices yet";
+  if (c.is_complete) return `${c.bookings_priced} booking${c.bookings_priced === 1 ? "" : "s"} made`;
   return `${c.bookings_priced} of ${c.bookings_total} priced`;
 }
 
@@ -45,12 +57,13 @@ function buildTiles(data: OverviewData): Tile[] {
   const occupancyNote = !data.has_properties
     ? "Add a property to start tracking"
     : p.booked_nights === 0
-      ? "No bookings"
+      ? NO_STAYS
       : `${p.booked_nights} of ${p.available_nights} nights`;
   const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
 
   return [
-    { id: "revenue", label: "Revenue", value: formatINRCompact(p.revenue), unavailable: p.revenue === null, note: pricedNote(p.completeness, "No bookings"), href: "/dashboard/analytics", icon: Wallet, tone: "brick" },
+    { id: "revenue", label: "Revenue", value: formatINRCompact(p.revenue), unavailable: p.revenue === null, note: pricedNote(p.completeness, NO_STAYS), href: "/dashboard/analytics", icon: Wallet, tone: "brick" },
+    { id: "booked_value", label: "Booked value", value: formatINRCompact(p.booked_value), unavailable: p.booked_value === null, note: bookedNote(p.booked_completeness), href: "/dashboard/calendar", icon: HandCoins, tone: "brick" },
     { id: "upcoming_revenue", label: "Upcoming revenue", value: formatINRCompact(p.upcoming_revenue), unavailable: p.upcoming_revenue === null, note: upcomingNote(p.upcoming_completeness), href: "/dashboard/calendar", icon: CalendarDays, tone: "brick" },
     { id: "occupancy", label: "Occupancy", value: formatPercent(p.occupancy), unavailable: p.occupancy === null, note: occupancyNote, href: "/dashboard/analytics", icon: ChartPie, tone: "brick" },
     { id: "adr", label: "ADR", value: formatINR(p.adr), unavailable: p.adr === null, note: p.revpar !== null ? `RevPAR ${formatINR(p.revpar)}` : "Per night", href: "/dashboard/analytics", icon: TrendingUp, tone: "brick" },
@@ -60,12 +73,12 @@ function buildTiles(data: OverviewData): Tile[] {
   ];
 }
 
-const GRID = "grid grid-cols-2 gap-4 sm:grid-cols-4 xl:grid-cols-7";
+const GRID = "grid grid-cols-2 gap-4 sm:grid-cols-4 2xl:grid-cols-8";
 
 export function KpiRowSkeleton() {
   return (
     <div className={GRID} aria-busy="true" aria-label="Loading key metrics">
-      {Array.from({ length: 7 }).map((_, i) => (
+      {Array.from({ length: 8 }).map((_, i) => (
         <div key={i} className="space-y-3 rounded-xl border border-border bg-card p-4">
           <Skeleton className="h-4 w-20" />
           <Skeleton className="h-7 w-24" />

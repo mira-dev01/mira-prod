@@ -446,6 +446,38 @@ async def portfolio_performance(db: AsyncSession, scope: AnalyticsScope) -> dict
     }
 
 
+async def booked_value(db: AsyncSession, scope: AnalyticsScope) -> dict:
+    """Overview "Booked value": the confirmed price of reservations MADE in the
+    period, whatever dates the guests are staying. Revenue only counts nights
+    that fall inside the period, so a booking taken today for December shows
+    here and in Upcoming revenue, not in Revenue. Full stay price, not
+    apportioned. Unpriced reservations add nothing; `completeness` says how
+    many were left out."""
+    if not scope.property_ids:
+        return {"value": None, "completeness": {"bookings_total": 0, "bookings_priced": 0, "bookings_missing_price": 0, "is_complete": True}}
+    rows = (
+        await db.scalars(
+            select(Booking).where(
+                Booking.property_id.in_(scope.property_ids),
+                Booking.status == "confirmed",
+                Booking.kind == "reservation",
+                Booking.created_at >= scope.since,
+                Booking.created_at < scope.until,
+            )
+        )
+    ).all()
+    priced = [b for b in rows if b.has_confirmed_price]
+    return {
+        "value": _money(sum(float(b.final_booking_price) for b in priced)) if priced else None,
+        "completeness": {
+            "bookings_total": len(rows),
+            "bookings_priced": len(priced),
+            "bookings_missing_price": len(rows) - len(priced),
+            "is_complete": len(rows) == len(priced),
+        },
+    }
+
+
 async def _upcoming_revenue(db: AsyncSession, scope: AnalyticsScope) -> dict:
     if not scope.property_ids:
         return {"value": None, "completeness": {"bookings_total": 0, "bookings_priced": 0, "bookings_missing_price": 0, "is_complete": True}}
@@ -1147,6 +1179,7 @@ async def overview(db: AsyncSession, scope: AnalyticsScope) -> dict:
     funnel = booking_funnel(conversations)["stages"]
     stages = {s["key"]: s["value"] for s in funnel}
     portfolio = await portfolio_performance(db, scope)
+    booked = await booked_value(db, scope)
     activity = await call_activity(
         db, scope.host.id, scope.property_ids, scope.since, scope.until, include_test_calls=scope.include_test_calls
     )
@@ -1165,6 +1198,8 @@ async def overview(db: AsyncSession, scope: AnalyticsScope) -> dict:
             "available_nights": portfolio["available_nights"],
             "completeness": portfolio["completeness"],
             "upcoming_completeness": portfolio["upcoming_completeness"],
+            "booked_value": booked["value"],
+            "booked_completeness": booked["completeness"],
             "currency": portfolio["currency"],
         },
         "opportunities": {

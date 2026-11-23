@@ -194,8 +194,18 @@ const overview = {
     occupancy: 0.42, revenue: 684000, adr: 14200, revpar: 5964, upcoming_revenue: 392000, booked_nights: 241, available_nights: 574,
     completeness: { bookings_total: 14, bookings_priced: 11, is_complete: false },
     upcoming_completeness: { bookings_total: 9, bookings_priced: 9, is_complete: true },
+    booked_value: 428000,
+    booked_completeness: { bookings_total: 7, bookings_priced: 7, is_complete: true },
     currency: "INR",
   },
+  funnel: [
+    { key: "all_conversations", label: "All conversations", value: 62, unit: "conversations", rate_from_previous: null },
+    { key: "booking_related", label: "Booking-related conversations", value: 48, unit: "conversations", rate_from_previous: 0.77 },
+    { key: "qualified_leads", label: "Qualified leads", value: 23, unit: "guests", rate_from_previous: 0.48 },
+    { key: "hot_leads", label: "Hot / very hot leads", value: 9, unit: "guests", rate_from_previous: 0.39 },
+    { key: "booking_intent", label: "Booking intent", value: 6, unit: "guests", rate_from_previous: 0.67 },
+    { key: "converted", label: "Converted bookings", value: 3, unit: "guests", rate_from_previous: 0.5 },
+  ],
   opportunities: { booking_opportunities: 23, high_intent: 6, booking_intent: 4 },
   mira_attributed_bookings: 3,
   activity: { total_calls: 87, completed_calls: 74, qualified_calls: 31, escalated_calls: 5, answer_rate: 0.93 },
@@ -223,6 +233,8 @@ const calls = [
   { id: "c1", exotel_call_id: "x1", property_id: null, guest_profile_id: null, caller_number: "+919811100001", guest_name: "Aarav Mehta", guest_phone: "+919811100001", duration_minutes: 6.4, recording_url: null, transcript: null, ai_summary: null, status: "completed", urgency: "high", call_type: "BOOKING_LEAD", classification_confidence: 0.9, classification_reason: null, revenue_attributed: 0, started_at: ago(1), ended_at: ago(1), created_at: ago(1) },
   { id: "c2", exotel_call_id: "x2", property_id: null, guest_profile_id: null, caller_number: "+919811100002", guest_name: "Priya Nair", guest_phone: "+919811100002", duration_minutes: 4.1, recording_url: null, transcript: null, ai_summary: null, status: "completed", urgency: null, call_type: "BOOKING_LEAD", classification_confidence: 0.9, classification_reason: null, revenue_attributed: 0, started_at: ago(3), ended_at: ago(3), created_at: ago(3) },
   { id: "c3", exotel_call_id: "x3", property_id: null, guest_profile_id: null, caller_number: "+919811100009", guest_name: null, guest_phone: "+919811100009", duration_minutes: 0.4, recording_url: null, transcript: null, ai_summary: null, status: "completed", urgency: null, call_type: "JUNK", classification_confidence: 0.9, classification_reason: null, revenue_attributed: 0, started_at: ago(5), ended_at: ago(5), created_at: ago(5) },
+  { id: "c91", exotel_call_id: "x91", property_id: null, guest_profile_id: null, caller_number: "+919811100077", guest_name: null, guest_phone: "+919811100077", duration_minutes: null, recording_url: null, transcript: null, ai_summary: null, status: "failed", urgency: null, call_type: "MISSED_AGENT_BUSY", classification_confidence: 1, classification_reason: null, revenue_attributed: 0, started_at: ago(6), ended_at: ago(6), created_at: ago(6) },
+  { id: "c92", exotel_call_id: "x92", property_id: null, guest_profile_id: null, caller_number: "+919811100078", guest_name: null, guest_phone: "+919811100078", duration_minutes: null, recording_url: null, transcript: null, ai_summary: null, status: "failed", urgency: null, call_type: "MISSED_SYSTEM_FAILURE", classification_confidence: 1, classification_reason: null, revenue_attributed: 0, started_at: ago(6), ended_at: ago(6), created_at: ago(6) },
 ];
 const faqGaps = [
   { sample_id: "g1", question: "Is there a bonfire we can book for a group?", count: 3, property_id: "preview-prop-1", last_asked_at: ago(8), suggested_faq_entry_id: null, suggested_answer: null, match_score: null, source: "search_miss" },

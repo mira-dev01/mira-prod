@@ -422,9 +422,29 @@ async def test_every_overview_card_has_info_with_a_source(client, auth_headers, 
     today = today_ist()
     body = await _overview(client, auth_headers, today, today)
     for key in (
-        "revenue", "upcoming_revenue", "occupancy", "adr", "leads", "open_actions", "resolution_rate",
+        "revenue", "upcoming_revenue", "booked_value", "occupancy", "adr", "leads", "open_actions", "resolution_rate",
         "booking_funnel", "recent_calls", "needs_attention", "unanswered_questions",
     ):
         info = body["info"][key]
         assert info["label"] and info["definition"] and info["formula"] and info["source"], key
         assert info["window"] in ("period", "now"), key
+
+
+async def test_booked_value_counts_reservations_made_in_the_period_even_for_future_stays(
+    client, auth_headers, test_property, db_session
+):
+    """Revenue only counts nights inside the period; Booked value is what was sold in it."""
+    today = today_ist()
+    db_session.add(_booking(test_property, today + timedelta(days=40), today + timedelta(days=42), price=50000))
+    db_session.add(_booking(test_property, today + timedelta(days=60), today + timedelta(days=61)))  # unpriced
+    await db_session.commit()
+
+    body = await _overview(client, auth_headers, today - timedelta(days=7), today)
+
+    assert body["portfolio"]["revenue"] is None  # no stay nights in the period
+    assert body["portfolio"]["booked_value"] == 50000
+    assert body["portfolio"]["booked_completeness"]["bookings_missing_price"] == 1
+    assert body["portfolio"]["upcoming_revenue"] == 50000
+
+    earlier = await _overview(client, auth_headers, today - timedelta(days=60), today - timedelta(days=30))
+    assert earlier["portfolio"]["booked_value"] is None

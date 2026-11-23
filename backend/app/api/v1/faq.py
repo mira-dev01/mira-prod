@@ -200,6 +200,18 @@ async def answer_faq_gap(
         raise _scope_http_error(exc)
 
 
+@router.post("/gaps/{gap_id}/dismiss", status_code=status.HTTP_204_NO_CONTENT)
+async def dismiss_faq_gap(
+    gap_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    gap = await faq_service.get_owned_unanswered_question(db, gap_id, current_user.id)
+    if gap is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unanswered question not found")
+    await faq_service.dismiss_faq_gap(db, gap)
+
+
 @router.post("/gaps/{gap_id}/answer-voice", response_model=FaqEntryOut, status_code=status.HTTP_201_CREATED)
 async def answer_faq_gap_voice(
     gap_id: uuid.UUID,

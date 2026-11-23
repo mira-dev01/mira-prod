@@ -2,9 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { CircleAlert } from "lucide-react";
+import { ArrowRight, CircleAlert } from "lucide-react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CardContent, CardHeader } from "@/components/ui/card";
 import { Cell, CellCard, CellTitle } from "@/components/ui/sheet";
@@ -13,6 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { BookingReconciliationPanel } from "@/components/booking-reconciliation";
 import { useAsync } from "@/hooks/use-async";
 import { api } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import { InfoButton } from "@/components/overview/info-card";
 import { KIND_LABEL } from "@/components/tickets-tab";
 import { formatINR } from "@/lib/format";
@@ -37,20 +37,39 @@ function AttentionRow({ title, description, action }: { title: string; descripti
 }
 
 /**
- * Overview's "Needs your attention" -- current-state actions, highest
+ * Overview's "Tickets raised" -- current-state actions, highest
  * priority first: booking prices to confirm, possible Mira bookings to
- * confirm, high-intent guests who haven't converted. "Review" opens the
+ * confirm, high-intent guests who haven't converted, then the open tickets
+ * themselves. A red count next to the title says how many are waiting. "Review" opens the
  * same reconciliation panel as the Calendar/Analytics page right here and
  * steps through the queue, so the host acts without leaving Overview.
  */
+/** Rows shown on the card; the rest are one click away on the Tickets tab. */
+const MAX_ROWS = 5;
+
+/** The round red count beside the title: how many things are waiting on the host. */
+function CountBubble({ count }: { count: number }) {
+  return (
+    <span
+      aria-label={`${count} pending`}
+      className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-[11px] leading-none font-bold text-white tabular-nums"
+    >
+      {count > 99 ? "99+" : count}
+    </span>
+  );
+}
+
 export function NeedsAttentionCard({
   data,
   loading,
   onChanged,
+  className,
 }: {
   data: OverviewData | null;
   loading: boolean;
   onChanged: () => void;
+  /** Grid placement inside the Overview's Sheet. */
+  className?: string;
 }) {
   // Open tickets are current state, like the rest of this card.
   const { data: tickets } = useAsync(() => api.tickets.list("open"), []);
@@ -92,7 +111,7 @@ export function NeedsAttentionCard({
 
   if (loading || !data) {
     return (
-      <Cell>
+      <Cell className={className}>
         <Skeleton className="h-5 w-40" aria-label="Loading actions" />
       </Cell>
     );
@@ -101,6 +120,8 @@ export function NeedsAttentionCard({
   const { price_confirmations, attribution_confirmations, high_intent_unconverted: hot } = data.attention;
   const openTickets = tickets ?? [];
   const total = price_confirmations + attribution_confirmations + hot.count + openTickets.length;
+  const summaryRows = (price_confirmations > 0 ? 1 : 0) + (attribution_confirmations > 0 ? 1 : 0) + (hot.count > 0 ? 1 : 0);
+  const ticketRows = openTickets.slice(0, Math.max(0, MAX_ROWS - summaryRows));
   const valueNote =
     hot.potential_value === null
       ? undefined
@@ -108,8 +129,6 @@ export function NeedsAttentionCard({
         ? `${formatINR(hot.potential_value)} potential booking value`
         : `${formatINR(hot.potential_value)} quoted to ${hot.valued_count} of them`;
 
-  // Nothing to do: a single quiet line, not a full card competing with the
-  // snapshot above it.
   const reviewPanel = (
     <BookingReconciliationPanel
       bookingId={currentId}
@@ -131,12 +150,17 @@ export function NeedsAttentionCard({
   if (total === 0) {
     return (
       <>
-        <Cell className="flex-row items-center gap-3 py-3 text-sm">
-          <span aria-hidden className="size-2 shrink-0 rounded-full bg-status-live" />
-          <span>
-            <span className="font-semibold">Needs your attention</span>
-            <span className="text-muted-foreground"> · Nothing right now.</span>
-          </span>
+        <Cell className={cn("gap-4 p-5", className)}>
+          <CellTitle icon={CircleAlert}>
+            <Link href="/dashboard/leads?tab=tickets" className="hover:underline">
+              Tickets raised
+            </Link>
+            <InfoButton info={data.info?.needs_attention} />
+          </CellTitle>
+          <p className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground">
+            <span aria-hidden className="size-2 shrink-0 rounded-full bg-status-live" />
+            Nothing waiting on you right now.
+          </p>
         </Cell>
         {reviewPanel}
       </>
@@ -144,17 +168,17 @@ export function NeedsAttentionCard({
   }
 
   return (
-    <CellCard>
-      <CardHeader className="flex flex-row items-center justify-between gap-2">
+    <CellCard className={className}>
+      <CardHeader>
         <CellTitle icon={CircleAlert}>
           <Link href="/dashboard/leads?tab=tickets" className="hover:underline">
-            Needs your attention
+            Tickets raised
           </Link>
+          <CountBubble count={total} />
           <InfoButton info={data.info?.needs_attention} />
         </CellTitle>
-        <Badge variant="outline">{total} open</Badge>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex-1">
         <ul>
           {price_confirmations > 0 && (
             <AttentionRow
@@ -186,19 +210,19 @@ export function NeedsAttentionCard({
               title={`${hot.count} high-intent guest${hot.count === 1 ? " hasn't" : "s haven't"} converted`}
               description={valueNote}
               action={
-                <Button size="sm" variant="outline" render={<Link href="/dashboard/leads?tab=booking&status=open" />}>
+                <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/dashboard/leads?tab=booking&status=open" />}>
                   View guests
                 </Button>
               }
             />
           )}
-          {openTickets.slice(0, 3).map((t) => (
+          {ticketRows.map((t) => (
             <AttentionRow
               key={t.id}
               title={t.summary}
               description={`${KIND_LABEL[t.kind] ?? t.kind}${t.guest_name ? ` · ${t.guest_name}` : ""}`}
               action={
-                <Button size="sm" variant="outline" render={<Link href="/dashboard/leads?tab=tickets" />}>
+                <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/dashboard/leads?tab=tickets" />}>
                   Open
                 </Button>
               }
@@ -206,6 +230,11 @@ export function NeedsAttentionCard({
           ))}
         </ul>
       </CardContent>
+      <div className="border-t border-border px-5 py-3">
+        <Link href="/dashboard/leads?tab=tickets" className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+          View all tickets <ArrowRight className="size-3.5" />
+        </Link>
+      </div>
       {reviewPanel}
     </CellCard>
   );

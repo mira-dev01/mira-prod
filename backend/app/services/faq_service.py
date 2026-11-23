@@ -645,3 +645,21 @@ async def answer_faq_gap(
             background.spawn(embedding_service.backfill_faq_entry_embedding(row.id, row.question))
 
     return entry
+
+
+async def dismiss_faq_gap(db: AsyncSession, gap: UnansweredQuestion) -> int:
+    """The host says this is not a question worth answering (a stray word, a
+    one-off). Every pending row sharing its normalized_question is marked
+    dismissed, so the group leaves the list and no longer counts against the
+    resolution rate. Returns how many rows were cleared."""
+    result = await db.execute(
+        UnansweredQuestion.__table__.update()
+        .where(
+            UnansweredQuestion.user_id == gap.user_id,
+            UnansweredQuestion.normalized_question == gap.normalized_question,
+            UnansweredQuestion.status == "pending",
+        )
+        .values(status="dismissed")
+    )
+    await db.commit()
+    return result.rowcount or 0

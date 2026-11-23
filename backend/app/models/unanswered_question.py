@@ -35,6 +35,7 @@ class UnansweredQuestion(UUIDPkMixin, TimestampMixin, Base):
     # counting and to catch all matching rows when a gap gets answered.
     normalized_question: Mapped[str] = mapped_column(String(500), nullable=False)
 
+    # pending | answered | dismissed (host cleared it without answering)
     status: Mapped[str] = mapped_column(String(16), default="pending", server_default="pending")
     resolved_faq_entry_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("faq_entries.id", ondelete="SET NULL")

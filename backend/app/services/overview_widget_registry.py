@@ -49,7 +49,7 @@ OVERVIEW_WIDGETS: tuple[OverviewWidget, ...] = (
     ),
     OverviewWidget(
         "needs_attention",
-        "Needs your attention",
+        "Tickets raised",
         "Escalations, booking reviews and other items waiting on you.",
         ("lead_capture", "booking_reconciliation", "analytics_reporting"),
         default_visible=True,

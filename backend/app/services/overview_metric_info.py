@@ -39,6 +39,16 @@ def _from_registry(metric_id: str, source: str, window: Window) -> OverviewMetri
 OVERVIEW_METRIC_INFO: tuple[OverviewMetricInfo, ...] = (
     _from_registry("revenue", "Bookings (confirmed final price)", "period"),
     _from_registry("upcoming_revenue", "Bookings (confirmed final price)", "now"),
+    OverviewMetricInfo(
+        "booked_value",
+        "Booked value",
+        "What the reservations made in this period are worth, whenever the guests stay.",
+        "Sum of the confirmed final price of confirmed reservations created in the period (full stay price). "
+        "Reservations without a confirmed price are not counted. Revenue, by contrast, only counts nights that fall "
+        "inside the period.",
+        "Bookings (confirmed final price)",
+        "period",
+    ),
     _from_registry("occupancy", "Bookings and blocked dates on your property calendars", "period"),
     _from_registry("adr", "Bookings (confirmed final price)", "period"),
     OverviewMetricInfo(
@@ -73,13 +83,13 @@ OVERVIEW_METRIC_INFO: tuple[OverviewMetricInfo, ...] = (
         "recent_calls",
         "Recent call activity",
         "The latest calls in this period.",
-        "The 5 most recent calls by start time. AI summary and transcript are stored with each call.",
+        "The 5 most recent calls by start time, each tagged Incoming, Outgoing, Missed or Failed. Open the Calls tab for the summary, transcript and details.",
         "Call sessions",
         "period",
     ),
     OverviewMetricInfo(
         "needs_attention",
-        "Needs your attention",
+        "Tickets raised",
         "Work waiting on you.",
         "Open tickets, plus bookings waiting for you to confirm a price or a Mira match.",
         "Tickets and bookings",

@@ -51,7 +51,7 @@ export const WIDGET_RENDERERS: Record<string, (d: OverviewWidgetData) => React.R
   needs_attention: (d) =>
     d.overviewError && !d.overview ? (
       <p className={cn("rounded-2xl px-5 py-3.5 text-sm text-muted-foreground", glassCardClassName)}>
-        <span className="font-medium text-foreground">Needs your attention</span> · Couldn&apos;t load this right
+        <span className="font-medium text-foreground">Tickets raised</span> · Couldn&apos;t load this right
         now.
       </p>
     ) : (
@@ -142,7 +142,7 @@ function fallback(
 // backend/tests/test_ui_preferences.py keeps these ids in sync.
 export const FALLBACK_WIDGETS: OverviewWidget[] = [
   fallback("portfolio_snapshot", "Portfolio snapshot", "summary", "full", ["full"]),
-  fallback("needs_attention", "Needs your attention", "summary", "full", ["full"]),
+  fallback("needs_attention", "Tickets raised", "summary", "full", ["full"]),
   fallback("live_requests", "Leads", "live", "half", ["half", "full"]),
   fallback("opportunities", "Missed calls", "live", "half", ["half", "full"]),
   fallback("recent_calls", "Recent calls", "details", "half", ["half", "full"]),

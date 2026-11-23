@@ -387,7 +387,7 @@ async def analytics_overview(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """The Overview page's snapshot + "Needs your attention" in one request.
+    """The Overview page's snapshot + "Tickets raised" in one request.
     Which numbers follow the selected dates and which are current-state is
     documented on analytics_service.overview. Defaults to the last 30 days
     (IST) when no dates are given."""

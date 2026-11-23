@@ -73,6 +73,20 @@ export function UnansweredQuestionsCard({
   const propertyName = (id: string | null) =>
     id ? properties?.find((p) => p.id === id)?.name ?? id : "All properties";
 
+  // Compact (Overview, one third of a row): the question and its actions stack instead of
+  // sitting side by side, so the text is never squeezed by the buttons.
+  const compact = !!limit;
+
+  async function handleDismiss(gap: FaqGapOut) {
+    try {
+      await api.faqGaps.dismiss(gap.sample_id);
+      toast.success("Dismissed");
+      refetchGaps();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Couldn't dismiss that question");
+    }
+  }
+
   const [answeringGap, setAnsweringGap] = useState<FaqGapOut | null>(null);
   const [gapAnswerText, setGapAnswerText] = useState("");
   // The host can reword the guest's question before it becomes an FAQ.
@@ -218,7 +232,10 @@ export function UnansweredQuestionsCard({
                 </Select>
               )}
               {gaps.map((gap) => (
-                <ListRow key={gap.sample_id} className="flex-row flex-wrap items-start justify-between gap-3">
+                <ListRow
+                  key={gap.sample_id}
+                  className={cn("gap-3", compact ? "flex-col items-stretch" : "flex-row flex-wrap items-start justify-between")}
+                >
                   <div className="min-w-0 flex-1 space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="min-w-0 break-words text-sm font-medium">{gap.question}</p>
@@ -231,7 +248,11 @@ export function UnansweredQuestionsCard({
                         </Badge>
                       )}
                       {gap.source === "guard_blocked" && (
-                        <Badge variant="outline" className="shrink-0">
+                        <Badge
+                          variant="outline"
+                          className="shrink-0"
+                          title="Mira held back an answer she couldn't back up from what's on file"
+                        >
                           Answer held back
                         </Badge>
                       )}
@@ -240,9 +261,14 @@ export function UnansweredQuestionsCard({
                       {propertyName(gap.property_id)} · last asked {new Date(gap.last_asked_at).toLocaleDateString()}
                     </p>
                   </div>
-                  <Button size="sm" className="shrink-0" onClick={() => openAnswerDialog(gap)}>
-                    {gap.suggested_answer ? "Review suggestion" : "Answer this question"}
-                  </Button>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Button size="sm" onClick={() => openAnswerDialog(gap)}>
+                      {gap.suggested_answer ? "Review suggestion" : "Answer this question"}
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => handleDismiss(gap)}>
+                      Dismiss
+                    </Button>
+                  </div>
                 </ListRow>
               ))}
             </div>

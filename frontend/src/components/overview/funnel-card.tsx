@@ -49,16 +49,17 @@ export function FunnelCard({
           {loading ? (
             <Skeleton className="h-40 w-full" />
           ) : !stages ? (
-            <p className="text-sm text-muted-foreground">Funnel unavailable right now.</p>
+            <p className="flex-1 content-center text-center text-sm text-muted-foreground">Funnel unavailable right now.</p>
           ) : stages.every((s) => s.value === 0) ? (
-            <p className="text-sm text-muted-foreground">No conversations in this period.</p>
+            <p className="flex-1 content-center text-center text-sm text-muted-foreground">No conversations in this period.</p>
           ) : (
+            <div className="flex flex-1 flex-col justify-center">
             <ol className="space-y-2.5">
               {stages.map((stage, i) => {
                 const href = STAGE_HREF[stage.key];
                 const row = (
                   <div className="grid grid-cols-[minmax(0,9rem)_1fr_auto] items-center gap-3 text-sm">
-                    <span className="truncate text-muted-foreground">{stage.label}</span>
+                    <span className="truncate text-muted-foreground" title={stage.label}>{stage.label}</span>
                     <span className="h-5 rounded-md bg-muted">
                       <span
                         className="block h-full rounded-md"
@@ -86,8 +87,9 @@ export function FunnelCard({
                 );
               })}
             </ol>
+            </div>
           )}
-          <Link href="/dashboard/analytics" className="mt-auto flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+          <Link href="/dashboard/analytics" className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
             Percentages are step to step <ArrowRight className="size-3" />
           </Link>
         </>

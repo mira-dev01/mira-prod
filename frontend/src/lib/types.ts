@@ -763,7 +763,7 @@ export type FaqGapAnswer = {
 
 // --- Tickets (GET /tickets): what Mira told a guest would happen, still open ---
 
-export type TicketKind = "escalation" | "transfer" | "technician" | "photos" | "whatsapp" | "promise" | "missed_call" | "payment" | "stay_request";
+export type TicketKind = "escalation" | "transfer" | "technician" | "photos" | "whatsapp" | "promise" | "missed_call" | "payment" | "stay_request" | "request";
 export type TicketStatus = "open" | "done" | "dismissed";
 
 export type TicketOut = {
@@ -1108,6 +1108,9 @@ export type OverviewData = {
     available_nights: number;
     completeness: Completeness;
     upcoming_completeness: Completeness;
+    /** Confirmed price of reservations made in the period, whatever dates they stay. */
+    booked_value: number | null;
+    booked_completeness: Completeness;
     currency: string;
   };
   opportunities: { booking_opportunities: number; high_intent: number; booking_intent: number };
