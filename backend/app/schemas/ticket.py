@@ -23,6 +23,11 @@ class TicketOut(BaseModel):
     call_session_id: uuid.UUID | None
     guest_name: str | None
     guest_phone: str | None
+    # The alert raised with it, when there is one.
+    notification_id: uuid.UUID | None = None
+    # Set when the guest has a booking (Leads -> Checked-in): that booking's lead, and where the stay stands.
+    booking_lead_id: uuid.UUID | None = None
+    booking_phase: Literal["in_stay", "upcoming", "checked_out"] | None = None
 
 
 class TicketUpdate(BaseModel):

@@ -1,19 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Cell, Sheet, Toolbar } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { useAsync } from "@/hooks/use-async";
 import { useDateRange } from "@/hooks/use-date-range";
 import { api } from "@/lib/api";
+import { isOpportunity } from "@/lib/opportunities";
 import { matchesSearch } from "@/lib/utils";
+import { ActivityBadge } from "@/components/activity-badge";
 import { DateRangePicker } from "@/components/date-range-picker";
 import { CallsTable, callTypeLabel } from "@/components/calls-table";
+import { MissedCallsTab } from "@/components/missed-calls-tab";
 
 // Each option's callType maps 1:1 to the API's comma-separated call_type
 // filter (app/api/v1/calls.py) -- "Qualified Calls" is the one option that's
@@ -56,7 +61,7 @@ const CALL_LOG_FILTERS: { value: string; label: string; callType?: string }[] = 
   { value: "escalated_no_transfer", label: "Escalated to Host", callType: "ESCALATED_NO_TRANSFER" },
 ];
 
-export default function CallsPage() {
+function AllCallsView() {
   const [includeTestCalls, setIncludeTestCalls] = useState(false);
   const [activeTab, setActiveTab] = useState("all");
   const [search, setSearch] = useState("");
@@ -92,8 +97,7 @@ export default function CallsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <h1 className="page-title">Calls</h1>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-end">
         <div className="flex flex-wrap items-center gap-4">
           <DateRangePicker />
           <div className="flex items-center gap-2">
@@ -144,5 +148,57 @@ export default function CallsPage() {
         </Cell>
       </Sheet>
     </div>
+  );
+}
+
+const CALL_TABS = ["all", "missed"] as const;
+type CallsTab = (typeof CALL_TABS)[number];
+
+function CallsPageContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const initial = searchParams.get("tab");
+  const [tab, setTab] = useState<CallsTab>(CALL_TABS.includes(initial as CallsTab) ? (initial as CallsTab) : "all");
+
+  // The number on the red tab: guests who reached Mira outside a normal call (the line was busy) and still wait on
+  // the host. Same leads the Missed calls list shows; closed or booked ones no longer need anything.
+  const { data: leads } = useAsync(() => api.leads.list({}), []);
+  const waiting = (leads ?? []).filter((lead) => isOpportunity(lead) && (lead.status === "open" || lead.status === "contacted")).length;
+
+  function handleTabChange(value: unknown) {
+    if (typeof value !== "string" || !CALL_TABS.includes(value as CallsTab)) return;
+    setTab(value as CallsTab);
+    router.replace(`/dashboard/calls?tab=${value}`, { scroll: false });
+  }
+
+  return (
+    <div className="space-y-6">
+      <h1 className="page-title">Calls</h1>
+      <Tabs value={tab} onValueChange={handleTabChange}>
+        <TabsList>
+          <TabsTrigger value="all">All calls</TabsTrigger>
+          {/* Missed calls are what the host most needs to act on, so the tab is red whether or not it is open. */}
+          <TabsTrigger value="missed" className="text-destructive hover:text-destructive data-active:text-destructive">
+            Missed calls
+            <ActivityBadge count={waiting} noun="missed call" className="ml-1.5" />
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="all" className="pt-4">
+          <AllCallsView />
+        </TabsContent>
+        <TabsContent value="missed" className="pt-4">
+          <MissedCallsTab />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+export default function CallsPage() {
+  // useSearchParams needs a Suspense boundary (same pattern as the Leads page).
+  return (
+    <Suspense fallback={<Skeleton className="h-64 w-full" />}>
+      <CallsPageContent />
+    </Suspense>
   );
 }

@@ -124,7 +124,7 @@ export function LiveRequestsCard({
       {limit && escalatedLeads.length > limit && (
         <div className="border-t border-border px-5 py-3">
           <Link
-            href="/dashboard/leads?tab=booking&status=open"
+            href="/dashboard/leads?tab=leads&status=open"
             className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
           >
             View all {escalatedLeads.length}

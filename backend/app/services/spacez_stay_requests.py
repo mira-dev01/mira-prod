@@ -23,8 +23,9 @@ Nothing here raises into a live call: `handle_request` returns text the agent ca
 from __future__ import annotations
 
 import logging
+import re
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy import select, update
@@ -428,3 +429,67 @@ async def _mark_expired(db: AsyncSession, request_id: uuid.UUID, why: str) -> No
         db, channel="system", property_id=request.property_id, urgency="low",
         message=f"The {what} payment link for {request.guest_name or request.guest_phone} {why} unpaid.",
     )
+
+
+# -- where the stay really starts and ends (read by Leads -> Checked-in) -------------------------------
+#
+# A guest who has PAID for an early check-in is in the villa before the property's normal check-in time, and one who
+# has paid for a late check-out is still there after the normal check-out time. The request carries only the guest's
+# own words ("around 10 am"), so the hour is read from them when they give one and otherwise falls back to a default.
+# Only a PAID request counts: money is only "paid" when the payment provider says so (see the module note).
+
+EARLY_CHECKIN_DEFAULT = time(6, 0)
+LATE_CHECKOUT_DEFAULT = time(18, 0)
+_CLOCK = re.compile(r"\b(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)", re.IGNORECASE)
+
+
+def _note_clock(note: str | None) -> time | None:
+    """The hour the guest named in their note ("around 10 am", "6:30pm", "noon"), or None."""
+    text = (note or "").lower()
+    if "noon" in text:
+        return time(12, 0)
+    match = _CLOCK.search(text)
+    if not match:
+        return None
+    hour, minute, meridiem = int(match.group(1)), int(match.group(2) or 0), match.group(3)[0]
+    if not (1 <= hour <= 12 and minute < 60):
+        return None
+    return time(hour % 12 + (12 if meridiem == "p" else 0), minute)
+
+
+async def paid_extensions(db: AsyncSession, payment_request_ids: list[uuid.UUID]) -> dict[uuid.UUID, list[SpacezStayRequest]]:
+    """The paid early-check-in / late-check-out requests of each booking (a PaymentRequest id)."""
+    if not payment_request_ids:
+        return {}
+    rows = await db.scalars(
+        select(SpacezStayRequest).where(
+            SpacezStayRequest.payment_request_id.in_(payment_request_ids),
+            SpacezStayRequest.status == "paid",
+        )
+    )
+    grouped: dict[uuid.UUID, list[SpacezStayRequest]] = {}
+    for row in rows.all():
+        grouped.setdefault(row.payment_request_id, []).append(row)
+    return grouped
+
+
+def extend_window(
+    start: datetime, end: datetime, check_in: date, check_out: date, requests: list[SpacezStayRequest]
+) -> tuple[datetime, datetime, bool, bool]:
+    """(start, end, early, late): the stay's window moved earlier / later for what the guest has paid for. It is only
+    ever widened: a stated hour that is not earlier than check-in (or later than check-out) changes nothing."""
+    early = late = False
+    for request in requests:
+        # One note for a request that wants both cannot say which of the two the hour belongs to.
+        said = _note_clock(request.note) if request.want_early_checkin != request.want_late_checkout else None
+        if request.want_early_checkin:
+            moved = datetime.combine(check_in, said or EARLY_CHECKIN_DEFAULT, tzinfo=start.tzinfo)
+            if moved < start:
+                start = moved
+            early = True
+        if request.want_late_checkout:
+            moved = datetime.combine(check_out, said or LATE_CHECKOUT_DEFAULT, tzinfo=end.tzinfo)
+            if moved > end:
+                end = moved
+            late = True
+    return start, end, early, late

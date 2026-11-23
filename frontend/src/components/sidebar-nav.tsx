@@ -59,8 +59,8 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   // rail's centre line (see rail-sidebar.tsx); the mobile drawer keeps its
   // original paddings and always-visible labels.
   const { rail } = useRail();
-  // Requests from guests with an active booking: a number on the Leads link, in the rail and in the drawer.
-  const { count: bookingActivity } = useBookingActivity();
+  // What needs the host on the Leads page (open tickets and requests from booked guests): a number on the Leads link, in the rail and in the drawer.
+  const { navCount: bookingActivity } = useBookingActivity();
 
   function renderLink(link: (typeof links)[number]) {
     const active =

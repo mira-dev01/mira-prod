@@ -10,11 +10,11 @@ import { CellCard, CellTitle, Sheet } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CallSummaryCard } from "@/components/call-summary-card";
 import { StatusChip, type StatusTone } from "@/components/status-chip";
+import { TranscriptView } from "@/components/transcript-view";
 import { WhatsAppButton } from "@/components/whatsapp-button";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError } from "@/lib/api";
-import { parseTranscript } from "@/lib/transcript";
-import { cn, isBrowserTestIdentity } from "@/lib/utils";
+import { isBrowserTestIdentity } from "@/lib/utils";
 
 const statusTone: Record<string, StatusTone> = {
   completed: "live",
@@ -51,7 +51,6 @@ export default function CallDetailPage() {
 
   const isTest = isBrowserTestIdentity(call.caller_number);
   const duration = formatDuration(call.duration_minutes);
-  const turns = call.transcript ? parseTranscript(call.transcript) : null;
   const openEscalations = call.escalations.filter((e) => e.status === "new");
 
   async function handleMarkHandled(notificationId: string) {
@@ -133,37 +132,11 @@ export default function CallDetailPage() {
             <CellTitle>Transcript</CellTitle>
           </CardHeader>
           <CardContent>
-            {!call.transcript ? (
-              <p className="text-sm text-muted-foreground">No transcript available.</p>
-            ) : turns ? (
-              <div className="space-y-3">
-                {turns.map((turn, i) =>
-                  turn.unclear ? (
-                    <p key={i} className="text-xs italic text-muted-foreground">
-                      (unclear audio)
-                    </p>
-                  ) : (
-                    <div key={i} className={cn("flex", turn.role === "mira" ? "justify-end" : "justify-start")}>
-                      <div
-                        className={cn(
-                          "max-w-[80%] whitespace-pre-wrap px-3 py-2 text-sm leading-relaxed",
-                          turn.role === "mira"
-                            ? "border border-border bg-muted text-foreground"
-                            : "border border-(--status-orange) bg-[color-mix(in_srgb,var(--status-orange)_14%,transparent)] text-foreground"
-                        )}
-                      >
-                        <p className="mb-0.5 text-xs font-semibold opacity-80">
-                          {turn.role === "mira" ? "Mira" : isTest ? "Browser test" : call.guest_name ?? "Guest"}
-                        </p>
-                        {turn.text}
-                      </div>
-                    </div>
-                  )
-                )}
-              </div>
-            ) : (
-              <pre className="whitespace-pre-wrap text-sm text-muted-foreground">{call.transcript}</pre>
-            )}
+            <TranscriptView
+              transcript={call.transcript}
+              markers={call.escalation_markers}
+              guestLabel={isTest ? "Browser test" : call.guest_name ?? "Guest"}
+            />
           </CardContent>
         </CellCard>
 

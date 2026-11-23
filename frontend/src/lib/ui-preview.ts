@@ -240,10 +240,6 @@ const faqGaps = [
   { sample_id: "g1", question: "Is there a bonfire we can book for a group?", count: 3, property_id: "preview-prop-1", last_asked_at: ago(8), suggested_faq_entry_id: null, suggested_answer: null, match_score: null, source: "search_miss" },
   { sample_id: "g2", question: "Do you allow pets at Woodhouse Farm?", count: 2, property_id: "preview-prop-2", last_asked_at: ago(30), suggested_faq_entry_id: null, suggested_answer: null, match_score: null, source: "guard_blocked" },
 ];
-const serviceRequests = [
-  { call_session_id: "c9", property_id: "preview-prop-0", property_name: "Hunzuru Wabi Sabi near Manali", room_number: "2", message: "Geyser not working in room 2.", urgency: "high", created_at: ago(4), dismissed_at: null },
-];
-
 const faqEntries = [
   { id: "f1", user_id: "preview-user", property_id: "preview-prop-0", group_id: null, question: "Is breakfast included?", answer: "Breakfast is not included; the caretaker can cook on request for ₹400 a head.", category: null, status: "verified", verified_by: "host", created_at: ago(500), updated_at: ago(500) },
   { id: "f2", user_id: "preview-user", property_id: "preview-prop-0", group_id: null, question: "How far is the nearest ATM?", answer: "About 4 km, in Old Manali.", category: null, status: "verified", verified_by: "host", created_at: ago(400), updated_at: ago(400) },
@@ -311,6 +307,7 @@ const callDetail = {
   escalations: [
     { id: "n1", channel: "escalation", message: "Guest wants a call back about the villa rate for 15 to 20 Nov.", urgency: "high", status: "new", created_at: ago(1) },
   ],
+  escalation_markers: [{ tool: "escalate_to_host", guest: "Can someone call me back about the rate?", mira: null }],
 };
 
 
@@ -451,6 +448,12 @@ const guestDetail = {
   recent_calls: [{ id: "c1", property_id: "preview-prop-0", property_name: "Hunzuru Wabi Sabi Villa near Manali", status: "completed", ai_summary: callDetail.ai_summary, started_at: ago(2) }],
 };
 
+const previewTicket = {
+    id: "preview-ticket-1", kind: "stay_request", summary: "Late check-out? Asha Rao at Woodhouse Farm", urgency: "high", status: "open", source: "tool",
+    detail: "Asha Rao has a confirmed booking at Woodhouse Farm (18 Dec 2026 to 20 Dec 2026) and asks for late check-out (around 3 pm). The flat charge is ₹1,000. Can the villa do it? Approve to send the guest a payment link on WhatsApp, or decline and the guest is told the team cannot.",
+    created_at: ago(20), resolved_at: null, property_id: "preview-prop-2", property_name: "Woodhouse Farm", call_session_id: "c1", guest_name: "Asha Rao", guest_phone: "+919876543210",
+    notification_id: null, booking_lead_id: "a1", booking_phase: "in_stay",
+  };
 // Leads -> Active bookings: one guest in stay with two unseen requests, and upcoming guests in each payment state.
 const dayFromNow = (n: number) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
 const at = (n: number, time: string) => `${dayFromNow(n)}T${time}:00+05:30`;
@@ -461,18 +464,20 @@ const pay = (state: string, label: string, tone: string, extra: Record<string, u
 const guest = (id: string, name: string, villa: string, inDays: number, nights: number, phase: string, payment: unknown, activities: unknown[] = []) => ({
   lead_id: id, guest_name: name, phone: "+919876543210", property_id: "preview-prop-2", property_name: villa,
   check_in: dayFromNow(inDays), check_out: dayFromNow(inDays + nights), check_in_at: at(inDays, "14:00"), check_out_at: at(inDays + nights, "11:00"),
-  nights, num_guests: 8, phase, payment, activity_count: activities.length, activities,
+  nights, num_guests: 8, phase, early_checkin: false, late_checkout: false, payment, activity_count: activities.length, activities,
+  ticket_count: 0, tickets: [],
 });
 const activeBookings = {
   active_when: "link_sent",
   payment_down: false,
   unread_activity: 2,
+  booked_open_tickets: 0,
   in_stay: [
     guest("a1", "Asha Rao", "Deccan Escape", -1, 3, "in_stay", pay("part_paid", "Part paid", "pending", { amount_due: 7350, balance: 7350, balance_due_on: dayFromNow(1), stay_code: "DECC-0007" }), [
       { id: "n1", message: "Needs extra towels and a hair dryer", urgency: "medium", created_at: new Date(Date.now() - 20 * 60000).toISOString() },
       { id: "n2", message: "Asked for a late check-out around 3 pm", urgency: "high", created_at: new Date(Date.now() - 5 * 60000).toISOString() },
     ]),
-  ],
+  ].map((g) => (g.lead_id === "a1" ? { ...g, ticket_count: 1, tickets: [previewTicket], late_checkout: true } : g)),
   upcoming: [
     guest("a2", "Ravi Kumar", "Woodhouse Farm", 3, 2, "upcoming", pay("paid", "Paid", "live", { stay_code: "WOOD-0003" })),
     guest("a3", "Meena Shah", "Casa Blu", 6, 2, "upcoming", pay("link_sent", "Link sent, awaiting payment", "progress", { hold_expires_at: at(0, "23:30"), short_url: "https://rzp.io/l/abc" })),
@@ -484,17 +489,13 @@ const activeBookings = {
 
 const routes: Array<[RegExp, unknown]> = [
   [/^\/analytics\/overview/, overview],
-  [/^\/leads\/service-requests/, serviceRequests],
   [/^\/leads/, leads],
   [/^\/calls\/[^/]+/, callDetail],
   [/^\/calls/, calls],
   [/^\/faq\/gaps|^\/faq-gaps|^\/unanswered/, faqGaps],
   // Spacez only: an early check-in / late check-out request waiting for the team's yes / no.
-  [/^\/tickets/, [{
-    id: "preview-ticket-1", kind: "stay_request", summary: "Late check-out? Asha Rao at Woodhouse Farm", urgency: "high", status: "open", source: "tool",
-    detail: "Asha Rao has a confirmed booking at Woodhouse Farm (18 Dec 2026 to 20 Dec 2026) and asks for late check-out (around 3 pm). The flat charge is ₹1,000. Can the villa do it? Approve to send the guest a payment link on WhatsApp, or decline and the guest is told the team cannot.",
-    created_at: ago(20), resolved_at: null, property_id: "preview-prop-2", property_name: "Woodhouse Farm", call_session_id: null, guest_name: "Asha Rao", guest_phone: "+919876543210",
-  }]],
+  [/^\/tickets\/summary/, { open: 1, booked_open: 1 }],
+  [/^\/tickets/, [previewTicket]],
   [/^\/bookings\/active\/activity-count/, { count: 2 }],
   [/^\/bookings\/active/, activeBookings],
   [/^\/bookings\/reconciliation/, { items: [], total: 0 }],

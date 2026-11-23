@@ -1,3 +1,5 @@
+import type { EscalationMarker } from "@/lib/types";
+
 export type TranscriptTurn = {
   role: "guest" | "mira";
   text: string;
@@ -40,4 +42,42 @@ export function parseTranscript(transcript: string): TranscriptTurn[] | null {
     if (text) turns.push(role === "guest" && text === INAUDIBLE_MARKER ? { role, text, unclear: true } : { role, text });
   }
   return turns.length > 0 ? turns : null;
+}
+
+// --- Where Mira escalated to the host --------------------------------------------------------------------------
+//
+// The saved transcript has no trace of the tool calls, so the backend keeps, for each escalation, the guest's line
+// and Mira's reply (backend/app/services/transcript_markers.py). They are matched here by their text, in call order,
+// not by position, because parseTranscript merges multi-line turns and positions would drift by one.
+
+export type MarkedTurn = TranscriptTurn & { escalation?: boolean };
+
+const squash = (text: string) => text.replace(/\s+/g, " ").trim().toLowerCase();
+
+// What Mira says when she hands something to the host. Only used for a call that has no recorded markers (a call from
+// before they were kept), so it is a best guess on Mira's own lines, never on the guest's.
+const ESCALATION_WORDING =
+  /\b(flag(ged|ging)?|escalat\w*|dispatch(ed|ing)?)\b|\b(let|inform|notify|notified|tell|told|alert|alerted|update)\b[^.?!]{0,30}\bhost\b|\bhost\b[^.?!]{0,40}\b(will|shall)\b[^.?!]{0,30}\b(call|reach|get back|contact|follow|check|confirm|arrange)\b|\btransfer(ring)?\b[^.?!]{0,20}\b(you|call|host)\b/i;
+
+/** The turns, with the ones where Mira escalated to the host marked. `markers` null = not recorded for this call. */
+export function markEscalations(turns: TranscriptTurn[], markers: EscalationMarker[] | null): { turns: MarkedTurn[]; recorded: boolean } {
+  const marked: MarkedTurn[] = turns.map((turn) => ({ ...turn }));
+  if (markers === null) {
+    for (const turn of marked) if (turn.role === "mira" && ESCALATION_WORDING.test(turn.text)) turn.escalation = true;
+    return { turns: marked, recorded: false };
+  }
+  let cursor = 0;
+  for (const marker of markers) {
+    const find = (role: MarkedTurn["role"], text: string | null, from: number) => {
+      if (!text) return -1;
+      const wanted = squash(text);
+      return marked.findIndex((turn, i) => i >= from && turn.role === role && squash(turn.text) === wanted);
+    };
+    const guestAt = find("guest", marker.guest, cursor);
+    if (guestAt >= 0) marked[guestAt].escalation = true;
+    const miraAt = find("mira", marker.mira, guestAt >= 0 ? guestAt : cursor);
+    if (miraAt >= 0) marked[miraAt].escalation = true;
+    cursor = Math.max(cursor, miraAt >= 0 ? miraAt + 1 : guestAt >= 0 ? guestAt + 1 : cursor);
+  }
+  return { turns: marked, recorded: true };
 }

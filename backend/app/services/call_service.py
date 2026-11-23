@@ -332,6 +332,7 @@ async def finalize_call_session(
     call_session_id: uuid.UUID,
     transcript: str | None,
     status: str = "completed",
+    escalation_markers: list[dict] | None = None,
 ) -> CallSession | None:
     session = await db.get(CallSession, call_session_id)
     if session is None:
@@ -339,6 +340,8 @@ async def finalize_call_session(
 
     if transcript is not None:
         session.transcript = transcript
+    if escalation_markers is not None:  # [] = this call escalated nothing; None (never recorded) = it predates this
+        session.escalation_markers = escalation_markers
     session.status = status
     session.ended_at = datetime.now(timezone.utc)
 

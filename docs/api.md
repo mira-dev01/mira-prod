@@ -57,7 +57,7 @@ See [research-flow.md](research-flow.md) for the two import paths' internals.
 | Method & path | Purpose | Auth |
 |---|---|---|
 | `GET /calls` | List call sessions; filters: `status`, `urgency`, `call_type` (comma-separated, e.g. `BOOKING_LEAD,GUEST_SUPPORT` — maps 1:1 to the dashboard Calls page's dropdown, undefined = no filter at all, every call including JUNK/INCOMPLETE/UNKNOWN), `limit`, `start_date`, `end_date`, `include_test_calls` (default excludes browser-test calls) | required |
-| `GET /calls/{id}` | Get one call session (transcript, summary, etc.) | required |
+| `GET /calls/{id}` | Get one call session (transcript, summary, etc.); `escalation_markers` = the transcript lines where Mira escalated to the host (`[{tool, guest, mira}]`; `[]` none; `null` not recorded for a call from before they were kept) | required |
 
 ## `guests.py` — `/guests`
 
@@ -125,7 +125,6 @@ See [research-flow.md](research-flow.md) for how these rules feed `negotiate_rat
 | `GET /leads` | List leads; filters: `start_date`, `end_date` | required |
 | `GET /leads/{id}` | Get one lead | required |
 | `PATCH /leads/{id}` | Update a lead — this is the **only** place `Lead.status` (open/contacted/booked/closed) is ever set; the voice agent never touches it | required |
-| `GET /leads/service-requests` · `POST /leads/service-requests/dismiss` | List / dismiss guest service requests raised during calls | required |
 
 ## `faq.py` — `/faq`
 
@@ -150,7 +149,8 @@ What Mira told guests would happen after the call, kept open until the host does
 
 | Method & path | Purpose | Auth |
 |---|---|---|
-| `GET /tickets` | The host's tickets, newest first; `state` = `open` (default) / `resolved` (done or dismissed) / `all`; optional `property_id` | required |
+| `GET /tickets` | The host's tickets, newest first; `state` = `open` (default) / `resolved` (done or dismissed) / `all`; optional `property_id`. Each carries `notification_id` and, for a guest with a booking, `booking_lead_id` + `booking_phase` (`in_stay` / `upcoming` / `checked_out`) | required |
+| `GET /tickets/summary` | `{open, booked_open}`: open tickets, and how many of them belong to a booked guest (the red numbers on the Tickets / Checked-in tabs and the sidebar) | required |
 | `PATCH /tickets/{id}` | Set `status` to `open` / `done` / `dismissed` | required |
 
 ## `billing.py` + `payments.py` — `/billing`, `/payments`
@@ -172,8 +172,8 @@ A host's payment setup and the payment links Mira has sent (`app/services/billin
 
 | Endpoint | Purpose | Auth |
 |---|---|---|
-| `GET /bookings/active` | Booked leads whose stay is not over: `in_stay` and `upcoming` (soonest first), each with its payment tag (`state`/`label`: no_link, link_pending, link_sent, delivery_failed, payment_failed, part_paid, paid, expired, cancelled; `payment_down` while Razorpay is unreachable) and unseen requests from that guest; plus `active_when` (the host's rule) and `unread_activity` | required |
-| `GET /bookings/active/activity-count` | `{count}`: requests from booked guests not yet seen (the number on the tab and sidebar) | required |
+| `GET /bookings/active` | Booked leads: `in_stay` (checked in; plus checked-out guests that still have an open ticket, `phase` = `checked_out`) and `upcoming` (soonest first), each with its payment tag (`state`/`label`: no_link, link_pending, link_sent, delivery_failed, payment_failed, part_paid, paid, expired, cancelled; `payment_down` while Razorpay is unreachable), `early_checkin` / `late_checkout` (paid for, Spacez only: they move the stay's window), unseen requests that are not tickets (`activities`) and the guest's open `tickets`; plus `active_when` (the host's rule), `unread_activity` and `booked_open_tickets` | required |
+| `GET /bookings/active/activity-count` | `{count}`: requests from booked guests not yet seen that are not a ticket (a ticket is counted by `GET /tickets/summary`) | required |
 | `POST /bookings/active/{lead_id}/activity/read` | The host has seen this guest's requests | required |
 
 ## `whatsapp_monitor.py` — `/whatsapp-monitor`

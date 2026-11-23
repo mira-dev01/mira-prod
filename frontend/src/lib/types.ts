@@ -389,8 +389,13 @@ export type CallSessionOut = {
   created_at: string;
 };
 
+/** A place in the transcript where Mira escalated to the host: the guest's line and Mira's reply, as spoken. */
+export type EscalationMarker = { tool: string; guest: string | null; mira: string | null };
+
 export type CallSessionDetailOut = CallSessionOut & {
   escalations: NotificationOut[];
+  // [] = nothing was escalated; null = not recorded (a call from before this was kept).
+  escalation_markers: EscalationMarker[] | null;
 };
 
 export type ConversationSummaryEntry = {
@@ -680,20 +685,6 @@ export type LeadOut = {
 
 export type LeadStatus = "open" | "contacted" | "booked" | "closed";
 
-// Backs the Service Requests tab (dashboard/leads/page.tsx, "Live
-// Requests") -- one row per GUEST_SUPPORT-classified CallSession, not a
-// stored table of its own. See backend/app/schemas/service_request.py.
-export type ServiceRequestOut = {
-  call_session_id: string;
-  property_id: string | null;
-  property_name: string | null;
-  room_number: string | null;
-  message: string;
-  urgency: string;
-  created_at: string;
-  dismissed_at: string | null;
-};
-
 // very_hot = explicit booking intent -- see backend/app/services/lead_temperature.py.
 export type LeadTemperature = "very_hot" | "hot" | "warm" | "cold";
 
@@ -781,7 +772,15 @@ export type TicketOut = {
   call_session_id: string | null;
   guest_name: string | null;
   guest_phone: string | null;
+  // The alert raised with it, when there is one.
+  notification_id: string | null;
+  // Set when the guest has a booking (Leads -> Checked-in): that booking's lead, and where the stay stands.
+  booking_lead_id: string | null;
+  booking_phase: "in_stay" | "upcoming" | "checked_out" | null;
 };
+
+/** GET /tickets/summary: the numbers on the Tickets tab and the sidebar. */
+export type TicketSummary = { open: number; booked_open: number };
 
 // --- Agent rules (GET/PUT /agent-config) ---
 
@@ -914,17 +913,23 @@ export type ActiveBooking = {
   check_out_at: string | null;
   nights: number | null;
   num_guests: number | null;
-  phase: "upcoming" | "in_stay";
+  // checked_out: the stay is over but the guest still has an open ticket.
+  phase: "upcoming" | "in_stay" | "checked_out";
+  early_checkin: boolean; // paid for an early check-in (the stay started before the property's usual time)
+  late_checkout: boolean; // paid for a late check-out (the stay runs past the property's usual time)
   payment: ActiveBookingPayment;
-  activity_count: number;
+  activity_count: number; // unread requests that are not a ticket
   activities: ActiveBookingActivity[];
+  ticket_count: number;
+  tickets: TicketOut[];
 };
 
 export type ActiveBookingsOut = {
   active_when: ActiveWhen;
   payment_down: boolean;
   unread_activity: number;
-  in_stay: ActiveBooking[];
+  booked_open_tickets: number;
+  in_stay: ActiveBooking[]; // checked-in guests first, then checked-out guests that still have an open ticket
   upcoming: ActiveBooking[];
 };
 

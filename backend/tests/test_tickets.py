@@ -388,3 +388,39 @@ async def test_best_effort_reports_whether_twilio_accepted_the_message(monkeypat
     assert await real.send_whatsapp_best_effort("+919999999999", "hi") is True
     monkeypatch.setattr(real, "send_whatsapp_message", broken)
     assert await real.send_whatsapp_best_effort("+919999999999", "hi") is False
+
+
+# ---- the live stream: every new ticket reaches the dashboard on its own --------------------------------------------
+
+
+async def test_every_new_ticket_is_sent_down_the_live_stream_whether_or_not_an_alert_came_with_it(
+    db_session, test_user, test_property, test_call_session, monkeypatch
+):
+    import json
+
+    from app.api.v1 import notifications as notifications_api
+
+    monkeypatch.setattr(notifications_api, "POLL_INTERVAL_SECONDS", 0.01)
+
+    class _Request:
+        async def is_disconnected(self):
+            return False
+
+    response = await notifications_api.stream_notifications(_Request(), test_user, db_session)
+    stream = response.body_iterator
+    assert await anext(stream) == ": keep-alive\n\n"  # connected; nothing new yet
+
+    # A ticket with no alert behind it (the case a notification-only stream would miss), then one with an alert.
+    await ticket_service.open_ticket(
+        db_session, kind="promise", summary="Call the guest back", user_id=test_user.id, call_session_id=test_call_session.id
+    )
+    seen = []
+    for _ in range(20):
+        chunk = await anext(stream)
+        if chunk.startswith("event: ticket"):
+            seen.append(json.loads(chunk.split("data: ", 1)[1]))
+            break
+    await stream.aclose()
+
+    assert [t["summary"] for t in seen] == ["Call the guest back"]
+    assert seen[0]["kind"] == "promise" and seen[0]["status"] == "open" and "booking_phase" in seen[0]

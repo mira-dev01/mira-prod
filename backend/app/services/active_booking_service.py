@@ -11,7 +11,12 @@ not listed. Whichever tab you close or reopen it in, the other follows, because 
 
 A stay's phase comes from the property's own check-in and check-out times (default 14:00 / 11:00, IST):
   upcoming -> before the check-in time of the first day;  in_stay -> from that moment until the check-out time of
-  the last day;  completed -> after (not listed).
+  the last day;  completed -> after (not listed, unless the guest still has an open ticket: then "checked_out").
+A guest who has PAID for an early check-in or a late check-out is in their stay from / until that moment instead
+(Spacez only, see spacez_stay_requests.extend_window), so "checked in" always means what the guest was promised.
+
+A guest's open tickets (the host's to-do items from their calls) are listed on their own row; a request that
+already has a ticket is the ticket, not a second line, so it is never counted twice.
 
 A request from a guest with an active booking (a service request or escalation: a notification) is tagged with the
 booking's lead when it is created (`resolve_booking_lead`). Unread tagged notifications are the number on the tab and in
@@ -37,8 +42,10 @@ from app.models.lead import Lead
 from app.models.notification import Notification
 from app.models.payment import PaymentRequest
 from app.models.property import Property
+from app.models.ticket import Ticket
 from app.models.user import User
 from app.observability import health
+from app.services import spacez_stay_requests  # Spacez only: early check-in / late check-out move a stay's window
 from app.utils.dates import today_ist
 
 logger = logging.getLogger(__name__)
@@ -47,6 +54,8 @@ IST = timezone(timedelta(hours=5, minutes=30))
 DEFAULT_CHECK_IN = time(14, 0)
 DEFAULT_CHECK_OUT = time(11, 0)
 MAX_ACTIVITIES_PER_GUEST = 5
+# A guest whose stay is over stays on the list while they have an open ticket, for this many days after check-out.
+CHECKED_OUT_TICKET_DAYS = 60
 
 
 # -- small helpers ---------------------------------------------------------------------------------
@@ -167,10 +176,12 @@ async def _requests_by_lead(db: AsyncSession, lead_ids: list[uuid.UUID]) -> dict
     return grouped
 
 
-async def _active_leads(db: AsyncSession, user_id: uuid.UUID) -> tuple[list[Lead], dict[uuid.UUID, list[PaymentRequest]]]:
+async def _active_leads(
+    db: AsyncSession, user_id: uuid.UUID, slack_days: int = 1
+) -> tuple[list[Lead], dict[uuid.UUID, list[PaymentRequest]]]:
     """The host's bookings whose stay has not ended (a day of slack; the phase decides exactly), with their payment
     requests. See the module note for what counts as a booking."""
-    cutoff = today_ist() - timedelta(days=1)
+    cutoff = today_ist() - timedelta(days=slack_days)
     candidates = list(
         (
             await db.scalars(
@@ -212,49 +223,27 @@ def _pick_request(requests: list[PaymentRequest]) -> PaymentRequest | None:
     return requests[0] if requests else None
 
 
-async def find_for_phone(db: AsyncSession, user_id: uuid.UUID, phone: str | None) -> Lead | None:
-    """The host's active booking (stay not over) for the guest with this phone number, if any."""
-    key = phone_key(phone)
-    if not key:
-        return None
-    leads, requests = await _active_leads(db, user_id)
+async def _stays(db: AsyncSession, user_id: uuid.UUID, slack_days: int = 1) -> list[dict]:
+    """Every booking of the host that has not been over for more than `slack_days`, with where it stands right now.
+    One place decides a stay's window, so the list, the numbers and the tagging of a guest's requests always agree.
+    Each item: lead, request (the payment that says where the guest stands), prop, check_in, check_out, start, end,
+    phase (upcoming | in_stay | completed), early / late (paid for an early check-in / a late check-out)."""
+    leads, requests = await _active_leads(db, user_id, slack_days)
     if not leads:
-        return None
-    now = datetime.now(IST)
-    for lead in leads:
-        if lead.check_in and lead.check_out and phase_of(now, *stay_window(lead.check_in, lead.check_out, None, None)) == "completed":
-            continue
-        keys = {phone_key(lead.phone)}
-        for request in requests.get(lead.id, []):
-            keys.update((phone_key(request.guest_phone), phone_key((request.details or {}).get("caller_phone"))))
-        if key in keys:
-            return lead
-    return None
-
-
-async def list_active(db: AsyncSession, user: User) -> dict:
-    leads, requests = await _active_leads(db, user.id)
-    properties = {p.id: p for p in (await db.scalars(select(Property).where(Property.user_id == user.id))).all()}
+        return []
+    properties = {p.id: p for p in (await db.scalars(select(Property).where(Property.user_id == user_id))).all()}
     by_name = {(p.name or "").strip().lower(): p for p in properties.values()}
     for p in properties.values():
         if p.display_name:
             by_name.setdefault(p.display_name.strip().lower(), p)
+    picked = {lead.id: _pick_request(requests.get(lead.id, [])) for lead in leads}
+    # Spacez only: paid early check-in / late check-out requests, by the booking they belong to.
+    extensions = await spacez_stay_requests.paid_extensions(db, [r.id for r in picked.values() if r is not None])
 
-    activity: dict[uuid.UUID, list[Notification]] = {}
-    if leads:
-        rows = await db.scalars(
-            select(Notification)
-            .where(Notification.booking_lead_id.in_([lead.id for lead in leads]), Notification.status == "new")
-            .order_by(Notification.created_at.desc())
-        )
-        for notification in rows.all():
-            activity.setdefault(notification.booking_lead_id, []).append(notification)
-
-    provider_down = health.state_of("razorpay") == "down"
     now = datetime.now(IST)
-    upcoming, in_stay = [], []
+    stays = []
     for lead in leads:
-        request = _pick_request(requests.get(lead.id, []))
+        request = picked[lead.id]
         prop = properties.get(request.property_id) if request else None
         if prop is None:
             for name in lead.properties_discussed or []:
@@ -263,15 +252,111 @@ async def list_active(db: AsyncSession, user: User) -> dict:
                     break
         check_in = lead.check_in or (request.check_in if request else None)
         check_out = lead.check_out or (request.check_out if request else None)
+        early = late = False
         if check_in and check_out:
             start, end = stay_window(check_in, check_out, prop.check_in_time if prop else None, prop.check_out_time if prop else None)
+            if request is not None and request.id in extensions:  # Spacez only
+                start, end, early, late = spacez_stay_requests.extend_window(start, end, check_in, check_out, extensions[request.id])
             phase = phase_of(now, start, end)
-            if phase == "completed":
-                continue
         else:
             start = end = None
             phase = "upcoming"
+        stays.append(
+            {"lead": lead, "request": request, "prop": prop, "check_in": check_in, "check_out": check_out,
+             "start": start, "end": end, "phase": phase, "early": early, "late": late}
+        )
+    return stays
+
+
+def _guest_keys(stay: dict, requests_for_lead: list[PaymentRequest]) -> set[str]:
+    keys = {phone_key(stay["lead"].phone)}
+    for request in requests_for_lead:
+        keys.update((phone_key(request.guest_phone), phone_key((request.details or {}).get("caller_phone"))))
+    keys.discard("")
+    return keys
+
+
+_PHASE_ORDER = {"in_stay": 0, "upcoming": 1, "completed": 2}
+
+
+async def find_for_phone(db: AsyncSession, user_id: uuid.UUID, phone: str | None) -> Lead | None:
+    """The host's active booking (stay not over) for the guest with this phone number, if any."""
+    key = phone_key(phone)
+    if not key:
+        return None
+    stays = await _stays(db, user_id)
+    if not stays:
+        return None
+    requests = await _requests_by_lead(db, [stay["lead"].id for stay in stays])
+    for stay in sorted(stays, key=lambda st: _PHASE_ORDER[st["phase"]]):
+        if stay["phase"] != "completed" and key in _guest_keys(stay, requests.get(stay["lead"].id, [])):
+            return stay["lead"]
+    return None
+
+
+async def phone_index(db: AsyncSession, user_id: uuid.UUID) -> dict[str, tuple[uuid.UUID, str]]:
+    """last-10-digits of a guest's number -> (their booking's lead id, where the stay stands: in_stay | upcoming |
+    checked_out). Used to tell which tickets belong to a booked guest. A guest in two stays maps to the one in progress."""
+    stays = await _stays(db, user_id, CHECKED_OUT_TICKET_DAYS)
+    if not stays:
+        return {}
+    requests = await _requests_by_lead(db, [stay["lead"].id for stay in stays])
+    index: dict[str, tuple[uuid.UUID, str]] = {}
+    for stay in sorted(stays, key=lambda st: _PHASE_ORDER[st["phase"]], reverse=True):  # best last, so it wins
+        phase = "checked_out" if stay["phase"] == "completed" else stay["phase"]
+        for key in _guest_keys(stay, requests.get(stay["lead"].id, [])):
+            index[key] = (stay["lead"].id, phase)
+    return index
+
+
+async def list_active(db: AsyncSession, user: User) -> dict:
+    from app.services import ticket_service  # here: ticket_service reaches this module through notification_service
+
+    stays = await _stays(db, user.id, CHECKED_OUT_TICKET_DAYS)
+    leads = [stay["lead"] for stay in stays]
+    requests = await _requests_by_lead(db, [lead.id for lead in leads])
+    open_tickets = await ticket_service.list_tickets(db, user.id, "open")
+
+    # Each open ticket goes to the guest it is about (by phone); a guest in two stays gets it on the one in progress.
+    tickets_by_lead: dict[uuid.UUID, list[dict]] = {}
+    keys_by_lead = {stay["lead"].id: _guest_keys(stay, requests.get(stay["lead"].id, [])) for stay in stays}
+    ordered = sorted(stays, key=lambda st: _PHASE_ORDER[st["phase"]])
+    for ticket in open_tickets:
+        key = phone_key(ticket["guest_phone"])
+        owner = next((st["lead"].id for st in ordered if key and key in keys_by_lead[st["lead"].id]), None)
+        if owner is not None:
+            tickets_by_lead.setdefault(owner, []).append(ticket)
+
+    # Unread requests that are NOT a ticket (a ticket's own alert is the ticket, listed above, not a second line).
+    activity: dict[uuid.UUID, list[Notification]] = {}
+    if leads:
+        ticketed = select(Ticket.notification_id).where(Ticket.user_id == user.id, Ticket.notification_id.is_not(None))
+        rows = await db.scalars(
+            select(Notification)
+            .where(
+                Notification.booking_lead_id.in_([lead.id for lead in leads]),
+                Notification.status == "new",
+                Notification.id.not_in(ticketed),
+            )
+            .order_by(Notification.created_at.desc())
+        )
+        for notification in rows.all():
+            activity.setdefault(notification.booking_lead_id, []).append(notification)
+
+    provider_down = health.state_of("razorpay") == "down"
+    upcoming, in_stay = [], []
+    listed: set[uuid.UUID] = set()
+    for stay in stays:
+        lead, request, prop = stay["lead"], stay["request"], stay["prop"]
+        phase = stay["phase"]
+        mine_tickets = tickets_by_lead.get(lead.id, [])
+        if phase == "completed":
+            if not mine_tickets:
+                continue  # checked out and nothing left to do for them
+            phase = "checked_out"
+        listed.add(lead.id)
         mine = activity.get(lead.id, [])
+        check_in, check_out, start, end = stay["check_in"], stay["check_out"], stay["start"], stay["end"]
         item = {
             "lead_id": str(lead.id),
             "guest_name": lead.guest_name or (request.guest_name if request else None),
@@ -285,21 +370,27 @@ async def list_active(db: AsyncSession, user: User) -> dict:
             "nights": (check_out - check_in).days if check_in and check_out else None,
             "num_guests": lead.num_guests,
             "phase": phase,
+            "early_checkin": stay["early"],
+            "late_checkout": stay["late"],
             "payment": payment_view(request, provider_down),
             "activity_count": len(mine),
             "activities": [
                 {"id": str(n.id), "message": n.message, "urgency": n.urgency, "created_at": n.created_at.isoformat()}
                 for n in mine[:MAX_ACTIVITIES_PER_GUEST]
             ],
+            "ticket_count": len(mine_tickets),
+            "tickets": mine_tickets,
         }
-        (in_stay if phase == "in_stay" else upcoming).append((start or datetime.max.replace(tzinfo=IST), end, item))
+        (upcoming if phase == "upcoming" else in_stay).append((start or datetime.max.replace(tzinfo=IST), end or start, item))
 
     upcoming.sort(key=lambda t: t[0])
-    in_stay.sort(key=lambda t: t[1])  # leaving soonest first
+    # Staying guests first, the ones leaving soonest on top; checked-out guests (still owed something) last.
+    in_stay.sort(key=lambda t: (t[2]["phase"] == "checked_out", t[1] or datetime.max.replace(tzinfo=IST)))
     return {
         "active_when": _active_when(user),
         "payment_down": provider_down,
-        "unread_activity": sum(len(v) for v in activity.values()),
+        "unread_activity": sum(len(v) for lead_id, v in activity.items() if lead_id in listed),
+        "booked_open_tickets": sum(i[2]["ticket_count"] for i in in_stay + upcoming),
         "in_stay": [item for _, _, item in in_stay],
         "upcoming": [item for _, _, item in upcoming],
     }

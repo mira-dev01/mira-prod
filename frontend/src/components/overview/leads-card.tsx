@@ -53,7 +53,7 @@ export function LeadsCard({
         <>
           <h2 className="flex items-center gap-2 font-heading text-[15px] leading-5 font-semibold text-heading">
             <Users className="size-4 text-primary" aria-hidden />
-            <Link href="/dashboard/leads?tab=booking" className="hover:underline">
+            <Link href="/dashboard/leads?tab=leads" className="hover:underline">
               Leads
             </Link>
             {infoButton}
@@ -109,7 +109,7 @@ export function LeadsCard({
               </Table>
             </div>
           )}
-          <Link href="/dashboard/leads?tab=booking" className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+          <Link href="/dashboard/leads?tab=leads" className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
             View all leads{open.length > rows.length ? ` (${open.length})` : ""} <ArrowRight className="size-3.5" />
           </Link>
         </>

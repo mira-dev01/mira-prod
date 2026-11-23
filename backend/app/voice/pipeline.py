@@ -65,6 +65,7 @@ from app.utils import background as _background
 from app.services import (
     payment_service,
     spacez_stay_requests,
+    transcript_markers,
     call_classification_service,
     call_coordinator,
     call_scorecard,
@@ -2091,6 +2092,9 @@ async def _run_pipeline_inner(
                 if message.get("role") in ("user", "assistant")
                 and message.get("content") is not None  # skip tool-call turns (content=null)
             )
+            # Where Mira escalated to the host, for the transcript view (read here because the saved transcript
+            # drops the tool-call turns). Never raises.
+            escalation_markers = transcript_markers.build_markers(context.messages)
             async with AsyncSessionLocal() as finalize_db:
                 # Results that later steps depend on start unset: a failed step leaves them None,
                 # and dependants skip (steps.require) rather than act on a guess.
@@ -2121,7 +2125,7 @@ async def _run_pipeline_inner(
                 finalize_status = "in_progress" if is_host_handoff else "completed"
                 async with steps.step("finalize_call_session", finalize_db):
                     finalized_session = await call_service.finalize_call_session(
-                        finalize_db, call_session_id, transcript, status=finalize_status
+                        finalize_db, call_session_id, transcript, status=finalize_status, escalation_markers=escalation_markers
                     )
                     if finalized_session is not None and finalized_session.started_at and finalized_session.ended_at:
                         duration_seconds = (finalized_session.ended_at - finalized_session.started_at).total_seconds()

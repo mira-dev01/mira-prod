@@ -4,32 +4,52 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
-import { useNotificationStream } from "@/hooks/use-notification-stream";
-import type { ActiveBooking, NotificationOut } from "@/lib/types";
+import { useNotificationStream, useTicketStream } from "@/hooks/use-notification-stream";
+import type { ActiveBooking, NotificationOut, TicketOut, TicketSummary } from "@/lib/types";
 
 /**
- * Requests from guests who have an ACTIVE BOOKING (Leads -> Active bookings), made visible everywhere in the
- * dashboard: the number on the Active bookings tab and on the sidebar's Leads link (`count`), and, when one
- * arrives while the host has the dashboard open, a banner that fades by itself plus a short ping.
+ * What needs the host's attention on the Leads page, made visible everywhere in the dashboard: the red numbers on the
+ * Checked-in and Tickets tabs and on the sidebar's Leads link, and, when something new arrives while the dashboard is
+ * open, a banner that fades by itself plus a short ping (the ping follows the ringer, the bell on those tabs).
  *
- * The server tags such a notification with `booking_lead_id` (backend active_booking_service.tag_activity); this
- * provider listens to the same notification stream the rest of the dashboard uses, so a request shows up within
- * a couple of seconds. `count` is the server's number of unread tagged requests, re-read after every event and
- * once a minute, so it is right after a reload and after the host clears a guest.
+ * Two things arrive on the notification stream (hooks/use-notification-stream.ts):
+ *  - a TICKET, for every one that is opened (what the host has to do after a call): one banner each;
+ *  - a REQUEST from a guest with an active booking that is not a ticket (a notification the server tagged with
+ *    `booking_lead_id`): one banner each.
+ * A request that has a ticket is announced once, as the ticket (`alerted` keeps the two from both ringing).
+ *
+ * The numbers come from the server and are re-read after every event and once a minute, so they are right after a
+ * reload and after the host resolves something:
+ *   activityCount  unread requests from booked guests that are not tickets
+ *   tickets.open   every open ticket;  tickets.booked_open  those that belong to a booked guest
+ * and from them: checkedInCount (the Checked-in tab), ticketCount (the Tickets tab), navCount (the sidebar).
+ * `version` goes up whenever any of it changes, so a list that is open can read itself again.
  */
 
 const SOUND_KEY = "mira.bookingActivitySound";
 const POLL_MS = 60_000;
 
 type BookingActivityValue = {
-  count: number;
+  activityCount: number;
+  tickets: TicketSummary;
+  checkedInCount: number;
+  ticketCount: number;
+  navCount: number;
+  version: number;
   refresh: () => Promise<void>;
   soundOn: boolean;
   setSoundOn: (on: boolean) => void;
 };
 
+const NO_TICKETS: TicketSummary = { open: 0, booked_open: 0 };
+
 const BookingActivityContext = createContext<BookingActivityValue>({
-  count: 0,
+  activityCount: 0,
+  tickets: NO_TICKETS,
+  checkedInCount: 0,
+  ticketCount: 0,
+  navCount: 0,
+  version: 0,
   refresh: async () => {},
   soundOn: true,
   setSoundOn: () => {},
@@ -78,8 +98,15 @@ function readSoundPreference(): boolean {
 
 export function BookingActivityProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const [count, setCount] = useState(0);
+  const [activityCount, setActivityCount] = useState(0);
+  const [tickets, setTickets] = useState<TicketSummary>(NO_TICKETS);
+  const [version, setVersion] = useState(0);
   const [soundOn, setSoundOnState] = useState(true);
+  const last = useRef({ activity: 0, open: 0, booked: 0 });
+  // Notifications already announced (through their ticket or on their own), and the ones waiting a moment to see if
+  // a ticket follows.
+  const alerted = useRef(new Set<string>());
+  const waiting = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const soundRef = useRef(true);
 
   useEffect(() => {
@@ -102,10 +129,16 @@ export function BookingActivityProvider({ children }: { children: React.ReactNod
 
   const refresh = useCallback(async () => {
     try {
-      const { count: next } = await api.activeBookings.activityCount();
-      setCount(next);
+      const [{ count: activity }, summary] = await Promise.all([api.activeBookings.activityCount(), api.tickets.summary()]);
+      setActivityCount(activity);
+      setTickets(summary);
+      const before = last.current;
+      last.current = { activity, open: summary.open, booked: summary.booked_open };
+      if (before.activity !== activity || before.open !== summary.open || before.booked !== summary.booked_open) {
+        setVersion((v) => v + 1);
+      }
     } catch {
-      /* keep the number we have; the next event or minute tick tries again */
+      /* keep the numbers we have; the next event or minute tick tries again */
     }
   }, []);
 
@@ -121,10 +154,13 @@ export function BookingActivityProvider({ children }: { children: React.ReactNod
     };
   }, [refresh]);
 
-  const onNotification = useCallback(
+  const ping = useCallback(() => {
+    if (soundRef.current) playPing();
+  }, []);
+
+  // A request from a booked guest that is not a ticket (or whose ticket has not shown up yet).
+  const announceRequest = useCallback(
     async (notification: NotificationOut) => {
-      if (!notification.booking_lead_id) return;
-      void refresh();
       let who: ActiveBooking | undefined;
       try {
         const list = await api.activeBookings.list();
@@ -133,18 +169,78 @@ export function BookingActivityProvider({ children }: { children: React.ReactNod
         /* the banner then just does not name the guest */
       }
       const name = who?.guest_name ?? "A guest with a booking";
-      toast(`${name}${who?.phase === "in_stay" ? " (in stay)" : ""} has a request`, {
+      toast(`${name}${who?.phase === "in_stay" ? " (checked in)" : ""} has a request`, {
         description: notification.message,
         duration: 8000,
-        action: { label: "View", onClick: () => router.push("/dashboard/leads?tab=active") },
+        action: { label: "View", onClick: () => router.push("/dashboard/leads?tab=checked-in") },
       });
-      if (soundRef.current) playPing();
+      ping();
     },
-    [refresh, router]
+    [router, ping]
+  );
+
+  const onNotification = useCallback(
+    (notification: NotificationOut) => {
+      if (!notification.booking_lead_id) return;
+      void refresh();
+      setVersion((v) => v + 1);
+      // A ticket for this very request usually follows within the same breath: give it a moment to announce it,
+      // so the host is told once.
+      const id = notification.id;
+      waiting.current.set(
+        id,
+        setTimeout(() => {
+          waiting.current.delete(id);
+          if (alerted.current.has(id)) return;
+          alerted.current.add(id);
+          void announceRequest(notification);
+        }, 800)
+      );
+    },
+    [refresh, announceRequest]
+  );
+
+  const onTicket = useCallback(
+    (ticket: TicketOut) => {
+      void refresh();
+      setVersion((v) => v + 1);
+      if (ticket.notification_id) {
+        const pending = waiting.current.get(ticket.notification_id);
+        if (pending) {
+          clearTimeout(pending);
+          waiting.current.delete(ticket.notification_id);
+        }
+        if (alerted.current.has(ticket.notification_id)) return; // already announced as the request
+        alerted.current.add(ticket.notification_id);
+      }
+      const parts = [ticket.property_name, [ticket.guest_name, ticket.booking_phase === "in_stay" ? "checked in" : null].filter(Boolean).join(", ")].filter(Boolean);
+      const onGuestRow = ticket.booking_phase === "in_stay" || ticket.booking_phase === "checked_out";
+      toast(`New ticket: ${ticket.summary}`, {
+        description: parts.join(" · ") || undefined,
+        duration: ticket.urgency === "emergency" || ticket.urgency === "high" ? 12000 : 8000,
+        action: { label: "View", onClick: () => router.push(onGuestRow ? "/dashboard/leads?tab=checked-in" : "/dashboard/leads?tab=tickets") },
+      });
+      ping();
+    },
+    [refresh, router, ping]
   );
 
   useNotificationStream(onNotification);
+  useTicketStream(onTicket);
 
-  const value = useMemo(() => ({ count, refresh, soundOn, setSoundOn }), [count, refresh, soundOn, setSoundOn]);
+  const value = useMemo(
+    () => ({
+      activityCount,
+      tickets,
+      checkedInCount: activityCount + tickets.booked_open,
+      ticketCount: tickets.open,
+      navCount: activityCount + tickets.open,
+      version,
+      refresh,
+      soundOn,
+      setSoundOn,
+    }),
+    [activityCount, tickets, version, refresh, soundOn, setSoundOn]
+  );
   return <BookingActivityContext.Provider value={value}>{children}</BookingActivityContext.Provider>;
 }

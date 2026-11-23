@@ -57,6 +57,9 @@ class CallSession(UUIDPkMixin, TimestampMixin, Base):
     # generation fails, degrades to CallSummary's own fallback shape rather
     # than leaving this NULL forever).
     ai_summary: Mapped[dict | None] = mapped_column(JSONB)
+    # Which transcript lines were Mira escalating to the host (services/transcript_markers.py), read from the live
+    # LLM context as the call ends: [] = nothing was escalated, NULL = the call predates this (not recorded).
+    escalation_markers: Mapped[list | None] = mapped_column(JSONB)
     status: Mapped[str] = mapped_column(String(32), default="in_progress", server_default="in_progress")
     urgency: Mapped[str | None] = mapped_column(String(16))
     # Populated by call_classification_service via on_pipeline_finished, once

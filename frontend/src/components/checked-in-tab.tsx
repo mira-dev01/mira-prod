@@ -10,6 +10,8 @@ import { ListRow, ListRowFooter, ListRowHeader } from "@/components/ui/list-row"
 import { Skeleton } from "@/components/ui/skeleton";
 import { Cell, CellTitle, Sheet, Toolbar } from "@/components/ui/sheet";
 import { StatusChip } from "@/components/status-chip";
+import { TicketCard } from "@/components/ticket-card";
+import { TicketTranscriptPanel } from "@/components/ticket-transcript-panel";
 import { WhatsAppButton } from "@/components/whatsapp-button";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError } from "@/lib/api";
@@ -17,7 +19,7 @@ import { useBookingActivity } from "@/lib/booking-activity-context";
 import { formatINR } from "@/lib/format";
 import { formatLeadTimestamp } from "@/lib/leads";
 import { isBrowserTestIdentity } from "@/lib/utils";
-import type { ActiveBooking, ActiveBookingPayment } from "@/lib/types";
+import type { ActiveBooking, ActiveBookingPayment, TicketOut } from "@/lib/types";
 
 const WHEN_LABEL = { confirmed: "Booked when confirmed", paid: "Booked when paid", link_sent: "Booked when the link is sent" };
 
@@ -48,7 +50,17 @@ function paymentLine(payment: ActiveBookingPayment): string | null {
   return null;
 }
 
-function GuestRow({ booking, onSeen }: { booking: ActiveBooking; onSeen: () => void }) {
+function GuestRow({
+  booking,
+  onSeen,
+  onTicketChanged,
+  onTranscript,
+}: {
+  booking: ActiveBooking;
+  onSeen: () => void;
+  onTicketChanged: () => void;
+  onTranscript: (ticket: TicketOut) => void;
+}) {
   const [busy, setBusy] = useState(false);
   const phone = isBrowserTestIdentity(booking.phone) ? null : booking.phone;
   const line = paymentLine(booking.payment);
@@ -72,7 +84,10 @@ function GuestRow({ booking, onSeen }: { booking: ActiveBooking; onSeen: () => v
           <span className="text-sm font-medium">{booking.guest_name ?? "Unknown guest"}</span>
           <StatusChip status={booking.payment.label} tone={booking.payment.tone} className="normal-case" />
           {booking.payment.payment_down && <StatusChip status="Payment down" tone="destructive" className="normal-case" />}
-          {booking.activity_count > 0 && <ActivityBadge count={booking.activity_count} />}
+          {booking.phase === "checked_out" && <StatusChip status="Checked out" tone="neutral" className="normal-case" />}
+          {booking.early_checkin && <StatusChip status="Early check-in" tone="progress" className="normal-case" />}
+          {booking.late_checkout && <StatusChip status="Late check-out" tone="progress" className="normal-case" />}
+          <ActivityBadge count={booking.activity_count + booking.ticket_count} noun="item" />
         </div>
         <span className="text-sm whitespace-nowrap">
           {day(booking.check_in)} → {day(booking.check_out)}
@@ -88,6 +103,7 @@ function GuestRow({ booking, onSeen }: { booking: ActiveBooking; onSeen: () => v
         )}
         {booking.num_guests !== null && <span>{booking.num_guests} guests</span>}
         {booking.phase === "in_stay" && booking.check_out_at && <span>checks out {clock(booking.check_out_at)} on {day(booking.check_out)}</span>}
+        {booking.phase === "in_stay" && booking.early_checkin && booking.check_in_at && <span>checked in {clock(booking.check_in_at)}</span>}
         {booking.phase === "upcoming" && booking.check_in_at && <span>checks in {clock(booking.check_in_at)}</span>}
         {phone && <span>{phone}</span>}
       </div>
@@ -103,6 +119,17 @@ function GuestRow({ booking, onSeen }: { booking: ActiveBooking; onSeen: () => v
             </li>
           ))}
         </ul>
+      )}
+
+      {booking.tickets.length > 0 && (
+        <div className="rounded-md border border-border px-3 pt-3">
+          <p className="pb-1 text-xs font-medium text-muted-foreground">
+            Open ticket{booking.tickets.length === 1 ? "" : "s"} ({booking.tickets.length})
+          </p>
+          {booking.tickets.map((ticket) => (
+            <TicketCard key={ticket.id} ticket={ticket} showGuest={false} onChanged={onTicketChanged} onTranscript={onTranscript} />
+          ))}
+        </div>
       )}
 
       <ListRowFooter className="flex-wrap justify-end gap-2 pt-1">
@@ -129,7 +156,21 @@ function GuestRow({ booking, onSeen }: { booking: ActiveBooking; onSeen: () => v
   );
 }
 
-function Section({ title, bookings, empty, onSeen }: { title: string; bookings: ActiveBooking[]; empty: string; onSeen: () => void }) {
+function Section({
+  title,
+  bookings,
+  empty,
+  onSeen,
+  onTicketChanged,
+  onTranscript,
+}: {
+  title: string;
+  bookings: ActiveBooking[];
+  empty: string;
+  onSeen: () => void;
+  onTicketChanged: () => void;
+  onTranscript: (ticket: TicketOut) => void;
+}) {
   return (
     <Cell>
       <CellTitle>
@@ -140,7 +181,7 @@ function Section({ title, bookings, empty, onSeen }: { title: string; bookings: 
       ) : (
         <div>
           {bookings.map((booking) => (
-            <GuestRow key={booking.lead_id} booking={booking} onSeen={onSeen} />
+            <GuestRow key={booking.lead_id} booking={booking} onSeen={onSeen} onTicketChanged={onTicketChanged} onTranscript={onTranscript} />
           ))}
         </div>
       )}
@@ -149,21 +190,25 @@ function Section({ title, bookings, empty, onSeen }: { title: string; bookings: 
 }
 
 /**
- * Leads -> Active bookings: the booked guests, the ones in their stay first, then the upcoming ones soonest first,
- * each with how they have paid and any requests they have made. A guest is booked by the host's own rule (Agent ->
- * Payments), and the same guest shows as closed in Booking requests: it is the same lead.
+ * Leads -> Checked-in: the booked guests who are in their stay (the ones leaving soonest first), then the upcoming
+ * ones soonest first, each with how they have paid, any requests they have made and the tickets raised for them. A
+ * guest is checked in from the property's own check-in time (or earlier, if they paid for an early check-in) until
+ * its check-out time (or later, for a paid late check-out); one who has left but still has an open ticket stays,
+ * marked "Checked out", until it is done. A guest is booked by the host's own rule (Agent -> Payments), and the same
+ * guest shows as closed in Active leads: it is the same lead.
  */
-export function ActiveBookingsTab() {
+export function CheckedInTab() {
   const { data, loading, refetch } = useAsync(() => api.activeBookings.list(), []);
-  const { count, refresh, soundOn, setSoundOn } = useBookingActivity();
+  const { version, refresh, soundOn, setSoundOn } = useBookingActivity();
+  const [viewing, setViewing] = useState<TicketOut | null>(null);
 
-  // A new request elsewhere in the dashboard changes the number here: re-read the list when it does.
-  const lastCount = useRef(count);
+  // A new request or ticket elsewhere in the dashboard changes the numbers: read the list again when it does.
+  const lastVersion = useRef(version);
   useEffect(() => {
-    if (lastCount.current === count) return;
-    lastCount.current = count;
+    if (lastVersion.current === version) return;
+    lastVersion.current = version;
     void refetch();
-  }, [count, refetch]);
+  }, [version, refetch]);
 
   function seen() {
     void refresh();
@@ -171,43 +216,51 @@ export function ActiveBookingsTab() {
   }
 
   return (
-    <Sheet>
-      <Toolbar className="justify-between">
-        <div className="flex flex-wrap items-center gap-2">
-          {data && <span className="text-sm text-muted-foreground">{WHEN_LABEL[data.active_when]}</span>}
-          {data?.payment_down && <StatusChip status="Payment down: payments cannot be checked right now" tone="destructive" className="normal-case" />}
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            size="icon-sm"
-            variant="outline"
-            aria-label={soundOn ? "Turn the new-request sound off" : "Turn the new-request sound on"}
-            title={soundOn ? "Sound on" : "Sound off"}
-            aria-pressed={soundOn}
-            onClick={() => setSoundOn(!soundOn)}
-          >
-            {soundOn ? <Bell className="size-4" /> : <BellOff className="size-4" />}
-          </Button>
-          <Button size="icon-sm" variant="outline" aria-label="Refresh" title="Refresh" onClick={() => void refetch()}>
-            <RefreshCw className="size-4" />
-          </Button>
-        </div>
-      </Toolbar>
+    <>
+      <Sheet>
+        <Toolbar className="justify-between">
+          <div className="flex flex-wrap items-center gap-2">
+            {data && <span className="text-sm text-muted-foreground">{WHEN_LABEL[data.active_when]}</span>}
+            {data?.payment_down && <StatusChip status="Payment down: payments cannot be checked right now" tone="destructive" className="normal-case" />}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              size="icon-sm"
+              variant="outline"
+              aria-label={soundOn ? "Turn the new-request sound off" : "Turn the new-request sound on"}
+              title={soundOn ? "Sound on" : "Sound off"}
+              aria-pressed={soundOn}
+              onClick={() => setSoundOn(!soundOn)}
+            >
+              {soundOn ? <Bell className="size-4" /> : <BellOff className="size-4" />}
+            </Button>
+            <Button size="icon-sm" variant="outline" aria-label="Refresh" title="Refresh" onClick={seen}>
+              <RefreshCw className="size-4" />
+            </Button>
+          </div>
+        </Toolbar>
 
-      {loading && !data ? (
-        <Cell>
-          <Skeleton className="h-48 w-full" />
-        </Cell>
-      ) : data ? (
-        <>
-          <Section title="In stay" bookings={data.in_stay} empty="No guest is staying right now." onSeen={seen} />
-          <Section title="Upcoming" bookings={data.upcoming} empty="No upcoming bookings yet." onSeen={seen} />
-        </>
-      ) : (
-        <Cell>
-          <p className="text-sm text-muted-foreground">Could not load the bookings.</p>
-        </Cell>
-      )}
-    </Sheet>
+        {loading && !data ? (
+          <Cell>
+            <Skeleton className="h-48 w-full" />
+          </Cell>
+        ) : data ? (
+          <>
+            <Section title="Checked in" bookings={data.in_stay} empty="No guest is checked in right now." onSeen={seen} onTicketChanged={seen} onTranscript={setViewing} />
+            <Section title="Upcoming" bookings={data.upcoming} empty="No upcoming bookings yet." onSeen={seen} onTicketChanged={seen} onTranscript={setViewing} />
+          </>
+        ) : (
+          <Cell>
+            <p className="text-sm text-muted-foreground">Could not load the bookings.</p>
+          </Cell>
+        )}
+      </Sheet>
+
+      <TicketTranscriptPanel
+        callSessionId={viewing?.call_session_id ?? null}
+        guestName={viewing?.guest_name ?? null}
+        onOpenChange={(open) => !open && setViewing(null)}
+      />
+    </>
   );
 }

@@ -279,7 +279,7 @@ export function PaymentsStep({
                 checked={activeWhen === "link_sent"}
                 onCheckedChange={(on) => on && setActiveWhen("link_sent")}
                 title="When the payment link is sent"
-                description="The guest is listed in Active bookings and the request is closed in Booking requests."
+                description="The guest is listed in Checked-in and the request is closed in Active leads."
               />
             </div>
           </FieldRow>

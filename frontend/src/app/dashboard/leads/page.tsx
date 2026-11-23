@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronRight, LayoutGrid, Search, Table2 } from "lucide-react";
 import { toast } from "sonner";
@@ -17,11 +17,9 @@ import { StatusChip, type StatusTone } from "@/components/status-chip";
 import { CloseLeadDialog } from "@/components/close-lead-dialog";
 import { DateRangePicker } from "@/components/date-range-picker";
 import { LeadDetailPanel, LEAD_STATUSES, leadUrgencyTone } from "@/components/lead-detail-panel";
-import { ActiveBookingsTab } from "@/components/active-bookings-tab";
+import { CheckedInTab } from "@/components/checked-in-tab";
 import { ActivityBadge } from "@/components/activity-badge";
-import { MissedCallsTab } from "@/components/missed-calls-tab";
 import { TicketsTab } from "@/components/tickets-tab";
-import { ServiceRequestsTable } from "@/components/service-requests-table";
 import { WhatsAppButton } from "@/components/whatsapp-button";
 import { useAsync } from "@/hooks/use-async";
 import { useBookingActivity } from "@/lib/booking-activity-context";
@@ -31,9 +29,18 @@ import { leadGuestLabel, leadPhoneLabel, useLeadLabels } from "@/lib/leads";
 import { cn, isBrowserTestIdentity, matchesSearch } from "@/lib/utils";
 import type { LeadOut, LeadStatus } from "@/lib/types";
 
-// Tab order on the page: Active bookings, Tickets, Booking requests, Missed calls, Service requests.
-const VALID_TABS = ["active", "tickets", "booking", "missed", "service"] as const;
+// Tab order on the page: Active leads, Checked-in, Tickets. Missed calls live on the Calls page, and a guest's service
+// requests are on their own row in Checked-in (and in Tickets), so those two have no tab here any more.
+const VALID_TABS = ["leads", "checked-in", "tickets"] as const;
 type RequestsTab = (typeof VALID_TABS)[number];
+
+// Links made before the tabs were reorganised (overview cards, funnel, notification banners, bookmarks).
+const LEGACY_TABS: Record<string, RequestsTab> = { booking: "leads", active: "checked-in", service: "checked-in" };
+
+function resolveTab(param: string | null): RequestsTab | null {
+  if (param && VALID_TABS.includes(param as RequestsTab)) return param as RequestsTab;
+  return (param && LEGACY_TABS[param]) || null;
+}
 
 const STATUSES = LEAD_STATUSES;
 const urgencyTone = leadUrgencyTone;
@@ -299,50 +306,7 @@ function LeadsKanban({
   );
 }
 
-function ServiceRequestsTabContent() {
-  const { data: requests, loading, refetch } = useAsync(() => api.leads.serviceRequests(), []);
-  const [search, setSearch] = useState("");
-
-  const filteredRequests = (requests ?? []).filter((req) =>
-    matchesSearch(search, [req.property_name, req.room_number, req.message, req.urgency])
-  );
-
-  async function handleDismiss(callSessionIds: string[]) {
-    try {
-      await api.leads.dismissServiceRequests(callSessionIds);
-      toast.success(callSessionIds.length === 1 ? "Request marked as completed" : "Requests marked as completed");
-      refetch();
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to update requests");
-    }
-  }
-
-  return (
-    <Sheet>
-      {requests && requests.length > 0 && (
-        <Toolbar>
-          <div className="w-full sm:w-72">
-            <Input
-              placeholder="Search requests…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              leadingIcon={<Search />}
-            />
-          </div>
-        </Toolbar>
-      )}
-      <Cell className="gap-0 p-0">
-        {loading ? (
-          <Skeleton className="m-5 h-64" />
-        ) : (
-          <ServiceRequestsTable requests={filteredRequests} onDismiss={handleDismiss} />
-        )}
-      </Cell>
-    </Sheet>
-  );
-}
-
-function BookingRequestsTabContent() {
+function ActiveLeadsTabContent() {
   const leadLabels = useLeadLabels();
   const searchParams = useSearchParams();
   const initialStatus = searchParams.get("status") ?? "all";
@@ -587,15 +551,14 @@ function LiveRequestsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialTab = searchParams.get("tab");
-  const [tab, setTab] = useState<RequestsTab>(
-    VALID_TABS.includes(initialTab as RequestsTab) ? (initialTab as RequestsTab) : "active"
-  );
+  const [tab, setTab] = useState<RequestsTab>(resolveTab(initialTab) ?? "leads");
+  // The red numbers: what needs the host in Checked-in (guest requests and their open tickets) and in Tickets.
+  const { checkedInCount, ticketCount } = useBookingActivity();
 
-  // Open-ticket count for the tab label; the tab itself reloads its own list.
-  const { data: openTicketList, refetch: refetchTickets } = useAsync(() => api.tickets.list("open"), []);
-  const openTickets = openTicketList?.length ?? 0;
-  // Requests from guests with an active booking that the host has not seen yet.
-  const { count: bookingActivity } = useBookingActivity();
+  // Missed calls moved to the Calls page: an old link to them goes there.
+  useEffect(() => {
+    if (initialTab === "missed") router.replace("/dashboard/calls?tab=missed");
+  }, [initialTab, router]);
 
   function handleTabChange(value: unknown) {
     if (typeof value !== "string" || !VALID_TABS.includes(value as RequestsTab)) return;
@@ -609,32 +572,24 @@ function LiveRequestsPageContent() {
 
       <Tabs value={tab} onValueChange={handleTabChange}>
         <TabsList>
-          <TabsTrigger value="active">
-            Active bookings
-            <ActivityBadge count={bookingActivity} className="ml-1.5" />
+          <TabsTrigger value="leads">Active leads</TabsTrigger>
+          <TabsTrigger value="checked-in">
+            Checked-in
+            <ActivityBadge count={checkedInCount} noun="item" className="ml-1.5" />
           </TabsTrigger>
           <TabsTrigger value="tickets">
             Tickets
-            {openTickets > 0 && <span className="ml-1.5 text-xs text-muted-foreground">({openTickets})</span>}
+            <ActivityBadge count={ticketCount} noun="open ticket" className="ml-1.5" />
           </TabsTrigger>
-          <TabsTrigger value="booking">Booking Requests</TabsTrigger>
-          <TabsTrigger value="missed">Missed calls</TabsTrigger>
-          <TabsTrigger value="service">Service Requests</TabsTrigger>
         </TabsList>
-        <TabsContent value="active" className="pt-4">
-          <ActiveBookingsTab />
+        <TabsContent value="leads" className="pt-4">
+          <ActiveLeadsTabContent />
+        </TabsContent>
+        <TabsContent value="checked-in" className="pt-4">
+          <CheckedInTab />
         </TabsContent>
         <TabsContent value="tickets" className="pt-4">
-          <TicketsTab onChanged={refetchTickets} />
-        </TabsContent>
-        <TabsContent value="booking" className="pt-4">
-          <BookingRequestsTabContent />
-        </TabsContent>
-        <TabsContent value="missed" className="pt-4">
-          <MissedCallsTab />
-        </TabsContent>
-        <TabsContent value="service" className="pt-4">
-          <ServiceRequestsTabContent />
+          <TicketsTab />
         </TabsContent>
       </Tabs>
     </div>

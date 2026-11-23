@@ -55,7 +55,7 @@ export function OpportunitiesCard({
       {limit && opportunityLeads.length > limit && (
         <div className="border-t border-border px-5 py-3">
           <Link
-            href="/dashboard/leads?tab=missed"
+            href="/dashboard/calls?tab=missed"
             className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
           >
             View all {opportunityLeads.length}

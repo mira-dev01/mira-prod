@@ -17,10 +17,10 @@ import type { LeadOut } from "@/lib/types";
 import { isBrowserTestIdentity, matchesSearch } from "@/lib/utils";
 
 /**
- * Leads → "Missed calls": guests who reached Mira outside a normal completed
+ * Calls → "Missed calls": guests who reached Mira outside a normal completed
  * call (today: the line was busy and they were sent a WhatsApp follow-up).
- * These are ordinary leads with a recovery_reason, so they live inside the
- * Leads page rather than on a page of their own. New kinds of missed call
+ * These are ordinary leads with a recovery_reason, so the list reads the leads
+ * API, and sits with the calls rather than on a page of its own. New kinds of missed call
  * are a new entry in lib/opportunities.ts, not a new tab.
  */
 export function MissedCallsTab() {

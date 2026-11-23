@@ -421,7 +421,7 @@ async def test_update_property_timezone_accepts_other_iana_identifiers(client, a
 async def test_update_property_call_handling_by_non_owner_is_rejected(client, db_session, test_property):
     """Phase 3: a host must not be able to change another host's property's
     call-ownership settings -- reuses get_owned_property's existing 404-not-
-    403 pattern (matches test_service_requests_api.py's cross-user
+    403 pattern (matches the other cross-user
     convention), not a new authorization mechanism."""
     import uuid
 

@@ -46,3 +46,5 @@ class CallSessionDetailOut(CallSessionOut):
     # list endpoint, since it's an extra join a host paging through Calls
     # doesn't need on every row. See restructure.md Phase 1.1.
     escalations: list[NotificationOut]
+    # Lines of the transcript where Mira escalated to the host: [{tool, guest, mira}]; [] = none, None = not recorded.
+    escalation_markers: list[dict] | None = None

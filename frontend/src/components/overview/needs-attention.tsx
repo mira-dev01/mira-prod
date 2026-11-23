@@ -14,7 +14,7 @@ import { useAsync } from "@/hooks/use-async";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { InfoButton } from "@/components/overview/info-card";
-import { KIND_LABEL } from "@/components/tickets-tab";
+import { KIND_LABEL } from "@/components/ticket-card";
 import { formatINR } from "@/lib/format";
 import type { BookingReconciliation, OverviewData } from "@/lib/types";
 
@@ -210,7 +210,7 @@ export function NeedsAttentionCard({
               title={`${hot.count} high-intent guest${hot.count === 1 ? " hasn't" : "s haven't"} converted`}
               description={valueNote}
               action={
-                <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/dashboard/leads?tab=booking&status=open" />}>
+                <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/dashboard/leads?tab=leads&status=open" />}>
                   View guests
                 </Button>
               }

@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { API_BASE_URL, getToken } from "@/lib/api";
-import type { NotificationOut } from "@/lib/types";
+import type { NotificationOut, TicketOut } from "@/lib/types";
 
 /**
  * Single shared subscription to GET /notifications/stream (the SSE-shaped
@@ -18,8 +18,13 @@ import type { NotificationOut } from "@/lib/types";
  * subscriber and closes once the last one unmounts.
  */
 type Listener = (notification: NotificationOut) => void;
+// Every new ticket also arrives on this connection, as its own `event: ticket` message (a ticket is what the host has
+// to do, whether or not an alert was raised with it), so each one reaches the dashboard on its own.
+type TicketListener = (ticket: TicketOut) => void;
 
 const listeners = new Set<Listener>();
+const ticketListeners = new Set<TicketListener>();
+const hasSubscribers = () => listeners.size + ticketListeners.size > 0;
 let controller: AbortController | null = null;
 // Dedup lives here now, once, for the single shared connection -- previously
 // each of the 2-3 independent consumers kept its own seenNotificationIds
@@ -27,6 +32,7 @@ let controller: AbortController | null = null;
 // redelivering an id, not against multiple consumers seeing the same event
 // (that's expected and fine; every subscriber SHOULD see every notification).
 let seenNotificationIds = new Set<string>();
+let seenTicketIds = new Set<string>();
 
 // Principal-review fix: connect() previously had no reconnect logic at all
 // -- a dropped connection (backend restart, network blip, laptop sleep/
@@ -40,11 +46,13 @@ const _RECONNECT_MAX_DELAY_MS = 30000;
 let reconnectAttempt = 0;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
-function parseSseEvent(eventText: string): NotificationOut | null {
-  const line = eventText.split("\n").find((l) => l.startsWith("data: "));
+function parseSseEvent(eventText: string): { kind: "notification" | "ticket"; data: unknown } | null {
+  const lines = eventText.split("\n");
+  const line = lines.find((l) => l.startsWith("data: "));
   if (!line) return null;
+  const kind = lines.some((l) => l.trim() === "event: ticket") ? "ticket" : "notification";
   try {
-    return JSON.parse(line.slice("data: ".length)) as NotificationOut;
+    return { kind, data: JSON.parse(line.slice("data: ".length)) };
   } catch {
     return null;
   }
@@ -55,6 +63,7 @@ async function connect() {
   controller = new AbortController();
   const { signal } = controller;
   seenNotificationIds = new Set<string>();
+  seenTicketIds = new Set<string>();
 
   try {
     const res = await fetch(`${API_BASE_URL}/notifications/stream`, {
@@ -79,8 +88,18 @@ async function connect() {
       buffer = events.pop() ?? "";
 
       for (const event of events) {
-        const notification = parseSseEvent(event);
-        if (!notification || seenNotificationIds.has(notification.id)) continue;
+        const parsed = parseSseEvent(event);
+        if (!parsed) continue;
+        if (parsed.kind === "ticket") {
+          const ticket = parsed.data as TicketOut;
+          if (seenTicketIds.has(ticket.id)) continue;
+          seenTicketIds.add(ticket.id);
+          reconnectAttempt = 0;
+          ticketListeners.forEach((listener) => listener(ticket));
+          continue;
+        }
+        const notification = parsed.data as NotificationOut;
+        if (seenNotificationIds.has(notification.id)) continue;
         seenNotificationIds.add(notification.id);
         // A real message arrived -- the connection is healthy, reset backoff.
         reconnectAttempt = 0;
@@ -100,25 +119,25 @@ async function connect() {
 }
 
 function scheduleReconnect() {
-  if (listeners.size === 0 || reconnectTimer !== null) return;
+  if (!hasSubscribers() || reconnectTimer !== null) return;
   const delay = Math.min(_RECONNECT_BASE_DELAY_MS * 2 ** reconnectAttempt, _RECONNECT_MAX_DELAY_MS);
   reconnectAttempt += 1;
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
-    if (listeners.size > 0) connect();
+    if (hasSubscribers()) connect();
   }, delay);
 }
 
-function subscribe(listener: Listener): () => void {
-  listeners.add(listener);
-  if (listeners.size === 1) {
+function subscribe<L>(set: Set<L>, listener: L): () => void {
+  set.add(listener);
+  if (listeners.size + ticketListeners.size === 1) {
     reconnectAttempt = 0;
     connect();
   }
 
   return () => {
-    listeners.delete(listener);
-    if (listeners.size === 0) {
+    set.delete(listener);
+    if (!hasSubscribers()) {
       controller?.abort();
       controller = null;
       if (reconnectTimer !== null) {
@@ -138,7 +157,15 @@ function subscribe(listener: Listener): () => void {
  */
 export function useNotificationStream(onNotification: Listener) {
   useEffect(() => {
-    return subscribe(onNotification);
+    return subscribe(listeners, onNotification);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- onNotification is expected to be a stable callback (useCallback/inline-but-referentially-cheap), re-subscribing on every render would defeat the shared-connection purpose
+  }, []);
+}
+
+/** Subscribes `onTicket` to every new ticket the host's dashboard is told about, on the same shared connection. */
+export function useTicketStream(onTicket: TicketListener) {
+  useEffect(() => {
+    return subscribe(ticketListeners, onTicket);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- same reason as useNotificationStream: one stable subscription
   }, []);
 }

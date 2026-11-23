@@ -104,6 +104,7 @@ async def list_tickets(
     property_id: uuid.UUID | None = None,
     limit: int = 200,
     ticket_id: uuid.UUID | None = None,
+    since: datetime | None = None,
 ) -> list[dict]:
     """The host's tickets, newest first, with the property and guest named.
     status: open | resolved (done or dismissed) | all."""
@@ -124,6 +125,8 @@ async def list_tickets(
         stmt = stmt.where(Ticket.property_id == property_id)
     if ticket_id is not None:
         stmt = stmt.where(Ticket.id == ticket_id)
+    if since is not None:
+        stmt = stmt.where(Ticket.created_at > since)
     rows = (await db.execute(stmt)).all()
     return [
         {
@@ -139,11 +142,43 @@ async def list_tickets(
             "property_id": ticket.property_id,
             "property_name": property_name,
             "call_session_id": ticket.call_session_id,
+            "notification_id": ticket.notification_id,
             "guest_name": guest_name,
             "guest_phone": lead_phone or caller_number,
         }
         for ticket, property_name, caller_number, guest_name, lead_phone in rows
     ]
+
+
+async def attach_booking(db: AsyncSession, user_id: uuid.UUID, rows: list[dict]) -> list[dict]:
+    """Marks each ticket that is about a guest with a booking (Leads -> Checked-in) with that booking's lead and where
+    the stay stands: `booking_lead_id`, `booking_phase` (in_stay | upcoming | checked_out). The guest is found by
+    phone, the same way a booked guest's requests are. Read-only; a failure leaves the tickets unmarked."""
+    for row in rows:
+        row.setdefault("booking_lead_id", None)
+        row.setdefault("booking_phase", None)
+    if not rows:
+        return rows
+    from app.services import active_booking_service  # here: it reaches this module through notification_service
+
+    try:
+        index = await active_booking_service.phone_index(db, user_id)
+    except Exception:
+        logger.exception("could not match tickets to booked guests")
+        await db.rollback()
+        return rows
+    for row in rows:
+        match = index.get(active_booking_service.phone_key(row.get("guest_phone")))
+        if match is not None:
+            row["booking_lead_id"], row["booking_phase"] = match
+    return rows
+
+
+async def open_summary(db: AsyncSession, user_id: uuid.UUID) -> dict:
+    """The numbers on the Tickets tab and the sidebar: how many tickets are open, and how many of those belong to
+    a booked guest (they are also on that guest's row in Leads -> Checked-in)."""
+    rows = await attach_booking(db, user_id, await list_tickets(db, user_id, "open", limit=1000))
+    return {"open": len(rows), "booked_open": sum(1 for row in rows if row["booking_lead_id"] is not None)}
 
 
 async def get_owned_ticket(db: AsyncSession, ticket_id: uuid.UUID, user_id: uuid.UUID) -> Ticket | None:

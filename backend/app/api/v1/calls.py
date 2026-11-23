@@ -95,4 +95,5 @@ async def get_call(
     return CallSessionDetailOut(
         **CallSessionOut.model_validate(call).model_dump(),
         escalations=[NotificationOut.model_validate(n) for n in call.notifications],
+        escalation_markers=call.escalation_markers,
     )

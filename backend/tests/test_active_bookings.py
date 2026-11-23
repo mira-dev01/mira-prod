@@ -348,3 +348,170 @@ async def test_closing_a_lead_in_booking_requests_is_what_puts_it_here(test_user
     async with AsyncSessionLocal() as db:
         out = await ab.list_active(db, await db.get(User, test_user.id))
     assert [g["guest_name"] for g in out["upcoming"]] == ["Closing Cara"]
+
+
+# -- early check-in / late check-out (Spacez): the stay's window follows what the guest has paid for -------------------
+
+
+def _stay_request(**kw):
+    base = dict(want_early_checkin=False, want_late_checkout=False, note=None)
+    base.update(kw)
+    return SimpleNamespace(**base)
+
+
+def test_a_paid_early_check_in_moves_the_start_earlier_and_never_later():
+    from app.services import spacez_stay_requests as sr
+
+    start, end = ab.stay_window(date(2026, 12, 8), date(2026, 12, 10), "14:00", "11:00")
+    moved, same_end, early, late = sr.extend_window(start, end, date(2026, 12, 8), date(2026, 12, 10), [_stay_request(want_early_checkin=True, note="around 10 am")])
+    assert moved == datetime(2026, 12, 8, 10, 0, tzinfo=IST) and same_end == end and early and not late
+
+    default, _, _, _ = sr.extend_window(start, end, date(2026, 12, 8), date(2026, 12, 10), [_stay_request(want_early_checkin=True)])
+    assert default == datetime(2026, 12, 8, 6, 0, tzinfo=IST)
+
+    unchanged, _, flagged, _ = sr.extend_window(start, end, date(2026, 12, 8), date(2026, 12, 10), [_stay_request(want_early_checkin=True, note="3 pm")])
+    assert unchanged == start and flagged  # an hour after check-in is not earlier: the window never shrinks
+
+
+def test_a_paid_late_check_out_moves_the_end_later():
+    from app.services import spacez_stay_requests as sr
+
+    start, end = ab.stay_window(date(2026, 12, 8), date(2026, 12, 10), "14:00", "11:00")
+    _, moved, early, late = sr.extend_window(start, end, date(2026, 12, 8), date(2026, 12, 10), [_stay_request(want_late_checkout=True, note="until 4:30 pm")])
+    assert moved == datetime(2026, 12, 10, 16, 30, tzinfo=IST) and late and not early
+    # a guest who is still there at 12:00 is in their stay, not checked out
+    assert ab.phase_of(datetime(2026, 12, 10, 12, 0, tzinfo=IST), start, moved) == "in_stay"
+    assert ab.phase_of(datetime(2026, 12, 10, 12, 0, tzinfo=IST), start, end) == "completed"
+
+
+def test_one_note_for_a_request_wanting_both_is_not_read_as_either_hour():
+    from app.services import spacez_stay_requests as sr
+
+    start, end = ab.stay_window(date(2026, 12, 8), date(2026, 12, 10), "14:00", "11:00")
+    moved, later, _, _ = sr.extend_window(start, end, date(2026, 12, 8), date(2026, 12, 10), [_stay_request(want_early_checkin=True, want_late_checkout=True, note="10 am")])
+    assert moved.hour == 6 and later.hour == 18
+
+
+async def _paid_stay_request(user, prop, payment, **kw):
+    from app.models.spacez_stay_request import SpacezStayRequest
+
+    async with AsyncSessionLocal() as db:
+        db.add(
+            SpacezStayRequest(
+                user_id=user.id, property_id=prop.id, payment_request_id=payment.id, guest_phone=payment.guest_phone,
+                check_in=payment.check_in, check_out=payment.check_out, status="paid", **kw,
+            )
+        )
+        await db.commit()
+
+
+async def test_a_guest_with_a_paid_early_check_in_is_checked_in_before_the_normal_time(test_user, test_property):
+    lead = await _lead(test_user, "Early", "9000000011", _day(0), _day(2))
+    payment = await _pay(test_user, test_property, lead)
+    await _paid_stay_request(test_user, test_property, payment, want_early_checkin=True, note="12 am")  # in from midnight
+
+    async with AsyncSessionLocal() as db:
+        out = await ab.list_active(db, await db.get(User, test_user.id))
+    assert [g["guest_name"] for g in out["in_stay"]] == ["Early"] and out["upcoming"] == []
+    assert out["in_stay"][0]["early_checkin"] is True and out["in_stay"][0]["late_checkout"] is False
+
+
+async def test_a_request_the_team_has_not_been_paid_for_does_not_move_the_stay(test_user, test_property):
+    from app.models.spacez_stay_request import SpacezStayRequest
+
+    lead = await _lead(test_user, "Unpaid", "9000000012", _day(3), _day(5))
+    payment = await _pay(test_user, test_property, lead)
+    async with AsyncSessionLocal() as db:
+        db.add(SpacezStayRequest(
+            user_id=test_user.id, property_id=test_property.id, payment_request_id=payment.id, guest_phone="9000000012",
+            check_in=lead.check_in, check_out=lead.check_out, want_early_checkin=True, status="awaiting_payment",
+        ))
+        await db.commit()
+        out = await ab.list_active(db, await db.get(User, test_user.id))
+    assert [g["guest_name"] for g in out["upcoming"]] == ["Unpaid"] and out["upcoming"][0]["early_checkin"] is False
+
+
+async def test_a_paid_late_check_out_keeps_the_guest_checked_in_on_the_last_day(test_user, test_property):
+    lead = await _lead(test_user, "Late", "9000000013", _day(-2), _day(0))
+    payment = await _pay(test_user, test_property, lead)
+    await _paid_stay_request(test_user, test_property, payment, want_late_checkout=True, note="11:59 pm")
+
+    async with AsyncSessionLocal() as db:
+        out = await ab.list_active(db, await db.get(User, test_user.id))
+    assert [g["guest_name"] for g in out["in_stay"]] == ["Late"] and out["in_stay"][0]["late_checkout"] is True
+
+
+# -- tickets on the guest's own row ---------------------------------------------------------------------------------
+
+
+async def _ticket(user, prop, session, kind="technician", summary="Fix the geyser", notification=None, status="open"):
+    from app.models.ticket import Ticket
+
+    async with AsyncSessionLocal() as db:
+        ticket = Ticket(
+            user_id=user.id, property_id=prop.id, call_session_id=session.id, kind=kind, summary=summary,
+            notification_id=notification.id if notification else None, status=status,
+        )
+        db.add(ticket)
+        await db.commit()
+        await db.refresh(ticket)
+        return ticket
+
+
+async def test_a_booked_guests_open_tickets_are_on_their_row_and_a_ticket_is_not_also_a_request(test_user, test_property):
+    from app.services import ticket_service
+
+    lead = await _lead(test_user, "Asha", "9876543210", _day(-1), _day(2))
+    session = await _session(test_user, test_property, "9876543210")
+    ticketed = await _notify(test_property, session)  # the alert raised with the ticket
+    await _notify(test_property, session, channel="whatsapp")  # a request nothing was ticketed for
+    await _ticket(test_user, test_property, session, notification=ticketed)
+    stranger = await _session(test_user, test_property, "9123456789")
+    await _ticket(test_user, test_property, stranger, summary="Someone else's")
+
+    async with AsyncSessionLocal() as db:
+        out = await ab.list_active(db, await db.get(User, test_user.id))
+        guest = out["in_stay"][0]
+        assert [t["summary"] for t in guest["tickets"]] == ["Fix the geyser"] and guest["ticket_count"] == 1
+        assert guest["activity_count"] == 1  # only the request with no ticket
+        assert out["unread_activity"] == 1 and out["booked_open_tickets"] == 1
+        assert await ticket_service.open_summary(db, test_user.id) == {"open": 2, "booked_open": 1}
+        rows = await ticket_service.attach_booking(db, test_user.id, await ticket_service.list_tickets(db, test_user.id, "open"))
+    mine = next(r for r in rows if r["summary"] == "Fix the geyser")
+    assert mine["booking_lead_id"] == lead.id and mine["booking_phase"] == "in_stay"
+    assert next(r for r in rows if r["summary"] == "Someone else's")["booking_lead_id"] is None
+
+
+async def test_a_checked_out_guest_stays_on_the_list_only_while_a_ticket_is_open(test_user, test_property):
+    await _lead(test_user, "Gone", "9000000014", _day(-9), _day(-6))
+    session = await _session(test_user, test_property, "9000000014")
+    ticket = await _ticket(test_user, test_property, session, summary="Return the deposit")
+
+    async with AsyncSessionLocal() as db:
+        out = await ab.list_active(db, await db.get(User, test_user.id))
+        assert [(g["guest_name"], g["phase"]) for g in out["in_stay"]] == [("Gone", "checked_out")]
+        from app.services import ticket_service
+
+        await ticket_service.set_status(db, await db.get(type(ticket), ticket.id), "done")
+        out = await ab.list_active(db, await db.get(User, test_user.id))
+    assert out["in_stay"] == [] and out["upcoming"] == []
+
+
+async def test_an_upcoming_guests_ticket_is_on_their_upcoming_row(test_user, test_property):
+    await _lead(test_user, "Soon", "9000000015", _day(4), _day(6))
+    session = await _session(test_user, test_property, "9000000015")
+    await _ticket(test_user, test_property, session, kind="stay_request", summary="Early check-in?")
+    async with AsyncSessionLocal() as db:
+        out = await ab.list_active(db, await db.get(User, test_user.id))
+    assert [t["summary"] for t in out["upcoming"][0]["tickets"]] == ["Early check-in?"]
+
+
+async def test_the_tickets_summary_and_the_booking_mark_come_through_the_api(client, auth_headers, test_user, test_property):
+    await _lead(test_user, "Asha", "9876543210", _day(-1), _day(2))
+    session = await _session(test_user, test_property, "9876543210")
+    await _ticket(test_user, test_property, session)
+
+    summary = await client.get("/api/v1/tickets/summary", headers=auth_headers)
+    assert summary.status_code == 200 and summary.json() == {"open": 1, "booked_open": 1}
+    listed = (await client.get("/api/v1/tickets?state=open", headers=auth_headers)).json()
+    assert listed[0]["booking_phase"] == "in_stay" and listed[0]["booking_lead_id"]

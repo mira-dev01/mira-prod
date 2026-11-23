@@ -13,10 +13,10 @@ import type { FunnelStage, OverviewMetricInfo } from "@/lib/types";
 const STAGE_HREF: Record<string, string> = {
   all_conversations: "/dashboard/calls",
   booking_related: "/dashboard/calls",
-  qualified_leads: "/dashboard/leads?tab=booking",
-  hot_leads: "/dashboard/leads?tab=booking",
-  booking_intent: "/dashboard/leads?tab=booking",
-  converted: "/dashboard/leads?tab=booking&status=booked",
+  qualified_leads: "/dashboard/leads?tab=leads",
+  hot_leads: "/dashboard/leads?tab=leads",
+  booking_intent: "/dashboard/leads?tab=leads",
+  converted: "/dashboard/leads?tab=leads&status=booked",
 };
 
 /** Booking funnel: bars sized from the stage counts the API returns, nothing computed here
