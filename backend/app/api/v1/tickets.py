@@ -26,7 +26,7 @@ async def list_tickets(
 
 @router.get("/summary")
 async def tickets_summary(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> dict:
-    """The numbers on the Tickets tab and the sidebar: {open, booked_open}."""
+    """The numbers on the Tickets page and the sidebar: {open, booked_open}."""
     return await ticket_service.open_summary(db, current_user.id)
 
 

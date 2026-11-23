@@ -9,7 +9,7 @@ import type { ActiveBooking, NotificationOut, TicketOut, TicketSummary } from "@
 
 /**
  * What needs the host's attention on the Leads page, made visible everywhere in the dashboard: the red numbers on the
- * Checked-in and Tickets tabs and on the sidebar's Leads link, and, when something new arrives while the dashboard is
+ * Checked-in tab, the Tickets page and the sidebar's Leads and Tickets links, and, when something new arrives while the dashboard is
  * open, a banner that fades by itself plus a short ping (the ping follows the ringer, the bell on those tabs).
  *
  * Two things arrive on the notification stream (hooks/use-notification-stream.ts):
@@ -22,7 +22,7 @@ import type { ActiveBooking, NotificationOut, TicketOut, TicketSummary } from "@
  * reload and after the host resolves something:
  *   activityCount  unread requests from booked guests that are not tickets
  *   tickets.open   every open ticket;  tickets.booked_open  those that belong to a booked guest
- * and from them: checkedInCount (the Checked-in tab), ticketCount (the Tickets tab), navCount (the sidebar).
+ * and from them: checkedInCount (the Checked-in tab), ticketCount (the Tickets page).
  * `version` goes up whenever any of it changes, so a list that is open can read itself again.
  */
 
@@ -34,7 +34,6 @@ type BookingActivityValue = {
   tickets: TicketSummary;
   checkedInCount: number;
   ticketCount: number;
-  navCount: number;
   version: number;
   refresh: () => Promise<void>;
   soundOn: boolean;
@@ -48,7 +47,6 @@ const BookingActivityContext = createContext<BookingActivityValue>({
   tickets: NO_TICKETS,
   checkedInCount: 0,
   ticketCount: 0,
-  navCount: 0,
   version: 0,
   refresh: async () => {},
   soundOn: true,
@@ -218,7 +216,7 @@ export function BookingActivityProvider({ children }: { children: React.ReactNod
       toast(`New ticket: ${ticket.summary}`, {
         description: parts.join(" · ") || undefined,
         duration: ticket.urgency === "emergency" || ticket.urgency === "high" ? 12000 : 8000,
-        action: { label: "View", onClick: () => router.push(onGuestRow ? "/dashboard/leads?tab=checked-in" : "/dashboard/leads?tab=tickets") },
+        action: { label: "View", onClick: () => router.push(onGuestRow ? "/dashboard/leads?tab=checked-in" : "/dashboard/tickets") },
       });
       ping();
     },
@@ -234,7 +232,6 @@ export function BookingActivityProvider({ children }: { children: React.ReactNod
       tickets,
       checkedInCount: activityCount + tickets.booked_open,
       ticketCount: tickets.open,
-      navCount: activityCount + tickets.open,
       version,
       refresh,
       soundOn,

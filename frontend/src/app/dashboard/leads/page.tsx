@@ -19,7 +19,6 @@ import { DateRangePicker } from "@/components/date-range-picker";
 import { LeadDetailPanel, LEAD_STATUSES, leadUrgencyTone } from "@/components/lead-detail-panel";
 import { CheckedInTab } from "@/components/checked-in-tab";
 import { ActivityBadge } from "@/components/activity-badge";
-import { TicketsTab } from "@/components/tickets-tab";
 import { WhatsAppButton } from "@/components/whatsapp-button";
 import { useAsync } from "@/hooks/use-async";
 import { useBookingActivity } from "@/lib/booking-activity-context";
@@ -29,13 +28,16 @@ import { leadGuestLabel, leadPhoneLabel, useLeadLabels } from "@/lib/leads";
 import { cn, isBrowserTestIdentity, matchesSearch } from "@/lib/utils";
 import type { LeadOut, LeadStatus } from "@/lib/types";
 
-// Tab order on the page: Active leads, Checked-in, Tickets. Missed calls live on the Calls page, and a guest's service
-// requests are on their own row in Checked-in (and in Tickets), so those two have no tab here any more.
-const VALID_TABS = ["leads", "checked-in", "tickets"] as const;
+// Tab order on the page: Active leads, Checked-in. Missed calls live on the Calls page, Tickets has its own sidebar
+// page, and a guest's service requests are on their own row in Checked-in, so those have no tab here any more.
+const VALID_TABS = ["leads", "checked-in"] as const;
 type RequestsTab = (typeof VALID_TABS)[number];
 
 // Links made before the tabs were reorganised (overview cards, funnel, notification banners, bookmarks).
 const LEGACY_TABS: Record<string, RequestsTab> = { booking: "leads", active: "checked-in", service: "checked-in" };
+
+// Tabs that moved to a page of their own: the old link goes there.
+const MOVED_TABS: Record<string, string> = { missed: "/dashboard/calls?tab=missed", tickets: "/dashboard/tickets" };
 
 function resolveTab(param: string | null): RequestsTab | null {
   if (param && VALID_TABS.includes(param as RequestsTab)) return param as RequestsTab;
@@ -100,12 +102,12 @@ function LeadsTable({
 }) {
   const leadLabels = useLeadLabels();
   return (
-    <div className={cn("overflow-x-auto", muted && "opacity-60")}>
+    <div className={cn(muted && "opacity-60")}>
       <Table>
         <TableHeader>
           <TableRow>
             <TableHead>Guest</TableHead>
-            <TableHead>Property</TableHead>
+            <TableHead className="w-[17%]">Property</TableHead>
             <TableHead>Dates</TableHead>
             <TableHead>Guests</TableHead>
             <TableHead>Temperature</TableHead>
@@ -119,11 +121,12 @@ function LeadsTable({
         <TableBody>
           {leads.map((lead) => (
             <TableRow key={lead.id} className="cursor-pointer" onClick={() => onRowClick(lead)}>
-              <TableCell className="font-medium">{leadGuestLabel(lead)}</TableCell>
-              <TableCell>
+              <TableCell className="font-medium whitespace-normal break-words">{leadGuestLabel(lead)}</TableCell>
+              {/* Narrow and wrapping: a long property name goes onto more lines instead of widening the table. */}
+              <TableCell className="w-[17%] max-w-0 min-w-36 text-[13px] leading-snug whitespace-normal break-words">
                 {lead.properties_discussed.length > 0 ? lead.properties_discussed.join(", ") : "—"}
               </TableCell>
-              <TableCell>{leadDatesLabel(lead)}</TableCell>
+              <TableCell className="whitespace-normal">{leadDatesLabel(lead)}</TableCell>
               <TableCell>{lead.num_guests ?? "—"}</TableCell>
               <TableCell>
                 <StatusChip status={leadLabels.label(lead.lead_temperature)} tone={leadLabels.tone(lead.lead_temperature)} className="normal-case" />
@@ -138,8 +141,8 @@ function LeadsTable({
                   )}
                 </div>
               </TableCell>
-              <TableCell>{leadPhoneLabel(lead)}</TableCell>
-              <TableCell className="whitespace-nowrap text-muted-foreground">{leadReceivedLabel(lead)}</TableCell>
+              <TableCell className="break-all whitespace-normal">{leadPhoneLabel(lead)}</TableCell>
+              <TableCell className="whitespace-normal text-muted-foreground">{leadReceivedLabel(lead)}</TableCell>
               <TableCell>
                 <WhatsAppButton phone={lead.phone} stopPropagation />
               </TableCell>
@@ -325,7 +328,7 @@ function ActiveLeadsTabContent() {
   // stays a plain array filter, same mechanism as isEmptyLead below).
   const [includeTestCalls, setIncludeTestCalls] = useState(false);
   const [editing, setEditing] = useState<LeadOut | null>(null);
-  const [view, setView] = useState<"table" | "board">("board");
+  const [view, setView] = useState<"table" | "board">("table");
   const [search, setSearch] = useState("");
   const [closingLead, setClosingLead] = useState<LeadOut | null>(null);
 
@@ -552,12 +555,13 @@ function LiveRequestsPageContent() {
   const searchParams = useSearchParams();
   const initialTab = searchParams.get("tab");
   const [tab, setTab] = useState<RequestsTab>(resolveTab(initialTab) ?? "leads");
-  // The red numbers: what needs the host in Checked-in (guest requests and their open tickets) and in Tickets.
-  const { checkedInCount, ticketCount } = useBookingActivity();
+  // The red number: what needs the host in Checked-in (guest requests and their open tickets).
+  const { checkedInCount } = useBookingActivity();
 
-  // Missed calls moved to the Calls page: an old link to them goes there.
+  // Missed calls and Tickets moved out of this page: an old link to them goes to where they are now.
   useEffect(() => {
-    if (initialTab === "missed") router.replace("/dashboard/calls?tab=missed");
+    const moved = initialTab ? MOVED_TABS[initialTab] : undefined;
+    if (moved) router.replace(moved);
   }, [initialTab, router]);
 
   function handleTabChange(value: unknown) {
@@ -577,19 +581,12 @@ function LiveRequestsPageContent() {
             Checked-in
             <ActivityBadge count={checkedInCount} noun="item" className="ml-1.5" />
           </TabsTrigger>
-          <TabsTrigger value="tickets">
-            Tickets
-            <ActivityBadge count={ticketCount} noun="open ticket" className="ml-1.5" />
-          </TabsTrigger>
         </TabsList>
         <TabsContent value="leads" className="pt-4">
           <ActiveLeadsTabContent />
         </TabsContent>
         <TabsContent value="checked-in" className="pt-4">
           <CheckedInTab />
-        </TabsContent>
-        <TabsContent value="tickets" className="pt-4">
-          <TicketsTab />
         </TabsContent>
       </Tabs>
     </div>

@@ -44,7 +44,7 @@ function AttentionRow({ title, description, action }: { title: string; descripti
  * same reconciliation panel as the Calendar/Analytics page right here and
  * steps through the queue, so the host acts without leaving Overview.
  */
-/** Rows shown on the card; the rest are one click away on the Tickets tab. */
+/** Rows shown on the card; the rest are one click away on the Tickets page. */
 const MAX_ROWS = 5;
 
 /** The round red count beside the title: how many things are waiting on the host. */
@@ -152,7 +152,7 @@ export function NeedsAttentionCard({
       <>
         <Cell className={cn("gap-4 p-5", className)}>
           <CellTitle icon={CircleAlert}>
-            <Link href="/dashboard/leads?tab=tickets" className="hover:underline">
+            <Link href="/dashboard/tickets" className="hover:underline">
               Tickets raised
             </Link>
             <InfoButton info={data.info?.needs_attention} />
@@ -171,7 +171,7 @@ export function NeedsAttentionCard({
     <CellCard className={className}>
       <CardHeader>
         <CellTitle icon={CircleAlert}>
-          <Link href="/dashboard/leads?tab=tickets" className="hover:underline">
+          <Link href="/dashboard/tickets" className="hover:underline">
             Tickets raised
           </Link>
           <CountBubble count={total} />
@@ -222,7 +222,7 @@ export function NeedsAttentionCard({
               title={t.summary}
               description={`${KIND_LABEL[t.kind] ?? t.kind}${t.guest_name ? ` · ${t.guest_name}` : ""}`}
               action={
-                <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/dashboard/leads?tab=tickets" />}>
+                <Button size="sm" variant="outline" nativeButton={false} render={<Link href="/dashboard/tickets" />}>
                   Open
                 </Button>
               }
@@ -231,7 +231,7 @@ export function NeedsAttentionCard({
         </ul>
       </CardContent>
       <div className="border-t border-border px-5 py-3">
-        <Link href="/dashboard/leads?tab=tickets" className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+        <Link href="/dashboard/tickets" className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
           View all tickets <ArrowRight className="size-3.5" />
         </Link>
       </div>

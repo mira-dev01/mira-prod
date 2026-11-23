@@ -449,11 +449,30 @@ const guestDetail = {
 };
 
 const previewTicket = {
-    id: "preview-ticket-1", kind: "stay_request", summary: "Late check-out? Asha Rao at Woodhouse Farm", urgency: "high", status: "open", source: "tool",
+    id: "preview-ticket-1", number: 1042, kind: "stay_request", summary: "Late check-out? Asha Rao at Woodhouse Farm", urgency: "high", status: "open", source: "tool",
     detail: "Asha Rao has a confirmed booking at Woodhouse Farm (18 Dec 2026 to 20 Dec 2026) and asks for late check-out (around 3 pm). The flat charge is ₹1,000. Can the villa do it? Approve to send the guest a payment link on WhatsApp, or decline and the guest is told the team cannot.",
     created_at: ago(20), resolved_at: null, property_id: "preview-prop-2", property_name: "Woodhouse Farm", call_session_id: "c1", guest_name: "Asha Rao", guest_phone: "+919876543210",
     notification_id: null, booking_lead_id: "a1", booking_phase: "in_stay",
   };
+// The Tickets page: open ones the way the host sees them (some past the 24 h SLA), one done and one dismissed.
+const hoursAgo = (h: number) => new Date(Date.now() - h * 3600000).toISOString();
+const tk = (n: number, kind: string, summary: string, detail: string, h: number, guest: string | null, phone: string, property: string | null, over: Record<string, unknown> = {}) => ({
+  id: `preview-tk-${n}`, number: n, kind, summary, detail, urgency: "medium", status: "open", source: "post_call", created_at: hoursAgo(h), resolved_at: null,
+  property_id: property ? "preview-prop-2" : null, property_name: property, call_session_id: "c1", guest_name: guest, guest_phone: phone,
+  notification_id: null, booking_lead_id: null, booking_phase: null, ...over,
+});
+const openTickets = [
+  tk(1033, "photos", "Send photos of Mosaic Manor 5 BHK Elegant Spacez Luxury Villa", "Mira told the guest:\n- Host will send the list and photos of the villas to the guest's WhatsApp", 222, null, "9326359081", "Mosaic Manor 5 BHK Elegant Spacez Luxury Villa"),
+  tk(1035, "photos", "Send photos of 4BHK Jugglers Rest Spacez Villa in Indiranagar", "Mira told the guest:\n- Host will send the property photos via WhatsApp", 215, "अभ्यास", "8130026321", "4BHK Jugglers Rest Spacez Villa in Indiranagar"),
+  tk(1036, "escalation", "Unable to send payment link due to system error", "Escalation for your account.\n\nAlso promised on the call:\n- Host will send the payment link via WhatsApp shortly", 214, "अभ्यास", "8130026321", null),
+  tk(1039, "promise", "Check availability of Bombay Breeze Cosy Spacez Luxury for 2–4 December", "Mira told the guest:\n- Check availability for 2 December to 4 December", 199, null, "08758120580", "Bombay Breeze Cosy Spacez Luxury"),
+  tk(1041, "escalation", "Payment link issue for Garden Bliss Spacez Private Villa", "Escalation for your account.\n\nAlso promised on the call:\n- Host will send payment link via WhatsApp to the provided number\n- Host will follow up on WhatsApp to confirm the booking", 165, "Dhruv Chaudhary", "8527368100", "Garden Bliss Spacez Private Villa", { booking_lead_id: "a2", booking_phase: "upcoming" }),
+  tk(1048, "promise", "Check availability for the requested night", "Mira told the guest:\n- Check availability for the requested night", 0.9, null, "08130026321", null),
+];
+const resolvedTickets = [
+  tk(1030, "whatsapp", "Send the brochure on WhatsApp", "Mira told the guest:\n- Host will send the brochure", 80, "Rohan Gupta", "9811100003", "Woodhouse Farm", { status: "done", resolved_at: hoursAgo(30) }),
+  tk(1029, "escalation", "Call back about the group booking", "Escalation for your account.", 120, "Priya Nair", "9811100002", null, { status: "dismissed", resolved_at: hoursAgo(100) }),
+];
 // Leads -> Active bookings: one guest in stay with two unseen requests, and upcoming guests in each payment state.
 const dayFromNow = (n: number) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
 const at = (n: number, time: string) => `${dayFromNow(n)}T${time}:00+05:30`;
@@ -494,8 +513,8 @@ const routes: Array<[RegExp, unknown]> = [
   [/^\/calls/, calls],
   [/^\/faq\/gaps|^\/faq-gaps|^\/unanswered/, faqGaps],
   // Spacez only: an early check-in / late check-out request waiting for the team's yes / no.
-  [/^\/tickets\/summary/, { open: 1, booked_open: 1 }],
-  [/^\/tickets/, [previewTicket]],
+  [/^\/tickets\/summary/, { open: 6, booked_open: 1 }],
+  [/^\/tickets/, openTickets],
   [/^\/bookings\/active\/activity-count/, { count: 2 }],
   [/^\/bookings\/active/, activeBookings],
   [/^\/bookings\/reconciliation/, { items: [], total: 0 }],
@@ -569,6 +588,8 @@ export async function previewResponse<T>(path: string, options: RequestInit): Pr
     if (/^\/onboarding/.test(clean)) return { ...onboarding, status: "in_progress", current_step: "profile", completed_at: null } as T;
     if (/^\/auth\/me$/.test(clean)) return { ...me, name: "", lead_exophone: null, business_name: null } as T;
   }
+  // The Tickets page asks for the open and the closed ones separately (the route table matches the path only).
+  if (clean === "/tickets" && /state=resolved/.test(path)) return resolvedTickets as T;
   const hit = routes.find(([re]) => re.test(clean));
   if (!hit) throw new ApiError(404, "Not available in design preview");
   return hit[1] as T;

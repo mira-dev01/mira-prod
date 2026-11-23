@@ -10,56 +10,31 @@ import { ListRow, ListRowFooter, ListRowHeader } from "@/components/ui/list-row"
 import { Skeleton } from "@/components/ui/skeleton";
 import { Cell, CellTitle, Sheet, Toolbar } from "@/components/ui/sheet";
 import { StatusChip } from "@/components/status-chip";
+import { GuestStayDialog, clock, day, paymentLine } from "@/components/guest-stay-dialog";
 import { TicketCard } from "@/components/ticket-card";
 import { TicketTranscriptPanel } from "@/components/ticket-transcript-panel";
 import { WhatsAppButton } from "@/components/whatsapp-button";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError } from "@/lib/api";
 import { useBookingActivity } from "@/lib/booking-activity-context";
-import { formatINR } from "@/lib/format";
 import { formatLeadTimestamp } from "@/lib/leads";
 import { isBrowserTestIdentity } from "@/lib/utils";
-import type { ActiveBooking, ActiveBookingPayment, TicketOut } from "@/lib/types";
+import type { ActiveBooking, TicketOut } from "@/lib/types";
 
 const WHEN_LABEL = { confirmed: "Booked when confirmed", paid: "Booked when paid", link_sent: "Booked when the link is sent" };
-
-function day(iso: string | null): string {
-  if (!iso) return "dates not set";
-  const [y, m, d] = iso.split("T")[0].split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
-}
-
-function clock(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", hour12: true }) : "";
-}
-
-/** The one line under the payment chip: what has been paid, what is still due, or what the guest has to do. */
-function paymentLine(payment: ActiveBookingPayment): string | null {
-  if (payment.state === "paid" || payment.state === "part_paid") {
-    const paid = `${formatINR(payment.amount_due)} paid`;
-    const rest =
-      payment.balance && payment.balance > 0
-        ? `, ${formatINR(payment.balance)} due${payment.balance_due_on ? ` by ${day(payment.balance_due_on)}` : " before check-in"}`
-        : "";
-    return paid + rest + (payment.stay_code ? ` · stay code ${payment.stay_code}` : "");
-  }
-  if (payment.state === "link_sent" || payment.state === "payment_failed" || payment.state === "delivery_failed" || payment.state === "link_pending") {
-    return `${formatINR(payment.amount_due)} to pay${payment.hold_expires_at ? ` · dates held until ${clock(payment.hold_expires_at)}` : ""}`;
-  }
-  if (payment.state === "expired") return `${formatINR(payment.amount_due)} link expired; the dates were released`;
-  return null;
-}
 
 function GuestRow({
   booking,
   onSeen,
   onTicketChanged,
   onTranscript,
+  onOpen,
 }: {
   booking: ActiveBooking;
   onSeen: () => void;
   onTicketChanged: () => void;
   onTranscript: (ticket: TicketOut) => void;
+  onOpen: (booking: ActiveBooking) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const phone = isBrowserTestIdentity(booking.phone) ? null : booking.phone;
@@ -78,10 +53,20 @@ function GuestRow({
   }
 
   return (
-    <ListRow variant="boxed">
+    // The whole row opens the guest's card; the buttons and tickets inside it keep their own clicks.
+    <ListRow variant="boxed" interactive onClick={() => onOpen(booking)}>
       <ListRowHeader>
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <span className="text-sm font-medium">{booking.guest_name ?? "Unknown guest"}</span>
+          <button
+            type="button"
+            className="text-sm font-medium underline-offset-2 hover:underline focus-visible:underline focus-visible:outline-none"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpen(booking);
+            }}
+          >
+            {booking.guest_name ?? "Unknown guest"}
+          </button>
           <StatusChip status={booking.payment.label} tone={booking.payment.tone} className="normal-case" />
           {booking.payment.payment_down && <StatusChip status="Payment down" tone="destructive" className="normal-case" />}
           {booking.phase === "checked_out" && <StatusChip status="Checked out" tone="neutral" className="normal-case" />}
@@ -122,7 +107,7 @@ function GuestRow({
       )}
 
       {booking.tickets.length > 0 && (
-        <div className="rounded-md border border-border px-3 pt-3">
+        <div className="cursor-default rounded-md border border-border px-3 pt-3" onClick={(e) => e.stopPropagation()}>
           <p className="pb-1 text-xs font-medium text-muted-foreground">
             Open ticket{booking.tickets.length === 1 ? "" : "s"} ({booking.tickets.length})
           </p>
@@ -132,7 +117,7 @@ function GuestRow({
         </div>
       )}
 
-      <ListRowFooter className="flex-wrap justify-end gap-2 pt-1">
+      <ListRowFooter className="flex-wrap justify-end gap-2 pt-1" onClick={(e) => e.stopPropagation()}>
         {booking.payment.short_url && (
           <Button
             size="sm"
@@ -163,6 +148,7 @@ function Section({
   onSeen,
   onTicketChanged,
   onTranscript,
+  onOpen,
 }: {
   title: string;
   bookings: ActiveBooking[];
@@ -170,6 +156,7 @@ function Section({
   onSeen: () => void;
   onTicketChanged: () => void;
   onTranscript: (ticket: TicketOut) => void;
+  onOpen: (booking: ActiveBooking) => void;
 }) {
   return (
     <Cell>
@@ -181,7 +168,7 @@ function Section({
       ) : (
         <div>
           {bookings.map((booking) => (
-            <GuestRow key={booking.lead_id} booking={booking} onSeen={onSeen} onTicketChanged={onTicketChanged} onTranscript={onTranscript} />
+            <GuestRow key={booking.lead_id} booking={booking} onSeen={onSeen} onTicketChanged={onTicketChanged} onTranscript={onTranscript} onOpen={onOpen} />
           ))}
         </div>
       )}
@@ -201,6 +188,9 @@ export function CheckedInTab() {
   const { data, loading, refetch } = useAsync(() => api.activeBookings.list(), []);
   const { version, refresh, soundOn, setSoundOn } = useBookingActivity();
   const [viewing, setViewing] = useState<TicketOut | null>(null);
+  // The guest whose card is open, by lead id so the card follows the list when it is read again.
+  const [openId, setOpenId] = useState<string | null>(null);
+  const opened = data ? [...data.in_stay, ...data.upcoming].find((b) => b.lead_id === openId) ?? null : null;
 
   // A new request or ticket elsewhere in the dashboard changes the numbers: read the list again when it does.
   const lastVersion = useRef(version);
@@ -246,8 +236,8 @@ export function CheckedInTab() {
           </Cell>
         ) : data ? (
           <>
-            <Section title="Checked in" bookings={data.in_stay} empty="No guest is checked in right now." onSeen={seen} onTicketChanged={seen} onTranscript={setViewing} />
-            <Section title="Upcoming" bookings={data.upcoming} empty="No upcoming bookings yet." onSeen={seen} onTicketChanged={seen} onTranscript={setViewing} />
+            <Section title="Checked in" bookings={data.in_stay} empty="No guest is checked in right now." onSeen={seen} onTicketChanged={seen} onTranscript={setViewing} onOpen={(b) => setOpenId(b.lead_id)} />
+            <Section title="Upcoming" bookings={data.upcoming} empty="No upcoming bookings yet." onSeen={seen} onTicketChanged={seen} onTranscript={setViewing} onOpen={(b) => setOpenId(b.lead_id)} />
           </>
         ) : (
           <Cell>
@@ -255,6 +245,13 @@ export function CheckedInTab() {
           </Cell>
         )}
       </Sheet>
+
+      <GuestStayDialog
+        booking={opened}
+        onOpenChange={(open) => !open && setOpenId(null)}
+        onChanged={seen}
+        onTranscript={setViewing}
+      />
 
       <TicketTranscriptPanel
         callSessionId={viewing?.call_session_id ?? null}

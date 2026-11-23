@@ -260,7 +260,7 @@ The host sets, on the Agent page, which guest details Mira collects (`AgentConfi
 
 ## Tickets: no promise without something behind it
 
-Anything the agent tells a guest the host (or someone) will do after the call has a `Ticket` (`app/models/ticket.py`, `app/services/ticket_service.py`), shown on Leads → Tickets until the host marks it done.
+Anything the agent tells a guest the host (or someone) will do after the call has a `Ticket` (`app/models/ticket.py`, `app/services/ticket_service.py`), shown on the Tickets page until the host marks it done.
 
 - **Opened by the handler at the moment of the promise** (`tool_handlers.py`): `escalate_to_host` (also reached from `request_host_transfer`'s fallbacks), the transfer follow-up record, all three `dispatch_technician` outcomes, `send_photos` when there are no photos or WhatsApp is off, `send_whatsapp` when WhatsApp is off. When Twilio is on, the send runs in the background and `send_whatsapp_best_effort` now reports whether Twilio accepted it (`True`/`False`, still never raising); a refused send opens the ticket from that background task. Accepted is not delivered — a freeform message can still be refused later outside WhatsApp's 24h window, which nothing here sees. A message Twilio accepted leaves no ticket. `send_photos` with no photos used to say "I'll flag that to the host" with nothing recorded; it now records both an alert and a ticket.
 - **Never breaks a call:** `open_ticket` returns `None` instead of raising, resolves the host from the property or call when not given, and de-duplicates the same promise within a call. The insert runs in a savepoint, so a failed ticket does not expire the objects the calling handler is still using (a plain rollback did — caught by a regression test).

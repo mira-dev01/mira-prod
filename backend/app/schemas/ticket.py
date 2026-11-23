@@ -10,6 +10,7 @@ TicketStatus = Literal["open", "done", "dismissed"]
 
 class TicketOut(BaseModel):
     id: uuid.UUID
+    number: int  # shown as TK-<number>
     kind: str
     summary: str
     detail: str | None

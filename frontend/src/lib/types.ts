@@ -759,6 +759,7 @@ export type TicketStatus = "open" | "done" | "dismissed";
 
 export type TicketOut = {
   id: string;
+  number: number; // shown as TK-<number>
   kind: TicketKind;
   summary: string;
   detail: string | null;
@@ -779,7 +780,7 @@ export type TicketOut = {
   booking_phase: "in_stay" | "upcoming" | "checked_out" | null;
 };
 
-/** GET /tickets/summary: the numbers on the Tickets tab and the sidebar. */
+/** GET /tickets/summary: the numbers on the Tickets page and the sidebar. */
 export type TicketSummary = { open: number; booked_open: number };
 
 // --- Agent rules (GET/PUT /agent-config) ---

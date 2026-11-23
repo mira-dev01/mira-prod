@@ -1,12 +1,17 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, Sequence, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
 from app.models.mixins import TimestampMixin, UUIDPkMixin
+
+
+# One running count across the whole table: the number a host sees as TK-1033. Gaps are fine (another host's tickets
+# take numbers too); it only has to be short, stable and unique.
+TICKET_NUMBER_SEQ = Sequence("ticket_number_seq", start=1001, metadata=Base.metadata)
 
 
 class Ticket(UUIDPkMixin, TimestampMixin, Base):
@@ -33,6 +38,10 @@ class Ticket(UUIDPkMixin, TimestampMixin, Base):
     # The alert that was raised alongside, when there is one.
     notification_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("notifications.id", ondelete="SET NULL")
+    )
+
+    number: Mapped[int] = mapped_column(
+        Integer, TICKET_NUMBER_SEQ, server_default=text("nextval('ticket_number_seq')"), unique=True
     )
 
     # escalation | transfer | technician | photos | whatsapp | promise | missed_call | payment

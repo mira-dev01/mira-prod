@@ -12,6 +12,7 @@ import { StatusChip, type StatusTone } from "@/components/status-chip";
 import { useNow } from "@/hooks/use-now";
 import { api, ApiError } from "@/lib/api";
 import { formatLeadTimestamp } from "@/lib/leads";
+import { SLA_MS } from "@/lib/tickets";
 import { cn, isBrowserTestIdentity } from "@/lib/utils";
 import type { TicketKind, TicketOut } from "@/lib/types";
 
@@ -28,15 +29,12 @@ export const KIND_LABEL: Record<TicketKind, string> = {
   stay_request: "Early / late", // Spacez only: early check-in / late check-out awaiting the team's yes or no
 };
 
-const PHASE_LABEL = { in_stay: "Checked in", upcoming: "Upcoming guest", checked_out: "Checked out" } as const;
+export const PHASE_LABEL = { in_stay: "Checked in", upcoming: "Upcoming guest", checked_out: "Checked out" } as const;
 
 const URGENCY_TONE: Partial<Record<TicketOut["urgency"], StatusTone>> = {
   high: "orange",
   emergency: "destructive",
 };
-
-// How long a ticket can stay open before the timer turns red: the more urgent, the sooner.
-const OVERDUE_AFTER_MIN: Record<TicketOut["urgency"], number> = { emergency: 15, high: 60, medium: 240, low: 1440 };
 
 /** "12 min", "2 h 05 min", "1 d 3 h": a span in whole minutes, no seconds. */
 export function formatSpan(ms: number): string {
@@ -65,11 +63,11 @@ export function ResolutionTimer({ ticket }: { ticket: TicketOut }) {
     );
   }
   const elapsed = now - started;
-  const overdue = elapsed > OVERDUE_AFTER_MIN[ticket.urgency] * 60000;
+  const overdue = elapsed > SLA_MS;
   return (
     <span
       className={cn("inline-flex items-center gap-1 text-xs tabular-nums", overdue ? "font-medium text-destructive" : "text-muted-foreground")}
-      title={overdue ? "Open longer than this urgency allows" : "Time since this was raised"}
+      title={overdue ? "Open longer than 24 hours: SLA breached" : "Time since this was raised"}
     >
       <Timer className="size-3.5" />
       Open for {formatSpan(elapsed)}
@@ -79,7 +77,7 @@ export function ResolutionTimer({ ticket }: { ticket: TicketOut }) {
 
 /**
  * One ticket: what the host has to do, when it was raised, how long it has waited, the property, and the actions.
- * Shown on Leads -> Tickets (with the guest) and on a checked-in guest's own row (`showGuest` off: the row already
+ * Shown on the Tickets page (with the guest) and on a checked-in guest's own row (`showGuest` off: the row already
  * says who). It is the same ticket in both places, so resolving it in one resolves it in the other.
  */
 export function TicketCard({

@@ -57,6 +57,14 @@ async def test_the_same_promise_in_one_call_is_one_ticket(db_session, test_user,
     assert len(await _tickets(test_call_session.id)) == 1
 
 
+async def test_every_ticket_gets_the_next_number_and_the_api_shows_it(db_session, test_user, client, auth_headers):
+    first = await ticket_service.open_ticket(db_session, kind="escalation", summary="One", user_id=test_user.id)
+    second = await ticket_service.open_ticket(db_session, kind="photos", summary="Two", user_id=test_user.id)
+    assert first.number >= 1001 and second.number == first.number + 1
+    body = (await client.get("/api/v1/tickets?state=all", headers=auth_headers)).json()
+    assert {t["number"] for t in body} == {first.number, second.number}
+
+
 async def test_opening_a_ticket_never_raises(db_session):
     # No host can be found -> skipped quietly, not an exception on a live call.
     assert await ticket_service.open_ticket(db_session, kind="escalation", summary="x") is None

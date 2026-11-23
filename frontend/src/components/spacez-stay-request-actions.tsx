@@ -1,7 +1,7 @@
 "use client";
 
 // SPACEZ ONLY. The team's yes / no on a guest's early check-in / late check-out request, shown on its
-// "stay_request" ticket (Leads -> Tickets). Yes: the guest is sent a payment link for the flat fee on
+// "stay_request" ticket (the Tickets page). Yes: the guest is sent a payment link for the flat fee on
 // WhatsApp. No: the guest is told on WhatsApp that the team can't do it. See
 // backend/app/services/spacez_stay_requests.py.
 

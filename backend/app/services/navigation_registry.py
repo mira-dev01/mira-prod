@@ -71,9 +71,11 @@ NAV_DESTINATIONS: tuple[NavDestination, ...] = (
         ("guest_support_agent", "negotiation", "knowledge_faq"),
     ),
     NavDestination("calls", "Calls", "/dashboard/calls", ("guest_support_agent", "lead_agent", "analytics_reporting")),
-    # "Leads" also holds the Missed calls tab (busy-call recoveries), so it
-    # owns what the separate Opportunities page used to.
+    # "Leads": active leads, plus the guests who are checked in or about to be. Missed calls (busy-call recoveries)
+    # now sit on the Calls page.
     NavDestination("live_requests", "Leads", "/dashboard/leads", ("lead_capture", "busy_call_recovery", "host_handoff")),
+    # Everything Mira promised a guest after a call, until the host marks it done.
+    NavDestination("tickets", "Tickets", "/dashboard/tickets", ("host_handoff", "busy_call_recovery")),
     # The Guests page is one view of guest memory, not the capability.
     NavDestination("guests", "Guests", "/dashboard/guests", ("guest_memory",)),
     # FAQ navigation is where hosts curate knowledge; hiding it never stops

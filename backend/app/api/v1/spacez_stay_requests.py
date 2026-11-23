@@ -1,6 +1,6 @@
 """SPACEZ ONLY. The team's yes / no on a guest's early check-in / late check-out request.
 
-The request arrives as a ticket (kind "stay_request", Leads -> Tickets); these two endpoints are what its
+The request arrives as a ticket (kind "stay_request", the Tickets page); these two endpoints are what its
 Approve / Decline buttons call. All the logic is in app/services/spacez_stay_requests.py.
 """
 

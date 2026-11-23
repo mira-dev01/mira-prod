@@ -68,7 +68,7 @@ function buildTiles(data: OverviewData): Tile[] {
     { id: "occupancy", label: "Occupancy", value: formatPercent(p.occupancy), unavailable: p.occupancy === null, note: occupancyNote, href: "/dashboard/analytics", icon: ChartPie, tone: "brick" },
     { id: "adr", label: "ADR", value: formatINR(p.adr), unavailable: p.adr === null, note: p.revpar !== null ? `RevPAR ${formatINR(p.revpar)}` : "Per night", href: "/dashboard/analytics", icon: TrendingUp, tone: "brick" },
     { id: "leads", label: "Leads", value: data.leads ? String(data.leads.total) : "—", note: data.leads ? `${data.leads.open} open · ${data.leads.hot} hot` : "", href: "/dashboard/leads?tab=leads", icon: Users, tone: "brick" },
-    { id: "open_actions", label: "Open actions", value: data.actions ? String(data.actions.open) : "—", note: data.actions ? `${data.actions.escalations} ${plural(data.actions.escalations, "escalation", "escalations")}` : "", href: "/dashboard/leads?tab=tickets", icon: CircleAlert, tone: "brick" },
+    { id: "open_actions", label: "Open actions", value: data.actions ? String(data.actions.open) : "—", note: data.actions ? `${data.actions.escalations} ${plural(data.actions.escalations, "escalation", "escalations")}` : "", href: "/dashboard/tickets", icon: CircleAlert, tone: "brick" },
     { id: "resolution_rate", label: "Resolution rate", value: formatPercent(data.resolution?.value ?? null), unavailable: !data.resolution || data.resolution.value === null, note: !data.resolution || data.resolution.total === 0 ? "No conversations" : `${data.resolution.resolved} of ${data.resolution.total} conversations`, href: "/dashboard/calls", icon: CircleCheck, tone: "green" },
   ];
 }

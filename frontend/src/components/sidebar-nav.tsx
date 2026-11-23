@@ -16,6 +16,7 @@ import {
   UserRound,
   HelpCircle,
   Settings,
+  Ticket,
   LogOut,
   Menu,
   X,
@@ -47,6 +48,7 @@ const links: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/dashboard/pricing", label: "Pricing", icon: IndianRupee },
   { href: "/dashboard/calls", label: "Calls", icon: Phone },
   { href: "/dashboard/leads", label: "Leads", icon: Users },
+  { href: "/dashboard/tickets", label: "Tickets", icon: Ticket },
   { href: "/dashboard/guests", label: "Guests", icon: UserRound },
   { href: "/dashboard/faq", label: "FAQ", icon: HelpCircle },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
@@ -59,8 +61,13 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   // rail's centre line (see rail-sidebar.tsx); the mobile drawer keeps its
   // original paddings and always-visible labels.
   const { rail } = useRail();
-  // What needs the host on the Leads page (open tickets and requests from booked guests): a number on the Leads link, in the rail and in the drawer.
-  const { navCount: bookingActivity } = useBookingActivity();
+  // The red numbers: what needs the host in Leads (requests from, and open tickets of, booked guests) and the open
+  // tickets on the Tickets link, in the rail and in the drawer.
+  const { checkedInCount, ticketCount } = useBookingActivity();
+  const badgeFor: Record<string, { count: number; noun: string }> = {
+    "/dashboard/leads": { count: checkedInCount, noun: "item" },
+    "/dashboard/tickets": { count: ticketCount, noun: "open ticket" },
+  };
 
   function renderLink(link: (typeof links)[number]) {
     const active =
@@ -68,6 +75,7 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
         ? pathname === link.href
         : pathname.startsWith(link.href);
     const Icon = link.icon;
+    const badge = badgeFor[link.href];
     return (
       <Link
         key={link.href}
@@ -82,8 +90,8 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
       >
         <span className="relative shrink-0">
           <Icon className="size-4" />
-          {link.href === "/dashboard/leads" && bookingActivity > 0 && (
-            <ActivityBadge count={bookingActivity} className="absolute -top-2 -right-3 size-4 text-[10px]" />
+          {badge && badge.count > 0 && (
+            <ActivityBadge count={badge.count} noun={badge.noun} className="absolute -top-2 -right-3 size-4 text-[10px]" />
           )}
         </span>
         <RailLabel>{link.label}</RailLabel>

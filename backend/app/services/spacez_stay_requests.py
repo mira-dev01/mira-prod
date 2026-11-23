@@ -7,7 +7,7 @@ The flow (the guest rings back after booking):
      number they are calling from, reads the flat fee from the villa's Spacez terms, stores a
      SpacezStayRequest, opens a ticket for the team (kind "stay_request") and alerts them. The agent tells
      the guest the charge and that the team will check; she promises nothing.
-  2. The team answers yes or no on the ticket (Leads -> Tickets):
+  2. The team answers yes or no on the ticket (the Tickets page):
        * `approve` -> a Razorpay link for the flat fee goes to the guest on WhatsApp;
        * `decline` -> the guest is told on WhatsApp that the team cannot do it.
   3. `sweep` (every minute, from payment_service.process_payments) watches an approved link: paid ->

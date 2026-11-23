@@ -3,7 +3,7 @@
 The saved transcript is only the spoken turns (tool-call turns are dropped, see voice/pipeline.py), so
 afterwards there is no telling which lines were the escalation. The pipeline therefore reads the live LLM context
 once, as the call ends, and keeps a small marker for every tool that hands something to the host: the guest's
-line that led to it and what Mira said right after. The dashboard (Leads -> Tickets -> Transcript) colours those
+line that led to it and what Mira said right after. The dashboard (Tickets -> Transcript) colours those
 lines. Text, not positions, because the dashboard merges multi-line turns and would otherwise drift off by one.
 
 Nothing here raises into the end-of-call work: a context it cannot read gives no markers, and the transcript is

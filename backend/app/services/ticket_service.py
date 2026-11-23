@@ -131,6 +131,7 @@ async def list_tickets(
     return [
         {
             "id": ticket.id,
+            "number": ticket.number,
             "kind": ticket.kind,
             "summary": ticket.summary,
             "detail": ticket.detail,
@@ -175,7 +176,7 @@ async def attach_booking(db: AsyncSession, user_id: uuid.UUID, rows: list[dict])
 
 
 async def open_summary(db: AsyncSession, user_id: uuid.UUID) -> dict:
-    """The numbers on the Tickets tab and the sidebar: how many tickets are open, and how many of those belong to
+    """The numbers on the Tickets page and the sidebar: how many tickets are open, and how many of those belong to
     a booked guest (they are also on that guest's row in Leads -> Checked-in)."""
     rows = await attach_booking(db, user_id, await list_tickets(db, user_id, "open", limit=1000))
     return {"open": len(rows), "booked_open": sum(1 for row in rows if row["booking_lead_id"] is not None)}
@@ -228,7 +229,7 @@ async def reconcile_promises(
             call_session_id=call_session_id,
             urgency="medium",
             message=f"Mira told a guest: {promises[0]}{extra}. Nothing was recorded for the host during the call -- "
-            "see Leads > Tickets.",
+            "see Tickets.",
         )
         await open_ticket(
             db,
