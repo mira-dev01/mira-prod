@@ -42,7 +42,7 @@ export const USE_CASES: UseCase[] = [
     label: "Pricing & negotiation",
     description: "Letting Mira answer rate questions and handle negotiation for you.",
     icon: IndianRupee,
-    navHref: "/dashboard/pricing",
+    navHref: "/dashboard/agent?step=negotiation",
   },
   {
     key: "calendar_management",

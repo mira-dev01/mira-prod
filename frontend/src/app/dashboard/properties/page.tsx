@@ -250,7 +250,7 @@ function PropertiesList({
   }
 
   function handleSetDiscount(id: string) {
-    window.open(`/dashboard/pricing?property_id=${id}`, "_blank");
+    window.open(`/dashboard/agent?step=negotiation&property_id=${id}`, "_blank");
   }
 
   async function handleImportFiles(e: React.ChangeEvent<HTMLInputElement>) {

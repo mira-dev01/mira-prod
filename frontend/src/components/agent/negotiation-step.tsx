@@ -1,15 +1,12 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
-import Link from "next/link";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DefinitionRow } from "@/components/ui/definition-row";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Cell, CellTitle, Hint, Sheet, SheetHeading, SubField, WideCell } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AiTrainingSection } from "@/components/settings/ai-training-section";
@@ -27,14 +24,6 @@ const OBJECTION_TAG_LABELS: Record<string, string> = {
   GUEST_STOPPED_RESPONDING: "Guest stopped responding",
 };
 
-export default function PricingPage() {
-  return (
-    <Suspense fallback={<Skeleton className="h-96 w-full" />}>
-      <PricingPageContent />
-    </Suspense>
-  );
-}
-
 // A rate computed off very few calls (e.g. 1/1 = 100%) looks like a strong
 // signal but isn't one -- shown with an explicit sample-size caveat instead
 // of a bare percentage, so a host doesn't read n=1 with the same confidence
@@ -42,19 +31,11 @@ export default function PricingPage() {
 // is a plain low-confidence flag, not a p-value.
 const LOW_SAMPLE_THRESHOLD = 5;
 
-function ObjectionInsightRow({
-  row,
-  baseline,
-}: {
-  row: ObjectionTagStats;
-  baseline: BaselineStats;
-}) {
+function ObjectionInsightRow({ row, baseline }: { row: ObjectionTagStats; baseline: BaselineStats }) {
   const label = OBJECTION_TAG_LABELS[row.tag] ?? row.tag;
   const lowSample = row.total_calls < LOW_SAMPLE_THRESHOLD;
   const delta =
-    row.conversion_rate != null && baseline.conversion_rate != null
-      ? row.conversion_rate - baseline.conversion_rate
-      : null;
+    row.conversion_rate != null && baseline.conversion_rate != null ? row.conversion_rate - baseline.conversion_rate : null;
 
   return (
     <TableRow>
@@ -62,9 +43,7 @@ function ObjectionInsightRow({
       <TableCell className="text-muted-foreground">{row.total_calls}</TableCell>
       <TableCell>
         {row.conversion_rate != null ? `${Math.round(row.conversion_rate * 100)}%` : "—"}
-        {lowSample && (
-          <span className="ml-1.5 text-xs text-muted-foreground">(low sample)</span>
-        )}
+        {lowSample && <span className="ml-1.5 text-xs text-muted-foreground">(low sample)</span>}
       </TableCell>
       <TableCell className={delta != null && delta < 0 ? "text-destructive" : "text-muted-foreground"}>
         {baseline.conversion_rate != null ? `${Math.round(baseline.conversion_rate * 100)}% baseline` : "—"}
@@ -79,21 +58,13 @@ function ObjectionInsightRow({
   );
 }
 
-function PricingPageContent() {
+/** Quote calculator, smart pricing, objection insights, and the negotiation-rules editor -- everything about what Mira charges and how she negotiates. */
+export function NegotiationStep() {
   const searchParams = useSearchParams();
   const scopedPropertyId = searchParams.get("property_id");
 
   const { data: properties, loading: propertiesLoading } = useAsync(() => api.properties.list(), []);
-  const { data: negotiationRules } = useAsync(() => api.negotiationRules.list(), []);
   const { data: objectionInsights } = useAsync(() => api.analytics.objectionInsights(), []);
-  const approvedDiscountRulesCount =
-    negotiationRules?.filter(
-      (r) =>
-        r.status === "approved" &&
-        (r.rule_type === "discount_no_ask" ||
-          r.rule_type === "discount_guest_requests" ||
-          r.rule_type === "discount_repeat_guest")
-    ).length ?? 0;
 
   const [quoteProperty, setQuoteProperty] = useState<string>(scopedPropertyId ?? "");
   const [checkIn, setCheckIn] = useState("");
@@ -134,13 +105,10 @@ function PricingPageContent() {
   }
 
   const withSmartPrice = (properties ?? []).filter((p) => p.smart_price_estimate != null);
-  const n = approvedDiscountRulesCount;
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="page-title">{scopedPropertyId ? `Pricing — ${scopedProperty?.name ?? "…"}` : "Pricing"}</h1>
-      </div>
+      {scopedPropertyId && <h2 className="font-heading text-lg font-bold tracking-tight text-heading">Pricing — {scopedProperty?.name ?? "…"}</h2>}
 
       <Sheet>
         <Cell className="md:col-span-5">
@@ -208,22 +176,6 @@ function PricingPageContent() {
             <Hint>Nothing calculated yet.</Hint>
           )}
         </Cell>
-
-        {n > 0 && (
-          <Cell className="flex-row flex-wrap items-center justify-between gap-x-6 gap-y-2 py-4">
-            <p className="text-sm">
-              <span className="font-semibold">Negotiation policy.</span> {n} approved discount rule{n === 1 ? "" : "s"}{" "}
-              {n === 1 ? "applies" : "apply"} to live negotiations.
-            </p>
-            <Link
-              href="/dashboard/agent"
-              className="flex items-center gap-1 text-sm font-semibold text-foreground underline underline-offset-4 hover:no-underline"
-            >
-              Review negotiation policy
-              <ArrowRight className="size-3.5" />
-            </Link>
-          </Cell>
-        )}
 
         {withSmartPrice.length > 0 && (
           <WideCell>

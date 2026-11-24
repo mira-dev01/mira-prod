@@ -81,10 +81,10 @@ function ruleConditionSummary(rule: NegotiationRuleOut): string {
   return rule.discount_percent != null ? `${rule.discount_percent}% off` : "—";
 }
 
-// Rendered on BOTH the Agent page (app/dashboard/agent, Pricing step)
-// and the Pricing page (app/dashboard/pricing) -- same component, same
-// list/parse/approve endpoints, so the two pages stay wired together by
-// construction. One text box (typed or dictated -- DictationTextarea's
+// Rendered on the Configure page (app/dashboard/agent, Negotiation Policy
+// tab) -- the standalone Pricing page that used to render this too was
+// removed, its calculator and objection insights folded into that same tab.
+// One text box (typed or dictated -- DictationTextarea's
 // existing mic -> POST /voice/transcribe -> Sarvam batch STT flow,
 // unchanged) covers everything a host would describe about "how the agent
 // should negotiate": when to offer a discount and how much, minimum-stay

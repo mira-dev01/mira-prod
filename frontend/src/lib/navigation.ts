@@ -50,7 +50,7 @@ export const FALLBACK_NAV: NavItem[] = [
   fallback("overview", "Overview", "/dashboard", "pinned_top", false),
   fallback("analytics", "Analytics", "/dashboard/analytics", "movable"),
   fallback("properties", "Properties", "/dashboard/properties", "movable", false),
-  fallback("ai_training", "Agent", "/dashboard/agent", "movable"),
+  fallback("ai_training", "Configure", "/dashboard/agent", "movable"),
   fallback("calls", "Calls", "/dashboard/calls", "movable"),
   fallback("live_requests", "Leads", "/dashboard/leads", "movable"),
   fallback("tickets", "Tickets", "/dashboard/tickets", "movable"),

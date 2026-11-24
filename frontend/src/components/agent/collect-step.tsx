@@ -102,6 +102,7 @@ export function CollectStep({ config, onSaved }: { config: AgentConfig; onSaved:
               checked={collect[key] !== "off"}
               onCheckedChange={(on) => setMode(key, on ? "optional" : "off")}
               title={title}
+              inline
             >
             <SegmentedChoice
               label={`${title}: how important`}

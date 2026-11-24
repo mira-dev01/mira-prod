@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { OptionCard } from "@/components/option-card";
 import { FieldRow, Sheet, SheetFooter, SheetHeading, WideCell } from "@/components/ui/sheet";
@@ -120,13 +121,19 @@ function PropertyRule({
   portfolio,
   override,
   onChanged,
+  startEditing,
+  onCancelAdd,
 }: {
   property: { id: string; name: string };
   portfolio: Payment;
   override: Partial<Payment> | undefined;
   onChanged: (overrides: Overrides) => void;
+  /** Open straight into editing, e.g. right after the host picked this property to add a rule for. */
+  startEditing?: boolean;
+  /** Shown instead of "Cancel" while this row has no saved override yet -- drops the row instead of just collapsing it. */
+  onCancelAdd?: () => void;
 }) {
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(Boolean(startEditing));
   const [draft, setDraft] = useState<Payment>({ ...portfolio, ...override });
   const [busy, setBusy] = useState(false);
   const valid = inRange(String(draft.split_percent), LIMITS.percent) && inRange(String(draft.hold_minutes), LIMITS.hold);
@@ -177,7 +184,7 @@ function PropertyRule({
                 Use the shared rules
               </Button>
             )}
-            <Button size="sm" variant="ghost" disabled={busy} onClick={() => setEditing(false)}>
+            <Button size="sm" variant="ghost" disabled={busy} onClick={() => (onCancelAdd ? onCancelAdd() : setEditing(false))}>
               Cancel
             </Button>
           </div>
@@ -205,6 +212,12 @@ export function PaymentsStep({
   const [saving, setSaving] = useState(false);
   const billing = useAsync(() => api.billing.get(), []);
   const properties = useAsync(() => api.properties.list(), []);
+  // Only properties with a saved override are listed -- everything else
+  // already follows the shared rules above, so showing every property here
+  // too would just repeat that for each one.
+  const [addPropertyId, setAddPropertyId] = useState("");
+  const customized = (properties.data ?? []).filter((p) => Object.keys(overrides[p.id] ?? {}).length > 0);
+  const uncustomized = (properties.data ?? []).filter((p) => !(overrides[p.id] && Object.keys(overrides[p.id]).length > 0));
 
   const valid = inRange(String(payment.split_percent), LIMITS.percent) && inRange(String(payment.hold_minutes), LIMITS.hold);
   const dirty =
@@ -301,23 +314,51 @@ export function PaymentsStep({
           <WideCell>
             <SheetHeading title="By property" />
             <div className="col-span-12 px-5 py-2">
-              <p className="py-2 text-[13px] text-muted-foreground">
-                <span className="mr-1 inline-block size-2 rounded-full align-middle" style={{ backgroundColor: "var(--status-live)" }} />
-                follows the shared rules
-                <span className="mx-1 ml-3 inline-block size-2 rounded-full align-middle" style={{ backgroundColor: "var(--status-pending)" }} />
-                has its own
-              </p>
-              <ul className="divide-y divide-border">
-                {properties.data!.map((p) => (
-                  <PropertyRule
-                    key={p.id}
-                    property={{ id: p.id, name: p.name }}
-                    portfolio={config.payment}
-                    override={overrides[p.id]}
-                    onChanged={onOverridesChanged}
-                  />
-                ))}
-              </ul>
+              {customized.length === 0 && !addPropertyId ? (
+                <p className="py-2 text-[13px] text-muted-foreground">All properties follow the shared rules above.</p>
+              ) : (
+                <ul className="divide-y divide-border">
+                  {customized.map((p) => (
+                    <PropertyRule
+                      key={p.id}
+                      property={{ id: p.id, name: p.name }}
+                      portfolio={config.payment}
+                      override={overrides[p.id]}
+                      onChanged={onOverridesChanged}
+                    />
+                  ))}
+                  {addPropertyId && (
+                    <PropertyRule
+                      key={addPropertyId}
+                      property={uncustomized.find((p) => p.id === addPropertyId)!}
+                      portfolio={config.payment}
+                      override={undefined}
+                      startEditing
+                      onCancelAdd={() => setAddPropertyId("")}
+                      onChanged={(next) => {
+                        onOverridesChanged(next);
+                        setAddPropertyId("");
+                      }}
+                    />
+                  )}
+                </ul>
+              )}
+              {!addPropertyId && uncustomized.length > 0 && (
+                <div className="flex items-center gap-2 pt-3">
+                  <Select value="" onValueChange={(v) => setAddPropertyId(v ?? "")}>
+                    <SelectTrigger className="w-64" aria-label="Add a custom rule for a property">
+                      <SelectValue placeholder="Add a custom rule for a property…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {uncustomized.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
           </WideCell>
         </Sheet>

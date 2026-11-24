@@ -10,7 +10,6 @@ import {
   Building2,
   BrainCircuit,
   ChartColumn,
-  IndianRupee,
   Phone,
   Users,
   UserRound,
@@ -36,16 +35,15 @@ import { hrefsForInterests } from "@/lib/use-cases";
 // checked day-to-day like Calls/Leads. AI Training (formerly the "Voice AI"
 // + "AI Training" Settings tabs, merged) instead gets its own top-level nav
 // entry right after Properties, since it configures the voice agent that
-// serves those properties. Pricing (added alongside dashboard
-// personalization, 2026-10-26) previously had NO sidebar entry at all --
-// the page existed and worked, it just wasn't reachable except by typing
-// the URL -- found while mapping use-case interests to nav items.
+// serves those properties. Pricing no longer has its own page -- its quote
+// calculator and objection insights moved into Configure's Negotiation
+// Policy tab (duplicated the negotiation-rules editor that already lived on
+// both pages) -- so it has no separate sidebar entry either.
 const links: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/dashboard", label: "Overview", icon: Home },
   { href: "/dashboard/analytics", label: "Analytics", icon: ChartColumn },
   { href: "/dashboard/properties", label: "Properties", icon: Building2 },
-  { href: "/dashboard/agent", label: "Agent", icon: BrainCircuit },
-  { href: "/dashboard/pricing", label: "Pricing", icon: IndianRupee },
+  { href: "/dashboard/agent", label: "Configure", icon: BrainCircuit },
   { href: "/dashboard/calls", label: "Calls", icon: Phone },
   { href: "/dashboard/leads", label: "Leads", icon: Users },
   { href: "/dashboard/tickets", label: "Tickets", icon: Ticket },

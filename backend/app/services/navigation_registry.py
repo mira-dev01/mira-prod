@@ -66,7 +66,7 @@ NAV_DESTINATIONS: tuple[NavDestination, ...] = (
     ),
     NavDestination(
         "ai_training",
-        "Agent",
+        "Configure",
         "/dashboard/agent",
         ("guest_support_agent", "negotiation", "knowledge_faq"),
     ),

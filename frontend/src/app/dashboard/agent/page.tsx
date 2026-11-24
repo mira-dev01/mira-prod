@@ -8,24 +8,22 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BusyCallsStep } from "@/components/agent/busy-calls-step";
 import { CollectStep } from "@/components/agent/collect-step";
 import { HotLeadStep } from "@/components/agent/hot-lead-step";
+import { NegotiationStep } from "@/components/agent/negotiation-step";
 import { PaymentsStep } from "@/components/agent/payments-step";
 import { VoiceStep } from "@/components/agent/voice-step";
-import { AiTrainingSection } from "@/components/settings/ai-training-section";
 import { useAsync } from "@/hooks/use-async";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import type { AgentConfig } from "@/lib/types";
 
-// One step per question a host answers about their agent. Order follows a
-// call: what Mira asks, when a lead counts as hot, what she can offer, how
-// she sounds. Steps for features that don't work yet are not listed.
+// One tab per question a host answers about their agent. Order follows a
+// call: who counts as a lead worth chasing and what Mira asks them, what she
+// can offer, how she sounds, how a booking gets confirmed and paid for.
 const STEPS = [
-  { id: "collect", label: "Collect" },
-  { id: "hot", label: "Hot leads" },
-  { id: "pricing", label: "Pricing" },
-  { id: "payments", label: "Payments" },
-  { id: "busy", label: "Busy calls" },
+  { id: "lead", label: "Lead qualification" },
+  { id: "negotiation", label: "Negotiation policy" },
   { id: "voice", label: "Voice" },
+  { id: "payments", label: "Payments" },
 ] as const;
 type StepId = (typeof STEPS)[number]["id"];
 
@@ -38,7 +36,7 @@ function AgentPageContent() {
   const searchParams = useSearchParams();
   const { loading: authLoading } = useAuth();
   const param = searchParams.get("step");
-  const [step, setStep] = useState<StepId>(isStep(param) ? param : "collect");
+  const [step, setStep] = useState<StepId>(isStep(param) ? param : "lead");
 
   const { data, loading: configLoading, error } = useAsync(() => api.agentConfig.get(), []);
   // Saved values come back from the API; keep them here so each step starts
@@ -54,12 +52,12 @@ function AgentPageContent() {
     router.replace(`/dashboard/agent?step=${value}`, { scroll: false });
   }
 
-  const needsConfig = step === "collect" || step === "hot" || step === "busy" || step === "payments";
+  const needsConfig = step === "lead" || step === "payments";
   const waiting = authLoading || (needsConfig && configLoading);
 
   return (
     <div className="space-y-6">
-      <h1 className="page-title">Agent</h1>
+      <h1 className="page-title">Configure</h1>
 
       <Tabs value={step} onValueChange={handleStepChange}>
         <TabsList>
@@ -83,23 +81,23 @@ function AgentPageContent() {
           <p className="pt-4 text-sm text-destructive">{error?.message ?? "Could not load your agent settings."}</p>
         ) : (
           <>
-            <TabsContent value="collect" keepMounted className="pt-4">
-              {config && <CollectStep config={config} onSaved={setSaved} />}
+            <TabsContent value="lead" keepMounted className="space-y-6 pt-4">
+              {config && (
+                <>
+                  <CollectStep config={config} onSaved={setSaved} />
+                  <HotLeadStep config={config} onSaved={setSaved} />
+                  <BusyCallsStep config={config} onSaved={setSaved} />
+                </>
+              )}
             </TabsContent>
-            <TabsContent value="hot" keepMounted className="pt-4">
-              {config && <HotLeadStep config={config} onSaved={setSaved} />}
-            </TabsContent>
-            <TabsContent value="payments" keepMounted className="pt-4">
-              {config && <PaymentsStep config={config} overrides={overrides} onSaved={setSaved} onOverridesChanged={setSavedOverrides} />}
-            </TabsContent>
-            <TabsContent value="busy" keepMounted className="pt-4">
-              {config && <BusyCallsStep config={config} onSaved={setSaved} />}
-            </TabsContent>
-            <TabsContent value="pricing" className="pt-4">
-              <AiTrainingSection />
+            <TabsContent value="negotiation" className="pt-4">
+              <NegotiationStep />
             </TabsContent>
             <TabsContent value="voice" keepMounted className="pt-4">
               <VoiceStep />
+            </TabsContent>
+            <TabsContent value="payments" keepMounted className="pt-4">
+              {config && <PaymentsStep config={config} overrides={overrides} onSaved={setSaved} onOverridesChanged={setSavedOverrides} />}
             </TabsContent>
           </>
         )}

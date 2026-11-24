@@ -17,6 +17,7 @@ export function OptionCard({
   description,
   badge,
   disabled,
+  inline,
   children,
 }: {
   checked: boolean;
@@ -26,6 +27,8 @@ export function OptionCard({
   /** A small tag after the title, e.g. "Always on". */
   badge?: string;
   disabled?: boolean;
+  /** Put children on the title's own line (e.g. a short Must have/Nice to have choice) instead of a row below. */
+  inline?: boolean;
   children?: React.ReactNode;
 }) {
   return (
@@ -37,17 +40,18 @@ export function OptionCard({
           onCheckedChange={(next) => onCheckedChange?.(Boolean(next))}
           className="mt-0.5"
         />
-        <span className="min-w-0 flex-1">
+        <span className={cn("min-w-0 flex-1", inline && "flex flex-wrap items-center justify-between gap-3")}>
           <span className="flex flex-wrap items-center gap-2">
             <span className="text-sm font-semibold">{title}</span>
             {badge && (
               <span className="border border-border px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">{badge}</span>
             )}
+            {description && <span className="block text-[13px] text-muted-foreground">{description}</span>}
           </span>
-          {description && <span className="block text-[13px] text-muted-foreground">{description}</span>}
+          {inline && checked && children}
         </span>
       </label>
-      {checked && children && <div className="mt-3 pl-7">{children}</div>}
+      {!inline && checked && children && <div className="mt-3 pl-7">{children}</div>}
     </div>
   );
 }
