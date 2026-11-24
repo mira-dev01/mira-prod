@@ -115,13 +115,12 @@ export function CollectStep({ config, onSaved }: { config: AgentConfig; onSaved:
               />
             </OptionCard>
           ))}
-        </div>
 
-        <SheetHeading title="Your own details" />
-        <div className="col-span-12 space-y-3 px-5 py-4">
-          {collect.custom.length === 0 && <p className="text-sm text-muted-foreground">Nothing added yet.</p>}
           {collect.custom.map((field, index) => (
-            <div key={index} className="flex flex-wrap items-center gap-2 border-b border-border pb-3 last:border-0 last:pb-0">
+            <div
+              key={index}
+              className="flex flex-wrap items-center gap-2 border-b border-border py-3 last:border-0 last:pb-0"
+            >
               <Input
                 aria-label="Detail name"
                 placeholder="e.g. Arrival time"
@@ -155,10 +154,13 @@ export function CollectStep({ config, onSaved }: { config: AgentConfig; onSaved:
               </Button>
             </div>
           ))}
-          {customProblem && <p className="text-[13px] text-destructive">{customProblem}</p>}
-          <Button type="button" size="sm" variant="outline" disabled={collect.custom.length >= MAX_CUSTOM} onClick={addCustom}>
-            <Plus className="size-4" /> Add a detail
-          </Button>
+          {customProblem && <p className="pt-3 text-[13px] text-destructive">{customProblem}</p>}
+          <div className="flex items-center justify-between gap-2 border-t border-border py-3 last:border-0 last:pb-0">
+            <span className="text-sm font-semibold">Your own details</span>
+            <Button type="button" size="sm" variant="outline" disabled={collect.custom.length >= MAX_CUSTOM} onClick={addCustom}>
+              <Plus className="size-4" /> Add a detail
+            </Button>
+          </div>
         </div>
 
         <SheetFooter>
