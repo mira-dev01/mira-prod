@@ -2,13 +2,14 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { OptionCard } from "@/components/option-card";
+import { PropertyCombobox } from "@/components/property-combobox";
 import { FieldRow, Sheet, SheetFooter, SheetHeading, WideCell } from "@/components/ui/sheet";
 import { useAsync } from "@/hooks/use-async";
 import { api, ApiError } from "@/lib/api";
@@ -215,6 +216,7 @@ export function PaymentsStep({
   // Only properties with a saved override are listed -- everything else
   // already follows the shared rules above, so showing every property here
   // too would just repeat that for each one.
+  const [picking, setPicking] = useState(false);
   const [addPropertyId, setAddPropertyId] = useState("");
   const customized = (properties.data ?? []).filter((p) => Object.keys(overrides[p.id] ?? {}).length > 0);
   const uncustomized = (properties.data ?? []).filter((p) => !(overrides[p.id] && Object.keys(overrides[p.id]).length > 0));
@@ -344,19 +346,27 @@ export function PaymentsStep({
                 </ul>
               )}
               {!addPropertyId && uncustomized.length > 0 && (
-                <div className="flex items-center gap-2 pt-3">
-                  <Select value="" onValueChange={(v) => setAddPropertyId(v ?? "")}>
-                    <SelectTrigger className="w-64" aria-label="Add a custom rule for a property">
-                      <SelectValue placeholder="Add a custom rule for a property…" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {uncustomized.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                <div className="py-3">
+                  {picking ? (
+                    <div className="flex items-center gap-2">
+                      <PropertyCombobox
+                        properties={uncustomized}
+                        value=""
+                        onChange={(id) => {
+                          setAddPropertyId(id);
+                          setPicking(false);
+                        }}
+                        placeholder="Search a property…"
+                      />
+                      <Button type="button" size="icon-sm" variant="ghost" aria-label="Cancel" onClick={() => setPicking(false)}>
+                        <X className="size-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button type="button" size="sm" variant="outline" onClick={() => setPicking(true)}>
+                      <Plus className="size-4" /> Add a custom rule
+                    </Button>
+                  )}
                 </div>
               )}
             </div>
