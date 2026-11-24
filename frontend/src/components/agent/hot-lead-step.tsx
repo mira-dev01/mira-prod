@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { OptionCard } from "@/components/option-card";
-import { Sheet, SheetFooter, SheetHeading, WideCell } from "@/components/ui/sheet";
+import { Checkbox } from "@/components/ui/checkbox";
+import { FieldRow, Sheet, SheetFooter, WideCell } from "@/components/ui/sheet";
 import { api, ApiError } from "@/lib/api";
 import type { AgentConfig, AgentHotSignal } from "@/lib/types";
 
@@ -41,12 +41,16 @@ export function HotLeadStep({ config, onSaved }: { config: AgentConfig; onSaved:
   return (
     <Sheet>
       <WideCell>
-        <SheetHeading title="What makes a lead hot">A guest who agrees to book is always very hot.</SheetHeading>
-        <div className="col-span-12 px-5 py-4">
-          {SIGNALS.map(({ key, title }) => (
-            <OptionCard key={key} checked={hotOn.includes(key)} onCheckedChange={(on) => toggle(key, on)} title={title} />
-          ))}
-        </div>
+        <FieldRow label="What makes a lead hot" hint="A guest who agrees to book is always very hot.">
+          <div className="flex flex-wrap gap-x-6 gap-y-2">
+            {SIGNALS.map(({ key, title }) => (
+              <label key={key} className="flex cursor-pointer items-center gap-2 text-sm">
+                <Checkbox checked={hotOn.includes(key)} onCheckedChange={(next) => toggle(key, Boolean(next))} />
+                {title}
+              </label>
+            ))}
+          </div>
+        </FieldRow>
 
         <SheetFooter>
           <Button variant="cta" onClick={save} disabled={!dirty || saving}>
