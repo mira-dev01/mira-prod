@@ -13,6 +13,7 @@ app/services/tool_handlers.py) -> Sarvam TTS.
 """
 
 import asyncio
+from collections.abc import Awaitable, Callable
 import logging
 import uuid
 from contextlib import asynccontextmanager
@@ -94,6 +95,7 @@ from app.voice.conversation_state import ConversationState
 from app.voice.conversation_style import ConversationStyleProcessor
 from app.voice.end_call_reliability_guard import EndCallReliabilityGuardProcessor
 from app.voice.eval_mode import EvalPassthrough
+from app.voice import demo_mode
 from app.voice.escalation_phrase_guard import EscalationPhraseGuardProcessor
 from app.voice.exotel_serializer import DiagnosticExotelFrameSerializer
 from app.voice.handoff_signal import register_call, unregister_call, wait_for_handoff_request
@@ -1999,9 +2001,9 @@ async def _run_pipeline_inner(
 
         @worker.event_handler("on_pipeline_finished")
         async def _on_finished(worker, frame):
-            if eval_mode:
-                # An eval call is not a lead or a guest: no hang-up, summary, e-mail
-                # or memory update. Only the lease bookkeeping stays.
+            if eval_mode or demo_mode.is_demo():
+                # An eval call (or the marketing site's public demo call) is not a lead or a guest: no
+                # hang-up, summary, e-mail or memory update. Only the lease bookkeeping stays.
                 await _release_lease("pipeline_finished")
                 return
             # Closing our end of the Voicebot Applet's WebSocket stream only
@@ -3095,6 +3097,42 @@ async def run_browser_lead_pipeline(connection: SmallWebRTCConnection, user: Use
         ),
     )
     await run_lead_pipeline_on_transport(transport, user)
+
+
+async def run_browser_demo_pipeline(
+    connection: SmallWebRTCConnection,
+    host: User,
+    *,
+    max_seconds: int,
+    on_finished: Callable[[], Awaitable[None]] | None = None,
+) -> None:
+    """The marketing site's public "test the agent" call: the Lead Agent for the sample host, for an anonymous
+    visitor. Same pipeline as the dashboard's test call, inside `demo_mode.demo_scope()` (nothing reaches a person
+    or a phone, no post-call steps) and hard-capped at `max_seconds`: the cap is enforced here, whatever the
+    browser does, because every second of an open call is paid speech and model time."""
+    transport = SmallWebRTCTransport(
+        webrtc_connection=connection,
+        params=TransportParams(audio_in_enabled=True, audio_out_enabled=True),
+    )
+    try:
+        with demo_mode.demo_scope():
+            await asyncio.wait_for(run_lead_pipeline_on_transport(transport, host), timeout=max_seconds)
+    except asyncio.TimeoutError:
+        logger.info("Demo call reached its %ss cap -- ending it", max_seconds)
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        logger.exception("Demo call pipeline failed")
+    finally:
+        try:
+            await connection.disconnect()
+        except Exception:
+            logger.debug("Demo call: connection already closed")
+        if on_finished is not None:
+            try:
+                await on_finished()
+            except Exception:
+                logger.exception("Demo call: on_finished hook failed")
 
 
 async def run_lead_pipeline_on_transport(transport: BaseTransport, user: User, *, eval_mode: bool = False) -> None:

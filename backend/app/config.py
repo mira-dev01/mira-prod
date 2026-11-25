@@ -440,6 +440,29 @@ class Settings(BaseSettings):
     # value (>= 24 characters) only on a non-production deployment, and the route still refuses a database whose
     # name does not say eval/test unless EVAL_ALLOW_ANY_DATABASE=1 (app/voice/eval_mode.py).
     eval_route_token: str = ""
+
+    # The public "Test the agent" call on the marketing site (app/api/v1/demo_call.py). Off unless BOTH of these
+    # are set: DEMO_HOST_EMAIL names a sample host account (scripts/seed_landing_demo_host.py creates it with
+    # invented properties) and DEMO_CALL_SECRET (32+ bytes, `openssl rand -hex 32`) signs the single-use call
+    # tokens. A demo call runs the real agent against that sample host only; WhatsApp, payment links, technician
+    # dispatch, escalations and live transfers are simulated (app/voice/demo_mode.py). Every limit below bounds
+    # what an anonymous visitor can spend, so tighten them before widening them.
+    demo_host_email: str = ""
+    demo_call_secret: str = ""
+    demo_call_max_seconds: int = 120
+    demo_call_max_concurrent: int = 3
+    demo_call_per_ip_hour: int = 3
+    demo_call_per_phone_day: int = 2
+    demo_call_daily_cap: int = 150
+    # Cloudflare Turnstile. Set both to require the bot check; leave both empty to skip it (local development).
+    demo_turnstile_site_key: str = ""
+    demo_turnstile_secret: str = ""
+    # Optional: e-mail this address the visitor's name and number when a demo call starts.
+    demo_lead_notify_email: str = ""
+
+    @property
+    def demo_call_enabled(self) -> bool:
+        return bool(self.demo_host_email.strip()) and len(self.demo_call_secret.encode()) >= 32
     exotel_gateway_ip: str | None = None
     exotel_gateway_port: int = 5070
 

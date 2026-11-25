@@ -85,6 +85,14 @@ async def transcribe_dictation(
     return {"text": text}
 
 
+def ice_servers_payload() -> list[dict]:
+    """`_ice_servers()` as plain JSON for a browser's RTCPeerConnection (the dashboard test page and the demo call)."""
+    return [
+        {"urls": server.urls, "username": server.username or "", "credential": server.credential or ""}
+        for server in _ice_servers()
+    ]
+
+
 def _ice_servers() -> list[IceServer]:
     # STUN alone only helps the two sides discover each other's public
     # address -- it doesn't relay media, so on hosts that don't allow a
@@ -239,10 +247,7 @@ async def browser_test_page(token: str) -> HTMLResponse:
     # Reuses _ice_servers() (not a separate hand-rolled list) so this page's
     # ICE config can never drift out of sync with what the /test/offer
     # endpoint actually offers.
-    ice_servers: list[dict] = [
-        {"urls": server.urls, "username": server.username or "", "credential": server.credential or ""}
-        for server in _ice_servers()
-    ]
+    ice_servers = ice_servers_payload()
 
     # Order matters: the caller-controlled token is substituted LAST, so a
     # token that itself contains a placeholder string ("__ICE_SERVERS__")

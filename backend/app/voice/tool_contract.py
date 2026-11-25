@@ -41,6 +41,7 @@ from loguru import logger
 from pydantic import ConfigDict, ValidationError, create_model
 
 from app.schemas.tool import ToolBusinessError
+from app.voice import demo_mode
 
 ToolStatus = Literal[
     "ok",
@@ -216,6 +217,12 @@ def voice_tool(
                 validated = args_model.model_validate(llm_args)
             except ValidationError as exc:
                 await deliver(ToolOutcome.invalid_arguments(exc))
+                return
+
+            if demo_mode.is_demo() and name in demo_mode.SIMULATED_TOOLS:
+                # The marketing site's public demo call: nothing may reach a person or a phone (demo_mode.py).
+                logger.info("voice_tool {} simulated on a demo call (call_session_id={})", name, call_session_id)
+                await deliver(ToolOutcome.ok(demo_mode.simulated_result(name)))
                 return
 
             params.result_callback = result_callback

@@ -41,7 +41,7 @@ from app.api.v1 import (
     whatsapp_monitor,
 )
 from app.api.v1.webhooks import exotel, whatsapp
-from app.api.v1 import admin, admin_auth
+from app.api.v1 import admin, admin_auth, demo_call
 from app.config import settings
 from app.database import AsyncSessionLocal, engine, pool_stats
 from app.observability import health, http_hook, probes
@@ -431,6 +431,7 @@ app.include_router(onboarding.router, prefix=API_PREFIX)
 app.include_router(preferences.router, prefix=API_PREFIX)
 app.include_router(notification_settings.router, prefix=API_PREFIX)
 app.include_router(voice.router, prefix=API_PREFIX)
+app.include_router(demo_call.router, prefix=API_PREFIX)
 app.include_router(take_call.router, prefix=API_PREFIX)
 app.include_router(exotel.router, prefix=API_PREFIX)
 app.include_router(admin_auth.router, prefix=API_PREFIX)

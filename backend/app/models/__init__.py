@@ -3,6 +3,7 @@ from app.models.booking import Booking
 from app.models.call_lease import CallLease
 from app.models.call_quality_event import CallQualityEvent
 from app.models.call_session import CallSession
+from app.models.demo_call import DemoCallRequest
 from app.models.faq_entry import FaqEntry
 from app.models.guest_profile import GuestProfile
 from app.models.host_capability import HostCapability
@@ -34,6 +35,7 @@ __all__ = [
     "CallLease",
     "CallQualityEvent",
     "CallSession",
+    "DemoCallRequest",
     "FaqEntry",
     "GuestProfile",
     "HostCapability",
